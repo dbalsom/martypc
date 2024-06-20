@@ -184,7 +184,7 @@ pub const PORTB_SPEAKER_DATA: u8 = 0b0000_0010;
 pub const PORTB_SW2_SELECT: u8 = 0b0000_0100;
 
 // This bit is cassette motor control on 5150, SW1 select on 5160
-pub const PORTB_CASSETTE: u8 = 0b0000_1000;
+pub const PORTB_CASSETTE_MOTOR_OFF: u8 = 0b0000_1000;
 pub const PORTB_SW1_SELECT: u8 = 0b0000_1000;
 
 pub const PORTB_PARITY_MB_EN: u8 = 0b0001_0000;
@@ -195,6 +195,7 @@ pub const PORTB_KB_CLEAR: u8 = 0b1000_0000;
 pub const PORTB_PRESENT_SW1_PORTA: u8 = 0b1000_0000;
 
 pub const PORTC_TANDY_COLOR: u8 = 0b0100_0000;
+pub const PORTC_PCJR_NO_MODEM: u8 = 0b0000_0010;
 
 pub const PORTC_PCJR_NMI_LATCH: u8 = 0b0000_0001;
 pub const PORTC_PCJR_NO_FLOPPY: u8 = 0b0000_0100;
@@ -792,18 +793,28 @@ impl Ppi {
     }
 
     pub fn calc_port_c_value(&self) -> u8 {
+        let cassette_bit = if self.port_b_byte & PORTB_CASSETTE_MOTOR_OFF != 0 {
+            // Cassette motor is off, so we are in loopback mode.
+            (self.timer_in as u8) << 4
+        }
+        else {
+            // TODO: Implement cassette data input
+            0
+        };
+
         let speaker_bit = (self.speaker_in as u8) << 4;
         let timer_bit = (self.timer_in as u8) << 5;
 
         match (&self.machine_type, &self.port_c_mode) {
             (MachineType::Ibm5150v64K | MachineType::Ibm5150v256K, PortCMode::Switch2OneToFour) => {
                 // We aren't implementing the cassette on 5150, and we'll never have parity errors
-                (self.dip_sw2 & 0x0F) | timer_bit
+
+                (self.dip_sw2 & 0x0F) | cassette_bit | timer_bit
             }
             (MachineType::Ibm5150v64K | MachineType::Ibm5150v256K, PortCMode::Switch2Five) => {
                 // On 5150, only Switch Block 2, Switch #5 is actually passed through
                 // If Port C is in Switch Block 2 mode, switches 6, 7, 8 and will read high (off)
-                (self.dip_sw2 >> 4 & 0x01) | timer_bit
+                (self.dip_sw2 >> 4 & 0x01) | cassette_bit | timer_bit
             }
             (MachineType::Ibm5160, PortCMode::Switch1OneToFour) => {
                 // Cassette data line has been replaced with a speaker monitor line.
@@ -825,7 +836,8 @@ impl Ppi {
                 //       Floppy status bit is set when NO floppy is installed.
                 //log::trace!("PCJr: kb_in bit is {}", self.jr_kb_in);
                 timer_bit
-                    | 0
+                    | cassette_bit
+                    | PORTC_PCJR_NO_MODEM
                     | if self.num_floppies == 0 {
                         PORTC_PCJR_NO_FLOPPY
                     }
@@ -909,6 +921,10 @@ impl Ppi {
                 "Port CU (Machine) Mode:",
                 SyntaxToken::StateString(format!("{:?}", self.port_c_mode), false, 0),
             );
+            port_cu_map.insert(
+                "Port CU Value:",
+                SyntaxToken::StateString(format!("{:04b}", self.calc_port_c_value() >> 4), false, 0),
+            );
             state_vec.push(port_cu_map);
             group_map.insert(format!("Group A | Mode: {:?}", self.group_a_mode), state_vec);
         }
@@ -922,6 +938,12 @@ impl Ppi {
                 "Port CL (Group B) Mode:",
                 SyntaxToken::StateString(format!("{:?}", self.group_b_mode), false, 0),
             );
+
+            port_cl_map.insert(
+                "Port CL Value:",
+                SyntaxToken::StateString(format!("{:04b}", self.calc_port_c_value() & 0x0F), false, 0),
+            );
+
             state_vec.push(port_cl_map);
 
             let mut port_b_map = BTreeMap::<&str, SyntaxToken>::new();
@@ -929,6 +951,17 @@ impl Ppi {
                 "Group B Mode:",
                 SyntaxToken::StateString(format!("{:?}", self.group_b_mode), false, 0),
             );
+
+            port_b_map.insert(
+                "Port B IO Mode:",
+                SyntaxToken::StateString(format!("{:?}", self.port_b_iomode), false, 0),
+            );
+
+            port_b_map.insert(
+                "Port B Value:",
+                SyntaxToken::StateString(format!("{:08b}", self.port_b_byte), false, 0),
+            );
+
             state_vec.push(port_b_map);
             group_map.insert(format!("Group B | Mode: {:?}", self.group_b_mode), state_vec);
         }
