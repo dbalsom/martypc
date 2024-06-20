@@ -35,8 +35,8 @@ use crate::{
 };
 use egui::{ClippedPrimitive, Context, TexturesDelta, ViewportId};
 use egui_extras::install_image_loaders;
-use egui_wgpu::{renderer::ScreenDescriptor, Renderer};
-use frontend_common::{display_manager::DisplayManagerGuiOptions};
+use egui_wgpu::{Renderer, ScreenDescriptor};
+use frontend_common::display_manager::DisplayManagerGuiOptions;
 use pixels::{wgpu, PixelsContext};
 use web_time::{Duration, Instant};
 use winit::window::Window;
@@ -89,7 +89,7 @@ impl GuiRenderContext {
             //egui::ViewportId::from_hash_of(id_string.as_str()),
             ViewportId::ROOT,
             //&event_loop,
-            window as &dyn pixels::raw_window_handle::HasRawDisplayHandle,
+            window as &dyn pixels::raw_window_handle::HasDisplayHandle,
             Some(scale_factor as f32),
             None,
         );
@@ -166,7 +166,7 @@ impl GuiRenderContext {
     }
 
     pub fn has_focus(&self) -> bool {
-        match self.egui_ctx.memory(|m| m.focus()) {
+        match self.egui_ctx.memory(|m| m.focused()) {
             Some(_) => true,
             None => false,
         }

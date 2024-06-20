@@ -63,7 +63,7 @@ impl PixelsBackend {
         let window_size = window.inner_size();
 
         // Create a surface the size of the window's client area.
-        let surface_texture = SurfaceTexture::new(window_size.width, window_size.height, &window);
+        let surface_texture = SurfaceTexture::new(window_size.width, window_size.height, window);
 
         // Create the pixels instance.
         let pixels = PixelsBuilder::new(w, h, surface_texture)

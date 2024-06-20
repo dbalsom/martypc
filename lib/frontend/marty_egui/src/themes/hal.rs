@@ -42,8 +42,8 @@ use egui::{
     style::{Selection, WidgetVisuals, Widgets},
     Rounding,
     Stroke,
+    Vec2,
 };
-
 
 pub struct HalTheme {
     visuals: Visuals,
@@ -172,8 +172,10 @@ impl HalTheme {
                     se: 6.0,
                 },
                 window_shadow: Shadow {
-                    extrusion: 32.0,
-                    color: Color32::from_rgba_premultiplied(0, 0, 0, 16),
+                    offset: Vec2::new(10.0, 20.0),
+                    blur:   15.0,
+                    spread: 0.0,
+                    color:  Color32::from_rgba_premultiplied(0, 0, 0, 16),
                 },
                 window_fill: Color32::from_rgba_premultiplied(243, 243, 243, 255),
                 window_stroke: Stroke {
@@ -188,8 +190,10 @@ impl HalTheme {
                 },
                 panel_fill: Color32::from_rgba_premultiplied(237, 237, 236, 255),
                 popup_shadow: Shadow {
-                    extrusion: 16.0,
-                    color: Color32::from_rgba_premultiplied(0, 0, 0, 20),
+                    offset: Vec2::new(6.0, 10.0),
+                    blur:   8.0,
+                    spread: 0.0,
+                    color:  Color32::from_rgba_premultiplied(0, 0, 0, 20),
                 },
                 ..egui::Visuals::light()
             },

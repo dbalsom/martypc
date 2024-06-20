@@ -51,6 +51,12 @@
 
 * Updated GLaBIOS 0.2.6 ROMS for a bugfix when int 10h vector is overridden
 
+### Dependency Updates
+
+* Set rustc minimum version to 1.76
+* Update egui to 0.27.2
+* Update wgpu to 0.19.4
+
 ## [0.2.1](https://github.com/dbalsom/martypc/releases/tag/0.2.1) (2024-06-09)
 
 ### New BIU logic

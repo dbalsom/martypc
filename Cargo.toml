@@ -15,6 +15,7 @@ members = [
 [workspace.package]
 version = "0.2.2"
 edition = "2021"
+rust-version = "1.76"
 license = "MIT"
 authors = ["Daniel Balsom"]
 
@@ -38,7 +39,7 @@ martypc_desktop_wgpu = { path = "frontends/martypc_desktop_wgpu" }
 
 [workspace.dependencies]
 winit = "0.29.4"
-wgpu = "0.18"
+wgpu = "0.19.4"
 bytemuck = "1.14"
 raw-window-handle = "0.5.0"
 thiserror = "1.0.37"
@@ -53,6 +54,22 @@ fxhash = "0.2.1"
 enum_dispatch = "0.3.13"
 indexmap = "2.2.6"
 
+egui = "0.27.2"
+egui-wgpu = "0.27.2"
+egui_plot = "0.27.2"
+
+[workspace.dependencies.egui-winit]
+version = "0.27.2"
+#branch = "0_24_2_winit_0_29_15"
+default-features = false
+features = ["clipboard", "wayland", "x11"]
+
+[workspace.dependencies.egui_extras]
+version = "0.27.2"
+#branch = "0_24_2_winit_0_29_15"
+features = ["image"]
+
+
 [workspace.dependencies.image]
 version = "0.24"
 default-features = false
@@ -60,30 +77,31 @@ features = ["png"]
 
 [workspace.dependencies.pixels]
 git = "https://github.com/dbalsom/pixels_martypc.git"
-branch = "marty_update_deps"
+branch = "marty_update_deps3"
 
-[workspace.dependencies.egui]
-git = "https://github.com/dbalsom/egui_martypc.git"
-branch = "0_24_2_winit_0_29_15"
 
-[workspace.dependencies.egui-wgpu]
-git = "https://github.com/dbalsom/egui_martypc.git"
-branch = "0_24_2_winit_0_29_15"
-
-[workspace.dependencies.egui-winit]
-git = "https://github.com/dbalsom/egui_martypc.git"
-branch = "0_24_2_winit_0_29_15"
-default-features = false
-features = ["clipboard", "wayland", "x11"]
-
-[workspace.dependencies.egui_extras]
-git = "https://github.com/dbalsom/egui_martypc.git"
-branch = "0_24_2_winit_0_29_15"
-features = ["image"]
-
-[workspace.dependencies.egui_plot]
-git = "https://github.com/dbalsom/egui_martypc.git"
-branch = "0_24_2_winit_0_29_15"
+#[workspace.dependencies.egui]
+#git = "https://github.com/dbalsom/egui_martypc.git"
+#branch = "0_24_2_winit_0_29_15"
+#
+#[workspace.dependencies.egui-wgpu]
+#git = "https://github.com/dbalsom/egui_martypc.git"
+#branch = "0_24_2_winit_0_29_15"
+#
+#[workspace.dependencies.egui-winit]
+#git = "https://github.com/dbalsom/egui_martypc.git"
+#branch = "0_24_2_winit_0_29_15"
+#default-features = false
+#features = ["clipboard", "wayland", "x11"]
+#
+#[workspace.dependencies.egui_extras]
+#git = "https://github.com/dbalsom/egui_martypc.git"
+#branch = "0_24_2_winit_0_29_15"
+#features = ["image"]
+#
+#[workspace.dependencies.egui_plot]
+#git = "https://github.com/dbalsom/egui_martypc.git"
+#branch = "0_24_2_winit_0_29_15"
 
 [profile.release]
 opt-level = 3
