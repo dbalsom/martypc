@@ -42,8 +42,8 @@ use egui::{
     style::{Selection, WidgetVisuals, Widgets},
     Rounding,
     Stroke,
+    Vec2,
 };
-
 
 pub struct LilacTheme {
     visuals: Visuals,
@@ -172,8 +172,10 @@ impl LilacTheme {
                     se: 6.0,
                 },
                 window_shadow: Shadow {
-                    extrusion: 32.0,
-                    color: Color32::from_rgba_premultiplied(0, 0, 0, 16),
+                    offset: Vec2::new(10.0, 20.0),
+                    blur:   15.0,
+                    spread: 0.0,
+                    color:  Color32::from_rgba_premultiplied(0, 0, 0, 16),
                 },
                 window_fill: Color32::from_rgba_premultiplied(229, 221, 237, 255),
                 window_stroke: Stroke {
@@ -188,8 +190,10 @@ impl LilacTheme {
                 },
                 panel_fill: Color32::from_rgba_premultiplied(223, 215, 231, 255),
                 popup_shadow: Shadow {
-                    extrusion: 16.0,
-                    color: Color32::from_rgba_premultiplied(0, 0, 0, 20),
+                    offset: Vec2::new(6.0, 10.0),
+                    blur:   8.0,
+                    spread: 0.0,
+                    color:  Color32::from_rgba_premultiplied(0, 0, 0, 20),
                 },
                 ..egui::Visuals::light()
             },

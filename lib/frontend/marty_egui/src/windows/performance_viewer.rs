@@ -190,7 +190,7 @@ impl PerformanceViewerControl {
                         },
                     ]
                 })
-                .x_axis_formatter(|x, _, range| format!("{:.0}", range.end() - x))
+                .x_axis_formatter(|x, _, range| format!("{:.0}", range.end() - x.value))
                 .show(ui, |plot_ui| {
                     plot_ui.set_plot_bounds(egui_plot::PlotBounds::from_min_max([0.0, 0.0], [60.0, 20.0]));
 

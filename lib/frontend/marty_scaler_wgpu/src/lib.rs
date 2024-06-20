@@ -599,6 +599,136 @@ impl DisplayScaler<pixels::Pixels> for MartyScaler {
         &self.texture_view
     }
 
+    /// Draw the pixel buffer to the marty_render target.
+    fn render(&self, encoder: &mut wgpu::CommandEncoder, render_target: &wgpu::TextureView) {
+        //println!("render_target: {:?}", render_target);
+        let mut rpass = encoder.begin_render_pass(&wgpu::RenderPassDescriptor {
+            label: Some("marty_renderer marty_render pass"),
+            color_attachments: &[Some(wgpu::RenderPassColorAttachment {
+                view: render_target,
+                resolve_target: None,
+                ops: wgpu::Operations {
+                    load:  wgpu::LoadOp::Clear(MartyColor::from(self.fill_color).to_wgpu_color_linear()),
+                    store: wgpu::StoreOp::Store,
+                },
+            })],
+            depth_stencil_attachment: None,
+            timestamp_writes: None,
+            occlusion_query_set: None,
+        });
+        rpass.set_pipeline(&self.render_pipeline);
+
+        if self.bilinear {
+            rpass.set_bind_group(0, &self.bilinear_bind_group, &[]);
+        }
+        else {
+            rpass.set_bind_group(0, &self.nearest_bind_group, &[]);
+        }
+
+        rpass.set_vertex_buffer(0, self.vertex_buffer.slice(..));
+
+        /*
+        rpass.set_scissor_rect(
+            0,
+            0,
+            1,
+            1
+        );
+        */
+
+        //rpass.draw(0..3, 0..1);
+        rpass.draw(0..3, 0..1);
+    }
+
+    fn resize(
+        &mut self,
+        pixels: &pixels::Pixels,
+        texture_width: u32,
+        texture_height: u32,
+        target_width: u32,
+        target_height: u32,
+        screen_width: u32,
+        screen_height: u32,
+    ) {
+        //self.texture_view = create_texture_view(pixels, self.texture_width, self.texture_height);
+        self.texture_view = pixels.texture().create_view(&wgpu::TextureViewDescriptor::default());
+        self.nearest_bind_group = create_bind_group(
+            pixels.device(),
+            &self.bind_group_layout,
+            &self.texture_view,
+            &self.nearest_sampler,
+            &self.transform_uniform_buffer,
+            &self.params_uniform_buffer,
+        );
+
+        self.bilinear_bind_group = create_bind_group(
+            pixels.device(),
+            &self.bind_group_layout,
+            &self.texture_view,
+            &self.bilinear_sampler,
+            &self.transform_uniform_buffer,
+            &self.params_uniform_buffer,
+        );
+
+        //println!("screen_margin_y: {}", self.screen_margin_y);
+        let matrix = ScalingMatrix::new(
+            self.mode,
+            (texture_width as f32, texture_height as f32),
+            (target_width as f32, target_height as f32),
+            (screen_width as f32, screen_height as f32),
+            self.screen_margin_y as f32,
+        );
+        let transform_bytes = matrix.as_bytes();
+
+        self.texture_width = texture_width;
+        self.texture_height = texture_height;
+        self.target_width = target_width;
+        self.target_height = target_height;
+        self.screen_width = screen_width;
+        self.screen_height = screen_height;
+
+        pixels
+            .queue()
+            .write_buffer(&self.transform_uniform_buffer, 0, transform_bytes);
+    }
+
+    fn resize_surface(&mut self, pixels: &pixels::Pixels, screen_width: u32, screen_height: u32) {
+        //self.texture_view = create_texture_view(pixels, self.screen_width, self.screen_height);
+        self.texture_view = pixels.texture().create_view(&wgpu::TextureViewDescriptor::default());
+        self.nearest_bind_group = create_bind_group(
+            pixels.device(),
+            &self.bind_group_layout,
+            &self.texture_view,
+            &self.nearest_sampler,
+            &self.transform_uniform_buffer,
+            &self.params_uniform_buffer,
+        );
+
+        self.bilinear_bind_group = create_bind_group(
+            pixels.device(),
+            &self.bind_group_layout,
+            &self.texture_view,
+            &self.bilinear_sampler,
+            &self.transform_uniform_buffer,
+            &self.params_uniform_buffer,
+        );
+
+        self.screen_width = screen_width;
+        self.screen_height = screen_height;
+        let matrix = ScalingMatrix::new(
+            self.mode,
+            (self.texture_width as f32, self.texture_height as f32),
+            (self.target_width as f32, self.target_height as f32),
+            (self.screen_width as f32, self.screen_height as f32),
+            self.screen_margin_y as f32,
+        );
+        let transform_bytes = matrix.as_bytes();
+
+        pixels
+            .queue()
+            .write_buffer(&self.transform_uniform_buffer, 0, transform_bytes);
+    }
+
     fn set_mode(&mut self, pixels: &pixels::Pixels, new_mode: ScalerMode) {
         self.mode = new_mode;
         self.update_matrix(pixels);
@@ -700,115 +830,6 @@ impl DisplayScaler<pixels::Pixels> for MartyScaler {
         return false;
     }
 
-    /// Iterate though a vector of ScalerOptions and apply them all. We can defer uniform update
-    /// until all options have been processed.
-    fn set_options(&mut self, pixels: &pixels::Pixels, opts: Vec<ScalerOption>) {
-        let mut update_uniform = false;
-        for opt in opts {
-            let update_flag = self.set_option(pixels, opt, false);
-            if update_flag {
-                update_uniform = true;
-            }
-        }
-
-        if update_uniform {
-            self.update_uniforms(pixels);
-        }
-    }
-
-    /// Draw the pixel buffer to the marty_render target.
-    fn render(&self, encoder: &mut wgpu::CommandEncoder, render_target: &wgpu::TextureView) {
-        //println!("render_target: {:?}", render_target);
-        let mut rpass = encoder.begin_render_pass(&wgpu::RenderPassDescriptor {
-            label: Some("marty_renderer marty_render pass"),
-            color_attachments: &[Some(wgpu::RenderPassColorAttachment {
-                view: render_target,
-                resolve_target: None,
-                ops: wgpu::Operations {
-                    load:  wgpu::LoadOp::Clear(MartyColor::from(self.fill_color).to_wgpu_color_linear()),
-                    store: wgpu::StoreOp::Store,
-                },
-            })],
-            depth_stencil_attachment: None,
-            timestamp_writes: None,
-            occlusion_query_set: None,
-        });
-        rpass.set_pipeline(&self.render_pipeline);
-
-        if self.bilinear {
-            rpass.set_bind_group(0, &self.bilinear_bind_group, &[]);
-        }
-        else {
-            rpass.set_bind_group(0, &self.nearest_bind_group, &[]);
-        }
-
-        rpass.set_vertex_buffer(0, self.vertex_buffer.slice(..));
-
-        /*
-        rpass.set_scissor_rect(
-            0,
-            0,
-            1,
-            1
-        );
-        */
-
-        //rpass.draw(0..3, 0..1);
-        rpass.draw(0..3, 0..1);
-    }
-
-    fn resize(
-        &mut self,
-        pixels: &pixels::Pixels,
-        texture_width: u32,
-        texture_height: u32,
-        target_width: u32,
-        target_height: u32,
-        screen_width: u32,
-        screen_height: u32,
-    ) {
-        //self.texture_view = create_texture_view(pixels, self.texture_width, self.texture_height);
-        self.texture_view = pixels.texture().create_view(&wgpu::TextureViewDescriptor::default());
-        self.nearest_bind_group = create_bind_group(
-            pixels.device(),
-            &self.bind_group_layout,
-            &self.texture_view,
-            &self.nearest_sampler,
-            &self.transform_uniform_buffer,
-            &self.params_uniform_buffer,
-        );
-
-        self.bilinear_bind_group = create_bind_group(
-            pixels.device(),
-            &self.bind_group_layout,
-            &self.texture_view,
-            &self.bilinear_sampler,
-            &self.transform_uniform_buffer,
-            &self.params_uniform_buffer,
-        );
-
-        //println!("screen_margin_y: {}", self.screen_margin_y);
-        let matrix = ScalingMatrix::new(
-            self.mode,
-            (texture_width as f32, texture_height as f32),
-            (target_width as f32, target_height as f32),
-            (screen_width as f32, screen_height as f32),
-            self.screen_margin_y as f32,
-        );
-        let transform_bytes = matrix.as_bytes();
-
-        self.texture_width = texture_width;
-        self.texture_height = texture_height;
-        self.target_width = target_width;
-        self.target_height = target_height;
-        self.screen_width = screen_width;
-        self.screen_height = screen_height;
-
-        pixels
-            .queue()
-            .write_buffer(&self.transform_uniform_buffer, 0, transform_bytes);
-    }
-
     /*
     fn resize_texture(
         &mut self,
@@ -841,41 +862,20 @@ impl DisplayScaler<pixels::Pixels> for MartyScaler {
     }
     */
 
-    fn resize_surface(&mut self, pixels: &pixels::Pixels, screen_width: u32, screen_height: u32) {
-        //self.texture_view = create_texture_view(pixels, self.screen_width, self.screen_height);
-        self.texture_view = pixels.texture().create_view(&wgpu::TextureViewDescriptor::default());
-        self.nearest_bind_group = create_bind_group(
-            pixels.device(),
-            &self.bind_group_layout,
-            &self.texture_view,
-            &self.nearest_sampler,
-            &self.transform_uniform_buffer,
-            &self.params_uniform_buffer,
-        );
+    /// Iterate though a vector of ScalerOptions and apply them all. We can defer uniform update
+    /// until all options have been processed.
+    fn set_options(&mut self, pixels: &pixels::Pixels, opts: Vec<ScalerOption>) {
+        let mut update_uniform = false;
+        for opt in opts {
+            let update_flag = self.set_option(pixels, opt, false);
+            if update_flag {
+                update_uniform = true;
+            }
+        }
 
-        self.bilinear_bind_group = create_bind_group(
-            pixels.device(),
-            &self.bind_group_layout,
-            &self.texture_view,
-            &self.bilinear_sampler,
-            &self.transform_uniform_buffer,
-            &self.params_uniform_buffer,
-        );
-
-        self.screen_width = screen_width;
-        self.screen_height = screen_height;
-        let matrix = ScalingMatrix::new(
-            self.mode,
-            (self.texture_width as f32, self.texture_height as f32),
-            (self.target_width as f32, self.target_height as f32),
-            (self.screen_width as f32, self.screen_height as f32),
-            self.screen_margin_y as f32,
-        );
-        let transform_bytes = matrix.as_bytes();
-
-        pixels
-            .queue()
-            .write_buffer(&self.transform_uniform_buffer, 0, transform_bytes);
+        if update_uniform {
+            self.update_uniforms(pixels);
+        }
     }
 }
 

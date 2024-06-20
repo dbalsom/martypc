@@ -37,6 +37,11 @@ egui-winit.workspace = true
 egui_extras.workspace = true
 egui_plot.workspace = true
 
-egui-notify = { git = "https://github.com/dbalsom/egui-notify_martypc.git", branch = "egui_0_24_2"}
+egui-notify = { git = "https://github.com/dbalsom/egui-notify_martypc.git", branch = "egui_0_27_2"}
+
+# Debug TUI interface imports
+ratatui = { version = "0.26.2", default-features = false }
+egui_ratatui = "0.0.8"
+#egui_ratatui = { git = "https://github.com/dbalsom/egui_ratatui_martypc.git", branch = "resize_fix"}
 serde = { workspace = true, features = ["derive"] }
 lazy_static = "1.4.0"
