@@ -111,9 +111,9 @@ pub const SW1_HAVE_8087: u8 = 0b0000_0010;
 // SW4_3: ON, OFF: Only banks 0/1 populated
 // SW4_3: OFF, ON: Only banks 0/1/2 populated
 // SW4_3: OFF, OFF: Banks 0/1/2/3 populated
-pub const SW1_RAM_BANKS_1: u8 = 0b0001_1000;
-pub const SW1_RAM_BANKS_2: u8 = 0b0001_0000;
-pub const SW1_RAM_BANKS_3: u8 = 0b0000_1000;
+pub const SW1_RAM_BANKS_1: u8 = 0b0000_1100;
+pub const SW1_RAM_BANKS_2: u8 = 0b0000_1000;
+pub const SW1_RAM_BANKS_3: u8 = 0b0000_0100;
 pub const SW1_RAM_BANKS_4: u8 = 0b0000_0000;
 
 // SW6_5: OFF, OFF: MDA card

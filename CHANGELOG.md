@@ -1,6 +1,23 @@
 
 ## [0.2.3](https://github.com/dbalsom/martypc/releases/tag/0.2.3) (2024-XX-XX)
 
+### New devices
+
+### Frontend Bug Fixes / Improvements
+
+### Core Bug Fixes / Improvements
+
+* PPI: Fixed memory bank DIP switch masks for memory configurations less than <64K.
+
+### Debugger Bug Fixes / Improvements
+
+### Distribution Changes
+
+* Added new definition for an alternate 32K BASIC C1.0 ROM (thanks Torinde)
+
+### Dependency Updates
+
+
 ## [0.2.2](https://github.com/dbalsom/martypc/releases/tag/0.2.2) (2024-06-22)
 
 ### New devices
