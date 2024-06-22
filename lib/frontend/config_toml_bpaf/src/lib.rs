@@ -59,7 +59,7 @@ const fn _default_true() -> bool {
     true
 }
 const fn _default_false() -> bool {
-    true
+    false
 }
 
 mod coreconfig;

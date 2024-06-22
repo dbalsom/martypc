@@ -76,3 +76,13 @@ speaker = true
             # Drives connected to controller. Maximum of 1.
             [[machine.fdc.drive]]
             type  = "360k"
+
+    [[machine.serial]]
+        bus_type = "Onboard"
+        type = "IbmAsync"
+            [[machine.serial.port]]
+            io_base = 0x2F8
+            irq = 3
+            # Required for PCjr to avoid boot errors.
+            out2_suppresses_int = false
+            

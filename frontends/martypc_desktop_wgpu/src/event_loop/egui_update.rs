@@ -165,6 +165,12 @@ pub fn update_egui(emu: &mut Emulator, tm: &TimestepManager, elwt: &EventLoopWin
         emu.gui.pit_viewer.update_channel_data(2, &pit_data);
     }
 
+    // -- Update Serial port viewer window
+    if emu.gui.is_window_open(GuiWindow::SerialViewer) {
+        let serial_state = emu.machine.serial_state();
+        emu.gui.serial_viewer.update_state(&serial_state);
+    }
+
     // -- Update PIC viewer window
     if emu.gui.is_window_open(GuiWindow::PicViewer) {
         let pic_state = emu.machine.pic_state();

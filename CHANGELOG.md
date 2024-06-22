@@ -28,6 +28,8 @@
 
 ### Core Bug Fixes / Improvements
 
+* SERIAL: Fixed many issues in MartyPC's 8250 UART emulation. PCjr now boots without error code 'D' and Checkit2 serial
+  diagnostics also pass.
 * BUS: Implemented a `terminal_port` configuration option under `[machine]` in the main configuration. Writes to this 
   port will be printed to the host's terminal.
 * MC6845: Fixed an issue preventing entering vertical total adjust period if vertical total was 127. Fixes some Hercules
@@ -42,6 +44,7 @@
 
 ### Debugger Bug Fixes / Improvements
 
+* Serial Status window: Displays serial port registers and statistics.
 * IO Status Window
   * Added a 'reset' button to reset all the port counters.
   * Added the last read byte value for each port

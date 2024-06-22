@@ -1861,9 +1861,13 @@ impl BusInterface {
 
         // Create a Serial card if specified
         if let Some(serial_config) = machine_config.serial.get(0) {
+            let mut out2_suppresses_int = true;
+            if let MachineType::IbmPCJr = machine_desc.machine_type {
+                out2_suppresses_int = false;
+            }
             match serial_config.sc_type {
                 SerialControllerType::IbmAsync => {
-                    let serial = SerialPortController::new();
+                    let serial = SerialPortController::new(out2_suppresses_int);
                     // Add Serial Controller ports to io_map
                     add_io_device!(self, serial, IoDeviceType::Serial);
                     self.serial = Some(serial);
@@ -2393,6 +2397,11 @@ impl BusInterface {
         // Reset DMA
         if let Some(dma1) = self.dma1.as_mut() {
             dma1.reset();
+        }
+
+        // Reset Serial controller
+        if let Some(serial) = self.serial.as_mut() {
+            serial.reset();
         }
 
         // Reset video cards

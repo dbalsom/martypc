@@ -328,6 +328,7 @@ impl GuiState {
                     self.workspace_window_open_button(ui, GuiWindow::PitViewer, true);
                     self.workspace_window_open_button(ui, GuiWindow::PpiViewer, true);
                     self.workspace_window_open_button(ui, GuiWindow::DmaViewer, true);
+                    self.workspace_window_open_button(ui, GuiWindow::SerialViewer, true);
                     self.workspace_window_open_button(ui, GuiWindow::VideoCardViewer, true);
 
                     /*

@@ -36,11 +36,15 @@
     "IBM Asynchronous Communications Adapter"
 */
 
-use std::{collections::VecDeque, io::Read};
+use std::{
+    collections::{BTreeMap, VecDeque},
+    io::Read,
+};
 
 use crate::{
     bus::{BusInterface, DeviceRunTimeUnit, IoDevice},
-    devices::pic,
+    devices::{pic, pit::PitDisplayState},
+    syntax_token::SyntaxToken,
 };
 
 /*  1.8Mhz Oscillator.
@@ -88,14 +92,15 @@ const DIVISOR_LATCH_ACCESS_BIT: u8 = 0b1000_0000;
 
 // Line Status Register constants
 const STATUS_DATA_READY: u8 = 0b0000_0001;
-//const STATUS_OVERRUN_ERROR: u8 = 0b0000_0010;
-//const STATUS_PARITY_ERROR: u8 = 0b0000_0100;
-//const STATUS_FRAMING_ERROR: u8 = 0b0000_1000;
-//const STATUS_BREAK_INTERRUPT: u8 = 0b0001_0000;
+const STATUS_OVERRUN_ERROR: u8 = 0b0000_0010;
+const STATUS_PARITY_ERROR: u8 = 0b0000_0100;
+const STATUS_FRAMING_ERROR: u8 = 0b0000_1000;
+const STATUS_BREAK_INTERRUPT: u8 = 0b0001_0000;
 const STATUS_TRANSMIT_EMPTY: u8 = 0b0010_0000;
-//const STATUS_TX_SHIFT_EMPTY: u8 = 0b0100_0000;
+const STATUS_TRANSMIT_SHIFT_EMPTY: u8 = 0b0100_0000;
+const STATUS_RO_MASK: u8 = 0b1100_0000;
 
-const INTERRUPT_ID_MASK: u8 = 0b0000_0011;
+const INTERRUPT_ID_MASK: u8 = 0b0000_1111;
 
 const INTERRUPT_DATA_AVAIL: u8 = 0b0000_0001;
 const INTERRUPT_TX_EMPTY: u8 = 0b0000_0010;
@@ -117,8 +122,8 @@ const MODEM_CONTROL_LOOP: u8 = 0b0001_0000;
 
 const MODEM_STATUS_DCTS: u8 = 0b0000_0001;
 const MODEM_STATUS_DDSR: u8 = 0b0000_0010;
-//const MODEM_STATUS_TERI: u8 = 0b0000_0100;
-//const MODEM_STATUS_DRLSD: u8 = 0b0000_1000;
+const MODEM_STATUS_TERI: u8 = 0b0000_0100;
+const MODEM_STATUS_DRLSD: u8 = 0b0000_1000;
 const MODEM_STATUS_CTS: u8 = 0b0001_0000;
 const MODEM_STATUS_DSR: u8 = 0b0010_0000;
 const MODEM_STATUS_RI: u8 = 0b0100_0000;
@@ -135,8 +140,8 @@ impl IoDevice for SerialPortController {
             SERIAL2_INTERRUPT_ID => self.port[1].interrupt_id_read(),
             SERIAL1_LINE_CONTROL => self.port[0].line_control_read(),
             SERIAL2_LINE_CONTROL => self.port[1].line_control_read(),
-            SERIAL1_MODEM_CONTROL => 0,
-            SERIAL2_MODEM_CONTROL => 0,
+            SERIAL1_MODEM_CONTROL => self.port[0].modem_control_read(),
+            SERIAL2_MODEM_CONTROL => self.port[1].modem_control_read(),
             SERIAL1_LINE_STATUS => self.port[0].line_status_read(),
             SERIAL2_LINE_STATUS => self.port[1].line_status_read(),
             SERIAL1_MODEM_STATUS => self.port[0].modem_status_read(),
@@ -157,10 +162,10 @@ impl IoDevice for SerialPortController {
             SERIAL2_LINE_CONTROL => self.port[1].line_control_write(byte),
             SERIAL1_MODEM_CONTROL => self.port[0].modem_control_write(byte),
             SERIAL2_MODEM_CONTROL => self.port[1].modem_control_write(byte),
-            SERIAL1_LINE_STATUS => {}
-            SERIAL2_LINE_STATUS => {}
-            SERIAL1_MODEM_STATUS => {}
-            SERIAL2_MODEM_STATUS => {}
+            SERIAL1_LINE_STATUS => self.port[0].line_status_write(byte),
+            SERIAL2_LINE_STATUS => self.port[1].line_status_write(byte),
+            SERIAL1_MODEM_STATUS => self.port[0].modem_status_write(byte),
+            SERIAL2_MODEM_STATUS => self.port[1].modem_status_write(byte),
             _ => {}
         }
     }
@@ -199,7 +204,7 @@ pub enum IntrAction {
     Lower,
 }
 
-pub struct SerialPortDebuggerState {
+/*pub struct SerialPortDisplayState {
     name: String,
     irq: u8,
     line_control_reg: u8,
@@ -211,7 +216,9 @@ pub struct SerialPortDebuggerState {
     modem_status_reg: u8,
     rx_byte: u8,
     tx_byte: u8,
-}
+}*/
+
+pub type SerialPortDisplayState = BTreeMap<&'static str, SyntaxToken>;
 
 #[derive(Clone, Debug)]
 pub struct SerialPortDescriptor {
@@ -234,10 +241,12 @@ pub struct SerialPort {
     interrupt_enable_reg: u8,
     intr_action: IntrAction,
     modem_control_reg: u8,
+    out2_suppresses_int: bool,
     loopback: bool,
     modem_status_reg: u8,
     rx_byte: u8,
     rx_count: usize,
+    rx_overrun_count: usize,
     rx_was_read: bool,
     tx_holding_reg: u8,
     tx_holding_empty: bool,
@@ -265,15 +274,17 @@ impl Default for SerialPort {
             parity_enable: false,
             divisor_latch_access: false,
             divisor: 12, // 9600 baud
-            line_status_reg: crate::devices::serial::STATUS_TRANSMIT_EMPTY,
+            line_status_reg: STATUS_TRANSMIT_EMPTY,
             interrupts_active: 0,
             interrupt_enable_reg: 0,
             intr_action: IntrAction::None,
             modem_control_reg: 0,
+            out2_suppresses_int: true,
             loopback: false,
             modem_status_reg: 0,
             rx_byte: 0,
             rx_count: 0,
+            rx_overrun_count: 0,
             rx_was_read: false,
             tx_holding_reg: 0,
             tx_holding_empty: true,
@@ -292,10 +303,11 @@ impl Default for SerialPort {
 }
 
 impl SerialPort {
-    pub fn new(name: String, irq: u8) -> Self {
+    pub fn new(name: String, irq: u8, out2_suppresses_int: bool) -> Self {
         Self {
             name,
             irq,
+            out2_suppresses_int,
             ..Default::default()
         }
     }
@@ -304,6 +316,7 @@ impl SerialPort {
         *self = Self {
             name: self.name.clone(),
             irq: self.irq,
+            out2_suppresses_int: self.out2_suppresses_int,
             ..Default::default()
         }
     }
@@ -403,9 +416,17 @@ impl SerialPort {
         }
         else {
             log::trace!("{}: Tx buffer write: {:02X}", self.name, byte);
+
+            if self.loopback {
+                // In loopback mode, the byte is immediately placed in the RX buffer
+                self.receive(byte);
+            }
+
+            self.tx_count += 1;
             self.tx_holding_reg = byte;
             self.tx_holding_empty = false;
             self.line_status_reg &= !STATUS_TRANSMIT_EMPTY;
+            self.line_status_reg &= !STATUS_TRANSMIT_SHIFT_EMPTY;
         }
     }
 
@@ -465,9 +486,48 @@ impl SerialPort {
         }
     }
 
-    // Handle reading the Line Status Register
-    fn line_status_read(&self) -> u8 {
-        self.line_status_reg
+    /// Handle reading the Line Status Register
+    fn line_status_read(&mut self) -> u8 {
+        // Reading the LSR clears the Overrun, Parity, Framing and Break Interrupt error conditions that
+        // all raise Line Status interrupts.
+        let byte = self.line_status_reg;
+
+        self.line_status_reg &=
+            !(STATUS_OVERRUN_ERROR | STATUS_PARITY_ERROR | STATUS_FRAMING_ERROR | STATUS_BREAK_INTERRUPT);
+        self.lower_interrupt_type(INTERRUPT_RX_LINE_STATUS);
+
+        byte
+    }
+
+    /// Technically. the Line Status Register is read-only. Technically. But we can write to it for
+    /// the purposes of 'factory testing', which the IBM PCjr BIOS does as part of its 8250 checkout.
+    /// It appears to be able to expect to generate interrupts by forcing bits of the Line Status
+    /// Register on.
+    fn line_status_write(&mut self, byte: u8) {
+        log::debug!("{}: Write to Line Status Register: {:02X}", self.name, byte);
+
+        if byte & STATUS_DATA_READY != 0 {
+            self.raise_interrupt_type(INTERRUPT_DATA_AVAIL);
+        }
+
+        if byte & STATUS_OVERRUN_ERROR != 0 {
+            self.raise_interrupt_type(INTERRUPT_RX_LINE_STATUS);
+        }
+
+        if byte & STATUS_PARITY_ERROR != 0 {
+            self.raise_interrupt_type(INTERRUPT_RX_LINE_STATUS);
+        }
+
+        if byte & STATUS_FRAMING_ERROR != 0 {
+            self.raise_interrupt_type(INTERRUPT_RX_LINE_STATUS);
+        }
+
+        if byte & STATUS_BREAK_INTERRUPT != 0 {
+            self.raise_interrupt_type(INTERRUPT_RX_LINE_STATUS);
+        }
+
+        // Do not update RO bits 6 & 7.
+        self.line_status_reg = (byte & !STATUS_RO_MASK) | (self.line_status_reg & STATUS_RO_MASK);
     }
 
     /// Handle a read of the Interrupt ID Register.
@@ -482,7 +542,7 @@ impl SerialPort {
             self.lower_interrupt_type(INTERRUPT_TX_EMPTY);
         }
 
-        log::debug!("{}: Read Interrupt ID Register: {:04b}", self.name, byte);
+        //log::trace!("{}: Read Interrupt ID Register: {:04b}", self.name, byte);
         byte
     }
 
@@ -513,12 +573,51 @@ impl SerialPort {
         else {
             // Modem status interrupt == 0
         }
+
+        //log::trace!("IRR: {:04b}", byte);
         byte
+    }
+
+    /// Handle reading the Modem Control Register
+    fn modem_control_read(&self) -> u8 {
+        self.modem_control_reg
     }
 
     /// Handle writing to the Modem Control Register
     fn modem_control_write(&mut self, byte: u8) {
         log::trace!("{}: Write to Modem Control Register: {:05b}", self.name, byte & 0x1F);
+
+        if self.loopback {
+            if (self.modem_control_reg & MODEM_CONTROL_DTR) != (byte & MODEM_CONTROL_DTR) {
+                // DTR line is changing. Set DDSR bit in Modem Status Register if we are in loopback mode.
+                self.modem_status_reg |= MODEM_STATUS_DDSR;
+            }
+
+            if (self.modem_control_reg & MODEM_CONTROL_RTS) != (byte & MODEM_CONTROL_RTS) {
+                // RTS line is changing. Set DCTS bit in Modem Status Register if we are in loopback mode.
+                self.modem_status_reg |= MODEM_STATUS_DCTS;
+            }
+
+            if (self.modem_control_reg & MODEM_CONTROL_OUT1 != 0) && (byte & MODEM_CONTROL_OUT1 == 0) {
+                // OUT1 line is changing.
+                // Set TERI bit in Modem Status Register if we are in loopback mode AND OUT1 is going from 1 to 0.
+                // (Trailing edge logic is not disabled in loopback mode)
+                self.modem_status_reg |= MODEM_STATUS_TERI;
+            }
+
+            if (self.modem_control_reg & MODEM_CONTROL_OUT2) != (byte & MODEM_CONTROL_OUT2) {
+                // RTS line is changing. Set DDCD/DRLSD bit in Modem Status Register if we are in loopback mode.
+                self.modem_status_reg |= MODEM_STATUS_DRLSD;
+            }
+        }
+
+        if self.modem_control_reg & MODEM_CONTROL_OUT2 == 0 && byte & MODEM_CONTROL_OUT2 != 0 {
+            log::trace!("MCR bit 3 set: Enabling interrupts.")
+        }
+        else if self.modem_control_reg & MODEM_CONTROL_OUT2 != 0 && byte & MODEM_CONTROL_OUT2 == 0 {
+            log::trace!("MCR bit 3 cleared: Disabling interrupts.")
+        }
+
         self.modem_control_reg = byte & 0x1F;
 
         self.loopback = self.modem_control_reg & MODEM_CONTROL_LOOP != 0;
@@ -529,10 +628,15 @@ impl SerialPort {
 
     /// Handle reading from the Modem Status register
     fn modem_status_read(&mut self) -> u8 {
+        // Reset modem status bits on MSR read and clear modem status interrupt.
+        let old_status = self.modem_status_reg;
+        self.modem_status_reg &= !(MODEM_STATUS_DCTS | MODEM_STATUS_DDSR | MODEM_STATUS_TERI | MODEM_STATUS_DRLSD);
+        self.lower_interrupt_type(INTERRUPT_MODEM_STATUS);
+
         if self.loopback {
             // In loopback mode, the four HO bits in the Modem status register reflect
             // the four LO bits in the Modem Control register as follows:
-            let mut byte = self.modem_status_reg & 0x0F;
+            let mut byte = old_status & 0x0F;
 
             if self.modem_control_reg & MODEM_CONTROL_RTS != 0 {
                 byte |= MODEM_STATUS_CTS;
@@ -549,14 +653,34 @@ impl SerialPort {
             byte
         }
         else {
-            let byte = self.modem_status_reg;
-
-            // Clear DCTS and DDSR flags
-            self.modem_status_reg &= !MODEM_STATUS_DCTS;
-            self.modem_status_reg &= !MODEM_STATUS_DDSR;
-
-            byte
+            old_status
         }
+    }
+
+    /// Technically. the Modem Status Register is read-only. But we can write to it for
+    /// the purposes of 'factory testing', which the IBM PCjr BIOS does as part of its 8250 checkout.
+    /// It appears to be able to expect to generate interrupts by forcing bits of the Modem Status
+    /// Register on.    
+    fn modem_status_write(&mut self, byte: u8) {
+        log::trace!("{}: Write to Modem Status Register: {:02X}", self.name, byte);
+
+        if byte & MODEM_STATUS_DCTS != 0 {
+            self.raise_interrupt_type(INTERRUPT_MODEM_STATUS);
+        }
+
+        if byte & MODEM_STATUS_DDSR != 0 {
+            self.raise_interrupt_type(INTERRUPT_MODEM_STATUS);
+        }
+
+        if byte & MODEM_STATUS_TERI != 0 {
+            self.raise_interrupt_type(INTERRUPT_MODEM_STATUS);
+        }
+
+        if byte & MODEM_STATUS_DRLSD != 0 {
+            self.raise_interrupt_type(INTERRUPT_MODEM_STATUS);
+        }
+
+        self.modem_status_reg = byte;
     }
 
     fn set_modem_status_connected(&mut self) {
@@ -571,16 +695,58 @@ impl SerialPort {
         }
     }
 
+    /// Handle an overrun of the RX buffer.
+    fn overrun(&mut self) {
+        // Previous byte was never read :(
+        log::trace!("{}: RX buffer overrun", self.name);
+        self.rx_overrun_count += 1;
+        self.line_status_reg |= STATUS_OVERRUN_ERROR;
+        self.raise_interrupt_type(INTERRUPT_RX_LINE_STATUS);
+    }
+
+    /// Receive a byte on this port.
+    fn receive(&mut self, byte: u8) {
+        if !self.rx_was_read {
+            self.overrun();
+        }
+
+        self.rx_count += 1;
+        self.rx_byte = byte;
+        self.rx_was_read = false;
+
+        // Set Data Available bit in LSR
+        self.line_status_reg |= STATUS_DATA_READY;
+
+        // Raise Data Available interrupt if not masked
+        self.raise_interrupt_type(INTERRUPT_DATA_AVAIL);
+
+        if self.name.eq("COM2") {
+            log::trace!("{}: Received byte: {:02X}", self.name, byte);
+        }
+        //log::trace!("{}: Received byte: {:02X}", port.name, b );
+    }
+
+    /// Send a byte out of this serial port.
+    fn transmit(&mut self, byte: u8) {}
+
     fn raise_interrupt_type(&mut self, interrupt_flag: u8) {
         // Interrupt enable register completely disables interrupts
         if interrupt_flag & self.interrupt_enable_reg != 0 {
             self.interrupts_active |= interrupt_flag;
 
-            // IBM: To allow the communications adapter to send interrupts to the system,
-            // bit 3 of the modem control resister must be set to 1
-            if self.modem_control_reg & MODEM_CONTROL_OUT2 != 0 {
-                //log::trace!("Sending interrupt. Interrupts active: {:04b}", self.interrupts_active);
+            // PC/XT: only raise interrupt if MCR bit 3 is set. out2_suppresses_int will be true.
+            // PCjr: The gate that uses OUT2 to disable interrupts is not present.
+            //       out2_suppresses_int will be false.
+            if !self.out2_suppresses_int || (self.modem_control_reg & MODEM_CONTROL_OUT2) != 0 {
+                log::trace!(
+                    "Sending interrupt {:04b} Interrupts active: {:04b}",
+                    interrupt_flag,
+                    self.interrupts_active
+                );
                 self.intr_action = IntrAction::Raise;
+            }
+            else {
+                log::trace!("Interrupt suppressed by MCR bit 3");
             }
         }
     }
@@ -616,6 +782,83 @@ impl SerialPort {
             }
         }
     }
+
+    pub fn get_display_state(&mut self, clean: bool) -> SerialPortDisplayState {
+        let mut state = BTreeMap::<&str, SyntaxToken>::new();
+
+        state.insert(
+            "Display Name:",
+            SyntaxToken::StateString(format!("{}", self.name.clone()), false, 0),
+        );
+        state.insert(
+            "Line Status Register:",
+            SyntaxToken::StateString(format!("{:08b}", self.line_status_reg), false, 0),
+        );
+        state.insert(
+            "Line Control Register:",
+            SyntaxToken::StateString(format!("{:08b}", self.line_control_reg), false, 0),
+        );
+        state.insert(
+            "Modem Status Register:",
+            SyntaxToken::StateString(format!("{:08b}", self.line_status_reg), false, 0),
+        );
+        state.insert(
+            "Modem Control Register:",
+            SyntaxToken::StateString(format!("{:08b}", self.modem_control_reg), false, 0),
+        );
+        state.insert(
+            "Interrupt ID Register:",
+            SyntaxToken::StateString(format!("{:08b}", self.calc_irr()), false, 0),
+        );
+        state.insert(
+            "Interrupt Enable Register:",
+            SyntaxToken::StateString(format!("{:08b}", self.interrupt_enable_reg), false, 0),
+        );
+        state.insert(
+            "Interrupts Active:",
+            SyntaxToken::StateString(format!("{:08b}", self.interrupts_active), false, 0),
+        );
+        state.insert(
+            "Loopback Active:",
+            SyntaxToken::StateString(format!("{}", self.loopback), false, 0),
+        );
+
+        state.insert(
+            "RX Last Byte:",
+            SyntaxToken::StateString(format!("{:02X}", self.rx_byte), false, 0),
+        );
+        state.insert(
+            "TX Last Byte:",
+            SyntaxToken::StateString(format!("{:02X}", self.tx_holding_reg), false, 0),
+        );
+        state.insert(
+            "RX Count:",
+            SyntaxToken::StateString(format!("{}", self.rx_count), false, 0),
+        );
+        state.insert(
+            "TX Count:",
+            SyntaxToken::StateString(format!("{}", self.tx_count), false, 0),
+        );
+        state.insert(
+            "RX Overruns:",
+            SyntaxToken::StateString(format!("{}", self.rx_overrun_count), false, 0),
+        );
+
+        /*        if clean {
+            for i in 0..3 {
+                self.channels[i].mode.clean();
+                self.channels[i].reload_value.clean();
+                self.channels[i].counting_element.clean();
+                self.channels[i].count_register.clean();
+                self.channels[i].output_latch.clean();
+                self.channels[i].rw_mode.clean();
+                self.channels[i].gate.clean();
+                self.channels[i].output.clean();
+            }
+        }*/
+
+        state
+    }
 }
 
 pub struct SerialPortController {
@@ -623,11 +866,11 @@ pub struct SerialPortController {
 }
 
 impl SerialPortController {
-    pub fn new() -> Self {
+    pub fn new(out2_suppresses_int: bool) -> Self {
         Self {
             port: [
-                SerialPort::new("COM1".to_string(), SERIAL1_IRQ),
-                SerialPort::new("COM2".to_string(), SERIAL2_IRQ),
+                SerialPort::new("COM1".to_string(), SERIAL1_IRQ, out2_suppresses_int),
+                SerialPort::new("COM2".to_string(), SERIAL2_IRQ, out2_suppresses_int),
             ],
         }
     }
@@ -646,23 +889,17 @@ impl SerialPortController {
         ports
     }
 
-    pub fn get_debug_state(&self) -> Vec<SerialPortDebuggerState> {
+    pub fn reset(&mut self) {
+        for port in &mut self.port {
+            port.reset();
+        }
+    }
+
+    pub fn get_display_state(&mut self) -> Vec<SerialPortDisplayState> {
         let mut state = Vec::new();
 
-        for port in &self.port {
-            state.push(SerialPortDebuggerState {
-                name: port.name.clone(),
-                irq: port.irq,
-                line_control_reg: port.line_control_reg,
-                line_status_reg: port.line_status_reg,
-                ii_reg: port.calc_irr(),
-                interrupt_enable_reg: port.interrupt_enable_reg,
-                interrupts_active: port.interrupts_active,
-                modem_control_reg: port.modem_control_reg,
-                modem_status_reg: port.modem_status_reg,
-                rx_byte: port.rx_byte,
-                tx_byte: port.tx_holding_reg,
-            });
+        for port in &mut self.port {
+            state.push(port.get_display_state(false));
         }
 
         state
@@ -712,24 +949,7 @@ impl SerialPortController {
                 // Time to receive a byte at current baud rate
                 if let Some(b) = port.rx_queue.pop_front() {
                     // We have a byte to receive
-
-                    if !port.rx_was_read {
-                        // Previous byte was never read :(
-                        // TODO: Handle overflow interrupt
-                    }
-
-                    port.rx_byte = b;
-                    port.rx_was_read = false;
-                    // Set Data Available bit in LSR
-                    port.line_status_reg |= STATUS_DATA_READY;
-
-                    // Raise Data Available interrupt if not masked
-                    port.raise_interrupt_type(INTERRUPT_DATA_AVAIL);
-
-                    if port.name.eq("COM2") {
-                        log::trace!("{}: Received byte: {:02X}", port.name, b);
-                    }
-                    //log::trace!("{}: Received byte: {:02X}", port.name, b );
+                    port.receive(b);
                 }
 
                 port.rx_timer -= port.us_per_byte;
@@ -746,10 +966,20 @@ impl SerialPortController {
                         port.tx_queue.push_back(port.tx_holding_reg);
                     }
 
+                    port.tx_count += 1;
                     port.tx_holding_reg = 0;
                     port.tx_holding_empty = true;
                     port.line_status_reg |= STATUS_TRANSMIT_EMPTY;
+                    port.line_status_reg |= STATUS_TRANSMIT_SHIFT_EMPTY;
+                    port.raise_interrupt_type(INTERRUPT_TX_EMPTY);
+                }
+                else {
+                    if port.interrupt_enable_reg & INTERRUPT_TX_EMPTY != 0 {
+                        log::trace!("TX holding empty interrupt!");
+                    }
 
+                    port.line_status_reg |= STATUS_TRANSMIT_EMPTY;
+                    port.line_status_reg |= STATUS_TRANSMIT_SHIFT_EMPTY;
                     port.raise_interrupt_type(INTERRUPT_TX_EMPTY);
                 }
 

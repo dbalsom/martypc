@@ -165,6 +165,9 @@ impl GuiState {
                 GuiWindow::PitViewer => {
                     self.pit_viewer.draw(ui, &mut self.event_queue);
                 }
+                GuiWindow::SerialViewer => {
+                    self.serial_viewer.draw(ui, &mut self.event_queue);
+                }
                 GuiWindow::PicViewer => {
                     self.pic_viewer.draw(ui, &mut self.event_queue);
                 }

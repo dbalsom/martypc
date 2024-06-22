@@ -86,6 +86,7 @@ use crate::{
         pit_viewer::PitViewerControl,
         ppi_viewer::PpiViewerControl,
         scaler_adjust::ScalerAdjustControl,
+        serial_viewer::SerialViewerControl,
         text_mode_viewer::TextModeViewer,
         vhd_creator::VhdCreator,
     },
@@ -213,9 +214,10 @@ pub struct GuiState {
     pub perf_viewer:  PerformanceViewerControl,
     pub delay_adjust: DelayAdjustControl,
 
-    pub pit_viewer: PitViewerControl,
-    pub pic_viewer: PicViewerControl,
-    pub ppi_viewer: PpiViewerControl,
+    pub pit_viewer:    PitViewerControl,
+    pub serial_viewer: SerialViewerControl,
+    pub pic_viewer:    PicViewerControl,
+    pub ppi_viewer:    PpiViewerControl,
 
     pub videocard_state: VideoCardState,
     pub display_info:    Vec<DisplayInfo>,
@@ -339,6 +341,7 @@ impl GuiState {
             perf_viewer: PerformanceViewerControl::new(),
             delay_adjust: DelayAdjustControl::new(),
             pit_viewer: PitViewerControl::new(),
+            serial_viewer: SerialViewerControl::new(),
             pic_viewer: PicViewerControl::new(),
             ppi_viewer: PpiViewerControl::new(),
 

@@ -49,6 +49,7 @@ pub mod pic_viewer;
 pub mod pit_viewer;
 pub mod ppi_viewer;
 pub mod scaler_adjust;
+pub mod serial_viewer;
 pub mod text_mode_viewer;
 pub mod vhd_creator;
 pub mod videocard_viewer;

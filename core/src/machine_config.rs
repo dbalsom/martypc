@@ -59,8 +59,11 @@ use serde_derive::Deserialize;
 // See https://www.vogons.org/viewtopic.php?t=55049
 pub const IBM_PC_SYSTEM_CLOCK: f64 = 157.5 / 11.0;
 pub const PIT_DIVISOR: u32 = 12;
-
 pub const GAME_PORT_DEFAULT_IO: u16 = 0x201;
+
+const fn _default_true() -> bool {
+    true
+}
 
 /// This enum is intended to represent any specific add-on device type
 /// that the bus needs to know about.
@@ -174,6 +177,8 @@ pub struct VideoCardConfig {
 pub struct SerialPortConfig {
     pub io_base: u32,
     pub irq: u32,
+    #[serde(default = "_default_true")]
+    pub out2_suppresses_int: bool,
 }
 
 #[derive(Clone, Debug, Deserialize)]

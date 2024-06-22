@@ -75,6 +75,7 @@ use crate::cpu_common::builder::CpuBuilder;
 use crate::cpu_validator::ValidatorMode;
 use crate::devices::cartridge_slots::CartridgeSlot;
 use crate::devices::ppi::PpiDisplayState;
+use crate::devices::serial::SerialPortDisplayState;
 use crate::machine_types::OnHaltBehavior;
 
 pub const STEP_OVER_TIMEOUT: u32 = 320000;
@@ -981,6 +982,19 @@ impl Machine {
 
         a.iter().cloned().chain(b.iter().cloned()).collect()
     }
+    
+    /// Return the serial port's state as a Vec of SerialPortState types. We may compile this 
+    /// vector from a number of sources if multiple devices contain serial ports. For now, we only
+    /// support one controller.
+    pub fn serial_state(&mut self) -> Vec<SerialPortDisplayState> {
+        let mut serial_states = Vec::new();
+        // Collect serial ports from any serial controller installed.
+        if let Some(spc) = self.cpu.bus_mut().serial_mut() {
+            serial_states.extend(spc.get_display_state());
+        }
+        serial_states
+    }
+    
 
     /// Adjust the relative phase of CPU and PIT; this is done by subtracting the relevant number of
     /// system ticks from the next run of the PIT.
