@@ -1,5 +1,7 @@
 
-## [0.2.2](https://github.com/dbalsom/martypc/releases/tag/0.2.2) (2024-XX-XX)
+## [0.2.3](https://github.com/dbalsom/martypc/releases/tag/0.2.3) (2024-XX-XX)
+
+## [0.2.2](https://github.com/dbalsom/martypc/releases/tag/0.2.2) (2024-06-22)
 
 ### New devices
 
@@ -11,7 +13,7 @@
 
 * #### Game Port and Joystick
   * Added emulation of the IBM game port card, and basic keyboard-based joystick emulation. There is a new keyboard 
-    hotkey (JoyToggle) to turn this on and off (provisionally defined as Ctrl-F9), as well as configurable 
+    hotkey (`JoyToggle`) to turn this on and off (provisionally defined as Ctrl-F9), as well as configurable 
     `joystick_keys` in the configuration you can use to define what keys control the joystick.
   * PCJr and Tandy 1000 machines will have a game port installed automatically. You can add a game port to any PC or XT
     configuration via the `game_port` overlay.
@@ -50,8 +52,15 @@
   * Added the last read byte value for each port
   * Fixed panic/crash when resetting machine with the IO Stats window open and scrolled. 
 
-### Miscellaneous
+### Distribution Changes
 
+* Added a SvarDOS-based MartyPC boot diskette to media/floppies/boot.
+  This disk will load the LoTech EMS driver and CTmouse driver.
+* Moved FreeDOS to media/floppies/DOS
+* Added SvarDOS build 20240201 diskettes to media/floppies/DOS
+* Added ctmouse v1.91 (last working version for Non-VGA) to media/floppies/utilties/mouse
+* Added LoTech 2MB EMS card utilities to media/utilities/EMS
+* Added JOYCALIB to media/utilities/joystick
 * Updated GLaBIOS 0.2.6 ROMS for a bugfix when int 10h vector is overridden
 
 ### Dependency Updates
