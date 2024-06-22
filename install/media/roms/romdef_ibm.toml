@@ -414,7 +414,8 @@ priority = 2
 provides = ["ibm_basic"]
 oem = true
 rom = [
-    { md5 = "2ad31da203a49b504fad3a34af0c719f", addr = 0xF6000, size = 32768 },
+    { md5 = "2ad31da203a49b504fad3a34af0c719f", addr = 0xF6000, size = 32768, chip = "c" },
+    { md5 = "eb28f0e8d3f641f2b58a3677b3b998cc", addr = 0xF6000, size = 32768, chip = "c" },
 ]
 
 [[romset]]
