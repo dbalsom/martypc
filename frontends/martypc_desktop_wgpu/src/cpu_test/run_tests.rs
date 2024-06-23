@@ -618,7 +618,7 @@ fn run_tests(
         }
 
         // Finalize instruction.
-        _ = cpu.step_finish();
+        _ = cpu.step_finish(None);
 
         // CPU is done with execution. Check final state.
         //println!("CPU completed execution.");
