@@ -1037,7 +1037,7 @@ impl CGACard {
             }
             CRTCRegister::VerticalDisplayed => {
                 // (R6) 7 bit write only
-                self.crtc_vertical_displayed = byte;
+                self.crtc_vertical_displayed = byte & 0x7F;
             }
             CRTCRegister::VerticalSync => {
                 // (R7) 7 bit write only
@@ -1054,12 +1054,12 @@ impl CGACard {
                 self.crtc_interlace_mode = byte;
             }
             CRTCRegister::MaximumScanLineAddress => {
-                self.crtc_maximum_scanline_address = byte;
+                self.crtc_maximum_scanline_address = (byte & 0x1F);
                 self.update_cursor_data();
             }
             CRTCRegister::CursorStartLine => {
-                self.crtc_cursor_start_line = byte & CURSOR_LINE_MASK;
-                self.cursor_attr = (byte & CURSOR_ATTR_MASK) >> 5;
+                self.crtc_cursor_start_line = (byte & 0x7F) & CURSOR_LINE_MASK;
+                self.cursor_attr = ((byte & 0x7F) & CURSOR_ATTR_MASK) >> 5;
 
                 match (byte & CURSOR_ATTR_MASK) >> 5 {
                     0b00 => {
