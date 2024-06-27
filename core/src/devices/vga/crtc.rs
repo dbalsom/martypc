@@ -54,6 +54,7 @@ const DEFAULT_MAX_SCANLINE: u8 = 13;
 const VSYNC_LENGTH: u8 = 16;
 const CURSOR_LINE_MASK: u8 = 0b0001_1111;
 const AC_LATENCY: u8 = 1;
+const BACK_SKEW_DELAY: u8 = 3;
 
 // Helper macro for pushing video card state entries.
 macro_rules! push_reg_str {
@@ -96,6 +97,15 @@ pub enum CRTCRegister {
 
 #[bitfield]
 #[derive(Copy, Clone)]
+pub struct CCursorStart {
+    pub cursor_start: B5,
+    pub cursor_on: B1,
+    #[skip]
+    unused: B2,
+}
+
+#[bitfield]
+#[derive(Copy, Clone)]
 pub struct CCursorEnd {
     pub cursor_end: B5,
     pub cursor_skew: B2,
@@ -108,6 +118,13 @@ pub struct CCursorEnd {
 pub struct CEndHorizontalBlank {
     pub end_horizontal_blank: B5,
     pub display_enable_skew: B2,
+    pub compatible_read: B1,
+}
+
+#[bitfield]
+#[derive(Copy, Clone)]
+pub struct CEndVerticalBlank {
+    pub end_vertical_blank: B7,
     #[skip]
     unused: B1,
 }
@@ -122,12 +139,50 @@ pub struct CEndHorizontalRetrace {
 
 #[bitfield]
 #[derive(Copy, Clone)]
+pub struct CUnderlineLocation {
+    pub underline_location: B5,
+    pub count_by_four: B1,
+    pub double_word_mode: B1,
+    #[skip]
+    unused: B1,
+}
+
+#[derive(Copy, Clone, Debug, BitfieldSpecifier)]
+pub enum BandwidthSelect {
+    ThreeCycles,
+    FiveCycles,
+}
+
+#[bitfield]
+#[derive(Copy, Clone)]
 pub struct CVerticalRetraceEnd {
     pub vertical_retrace_end: B4,
     pub cvi: B1,
     pub dvi: B1,
-    #[skip]
-    unused: B2,
+    pub bw: BandwidthSelect,
+    pub protect_regs: B1,
+}
+
+#[bitfield]
+#[derive(Copy, Clone)]
+pub struct COverflow {
+    pub vertical_total_bit_8: B1,
+    pub vertical_display_enable_end_bit_8: B1,
+    pub vertical_retrace_start_bit_8: B1,
+    pub start_vertical_blank_bit_8: B1,
+    pub line_compare_bit_8: B1,
+    pub vertical_total_bit_9: B1,
+    pub vertical_display_enable_bit_9: B1,
+    pub vertical_retrace_start_bit_9: B1,
+}
+
+#[bitfield]
+#[derive(Copy, Clone)]
+pub struct CMaximumScanline {
+    pub maximum_scanline: B5,
+    pub vbs: B1,
+    pub lc: B1,
+    pub two_t4: B1,
 }
 
 #[derive(Debug, BitfieldSpecifier)]
@@ -171,7 +226,7 @@ pub struct CrtcStatus {
     pub cref: bool,
 }
 
-pub struct EgaCrtc {
+pub struct VgaCrtc {
     // CRTC registers
     register_select_byte: u8,
     register_selected:    CRTCRegister,
@@ -185,17 +240,17 @@ pub struct EgaCrtc {
     crtc_end_horizontal_retrace: CEndHorizontalRetrace, // R(5) End Horizontal Retrace
     crtc_end_horizontal_retrace_norm: u8,               // End Horizontal Retrace value normalized to column number
     crtc_retrace_width: u8,
-    crtc_vertical_total: u16,    // R(6) Vertical Total (9-bit value)
-    crtc_overflow: u8,           // R(7) Overflow
-    crtc_preset_row_scan: u8,    // R(8) Preset Row Scan
-    crtc_maximum_scanline: u8,   // R(9) Max Scanline
-    crtc_cursor_start: u8,       // R(A) Cursor Location (9-bit value)
-    crtc_cursor_enabled: bool,   // Calculated from R(A) bit 5
-    crtc_cursor_end: CCursorEnd, // R(B)
-    crtc_cursor_skew: u8,        // Calculated from R(B) bits 5-6
-    crtc_start_address_ho: u8,   // R(C)
-    crtc_start_address_lo: u8,   // R(D)
-    crtc_start_address: u16,     // Calculated from C&D
+    crtc_vertical_total: u16,                // R(6) Vertical Total (9-bit value)
+    crtc_overflow: COverflow,                // R(7) Overflow
+    crtc_preset_row_scan: u8,                // R(8) Preset Row Scan
+    crtc_maximum_scanline: CMaximumScanline, // R(9) Max Scanline
+    crtc_cursor_start: u8,                   // R(A) Cursor Location (9-bit value)
+    crtc_cursor_enabled: bool,               // Calculated from R(A) bit 5
+    crtc_cursor_end: CCursorEnd,             // R(B)
+    crtc_cursor_skew: u8,                    // Calculated from R(B) bits 5-6
+    crtc_start_address_ho: u8,               // R(C)
+    crtc_start_address_lo: u8,               // R(D)
+    crtc_start_address: u16,                 // Calculated from C&D
     start_address_latch: u16,
     crtc_cursor_address_lo: u8, // R(E)
     crtc_cursor_address_ho: u8, // R(F)
@@ -205,9 +260,9 @@ pub struct EgaCrtc {
     crtc_vertical_retrace_end_norm: u16, // Vertical Retrace Start value normalized to scanline number
     crtc_vertical_display_end: u16,   // R(12) Vertical Display Enable End (9-bit value)
     crtc_offset: u8,                  // R(13)
-    crtc_underline_location: u8,      // R(14)
+    crtc_underline_location: CUnderlineLocation, // R(14)
     crtc_start_vertical_blank: u16,   // R(15) Start Vertical Blank (9-bit value)
-    crtc_end_vertical_blank: u16,     // R(16)
+    crtc_end_vertical_blank: CEndVerticalBlank, // R(16)
     crtc_mode_control: CModeControl,  // R(17)
     crtc_line_compare: u16,           // R(18) Line Compare (9-bit value)
 
@@ -236,11 +291,11 @@ pub struct EgaCrtc {
     monitor_hsync: bool,
     monitor_vsync: bool,
     in_last_vblank_line: bool,
-    cursor_data: [bool; EGA_CURSOR_MAX],
+    cursor_data: [bool; VGA_CURSOR_MAX],
     frame: u64,
 }
 
-impl Default for EgaCrtc {
+impl Default for VgaCrtc {
     fn default() -> Self {
         Self {
             // CRTC registers
@@ -257,9 +312,9 @@ impl Default for EgaCrtc {
             crtc_end_horizontal_retrace_norm: 0,
             crtc_retrace_width: 0,
             crtc_vertical_total: DEFAULT_VERTICAL_TOTAL,
-            crtc_overflow: DEFAULT_OVERFLOW,
+            crtc_overflow: COverflow::new(),
             crtc_preset_row_scan: DEFAULT_PRESET_ROW_SCAN,
-            crtc_maximum_scanline: DEFAULT_MAX_SCANLINE,
+            crtc_maximum_scanline: CMaximumScanline::new(),
             crtc_cursor_start: DEFAULT_CURSOR_START_LINE,
             crtc_cursor_enabled: true,
             crtc_cursor_end: CCursorEnd::from_bytes([DEFAULT_CURSOR_END_LINE]),
@@ -276,9 +331,9 @@ impl Default for EgaCrtc {
             crtc_vertical_retrace_end_norm: 0,
             crtc_vertical_display_end: 0,
             crtc_offset: 0,
-            crtc_underline_location: 0,
+            crtc_underline_location: CUnderlineLocation::new(),
             crtc_start_vertical_blank: 0,
-            crtc_end_vertical_blank: 0,
+            crtc_end_vertical_blank: CEndVerticalBlank::new(),
             crtc_mode_control: CModeControl::new(),
             crtc_line_compare: 0,
 
@@ -306,19 +361,23 @@ impl Default for EgaCrtc {
             monitor_hsync: false,
             monitor_vsync: false,
             in_last_vblank_line: false,
-            cursor_data: [false; EGA_CURSOR_MAX],
+            cursor_data: [false; VGA_CURSOR_MAX],
             frame: 0,
         }
     }
 }
 
-impl EgaCrtc {
+impl VgaCrtc {
     pub fn new() -> Self {
         Self::default()
     }
 
+    pub fn read_crtc_register_address(&self) -> u8 {
+        self.register_select_byte
+    }
+    
     pub fn write_crtc_register_address(&mut self, byte: u8) {
-        //log::trace!("CGA: CRTC register {:02X} selected", byte);
+        //log::trace!("VGA: CRTC register {:02X} selected", byte);
         self.register_select_byte = byte & 0x1F;
 
         self.register_selected = match self.register_select_byte {
@@ -355,52 +414,32 @@ impl EgaCrtc {
         }
     }
 
-    /// Write to one of the CRT Controller registers.
-    /// Returns a a tuple, a boolean representing whether the card should recalculate mode parameters after this write,
-    /// and a boolean representing whether the current interrupt status should be cleared.
-    pub fn write_crtc_register_data(&mut self, byte: u8) -> (bool, bool) {
-        //log::debug!("CGA: Write to CRTC register: {:?}: {:02}", self.crtc_register_selected, byte );
-        let mut clear_intr = false;
+    pub fn read_crtc_register_data(&mut self) -> u8 {
         match self.register_selected {
             CRTCRegister::HorizontalTotal => {
-                // (R0) 8 bit write only
-                self.crtc_horizontal_total = byte;
+                self.crtc_horizontal_total
             }
             CRTCRegister::HorizontalDisplayEnd => {
-                // (R1) 8 bit write only
-                self.crtc_horizontal_display_end = byte;
+                self.crtc_horizontal_display_end
             }
             CRTCRegister::StartHorizontalBlank => {
-                // (R2) 8 bit write only
-                self.crtc_start_horizontal_blank = byte;
-                self.normalize_end_horizontal_blank();
+                self.crtc_start_horizontal_blank
             }
             CRTCRegister::EndHorizontalBlank => {
-                // (R3) 8 bit write only
-                // Bits 0-4: End Horizontal Blank
-                // Bits 5-6: Display Enable Skew
-                self.crtc_end_horizontal_blank = CEndHorizontalBlank::from_bytes([byte]);
-                self.normalize_end_horizontal_blank();
+                self.crtc_end_horizontal_blank.into_bytes()[0]
             }
             CRTCRegister::StartHorizontalRetrace => {
                 // (R4)
-                self.crtc_start_horizontal_retrace = byte;
-                self.normalize_end_horizontal_retrace();
+                self.crtc_start_horizontal_retrace
             }
             CRTCRegister::EndHorizontalRetrace => {
                 // (R5)
-                self.crtc_end_horizontal_retrace = CEndHorizontalRetrace::from_bytes([byte]);
-
-                if self.crtc_end_horizontal_retrace.start_odd() != 0 {
-                    log::warn!("som == 1!");
-                }
-                self.normalize_end_horizontal_retrace();
-            }
+                self.crtc_end_horizontal_retrace.into_bytes()[0]
+    }
             CRTCRegister::VerticalTotal => {
                 // (R6) 9-bit - Vertical Total
-                // Bit 8 in overflow register. Set only lower 8 bits here.
-                self.crtc_vertical_total &= 0xFF00;
-                self.crtc_vertical_total |= byte as u16;
+                // Bit 8 in overflow register. Return only lower 8 bits here.
+                (self.crtc_vertical_total & 0xFF) as u8
             }
             CRTCRegister::Overflow => {
                 // (R7) 6 bit write only
@@ -411,8 +450,160 @@ impl EgaCrtc {
                 // Bit 4: Line Compare Bit 8
                 // Bit 5: Cursor Location Bit 8 (??)
                 // Bits 6-7: Unused
-                self.crtc_overflow = byte;
-                self.set_crtc_overflow_bits(byte);
+                self.crtc_overflow.into_bytes()[0]
+            }
+            CRTCRegister::PresetRowScan => {
+                // (R8)
+                self.crtc_preset_row_scan
+            }
+            CRTCRegister::MaximumScanLine => {
+                // (R9)
+                self.crtc_maximum_scanline.into_bytes()[0]
+            }
+            CRTCRegister::CursorStartLine => {
+                // R(A)
+                self.crtc_cursor_start
+            }
+            CRTCRegister::CursorEndLine => {
+                // R(B)
+                // Bits 0-4: Cursor Start Line
+                // Bits 5-6: Cursor Skew
+                self.crtc_cursor_end.into_bytes()[0]
+            }
+            CRTCRegister::StartAddressH => {
+                // (RC) - 8 bits. High byte of Cursor Address register.
+                // Calculate full address on write.
+                self.crtc_start_address_ho
+            }
+            CRTCRegister::StartAddressL => {
+                // (RD) - 8 bits. Low byte of Cursor Address register. .
+                self.crtc_start_address_lo
+            }
+            CRTCRegister::CursorAddressH => {
+                // (RE) - 8 bits.  High byte of Cursor Address register
+                self.crtc_cursor_address_ho
+            }
+            CRTCRegister::CursorAddressL => {
+                // (RF) - 8 bits. Low byte of Cursor Address register.
+                self.crtc_cursor_address_lo
+            }
+            CRTCRegister::VerticalRetraceStart => {
+                // (R10) 9 bits - Vertical Retrace Start
+                // Bit 8 in overflow register. Return only lower 8 bits here.
+                (self.crtc_vertical_retrace_start & 0xFF) as u8
+            }
+            CRTCRegister::VerticalRetraceEnd => {
+                // (R11) Vertical Retrace End
+                self.crtc_vertical_retrace_end.into_bytes()[0]
+            }
+            CRTCRegister::VerticalDisplayEnd => {
+                // (R12) 9 bits - Vertical Display End
+                // Bit 8 in overflow register. Return only lower 8 bits here.
+                (self.crtc_vertical_display_end & 0xFF) as u8
+            }
+            CRTCRegister::Offset => {
+                // (R13) 8 bits -
+                self.crtc_offset
+            }
+            CRTCRegister::UnderlineLocation => {
+                // (R14) 5 bits - Scanline at which underlining occurs
+                self.crtc_underline_location.into_bytes()[0]
+            }
+            CRTCRegister::StartVerticalBlank => {
+                // R(15) - Start Vertical Blank
+                // bit 8 in overflow register. Return only lower 8 bits here.
+                (self.crtc_start_vertical_blank & 0xFF) as u8
+            }
+            CRTCRegister::EndVerticalBlank => {
+                // R(16) - Bits 0-3: End Vertical Blank
+                self.crtc_end_vertical_blank.into_bytes()[0]
+            }
+            CRTCRegister::ModeControl => {
+                // (R17) Mode Control Register
+                self.crtc_mode_control.into_bytes()[0]
+            }
+            CRTCRegister::LineCompare => {
+                // (R18) Line Compare Register
+                // Bit 8 in overflow register. Return only lower 8 bits
+                (self.crtc_line_compare & 0xFF) as u8
+            }
+        }
+    }
+    
+    /// Write to one of the CRT Controller registers.
+    /// Returns a a tuple, a boolean representing whether the card should recalculate mode parameters after this write,
+    /// and a boolean representing whether the current interrupt status should be cleared.
+    pub fn write_crtc_register_data(&mut self, byte: u8) -> (bool, bool) {
+        //log::trace!("VGA: Write to CRTC register: {:?}: {:02}", self.crtc_register_selected, byte );
+        let mut clear_intr = false;
+        match self.register_selected {
+            CRTCRegister::HorizontalTotal => {
+                // (R0) 8 bit write only
+                if self.crtc_vertical_retrace_end.protect_regs() == 0 {
+                    self.crtc_horizontal_total = byte;
+                }
+            }
+            CRTCRegister::HorizontalDisplayEnd => {
+                // (R1) 8 bit write only
+                if self.crtc_vertical_retrace_end.protect_regs() == 0 {
+                    self.crtc_horizontal_display_end = byte;
+                }
+            }
+            CRTCRegister::StartHorizontalBlank => {
+                // (R2) 8 bit write only
+                if self.crtc_vertical_retrace_end.protect_regs() == 0 {
+                    self.crtc_start_horizontal_blank = byte;
+                    self.normalize_end_horizontal_blank();
+                }
+            }
+            CRTCRegister::EndHorizontalBlank => {
+                // (R3) 8 bit write only
+                // Bits 0-4: End Horizontal Blank
+                // Bits 5-6: Display Enable Skew
+                if self.crtc_vertical_retrace_end.protect_regs() == 0 {
+                    self.crtc_end_horizontal_blank = CEndHorizontalBlank::from_bytes([byte]);
+                    self.normalize_end_horizontal_blank();
+                }
+            }
+            CRTCRegister::StartHorizontalRetrace => {
+                // (R4)
+                if self.crtc_vertical_retrace_end.protect_regs() == 0 {
+                    self.crtc_start_horizontal_retrace = byte;
+                    self.normalize_end_horizontal_retrace();
+                }
+            }
+            CRTCRegister::EndHorizontalRetrace => {
+                // (R5)
+                if self.crtc_vertical_retrace_end.protect_regs() == 0 {
+                    self.crtc_end_horizontal_retrace = CEndHorizontalRetrace::from_bytes([byte]);
+
+                    if self.crtc_end_horizontal_retrace.start_odd() != 0 {
+                        log::warn!("som == 1!");
+                    }
+                    self.normalize_end_horizontal_retrace();
+                }
+            }
+            CRTCRegister::VerticalTotal => {
+                // (R6) 9-bit - Vertical Total
+                // Bit 8 in overflow register. Set only lower 8 bits here.
+                if self.crtc_vertical_retrace_end.protect_regs() == 0 {
+                    self.crtc_vertical_total &= 0xFF00;
+                    self.crtc_vertical_total |= byte as u16;
+                }
+            }
+            CRTCRegister::Overflow => {
+                // (R7) 6 bit write only
+                // Bit 0: Vertical Total Bit 8
+                // Bit 1: Vertical Display Enable Bit 8
+                // Bit 2: Vertical Retrace Start Bit 8
+                // Bit 3: Start Vertical Blank Bit 8
+                // Bit 4: Line Compare Bit 8
+                // Bit 5: Cursor Location Bit 8 (??)
+                // Bits 6-7: Unused
+                if self.crtc_vertical_retrace_end.protect_regs() == 0 {
+                    self.crtc_overflow = COverflow::from_bytes([byte]);
+                    self.set_crtc_overflow_bits(byte);
+                }
             }
             CRTCRegister::PresetRowScan => {
                 // (R8)
@@ -421,7 +612,7 @@ impl EgaCrtc {
             }
             CRTCRegister::MaximumScanLine => {
                 // (R9)
-                self.crtc_maximum_scanline = byte & 0x7F;
+                self.crtc_maximum_scanline = CMaximumScanline::from_bytes([byte]);
             }
             CRTCRegister::CursorStartLine => {
                 // R(A)
@@ -498,7 +689,7 @@ impl EgaCrtc {
             }
             CRTCRegister::UnderlineLocation => {
                 // (R14) 5 bits - Scanline at which underlining occurs
-                self.crtc_underline_location = byte & 0x1F;
+                self.crtc_underline_location = CUnderlineLocation::from_bytes([byte]);
             }
             CRTCRegister::StartVerticalBlank => {
                 // R(15) - Start Vertical Blank
@@ -508,7 +699,7 @@ impl EgaCrtc {
             }
             CRTCRegister::EndVerticalBlank => {
                 // R(16) - Bits 0-3: End Vertical Blank
-                self.crtc_end_vertical_blank = (byte & 0x0F) as u16;
+                self.crtc_end_vertical_blank = CEndVerticalBlank::from_bytes([byte]);
             }
             CRTCRegister::ModeControl => {
                 // (R17) Mode Control Register
@@ -526,7 +717,6 @@ impl EgaCrtc {
 
     /// Update the miscellaneous registers that share bits with the Overflow register.
     ///
-    /// This register is Write-only on the EGA, so it must have been a real pain to maintain
     /// Bit 0: Vertical Total Bit 8
     /// Bit 1: Vertical Display Enable End Bit 8
     /// Bit 2: Vertical Retrace Start Bit 8
@@ -537,19 +727,21 @@ impl EgaCrtc {
     fn set_crtc_overflow_bits(&mut self, byte: u8) {
         // Bit 0: Vertical Total
         self.crtc_vertical_total &= 0x00FF;
-        self.crtc_vertical_total |= (byte as u16 & 0x01) << 8;
+        self.crtc_vertical_total |= (self.crtc_overflow.vertical_total_bit_8() as u16) << 8;
+        self.crtc_vertical_total |= (self.crtc_overflow.vertical_total_bit_9() as u16) << 9;
         // Bit 1: Vertical Display Enable End
         self.crtc_vertical_display_end &= 0x00FF;
-        self.crtc_vertical_display_end |= (byte as u16 >> 1 & 0x01) << 8;
+        self.crtc_vertical_display_end |= (self.crtc_overflow.vertical_display_enable_end_bit_8() as u16) << 8;
         // Bit 2: Vertical Retrace Start
         self.crtc_vertical_retrace_start &= 0x00FF;
-        self.crtc_vertical_retrace_start |= (byte as u16 >> 2 & 0x01) << 8;
+        self.crtc_vertical_retrace_start |= (self.crtc_overflow.vertical_retrace_start_bit_8() as u16) << 8;
+        self.crtc_vertical_retrace_start |= (self.crtc_overflow.vertical_retrace_start_bit_9() as u16) << 9;
         // Bit 3: Start Vertical Blank
         self.crtc_start_vertical_blank &= 0x00FF;
-        self.crtc_start_vertical_blank |= (byte as u16 >> 3 & 0x01) << 8;
+        self.crtc_start_vertical_blank |= (self.crtc_overflow.start_vertical_blank_bit_8() as u16) << 8;
         // Bit 4: Line Compare
         self.crtc_line_compare &= 0x00FF;
-        self.crtc_line_compare |= (byte as u16 >> 4 & 0x01) << 8;
+        self.crtc_line_compare |= (self.crtc_overflow.line_compare_bit_8() as u16) << 8;
 
         // In IBM's documentation, bit 5 is specified to be "Bit 8" of register 0x0A,
         // but they call it the "Cursor Location" register in the same paragraph, which is
@@ -628,26 +820,6 @@ impl EgaCrtc {
         self.crtc_vertical_retrace_end_norm = proposed_evr;
     }
 
-    pub fn read_crtc_register(&mut self) -> u8 {
-        log::debug!("Read from CRTC register: {:?}", self.register_selected);
-        match self.register_selected {
-            CRTCRegister::CursorStartLine => self.crtc_cursor_start,
-            CRTCRegister::CursorEndLine => self.crtc_cursor_end.into_bytes()[0],
-            CRTCRegister::CursorAddressH => {
-                //log::debug!("CGA: Read from CRTC register: {:?}: {:02}", self.crtc_register_selected, self.crtc_cursor_address_ho );
-                self.crtc_cursor_address_ho
-            }
-            CRTCRegister::CursorAddressL => {
-                //log::debug!("CGA: Read from CRTC register: {:?}: {:02}", self.crtc_register_selected, self.crtc_cursor_address_lo );
-                self.crtc_cursor_address_lo
-            }
-            _ => {
-                log::debug!("Read from unsupported CRTC register: {:?}", self.register_selected);
-                0
-            }
-        }
-    }
-
     /// Handle a write to the CRTC Mode Control Register (R17)
     fn write_crtc_mode_control_register(&mut self, byte: u8) {
         self.crtc_mode_control = CModeControl::from_bytes([byte]);
@@ -660,7 +832,7 @@ impl EgaCrtc {
 
         // Start line must be reached when iterating through character rows to draw a cursor at all.
         // Therefore, if start_line > maximum_scanline, the cursor is disabled.
-        if self.crtc_cursor_start > self.crtc_maximum_scanline {
+        if self.crtc_cursor_start > self.crtc_maximum_scanline.maximum_scanline() {
             return;
         }
 
@@ -691,7 +863,7 @@ impl EgaCrtc {
                 self.cursor_data[i as usize] = true;
             }
 
-            for i in (self.crtc_cursor_start as usize)..EGA_CURSOR_MAX {
+            for i in (self.crtc_cursor_start as usize)..VGA_CURSOR_MAX {
                 // Second part of cursor is start_line->max
                 self.cursor_data[i] = true;
             }
@@ -704,7 +876,7 @@ impl EgaCrtc {
         self.status.begin_hsync = false;
         self.status.begin_vsync = false;
 
-        // Advance video memory address offset and grab the next character + attr
+        // Advance video memory address offset
         self.vma += 1;
 
         // Update horizontal character counter
@@ -779,6 +951,7 @@ impl EgaCrtc {
             }
         }
 
+        // Horizontal Display end is -1 on EGA and VGA (Ferraro is wrong)
         if self.hcc == self.crtc_horizontal_display_end + 1 {
             // Leaving active display area, entering right overscan
             self.den_skew_back = true;
@@ -819,8 +992,8 @@ impl EgaCrtc {
             // Start generating addresses
         }
 
-        // Actual HorizontalTotal is register value + 2 on EGA.
-        if self.hcc == self.crtc_horizontal_total + 2 {
+        // Actual HorizontalTotal is register value + 5 on VGA.
+        if self.hcc == self.crtc_horizontal_total + 5 {
             // Leaving left overscan, finished scanning row. Entering active display area with
             // new logical scanline.
 
@@ -853,7 +1026,7 @@ impl EgaCrtc {
                 }
             }
 
-            if self.vlc > self.crtc_maximum_scanline {
+            if self.vlc > self.crtc_maximum_scanline.maximum_scanline() {
                 // C9 == R9 We finished drawing this row of characters
 
                 self.vlc = 0;
@@ -973,7 +1146,7 @@ impl EgaCrtc {
         }
 
         if self.den_skew_back {
-            if self.dsc == self.crtc_end_horizontal_blank.display_enable_skew() + AC_LATENCY {
+            if self.dsc == self.crtc_end_horizontal_blank.display_enable_skew() + AC_LATENCY + BACK_SKEW_DELAY {
                 self.den_skew_back = false;
                 self.status.den_skew = false;
                 self.status.hborder = true;
@@ -993,7 +1166,16 @@ impl EgaCrtc {
 
         let mut output_addr = self.vma;
 
-        if let WordOrByteMode::Word = self.crtc_mode_control.word_or_byte_mode() {
+        if self.crtc_underline_location.double_word_mode() != 0 {
+            // Doubleword mode selected. Typically used in mode13h.
+            
+            // The documentation surrounding this bit is poor. Many references state that the address 
+            // is shifted by two, but this is an incomplete description. The low order bits are replaced
+            // by MA12 and MA13 as well. This is only mentioned in the official IBM documentation.
+            let ma12_13 = (self.vma & (0x3 << 12)) >> 12;
+            output_addr = (output_addr << 2) | ma12_13;
+        }
+        else if let WordOrByteMode::Word = self.crtc_mode_control.word_or_byte_mode() {
             // Word mode selected
             let bit = match self.crtc_mode_control.address_wrap() {
                 0 => (self.vma & (1 << 13)) >> 13,
@@ -1017,7 +1199,7 @@ impl EgaCrtc {
 
         if self.status.vblank {
             //if self.vsc_c3h == CRTC_VBLANK_HEIGHT || self.beam_y == CGA_MONITOR_VSYNC_POS {
-            if (self.slc & EGA_VBLANK_MASK) == self.crtc_end_vertical_blank {
+            if (self.slc & EGA_VBLANK_MASK) == self.crtc_end_vertical_blank.end_vertical_blank() as u16 {
                 self.in_last_vblank_line = true;
                 self.monitor_hsync = false;
                 return;
@@ -1051,12 +1233,13 @@ impl EgaCrtc {
 
     #[inline]
     pub fn maximum_scanline(&self) -> u8 {
-        self.crtc_maximum_scanline
+        self.crtc_maximum_scanline.maximum_scanline()
     }
 
     #[inline]
     pub fn in_skew(&self) -> bool {
-        self.den_skew_front | (self.den_skew_back && self.dsc < self.crtc_end_horizontal_blank.display_enable_skew())
+        //self.den_skew_front | (self.den_skew_back && self.dsc < self.crtc_end_horizontal_blank.display_enable_skew())
+        self.den_skew_front | self.den_skew_back
     }
 
     #[inline]
@@ -1106,9 +1289,9 @@ impl EgaCrtc {
         push_reg_str!(crtc_vec, CRTCRegister::EndHorizontalRetrace, "[R05:som]", self.crtc_end_horizontal_retrace.start_odd());
         push_reg_str!(crtc_vec, CRTCRegister::EndHorizontalRetrace, "[R05:norm]", self.crtc_end_horizontal_retrace_norm);
         push_reg_str!(crtc_vec, CRTCRegister::VerticalTotal, "[R06]", self.crtc_vertical_total);
-        push_reg_str!(crtc_vec, CRTCRegister::Overflow, "[R07]", self.crtc_overflow);
+        push_reg_str!(crtc_vec, CRTCRegister::Overflow, "[R07]", self.crtc_overflow.into_bytes()[0]);
         push_reg_str!(crtc_vec, CRTCRegister::PresetRowScan, "[R08]", self.crtc_preset_row_scan);
-        push_reg_str!(crtc_vec, CRTCRegister::MaximumScanLine, "[R09]", self.crtc_maximum_scanline);
+        push_reg_str!(crtc_vec, CRTCRegister::MaximumScanLine, "[R09]", format!("{:02X}:{}", self.crtc_maximum_scanline.into_bytes()[0], self.crtc_maximum_scanline.maximum_scanline()));
         push_reg_str!(crtc_vec, CRTCRegister::CursorStartLine, "[R0A]", self.crtc_cursor_start);
         push_reg_str!(crtc_vec, CRTCRegister::CursorEndLine, "[R0B]", self.crtc_cursor_end.into_bytes()[0]);
         push_reg_str!(crtc_vec, CRTCRegister::StartAddressH, "[R0C]", self.crtc_start_address_ho);
@@ -1121,9 +1304,16 @@ impl EgaCrtc {
         push_reg_str!(crtc_vec, CRTCRegister::VerticalRetraceEnd, "[R11:dvi]", self.crtc_vertical_retrace_end.dvi());
         push_reg_str!(crtc_vec, CRTCRegister::VerticalDisplayEnd, "[R12]", self.crtc_vertical_display_end);
         push_reg_str!(crtc_vec, CRTCRegister::Offset, "[R13]", self.crtc_offset);
-        push_reg_str!(crtc_vec, CRTCRegister::UnderlineLocation, "[R14]", self.crtc_underline_location);
+        push_reg_str!(
+            crtc_vec, 
+            CRTCRegister::UnderlineLocation, 
+            "[R14:dw:cb4:ul]", 
+            format!("{}:{}:{}", 
+                self.crtc_underline_location.double_word_mode(), 
+                self.crtc_underline_location.count_by_four(), 
+                self.crtc_underline_location.underline_location()));
         push_reg_str!(crtc_vec, CRTCRegister::StartVerticalBlank, "[R15]", self.crtc_start_vertical_blank);
-        push_reg_str!(crtc_vec, CRTCRegister::EndVerticalBlank, "[R16]", self.crtc_end_vertical_blank);
+        push_reg_str!(crtc_vec, CRTCRegister::EndVerticalBlank, "[R16]", self.crtc_end_vertical_blank.into_bytes()[0]);
         //push_reg_str!(crtc_vec, CRTCRegister::ModeControl, "[R17]", self.crtc_mode_control.into_bytes()[0]);
         crtc_vec.push(("[R17] ModeControl".to_string(), VideoCardStateEntry::String(format!("{:08b}",self.crtc_mode_control.into_bytes()[0]))));
         push_reg_str!(crtc_vec, CRTCRegister::LineCompare, "[R18]", self.crtc_line_compare);

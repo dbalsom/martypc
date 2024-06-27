@@ -34,7 +34,7 @@ use super::*;
 use crate::{bus::DeviceRunTimeUnit, devices::pic::Pic};
 use std::{collections::HashMap, path::Path};
 
-impl VideoCard for EGACard {
+impl VideoCard for VGACard {
     fn get_sync(&self) -> (bool, bool, bool, bool) {
         (false, false, false, false)
     }
@@ -52,7 +52,7 @@ impl VideoCard for EGACard {
     }
 
     fn get_video_type(&self) -> VideoType {
-        VideoType::EGA
+        VideoType::VGA
     }
 
     fn get_render_mode(&self) -> RenderMode {
@@ -60,7 +60,7 @@ impl VideoCard for EGACard {
     }
 
     fn get_render_depth(&self) -> RenderBpp {
-        RenderBpp::Six
+        RenderBpp::Eight
     }
 
     fn get_display_mode(&self) -> DisplayMode {
@@ -213,8 +213,8 @@ impl VideoCard for EGACard {
         self.crtc.maximum_scanline() + 1
     }
 
-    fn get_palette(&self) -> Option<Vec<[u8; 4]>> {
-        None
+    fn get_palette(&self) -> Option<Vec<[u8;4]>> {
+        Some(self.ac.color_registers_rgba.to_vec())
     }
 
     #[rustfmt::skip]
@@ -249,6 +249,7 @@ impl VideoCard for EGACard {
 
         map.insert("Sequencer".to_string(), self.sequencer.get_state());
         map.insert("Graphics".to_string(), self.gc.get_state());
+        map.insert("Graphics Stats".to_string(), self.gc.get_stats());
         map.insert("Attribute".to_string(), self.ac.get_state());
 
         let mut attribute_pal_vec = Vec::new();
@@ -256,11 +257,11 @@ impl VideoCard for EGACard {
             // Attribute palette entries are interpreted differently depending on the current clock speed
             // Low resolution modes use 4BPP palette entries, high resolution modes use 6bpp.
             let pal_resolved = match self.misc_output_register.clock_select() {
-                ClockSelect::Clock14 => self.ac.palette_registers[i].four_to_six,
+                ClockSelect::Clock25 => self.ac.palette_registers[i].four_to_six,
                 _ => self.ac.palette_registers[i].six,
             };
 
-            let (r, g, b) = EGACard::ega_to_rgb(pal_resolved);
+            let (r, g, b) = VGACard::ega_to_rgb(pal_resolved);
             attribute_pal_vec.push((
                 format!("{}", i),
                 VideoCardStateEntry::Color(format!("{:06b}", self.ac.palette_registers[i].six), r, g, b),
@@ -268,6 +269,26 @@ impl VideoCard for EGACard {
         }
 
         map.insert("AttributePalette".to_string(), attribute_pal_vec);
+
+        let mut dac_pal_vec = Vec::new();
+        for i in 0..256 {
+            dac_pal_vec.push((
+                format!("{}", i),
+                VideoCardStateEntry::Color(
+                    format!(
+                        "#{:02x}{:02x}{:02x}",
+                        self.ac.color_registers_rgba[i][0],
+                        self.ac.color_registers_rgba[i][1],
+                        self.ac.color_registers_rgba[i][2],
+                    ),
+                    self.ac.color_registers_rgba[i][0],
+                    self.ac.color_registers_rgba[i][1],
+                    self.ac.color_registers_rgba[i][2],
+                ),
+            ));
+        }
+        map.insert("DACPalette".to_string(), dac_pal_vec);
+        
         map.insert("CRTC Counters".to_string(), self.crtc.get_counter_state());
 
         let mut internal_vec = Vec::new();
@@ -296,8 +317,8 @@ impl VideoCard for EGACard {
         if let DeviceRunTimeUnit::Microseconds(us) = time {
             // Select the appropriate timings based on the current clocking mode
             let ticks = match self.misc_output_register.clock_select() {
-                ClockSelect::Clock14 => us * EGA_CLOCK0,
-                ClockSelect::Clock16 => us * EGA_CLOCK1,
+                ClockSelect::Clock25 => us * VGA_CLOCK25,
+                ClockSelect::Clock28 => us * VGA_CLOCK28,
                 _ => 0.0,
             };
 
@@ -417,7 +438,7 @@ impl VideoCard for EGACard {
     fn dump_mem(&self, path: &Path) {
         for i in 0..4 {
             let mut filename = path.to_path_buf();
-            filename.push(format!("ega_plane{}.bin", i));
+            filename.push(format!("vga_plane{}.bin", i));
 
             match std::fs::write(filename.clone(), &self.get_plane_slice(i)) {
                 Ok(_) => {
@@ -428,6 +449,34 @@ impl VideoCard for EGACard {
                 }
             }
         }
+
+        let mut chain4_buf = Vec::with_capacity(self.get_plane_slice(0).len() * 4);
+        
+        // In addition to the four planar dumps, we can dump a chain4 representation.
+        let iter1 = self.get_plane_slice(0).chunks_exact(4);
+        let iter2 = self.get_plane_slice(1).chunks_exact(4);
+        let iter3 = self.get_plane_slice(2).chunks_exact(4);
+        let iter4 = self.get_plane_slice(3).chunks_exact(4);
+
+        for ((a, b), (c, d)) in iter1.zip(iter2).zip(iter3.zip(iter4)) {
+            chain4_buf.push(a[0].clone());
+            chain4_buf.push(b[0].clone());
+            chain4_buf.push(c[0].clone());
+            chain4_buf.push(d[0].clone());
+        }
+
+        let mut filename = path.to_path_buf();
+        filename.push("vga_chain4.bin");
+
+        match std::fs::write(filename.clone(), &chain4_buf) {
+            Ok(_) => {
+                log::debug!("Wrote memory dump: {}", &filename.display())
+            }
+            Err(e) => {
+                log::error!("Failed to write memory dump '{}': {}", &filename.display(), e)
+            }
+        }        
+        
     }
 
     fn get_frame_count(&self) -> u64 {

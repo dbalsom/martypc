@@ -236,8 +236,8 @@ impl VideoCard for MDACard {
         self.crtc.reg[9] + 1
     }
 
-    fn get_cga_palette(&self) -> (CGAPalette, bool) {
-        (Default::default(), false)
+    fn get_palette(&self) -> Option<Vec<[u8;4]>> {
+        None
     }
 
     // /// Return the current palette number, intensity attribute bit, and alt color
