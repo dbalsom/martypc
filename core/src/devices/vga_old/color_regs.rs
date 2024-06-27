@@ -30,7 +30,7 @@
 
 */
 
-use crate::devices::vga::*;
+use crate::devices::vga_old::*;
 
 pub const DAC_STATE_READ: u8 = 0;
 pub const DAC_STATE_WRITE: u8 = 0x03;

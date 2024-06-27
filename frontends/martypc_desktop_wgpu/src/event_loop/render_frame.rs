@@ -75,6 +75,7 @@ pub fn render_frame(emu: &mut Emulator) {
                 backend_buf,
                 extents,
                 beam_pos,
+                videocard.get_palette(),
             )
         }
     });

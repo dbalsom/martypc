@@ -29,7 +29,7 @@
     Implement the VGA Attribute registers.
 */
 
-use crate::devices::vga::VGACard;
+use crate::devices::vga_old::VGACard;
 use modular_bitfield::prelude::*;
 
 #[derive(Copy, Clone, Debug)]
