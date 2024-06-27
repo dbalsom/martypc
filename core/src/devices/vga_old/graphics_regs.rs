@@ -30,7 +30,7 @@
 
 */
 
-use crate::devices::vga::*;
+use crate::devices::vga_old::*;
 use modular_bitfield::prelude::*;
 
 #[derive(Copy, Clone, Debug)]

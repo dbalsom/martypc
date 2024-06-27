@@ -58,6 +58,9 @@ impl GuiState {
                                                 for register in file {
                                                     ui.label(egui::RichText::new(&register.0).text_style(egui::TextStyle::Monospace));
                                                     match &register.1 {
+                                                        VideoCardStateEntry::Value32(val) => {
+                                                            ui.label(egui::RichText::new(val.to_string()).text_style(egui::TextStyle::Monospace));
+                                                        }
                                                         VideoCardStateEntry::String(str) => {
                                                             ui.label(egui::RichText::new(str).text_style(egui::TextStyle::Monospace));
                                                         },
@@ -132,12 +135,13 @@ impl GuiState {
                 GuiState::draw_register_file(ui, videocard_state, false,"Internal", "Internal Registers".to_string());
                 GuiState::draw_register_file(ui, videocard_state, false,"External", "External Registers".to_string());
                 GuiState::draw_register_file(ui, videocard_state, false,"Sequencer", "Sequencer Registers".to_string());
-                GuiState::draw_register_file(ui, videocard_state, false,"Graphics", "Graphics Registers".to_string());
+                GuiState::draw_register_file(ui, videocard_state, false,"Graphics", "Graphics Controller Registers".to_string());
+                GuiState::draw_register_file(ui, videocard_state, false,"Graphics Stats", "Graphics Controller Statistics".to_string());
                 GuiState::draw_register_file(ui, videocard_state, false,"Palette", "Palette Registers".to_string());
                 GuiState::draw_register_file(ui, videocard_state, false,"VideoArray", "Video Array Registers".to_string());
-                GuiState::draw_register_file(ui, videocard_state, false,"AttributePalette", "Attribute Palette Registers".to_string());
                 GuiState::draw_register_file(ui, videocard_state, false,"Attribute", "Attribute Registers".to_string());
-
+                GuiState::draw_register_file(ui, videocard_state, false,"AttributePalette", "Attribute Palette Registers".to_string());
+                
                 if videocard_state.contains_key("DACPalette") {
                     CollapsingHeader::new("DAC Palette Registers")
                     .default_open(false)

@@ -1971,7 +1971,7 @@ impl BusInterface {
                 }
                 #[cfg(feature = "vga")]
                 VideoType::VGA => {
-                    let vga = VGACard::new(TraceLogger::None);
+                    let vga = VGACard::new(TraceLogger::None, clock_mode, video_frame_debug, card.dip_switch);
                     add_io_device!(self, vga, IoDeviceType::Video(video_id));
                     add_mmio_device!(self, vga, MmioDeviceType::Video(video_id));
                     video_dispatch = VideoCardDispatch::Vga(vga)

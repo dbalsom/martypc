@@ -155,6 +155,14 @@ name = "ibm_cga_and_mda"
     type = "MDA"
     clock_mode = "Default"
     
+[[overlay]]
+name = "ibm_vga"
+    # Video card
+    [[overlay.video]]
+    bus_type = "ISA"
+    type = "VGA"
+    clock_mode = "Default"
+    
 #[[overlay]]
 #name = "ram_expansion"
 #    [[overlay.ram_expansion]]

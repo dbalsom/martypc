@@ -41,7 +41,7 @@ egui-notify = { git = "https://github.com/dbalsom/egui-notify_martypc.git", bran
 
 # Debug TUI interface imports
 ratatui = { version = "0.26.2", default-features = false }
-egui_ratatui = "0.0.8"
+egui_ratatui = "0.0.9"
 #egui_ratatui = { git = "https://github.com/dbalsom/egui_ratatui_martypc.git", branch = "resize_fix"}
 serde = { workspace = true, features = ["derive"] }
 lazy_static = "1.4.0"

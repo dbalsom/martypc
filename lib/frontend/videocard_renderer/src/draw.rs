@@ -49,6 +49,7 @@ impl VideoRenderer {
         output_buf: &mut [u8],
         extents: &DisplayExtents,
         beam_pos: Option<(u32, u32)>,
+        palette: Option<Vec<[u8; 4]>>,
     ) {
         let render_start = Instant::now();
 
@@ -113,6 +114,16 @@ impl VideoRenderer {
                 self.params.aperture,
                 extents,
                 RenderBpp::Six,
+            ),
+            #[cfg(feature = "vga")]
+            VideoType::VGA => VideoRenderer::draw_vga_direct_u32(
+                first_pass_buf,
+                palette.expect("VGA did not provide a palette!"),
+                self.params.render.w,
+                self.params.render.h,
+                input_buf,
+                self.params.aperture,
+                extents,
             ),
         }
 
@@ -697,6 +708,65 @@ impl VideoRenderer {
             }
             _ => {
                 unreachable!("EGA: Unimplemented BPP mode!");
+            }
+        }
+    }
+
+    /// Draw the VGA card in Direct Mode.
+    /// The VGA in Direct mode generates its own indexed-color framebuffer, which is
+    /// converted to 32-bit RGBA for display based on the provided palette and
+    /// selected display aperture profile.
+    pub fn draw_vga_direct_u32(
+        frame: &mut [u8],
+        palette: Vec<[u8; 4]>,
+        w: u32,
+        mut h: u32,
+        dbuf: &[u8],
+        aperture: DisplayApertureType,
+        extents: &DisplayExtents,
+    ) {
+        let aperture = &extents.apertures[aperture as usize];
+
+        let mut horiz_adjust = aperture.x;
+        let mut vert_adjust = aperture.y;
+        // Ignore aperture adjustments if it pushes us outside of the field boundaries
+        if aperture.x + aperture.w >= extents.field_w {
+            horiz_adjust = 0;
+        }
+        if aperture.y + aperture.h >= extents.field_h {
+            vert_adjust = 0;
+        }
+
+        if extents.double_scan {
+            h = h / 2;
+        }
+
+        if h as usize * extents.row_stride > dbuf.len() {
+            log::warn!(
+                "draw_vga_direct_u32(): extents {}x{} greater than buffer: {}",
+                w,
+                h,
+                dbuf.len()
+            );
+            return;
+        }
+
+        let max_y = std::cmp::min(h, aperture.h + aperture.x);
+        let max_x = std::cmp::min(w, aperture.w + aperture.y);
+
+        //log::debug!("w: {w} h: {h} max_x: {max_x}, max_y: {max_y}");
+
+        let frame_u32: &mut [u32] = bytemuck::cast_slice_mut(frame);
+        let palette_u32: &[u32] = bytemuck::cast_slice(&palette);
+
+        for y in 0..max_y {
+            let dbuf_row_offset = (y + vert_adjust) as usize * extents.row_stride;
+            let frame_row_offset = (y * w) as usize;
+
+            for x in 0..max_x {
+                let fo = frame_row_offset + x as usize;
+                let dbo = dbuf_row_offset + (x + horiz_adjust) as usize;
+                frame_u32[fo] = palette_u32[dbuf[dbo] as usize];
             }
         }
     }

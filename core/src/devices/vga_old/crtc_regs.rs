@@ -32,7 +32,7 @@
 
 use modular_bitfield::prelude::*;
 
-use crate::devices::vga::*;
+use crate::devices::vga_old::*;
 
 const CURSOR_LINE_MASK: u8 = 0b0001_1111;
 

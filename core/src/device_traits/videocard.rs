@@ -212,6 +212,7 @@ pub enum RenderBpp {
 pub enum VideoCardStateEntry {
     Value8(u8),
     Value16(u16),
+    Value32(u32),
     String(String),
     Color(String, u8, u8, u8),
 }
@@ -421,8 +422,7 @@ pub trait VideoCard {
     /// (CRTC Maximum Scanline + 1)
     fn get_character_height(&self) -> u8;
 
-    /// Returns the current CGA-compatible palette and intensity attribute
-    fn get_cga_palette(&self) -> (CGAPalette, bool);
+    fn get_palette(&self) -> Option<Vec<[u8; 4]>>;
 
     /// Returns a hash map of vectors containing name and value pairs.
     ///
