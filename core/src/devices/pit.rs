@@ -1070,7 +1070,7 @@ impl ProgrammableIntervalTimer {
     pub fn run(
         &mut self,
         bus: &mut BusInterface,
-        buffer_producer: &mut ringbuf::Producer<u8>,
+        buffer_producer: Option<&mut ringbuf::Producer<u8>>,
         run_unit: DeviceRunTimeUnit,
     ) {
         let do_ticks = self.ticks_from_time(run_unit, self.timewarp);
@@ -1082,7 +1082,7 @@ impl ProgrammableIntervalTimer {
         self.timewarp = DeviceRunTimeUnit::SystemTicks(0);
 
         for _ in 0..do_ticks {
-            self.tick(bus, Some(buffer_producer));
+            self.tick(bus, None);
         }
     }
 
@@ -1127,7 +1127,7 @@ impl ProgrammableIntervalTimer {
         self.channels[channel].is_dirty()
     }
 
-    pub fn tick(&mut self, bus: &mut BusInterface, buffer_producer: Option<&mut ringbuf::Producer<u8>>) {
+    pub fn tick(&mut self, bus: &mut BusInterface, mut buffer_producer: Option<&mut ringbuf::Producer<u8>>) {
         self.pit_cycles += 1;
 
         // Get timer channel 2 state from ppi.

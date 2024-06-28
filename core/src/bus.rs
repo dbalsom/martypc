@@ -91,6 +91,7 @@ use crate::{
         tga::TGACard,
     },
     machine_types::{EmsType, EmsType::LoTech2MB, FdcType, MachineType},
+    sound::{SoundSource, SoundSourceDescriptor},
     syntax_token::SyntaxFormatType,
 };
 
@@ -179,6 +180,17 @@ impl DeviceRunContext {
     #[inline]
     pub fn add_event(&mut self, event: DeviceEvent) {
         self.events.push_back(event);
+    }
+}
+
+#[derive(Default)]
+pub struct InstalledDevicesResult {
+    pub sound_sources: Vec<SoundSourceDescriptor>,
+}
+
+impl InstalledDevicesResult {
+    pub fn new() -> Self {
+        Self::default()
     }
 }
 
@@ -390,6 +402,7 @@ pub struct BusInterface {
     a0_data: u8,
     nmi_latch: bool,
     pit: Option<Pit>,
+    speaker_src: Option<usize>,
     dma_counter: u16,
     dma1: Option<DMAController>,
     dma2: Option<DMAController>,
@@ -560,6 +573,7 @@ impl Default for BusInterface {
             a0_data: 0,
             nmi_latch: false,
             pit: None,
+            speaker_src: None,
             dma_counter: 0,
             dma1: None,
             dma2: None,
@@ -1711,7 +1725,8 @@ impl BusInterface {
         machine_config: &MachineConfiguration,
         sound_enabled: bool,
         terminal_port: Option<u16>,
-    ) -> Result<(), Error> {
+    ) -> Result<InstalledDevicesResult, Error> {
+        let mut installed_devices = InstalledDevicesResult::new();
         let video_frame_debug = false;
         let clock_mode = ClockingMode::Default;
 
@@ -1783,8 +1798,18 @@ impl BusInterface {
                 machine_desc.system_crystal
             },
             machine_desc.timer_divisor,
-            machine_config.speaker && sound_enabled,
+            machine_config.speaker,
         );
+
+        if machine_config.speaker {
+            // Add this sound source.
+            installed_devices
+                .sound_sources
+                .push(SoundSourceDescriptor::new("PC Speaker", 1_193_181, 1));
+
+            // Speaker will always be first sound source, if enabled.
+            self.speaker_src = Some(0);
+        }
 
         // Add PIT ports to io_map
         add_io_device!(self, pit, IoDeviceType::Pit);
@@ -1990,7 +2015,7 @@ impl BusInterface {
         }
 
         self.machine_desc = Some(machine_desc.clone());
-        Ok(())
+        Ok(installed_devices)
     }
 
     /// Return whether NMI is enabled.
@@ -2031,7 +2056,6 @@ impl BusInterface {
         sys_ticks: u32,
         kb_event_opt: Option<KeybufferEntry>,
         kb_buf: &mut VecDeque<KeybufferEntry>,
-        speaker_buf_producer: &mut Producer<u8>,
     ) -> Option<DeviceEvent> {
         let mut event = None;
 
@@ -2137,14 +2161,14 @@ impl BusInterface {
         // be an integer number of PIT ticks per system ticks. Therefore, the PIT can take either
         // system ticks (PC/XT) or microseconds as an update parameter.
         if let Some(_crystal) = self.machine_desc.unwrap().timer_crystal {
-            pit.run(self, speaker_buf_producer, DeviceRunTimeUnit::Microseconds(us));
+            pit.run(self, None, DeviceRunTimeUnit::Microseconds(us));
         }
         else {
             // We can only adjust phase of PIT if we are using system ticks, and that's okay. It's only really useful
             // on an 5150/5160.
             pit.run(
                 self,
-                speaker_buf_producer,
+                None,
                 DeviceRunTimeUnit::SystemTicks(sys_ticks + self.pit_ticks_advance),
             );
             self.pit_ticks_advance = 0;
