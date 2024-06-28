@@ -66,17 +66,19 @@ use crate::{
     keys::MartyKey,
     machine_config::{get_machine_descriptor, MachineConfiguration, MachineDescriptor},
     machine_types::MachineType,
-    sound::{SoundPlayer, BUFFER_MS, VOLUME_ADJUST},
+    sound::{SoundOutputConfig},
     tracelogger::TraceLogger,
 };
-
-use ringbuf::{Consumer, Producer, RingBuffer};
 use crate::cpu_common::builder::CpuBuilder;
 use crate::cpu_validator::ValidatorMode;
 use crate::devices::cartridge_slots::CartridgeSlot;
 use crate::devices::ppi::PpiDisplayState;
 use crate::devices::serial::SerialPortDisplayState;
 use crate::machine_types::OnHaltBehavior;
+
+use ringbuf::{Consumer, Producer, RingBuffer};
+use crate::sound::SoundOutput;
+
 
 pub const STEP_OVER_TIMEOUT: u32 = 320000;
 
@@ -294,6 +296,13 @@ pub struct MachineOptions {
     pub record_listing: bool,
 }
 
+#[derive(Default)]
+pub struct MachineRunResult {
+    pub cycles: u64,
+    pub instructions: u64,
+    pub sound_output: SoundOutput,
+}
+
 impl MachineRomManifest {
     pub fn new() -> Self {
         Default::default()
@@ -344,7 +353,7 @@ pub struct MachineBuilder<'a> {
     trace_mode: TraceMode,
     trace_logger: TraceLogger,
     listing_file: Option<PathBuf>,
-    sound_player: Option<SoundPlayer>,
+    sound_config: SoundOutputConfig,
     sound_override: Option<bool>,
     keyboard_layout_file: Option<PathBuf>,
 }
@@ -378,8 +387,8 @@ impl<'a> MachineBuilder<'a> {
         self
     }
 
-    pub fn with_sound_player(mut self, sound_player: Option<SoundPlayer>) -> Self {
-        self.sound_player = sound_player;
+    pub fn with_sound_config(mut self, sound_config: SoundOutputConfig) -> Self {
+        self.sound_config = sound_config;
         self
     }
 
@@ -439,7 +448,7 @@ impl<'a> MachineBuilder<'a> {
             machine_desc,
             self.trace_mode,
             trace_logger,
-            self.sound_player,
+            self.sound_config,
             rom_manifest,
             self.keyboard_layout_file,
             self.listing_file,
@@ -454,12 +463,11 @@ pub struct Machine {
     machine_config: MachineConfiguration,
     state: MachineState,
     options: MachineOptions,
-    sound_player: Option<SoundPlayer>,
+    sound_config: SoundOutputConfig,
     rom_manifest: MachineRomManifest,
     load_bios: bool,
     cpu: CpuDispatch,
-    speaker_buf_producer: Producer<u8>,
-    pit_data: PitData,
+    //pit_data: PitData,
     debug_snd_file: Option<File>,
     kb_buf: VecDeque<KeybufferEntry>,
     error: bool,
@@ -489,14 +497,18 @@ impl Machine {
         machine_desc: MachineDescriptor,
         trace_mode: TraceMode,
         trace_logger: TraceLogger,
-        sound_player: Option<SoundPlayer>,
+        sound_config: SoundOutputConfig,
         rom_manifest: MachineRomManifest,
         keyboard_layout_file: Option<PathBuf>,
         disassembly_listing_file: Option<PathBuf>,
         //rom_manager: RomManager,
     ) -> Machine {
+        
+        // TODO: Many of the operations in this constructor can fail. 
+        //       We should probably move much of this to an initialize() method that can return a Result<Machine, Error>
+        
         // Create PIT output log file if specified
-        let pit_output_file_option = None;
+        //let pit_output_file_option = None;
         /*
         if let Some(filename) = &config.emulator.pit_output_file {
             match File::create(filename) {
@@ -579,6 +591,7 @@ impl Machine {
         cpu.bus_mut().set_options(core_config.get_title_hacks());
 
         // Set up Ringbuffer for PIT channel #2 sampling for PC speaker
+        /*        
         let speaker_buf_size = ((pit::PIT_MHZ * 1_000_000.0) * (BUFFER_MS as f64 / 1000.0)) as usize;
         let speaker_buf: RingBuffer<u8> = RingBuffer::new(speaker_buf_size);
         let (speaker_buf_producer, speaker_buf_consumer) = speaker_buf.split();
@@ -607,6 +620,8 @@ impl Machine {
             sample_rate,
             pit_ticks_per_sample
         );
+        
+         */
 
         // Create the video trace file, if specified
         //let video_trace = TraceLogger::None;
@@ -616,14 +631,24 @@ impl Machine {
         }
         */
 
-        let have_audio = core_config.get_audio_enabled() && sound_player.is_some();
+        let have_audio = core_config.get_audio_enabled() && sound_config.enabled;
 
         // Install devices
-        if let Err(err) = cpu
+        
+        let install_result = cpu
             .bus_mut()
-            .install_devices(&machine_desc, &machine_config, have_audio, core_config.get_terminal_port())
-        {
-            log::error!("Failed to install devices: {}", err);
+            .install_devices(&machine_desc, &machine_config, have_audio, core_config.get_terminal_port());
+        
+        let sound_sources ; 
+        match install_result {
+            Ok(result) => {
+                log::debug!("Installed devices, including {} sound sources.", result.sound_sources.len());
+                sound_sources = result.sound_sources;
+            }
+            Err(err) => {
+                log::error!("Failed to install devices: {}", err);
+                // TODO: Handle this
+            }
         }
 
         // Load keyboard translation file if specified.
@@ -687,12 +712,11 @@ impl Machine {
             machine_config,
             options: MachineOptions::default(),
             state: MachineState::On,
-            sound_player,
+            sound_config,
             rom_manifest,
             load_bios: !core_config.get_machine_noroms(),
             cpu,
-            speaker_buf_producer,
-            pit_data,
+            //pit_data,
             debug_snd_file: None,
             kb_buf: VecDeque::new(),
             error: false,
@@ -977,11 +1001,12 @@ impl Machine {
         pit.get_display_state(true)
     }
 
+    /*    
     pub fn get_pit_buf(&self) -> Vec<u8> {
         let (a, b) = self.pit_data.buffer_consumer.as_slices();
 
         a.iter().cloned().chain(b.iter().cloned()).collect()
-    }
+    }*/
     
     /// Return the serial port's state as a Vec of SerialPortState types. We may compile this 
     /// vector from a number of sources if multiple devices contain serial ports. For now, we only
@@ -1470,7 +1495,7 @@ impl Machine {
                 match event {
                     ServiceEvent::TriggerPITLogging => {
                         log::debug!("PIT logging has been triggered.");
-                        self.pit_data.logging_triggered = true;
+                        //self.pit_data.logging_triggered = true;
                     }
                 }
             }
@@ -1517,7 +1542,6 @@ impl Machine {
             sys_ticks,
             kb_event_opt,
             &mut self.kb_buf,
-            &mut self.speaker_buf_producer,
         );
 
         if let Some(event) = device_event {
@@ -1550,9 +1574,10 @@ impl Machine {
         }
 
         // Sample the PIT channel #2 for sound
+        /*        
         while self.speaker_buf_producer.len() >= self.pit_data.next_sample_size {
             self.pit_buf_to_sound_buf();
-        }
+        }*/
 
         // Query interrupt line after device processing.
         let intr = self.cpu.bus_mut().pic_mut().as_ref().unwrap().query_interrupt_line();
@@ -1629,6 +1654,7 @@ impl Machine {
         device_events
     }
 
+    /*    
     pub fn play_sound_buffer(&self) {
         if let Some(sound_player) = &self.sound_player {
             sound_player.play();
@@ -1690,7 +1716,7 @@ impl Machine {
 
         self.pit_data.next_sample_size = next_sample_f as usize;
         self.pit_data.fractional_part = next_sample_f.fract();
-    }
+    }*/
 
     pub fn for_each_videocard<F>(&mut self, f: F)
     where

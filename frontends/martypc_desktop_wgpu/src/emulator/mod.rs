@@ -402,6 +402,6 @@ impl Emulator {
     }
 
     pub fn start(&mut self) {
-        self.machine.play_sound_buffer();
+        //self.machine.play_sound_buffer();
     }
 }
