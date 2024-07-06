@@ -614,7 +614,7 @@ pub fn run() {
     );
 
     let mut sound_config = Default::default();
-    let sound_player = if config.emulator.audio.enabled {
+    let mut sound_player = if config.emulator.audio.enabled {
         let mut sound_player = SoundInterface::new(config.emulator.audio.enabled);
 
         match sound_player.open_device() {
@@ -718,6 +718,19 @@ pub fn run() {
         std::process::exit(1);
     });
 
+    let sound_sources = machine.get_sound_sources();
+
+    if let Some(si) = sound_player.as_mut() {
+        log::debug!("Machine configuration reported {} sound sources", sound_sources.len());
+        for source in sound_sources.iter() {
+            log::debug!("Adding sound source: {}", source.name);
+            if let Err(e) = si.add_source(source) {
+                log::error!("Failed to add sound source: {:?}", e);
+                std::process::exit(1);
+            }
+        }
+    }
+
     // Get a list of video devices from machine.
     let cardlist = machine.bus().enumerate_videocards();
 
@@ -799,6 +812,7 @@ pub fn run() {
             debug_keyboard: false,
         },
         hkm: hotkey_manager,
+        si: sound_player,
     };
 
     // Resize video cards

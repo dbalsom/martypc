@@ -471,7 +471,7 @@ pub fn run_gentests(config: &ConfigFileParams) {
                 }
 
                 // Finalize instruction.
-                _ = cpu.step_finish();
+                _ = cpu.step_finish(None);
 
                 let validator = cpu.get_validator().as_ref().unwrap();
 

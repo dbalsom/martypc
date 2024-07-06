@@ -240,7 +240,7 @@ impl Intel808x {
                     }
                 }
                 // POP
-                0x8F => {
+                /*0x8F => {
                     if (modrm_byte >> 3) & 0x07 != 0 {
                         // reg != 0, invalid.
                         continue;
@@ -250,7 +250,7 @@ impl Intel808x {
                         continue;
                     }
                     //log::debug!("Picked valid modrm for 0x8F: {:02X}", modrm_byte);
-                }
+                }*/
                 _ => {}
             }
 
@@ -351,7 +351,8 @@ impl Intel808x {
 
             // Filter out invalid forms of some instructions that cannot
             // reasonably be validated.
-            match opcode {
+
+            /*            match opcode {
                 // FF group opcode
                 0xFF => {
                     match modrm_byte & 0b00_111_000 {
@@ -373,7 +374,7 @@ impl Intel808x {
                     }
                 }
                 _ => {}
-            }
+            }*/
 
             modrm_valid = true;
         }
