@@ -37,7 +37,7 @@ crossbeam-channel.workspace = true
 
 [dependencies.opl3-rs]
 git = "https://github.com/dbalsom/opl3-rs.git"
-branch = "test1"
+branch = "main"
 
 [dev-dependencies]
 criterion = "0.5"
