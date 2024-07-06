@@ -32,6 +32,7 @@
 
 use log;
 
+use crossbeam_channel::Sender;
 use std::collections::{BTreeMap, VecDeque};
 
 use modular_bitfield::prelude::*;
@@ -60,6 +61,10 @@ const PIT_BCD_MODE_MASK: u8       = 0b0000_0001;
 pub const PIT_MHZ: f64 = 1.193182;
 pub const PIT_TICK_US: f64 = 1.0 / PIT_MHZ;
 //pub const PIT_DIVISOR: f64 = 0.25;
+
+// 1.1931818181818Mhz / 25 = 47.727Khz
+pub const SPEAKER_SAMPLE_RATIO: u32 = 25;
+pub const SPEAKER_SAMPLE_RATE: u32 = 47727;
 
 // Minimum number of system ticks that must elapse between a counter write and the falling edge
 // of the PIT input clock that would latch the value.
@@ -187,6 +192,13 @@ pub struct Channel {
     defer_reload_flag: bool,
 }
 
+pub struct PitSpeaker {
+    pub enabled: bool,
+    pub sample_accum: f32,
+    pub sample_ct: u32,
+    pub sender: Option<Sender<f32>>,
+}
+
 #[allow(dead_code)]
 pub struct ProgrammableIntervalTimer {
     ptype: PitType,
@@ -198,12 +210,13 @@ pub struct ProgrammableIntervalTimer {
     cycle_accumulator: f64,
     channels: Vec<Channel>,
     timewarp: DeviceRunTimeUnit,
-    speaker_buf: VecDeque<u8>,
+    speaker_buf: VecDeque<f32>,
     defer_reload_flag: bool,
     chan1_source: Option<usize>,
     last_output_state: [bool; 3],
-    do_speaker: bool,
+    speaker: PitSpeaker,
 }
+
 pub type Pit = ProgrammableIntervalTimer;
 
 #[derive(Default, Clone)]
@@ -836,7 +849,7 @@ impl Channel {
 }
 
 impl ProgrammableIntervalTimer {
-    pub fn new(ptype: PitType, _crystal: f64, clock_divisor: u32, do_speaker: bool) -> Self {
+    pub fn new(ptype: PitType, _crystal: f64, clock_divisor: u32, speaker_sender: Option<Sender<f32>>) -> Self {
         /*
             The Intel documentation says:
             "Prior to initialization, the mode, count, and output of all counters is undefined."
@@ -862,7 +875,12 @@ impl ProgrammableIntervalTimer {
             defer_reload_flag: false,
             chan1_source: None,
             last_output_state: [false; 3],
-            do_speaker,
+            speaker: PitSpeaker {
+                enabled: speaker_sender.is_some(),
+                sample_accum: 0.0,
+                sample_ct: 0,
+                sender: speaker_sender,
+            },
         }
     }
 
@@ -1067,12 +1085,7 @@ impl ProgrammableIntervalTimer {
         }
     }*/
 
-    pub fn run(
-        &mut self,
-        bus: &mut BusInterface,
-        buffer_producer: &mut ringbuf::Producer<u8>,
-        run_unit: DeviceRunTimeUnit,
-    ) {
+    pub fn run(&mut self, bus: &mut BusInterface, run_unit: DeviceRunTimeUnit) {
         let do_ticks = self.ticks_from_time(run_unit, self.timewarp);
 
         //log::trace!("doing {} ticks, run_unit: {:?} timewarp: {:?}", do_ticks, run_unit, self.timewarp);
@@ -1082,7 +1095,7 @@ impl ProgrammableIntervalTimer {
         self.timewarp = DeviceRunTimeUnit::SystemTicks(0);
 
         for _ in 0..do_ticks {
-            self.tick(bus, Some(buffer_producer));
+            self.tick(bus, None);
         }
     }
 
@@ -1127,7 +1140,7 @@ impl ProgrammableIntervalTimer {
         self.channels[channel].is_dirty()
     }
 
-    pub fn tick(&mut self, bus: &mut BusInterface, buffer_producer: Option<&mut ringbuf::Producer<u8>>) {
+    pub fn tick(&mut self, bus: &mut BusInterface, mut buffer_producer: Option<&mut ringbuf::Producer<u8>>) {
         self.pit_cycles += 1;
 
         // Get timer channel 2 state from ppi.
@@ -1162,7 +1175,23 @@ impl ProgrammableIntervalTimer {
 
         //log::trace!("tick(): cycle: {} channel 1 count: {}", self.pit_cycles * 4 + 7, *self.channels[1].counting_element);
 
-        if self.do_speaker {
+        if let Some(sender) = &self.speaker.sender {
+            // Process any samples that have accumulated in the buffer between calls to run().
+            for s in self.speaker_buf.pop_front() {
+                self.process_sample(s);
+            }
+
+            let speaker_sample = if *self.channels[2].output && speaker_data {
+                1.0
+            }
+            else {
+                0.0
+            };
+
+            self.process_sample(speaker_sample);
+        }
+
+        /*        if self.do_speaker {
             let mut speaker_sample = *self.channels[2].output && speaker_data;
 
             if let ChannelMode::SquareWaveGenerator = *self.channels[2].mode {
@@ -1186,6 +1215,19 @@ impl ProgrammableIntervalTimer {
                 // Otherwise, put the sample in the buffer.
                 self.speaker_buf.push_back(speaker_sample as u8);
             }
+        }*/
+    }
+
+    #[inline]
+    pub fn process_sample(&mut self, sample: f32) {
+        self.speaker.sample_accum += sample;
+        self.speaker.sample_ct += 1;
+
+        if self.speaker.sample_ct == SPEAKER_SAMPLE_RATIO {
+            let sample = self.speaker.sample_accum / SPEAKER_SAMPLE_RATIO as f32;
+            self.speaker.sample_accum = 0.0;
+            self.speaker.sample_ct = 0;
+            let _ = self.speaker.sender.as_mut().unwrap().send(sample);
         }
     }
 

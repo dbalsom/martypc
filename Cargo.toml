@@ -40,6 +40,7 @@ martypc_desktop_wgpu = { path = "frontends/martypc_desktop_wgpu" }
 [workspace.dependencies]
 winit = "0.29.4"
 wgpu = "0.19.4"
+rodio = "0.18"
 bytemuck = "1.14"
 raw-window-handle = "0.5.0"
 thiserror = "1.0.37"
@@ -53,6 +54,7 @@ toml = "0.8"
 fxhash = "0.2.1"
 enum_dispatch = "0.3.13"
 indexmap = "2.2.6"
+crossbeam-channel = "0.5.13"
 
 egui = "0.27.2"
 egui-wgpu = "0.27.2"
@@ -69,7 +71,6 @@ version = "0.27.2"
 #branch = "0_24_2_winit_0_29_15"
 features = ["image"]
 
-
 [workspace.dependencies.image]
 version = "0.24"
 default-features = false
@@ -78,7 +79,6 @@ features = ["png"]
 [workspace.dependencies.pixels]
 git = "https://github.com/dbalsom/pixels_martypc.git"
 branch = "marty_update_deps3"
-
 
 #[workspace.dependencies.egui]
 #git = "https://github.com/dbalsom/egui_martypc.git"

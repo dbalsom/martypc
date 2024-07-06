@@ -42,10 +42,12 @@ mod event_loop;
 mod input;
 mod run_benchmark;
 mod run_headless;
+mod sound_player;
 
 #[cfg(feature = "arduino_validator")]
 mod run_fuzzer;
 
+use rodio::cpal::traits::HostTrait;
 use std::{
     cell::RefCell,
     collections::HashMap,
@@ -69,7 +71,6 @@ use config_toml_bpaf::TestMode;
 use marty_core::{
     devices::keyboard::KeyboardModifiers,
     machine::{ExecutionControl, ExecutionState, MachineBuilder},
-    sound::SoundPlayer,
 };
 
 use display_manager_wgpu::{DisplayBackend, DisplayManager, DisplayManagerGuiOptions, WgpuDisplayManagerBuilder};
@@ -89,6 +90,7 @@ use crate::{
     emulator::{EmuFlags, Emulator},
     event_loop::handle_event,
     input::HotkeyManager,
+    sound_player::SoundInterface,
 };
 
 pub const FPS_TARGET: f64 = 60.0;
@@ -611,7 +613,39 @@ pub fn run() {
         config.emulator.input.reverse_mouse_buttons
     );
 
+    let mut sound_config = Default::default();
+    let mut sound_player = if config.emulator.audio.enabled {
+        let mut sound_player = SoundInterface::new(config.emulator.audio.enabled);
+
+        match sound_player.open_device() {
+            Ok(_) => {
+                log::info!("Opened audio device: {}", sound_player.device_name());
+            }
+            Err(e) => {
+                eprintln!("Failed to open audio device: {:?}", e);
+                std::process::exit(1);
+            }
+        }
+
+        match sound_player.open_stream() {
+            Ok(_) => {
+                log::info!("Opened audio stream.");
+            }
+            Err(e) => {
+                eprintln!("Failed to open audio stream: {:?}", e);
+                std::process::exit(1);
+            }
+        }
+
+        sound_config = sound_player.config();
+        Some(sound_player)
+    }
+    else {
+        None
+    };
+
     // Init sound
+    /*
     let sound_player_opt = {
         if config.emulator.audio.enabled {
             // The cpal sound library uses generics to initialize depending on the SampleFormat type.
@@ -627,7 +661,7 @@ pub fn run() {
         else {
             None
         }
-    };
+    };*/
 
     let machine_config = machine_config_file.to_machine_config();
 
@@ -675,7 +709,7 @@ pub fn run() {
         .with_roms(rom_manifest)
         .with_trace_mode(config.machine.cpu.trace_mode.unwrap_or_default())
         .with_trace_log(trace_file_path)
-        .with_sound_player(sound_player_opt)
+        .with_sound_config(sound_config)
         .with_keyboard_layout(kb_layout_file_path)
         .with_listing_file(disassembly_file_path);
 
@@ -683,6 +717,19 @@ pub fn run() {
         log::error!("Failed to build machine: {:?}", e);
         std::process::exit(1);
     });
+
+    let sound_sources = machine.get_sound_sources();
+
+    if let Some(si) = sound_player.as_mut() {
+        log::debug!("Machine configuration reported {} sound sources", sound_sources.len());
+        for source in sound_sources.iter() {
+            log::debug!("Adding sound source: {}", source.name);
+            if let Err(e) = si.add_source(source) {
+                log::error!("Failed to add sound source: {:?}", e);
+                std::process::exit(1);
+            }
+        }
+    }
 
     // Get a list of video devices from machine.
     let cardlist = machine.bus().enumerate_videocards();
@@ -765,6 +812,7 @@ pub fn run() {
             debug_keyboard: false,
         },
         hkm: hotkey_manager,
+        si: sound_player,
     };
 
     // Resize video cards

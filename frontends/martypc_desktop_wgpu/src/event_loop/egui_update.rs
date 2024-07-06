@@ -161,8 +161,8 @@ pub fn update_egui(emu: &mut Emulator, tm: &TimestepManager, elwt: &EventLoopWin
         let pit_state = emu.machine.pit_state();
         emu.gui.update_pit_state(&pit_state);
 
-        let pit_data = emu.machine.get_pit_buf();
-        emu.gui.pit_viewer.update_channel_data(2, &pit_data);
+        //let pit_data = emu.machine.get_pit_buf();
+        //emu.gui.pit_viewer.update_channel_data(2, &pit_data);
     }
 
     // -- Update Serial port viewer window

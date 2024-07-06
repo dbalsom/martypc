@@ -24,7 +24,7 @@ marty_pixels_scaler = { path = "../../lib/frontend/marty_scaler_wgpu" }
 
 bytemuck.workspace = true
 colored = "2.0.4"
-cpal = "0.13"
+rodio.workspace = true
 
 log = "0.4"
 env_logger = "0.10"
@@ -43,6 +43,7 @@ serialport.workspace = true
 winit.workspace = true
 anyhow.workspace = true
 indexmap.workspace = true
+crossbeam-channel.workspace = true
 
 egui.workspace = true
 egui-wgpu.workspace = true

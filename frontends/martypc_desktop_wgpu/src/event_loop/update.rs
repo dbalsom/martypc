@@ -215,6 +215,11 @@ pub fn process_update(emu: &mut Emulator, tm: &mut TimestepManager, elwt: &Event
             // Update egui data
             update_egui(emuc, tmc, elwt);
 
+            // Run sound
+            if let Some(sound) = &mut emuc.si {
+                sound.run();
+            }
+
             // Render the current frame for all window display targets.
             render_frame(emuc);
 

@@ -14,7 +14,6 @@ marty_common = { path = "../lib/common" }
 anyhow = "1.0.58"
 arraydeque = "0.4.5"
 bytemuck = "1.13.1"
-cpal = "0.13.5"
 const_format = "0.2"
 lazy_static = "1.4.0"
 log = "0.4"
@@ -26,13 +25,19 @@ ringbuf = "0.2.8"
 serde = { version = "1.0.107", features = ["derive"] }
 serde_derive = "1.0.107"
 serde_with = "2.1.0"
-serialport = { workspace = true }
 strum = "0.26"
 strum_macros = "0.26"
 toml = "0.5.10"
 uuid = { version = "1.1.2", features = ["v4"] }
+serialport.workspace = true
+rodio.workspace = true
 fxhash.workspace = true
 enum_dispatch.workspace = true
+crossbeam-channel.workspace = true
+
+[dependencies.opl3-rs]
+git = "https://github.com/dbalsom/opl3-rs.git"
+branch = "main"
 
 [dev-dependencies]
 criterion = "0.5"

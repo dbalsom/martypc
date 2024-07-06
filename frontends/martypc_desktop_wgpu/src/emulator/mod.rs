@@ -33,7 +33,7 @@ use crate::JoystickData;
 use display_manager_wgpu::DisplayManager;
 use std::{cell::RefCell, ffi::OsString, rc::Rc};
 
-use crate::{input::HotkeyManager, Counter, KeyboardData, MouseData};
+use crate::{input::HotkeyManager, sound_player::SoundInterface, Counter, KeyboardData, MouseData};
 use anyhow::Error;
 use config_toml_bpaf::ConfigFileParams;
 use display_manager_wgpu::WgpuDisplayManager;
@@ -84,6 +84,7 @@ pub struct Emulator {
     pub flags: EmuFlags,
     pub perf: PerfSnapshot,
     pub hkm: HotkeyManager,
+    pub si: Option<SoundInterface>,
 }
 
 impl Emulator {
@@ -390,6 +391,6 @@ impl Emulator {
     }
 
     pub fn start(&mut self) {
-        self.machine.play_sound_buffer();
+        //self.machine.play_sound_buffer();
     }
 }

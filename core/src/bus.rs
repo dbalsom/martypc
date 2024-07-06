@@ -36,7 +36,9 @@
 
 #![allow(dead_code)]
 
+use crate::devices::pit::SPEAKER_SAMPLE_RATE;
 use anyhow::Error;
+use crossbeam_channel::unbounded;
 use fxhash::FxHashMap;
 use ringbuf::Producer;
 use std::{collections::VecDeque, fmt, io::Write, path::Path};
@@ -44,13 +46,9 @@ use std::{collections::VecDeque, fmt, io::Write, path::Path};
 use crate::{
     bytequeue::*,
     cpu_808x::*,
-    device_traits::videocard::{
-        ClockingMode,
-        VideoCard,
-        VideoCardDispatch,
-        VideoCardId,
-        VideoCardInterface,
-        VideoType,
+    device_traits::{
+        sounddevice::SoundDevice,
+        videocard::{ClockingMode, VideoCard, VideoCardDispatch, VideoCardId, VideoCardInterface, VideoType},
     },
     devices::{
         cga::{self, CGACard},
@@ -83,14 +81,17 @@ use crate::{
     device_traits::videocard::VideoCardSubType,
     devices::{
         a0::A0Register,
+        adlib::AdLibCard,
         cartridge_slots::CartridgeSlot,
         game_port::GamePort,
         lotech_ems::LotechEmsCard,
         lpt_card::ParallelController,
+        pit,
         tga,
         tga::TGACard,
     },
-    machine_types::{EmsType, EmsType::LoTech2MB, FdcType, MachineType},
+    machine_types::{EmsType, EmsType::LoTech2MB, FdcType, MachineType, SoundType},
+    sound::{SoundOutputConfig, SoundSourceDescriptor},
     syntax_token::SyntaxFormatType,
 };
 
@@ -179,6 +180,17 @@ impl DeviceRunContext {
     #[inline]
     pub fn add_event(&mut self, event: DeviceEvent) {
         self.events.push_back(event);
+    }
+}
+
+#[derive(Default)]
+pub struct InstalledDevicesResult {
+    pub sound_sources: Vec<SoundSourceDescriptor>,
+}
+
+impl InstalledDevicesResult {
+    pub fn new() -> Self {
+        Self::default()
     }
 }
 
@@ -283,6 +295,7 @@ pub enum IoDeviceType {
     Ems,
     GamePort,
     Video(VideoCardId),
+    Sound,
 }
 
 pub enum IoDeviceDispatch {
@@ -390,6 +403,7 @@ pub struct BusInterface {
     a0_data: u8,
     nmi_latch: bool,
     pit: Option<Pit>,
+    speaker_src: Option<usize>,
     dma_counter: u16,
     dma1: Option<DMAController>,
     dma2: Option<DMAController>,
@@ -403,6 +417,7 @@ pub struct BusInterface {
     ems: Option<LotechEmsCard>,
     cart_slot: Option<CartridgeSlot>,
     game_port: Option<GamePort>,
+    adlib: Option<AdLibCard>,
 
     videocards:    FxHashMap<VideoCardId, VideoCardDispatch>,
     videocard_ids: Vec<VideoCardId>,
@@ -560,6 +575,7 @@ impl Default for BusInterface {
             a0_data: 0,
             nmi_latch: false,
             pit: None,
+            speaker_src: None,
             dma_counter: 0,
             dma1: None,
             dma2: None,
@@ -573,6 +589,7 @@ impl Default for BusInterface {
             ems: None,
             cart_slot: None,
             game_port: None,
+            adlib: None,
             videocards: FxHashMap::default(),
             videocard_ids: Vec::new(),
 
@@ -1709,9 +1726,10 @@ impl BusInterface {
         &mut self,
         machine_desc: &MachineDescriptor,
         machine_config: &MachineConfiguration,
-        sound_enabled: bool,
+        sound_config: &SoundOutputConfig,
         terminal_port: Option<u16>,
-    ) -> Result<(), Error> {
+    ) -> Result<InstalledDevicesResult, Error> {
+        let mut installed_devices = InstalledDevicesResult::new();
         let video_frame_debug = false;
         let clock_mode = ClockingMode::Default;
 
@@ -1771,6 +1789,22 @@ impl BusInterface {
             add_io_device!(self, self.ppi.as_mut().unwrap(), IoDeviceType::Ppi);
         }
 
+        // Create the crossbeam channel for the PIT to send sound samples to the sound output thread.
+        let pit_sample_sender = if machine_config.speaker {
+            // Add this sound source.
+            let (s, r) = unbounded();
+            installed_devices
+                .sound_sources
+                .push(SoundSourceDescriptor::new("PC Speaker", SPEAKER_SAMPLE_RATE, 1, r));
+
+            // Speaker will always be first sound source, if enabled.
+            self.speaker_src = Some(0);
+            Some(s)
+        }
+        else {
+            None
+        };
+
         // Create the PIT. One PIT will always exist, but it may be an 8253 or 8254.
         // Pick the device type from MachineDesc.
         // Provide the timer with its base crystal and divisor.
@@ -1783,7 +1817,7 @@ impl BusInterface {
                 machine_desc.system_crystal
             },
             machine_desc.timer_divisor,
-            machine_config.speaker && sound_enabled,
+            pit_sample_sender,
         );
 
         // Add PIT ports to io_map
@@ -1926,6 +1960,27 @@ impl BusInterface {
             self.game_port = Some(game_port);
         }
 
+        // Create sound cards
+        for (i, card) in machine_config.sound.iter().enumerate() {
+            if let SoundType::AdLib = card.sound_type {
+                // Create an AdLib card.
+
+                let (s, r) = unbounded();
+                installed_devices.sound_sources.push(SoundSourceDescriptor::new(
+                    "AdLib Music Synthesizer",
+                    sound_config.sample_rate,
+                    2,
+                    r,
+                ));
+
+                let mut adlib = AdLibCard::new(card.io_base, 48000, s);
+                println!(">>> TESTING ADLIB <<<");
+
+                add_io_device!(self, adlib, IoDeviceType::Sound);
+                self.adlib = Some(adlib);
+            }
+        }
+
         // Create video cards
         for (i, card) in machine_config.video.iter().enumerate() {
             let video_dispatch;
@@ -1990,7 +2045,7 @@ impl BusInterface {
         }
 
         self.machine_desc = Some(machine_desc.clone());
-        Ok(())
+        Ok(installed_devices)
     }
 
     /// Return whether NMI is enabled.
@@ -2031,7 +2086,6 @@ impl BusInterface {
         sys_ticks: u32,
         kb_event_opt: Option<KeybufferEntry>,
         kb_buf: &mut VecDeque<KeybufferEntry>,
-        speaker_buf_producer: &mut Producer<u8>,
     ) -> Option<DeviceEvent> {
         let mut event = None;
 
@@ -2137,16 +2191,12 @@ impl BusInterface {
         // be an integer number of PIT ticks per system ticks. Therefore, the PIT can take either
         // system ticks (PC/XT) or microseconds as an update parameter.
         if let Some(_crystal) = self.machine_desc.unwrap().timer_crystal {
-            pit.run(self, speaker_buf_producer, DeviceRunTimeUnit::Microseconds(us));
+            pit.run(self, DeviceRunTimeUnit::Microseconds(us));
         }
         else {
             // We can only adjust phase of PIT if we are using system ticks, and that's okay. It's only really useful
             // on an 5150/5160.
-            pit.run(
-                self,
-                speaker_buf_producer,
-                DeviceRunTimeUnit::SystemTicks(sys_ticks + self.pit_ticks_advance),
-            );
+            pit.run(self, DeviceRunTimeUnit::SystemTicks(sys_ticks + self.pit_ticks_advance));
             self.pit_ticks_advance = 0;
         }
 
@@ -2208,6 +2258,11 @@ impl BusInterface {
         // Run the game port {
         if let Some(game_port) = &mut self.game_port {
             game_port.run(us);
+        }
+
+        // Run the adlib card {
+        if let Some(adlib) = &mut self.adlib {
+            adlib.run(us);
         }
 
         let mut do_area5150_hack = false;
@@ -2524,6 +2579,11 @@ impl BusInterface {
                         }
                     }
                 }
+                IoDeviceType::Sound => {
+                    if let Some(adlib) = &mut self.adlib {
+                        byte = Some(adlib.read_u8(port, nul_delta));
+                    }
+                }
                 _ => {}
             }
         }
@@ -2687,6 +2747,11 @@ impl BusInterface {
                             }
                             VideoCardDispatch::None => {}
                         }
+                    }
+                }
+                IoDeviceType::Sound => {
+                    if let Some(adlib) = &mut self.adlib {
+                        IoDevice::write_u8(adlib, port, data, None, nul_delta);
                     }
                 }
                 _ => {}
