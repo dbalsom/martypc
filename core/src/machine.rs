@@ -77,7 +77,7 @@ use crate::devices::serial::SerialPortDisplayState;
 use crate::machine_types::OnHaltBehavior;
 
 use ringbuf::{Consumer, Producer, RingBuffer};
-use crate::sound::SoundOutput;
+use crate::sound::{SoundOutput, SoundSourceDescriptor};
 
 
 pub const STEP_OVER_TIMEOUT: u32 = 320000;
@@ -468,6 +468,7 @@ pub struct Machine {
     load_bios: bool,
     cpu: CpuDispatch,
     //pit_data: PitData,
+    sound_sources: Vec<SoundSourceDescriptor>,
     debug_snd_file: Option<File>,
     kb_buf: VecDeque<KeybufferEntry>,
     error: bool,
@@ -637,9 +638,9 @@ impl Machine {
         
         let install_result = cpu
             .bus_mut()
-            .install_devices(&machine_desc, &machine_config, have_audio, core_config.get_terminal_port());
+            .install_devices(&machine_desc, &machine_config, &sound_config, core_config.get_terminal_port());
         
-        let sound_sources ; 
+        let mut sound_sources = Vec::new(); 
         match install_result {
             Ok(result) => {
                 log::debug!("Installed devices, including {} sound sources.", result.sound_sources.len());
@@ -717,6 +718,7 @@ impl Machine {
             load_bios: !core_config.get_machine_noroms(),
             cpu,
             //pit_data,
+            sound_sources,
             debug_snd_file: None,
             kb_buf: VecDeque::new(),
             error: false,
@@ -739,6 +741,10 @@ impl Machine {
         }
     }
 
+    pub fn get_sound_sources(&self) -> &Vec<SoundSourceDescriptor> {
+        &self.sound_sources
+    }
+    
     pub fn set_option(&mut self, opt: MachineOption) {
         match opt {
             MachineOption::RecordListing(state) => {

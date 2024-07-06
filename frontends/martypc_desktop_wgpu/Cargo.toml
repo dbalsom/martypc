@@ -43,6 +43,7 @@ serialport.workspace = true
 winit.workspace = true
 anyhow.workspace = true
 indexmap.workspace = true
+crossbeam-channel.workspace = true
 
 egui.workspace = true
 egui-wgpu.workspace = true

@@ -45,6 +45,7 @@ use marty_core::{
         MemoryConfig,
         SerialControllerConfig,
         SerialMouseConfig,
+        SoundDeviceConfig,
         VideoCardConfig,
     },
     machine_types::{HardDiskControllerType, MachineType},
@@ -85,6 +86,7 @@ pub struct MachineConfigFileEntry {
     hdc: Option<HardDriveControllerConfig>,
     serial: Option<Vec<SerialControllerConfig>>,
     video: Option<Vec<VideoCardConfig>>,
+    sound: Option<Vec<SoundDeviceConfig>>,
     keyboard: Option<KeyboardConfig>,
     serial_mouse: Option<SerialMouseConfig>,
     game_port: Option<GamePortConfig>,
@@ -101,6 +103,7 @@ pub struct MachineConfigFileOverlayEntry {
     hdc: Option<HardDriveControllerConfig>,
     serial: Option<Vec<SerialControllerConfig>>,
     video: Option<Vec<VideoCardConfig>>,
+    sound: Option<Vec<SoundDeviceConfig>>,
     keyboard: Option<KeyboardConfig>,
     serial_mouse: Option<SerialMouseConfig>,
     game_port: Option<GamePortConfig>,
@@ -384,6 +387,10 @@ impl MachineConfigFileEntry {
             log::debug!("Applying video overlay: {:?}", video);
             self.video = Some(video);
         }
+        if let Some(sound) = overlay.sound {
+            log::debug!("Applying sound overlay: {:?}", sound);
+            self.sound = Some(sound);
+        }
         if let Some(keyboard) = overlay.keyboard {
             log::debug!("Applying keyboard overlay: {:?}", keyboard);
             self.keyboard = Some(keyboard);
@@ -410,6 +417,7 @@ impl MachineConfigFileEntry {
             hdc: self.hdc.clone(),
             serial: self.serial.clone().unwrap_or_default(),
             video: self.video.clone().unwrap_or_default(),
+            sound: self.sound.clone().unwrap_or_default(),
             keyboard: self.keyboard.clone(),
             serial_mouse: self.serial_mouse.clone(),
             game_port: self.game_port.clone(),

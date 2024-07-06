@@ -415,7 +415,7 @@ pub fn run_fuzzer(config: &ConfigFileParams) {
                 }
             }
 
-            match cpu.step_finish() {
+            match cpu.step_finish(None) {
                 Ok(_) => {
                     //log::trace!("Instruction reported {} cycles", cycles);
 

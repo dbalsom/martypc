@@ -63,6 +63,24 @@ impl FromStr for MachineType {
     }
 }
 
+#[derive(Copy, Clone, Debug, Deserialize, Hash, Eq, PartialEq)]
+pub enum SoundType {
+    AdLib,
+}
+
+impl FromStr for SoundType {
+    type Err = String;
+    fn from_str(s: &str) -> Result<Self, String>
+    where
+        Self: Sized,
+    {
+        match s.to_lowercase().as_str() {
+            "adlib" => Ok(SoundType::AdLib),
+            _ => Err("Bad value for SoundType".to_string()),
+        }
+    }
+}
+
 #[derive(Copy, Clone, Debug, Default, Deserialize)]
 pub enum OnHaltBehavior {
     #[default]

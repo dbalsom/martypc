@@ -48,7 +48,7 @@ use crate::{
     tracelogger::TraceLogger,
 };
 
-use crate::videocard::*;
+use crate::device_traits::videocard::*;
 
 mod attribute_regs;
 mod color_regs;
