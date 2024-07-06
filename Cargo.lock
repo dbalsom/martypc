@@ -3139,7 +3139,7 @@ checksum = "0ab1bc2a289d34bd04a330323ac98a1b4bc82c9d9fcb1e66b63caa84da26b575"
 [[package]]
 name = "opl3-rs"
 version = "0.2.0"
-source = "git+https://github.com/dbalsom/opl3-rs.git?branch=test1#3ce0ae97a82b3184e741404141c2e02b3693a117"
+source = "git+https://github.com/dbalsom/opl3-rs.git?branch=main#f7536ef8e71cf4d582f8e662d418cacc9b8da702"
 dependencies = [
  "bindgen",
  "cc",
@@ -4169,9 +4169,9 @@ dependencies = [
 
 [[package]]
 name = "tinyvec"
-version = "1.6.1"
+version = "1.7.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "c55115c6fbe2d2bef26eb09ad74bde02d8255476fc0c7b515ef09fbb35742d82"
+checksum = "ce6b6a2fb3a985e99cebfaefa9faa3024743da73304ca1c683a36429613d3d22"
 dependencies = [
  "tinyvec_macros",
 ]

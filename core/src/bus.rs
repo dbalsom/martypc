@@ -36,6 +36,7 @@
 
 #![allow(dead_code)]
 
+use crate::devices::pit::SPEAKER_SAMPLE_RATE;
 use anyhow::Error;
 use crossbeam_channel::unbounded;
 use fxhash::FxHashMap;
@@ -85,6 +86,7 @@ use crate::{
         game_port::GamePort,
         lotech_ems::LotechEmsCard,
         lpt_card::ParallelController,
+        pit,
         tga,
         tga::TGACard,
     },
@@ -1787,6 +1789,22 @@ impl BusInterface {
             add_io_device!(self, self.ppi.as_mut().unwrap(), IoDeviceType::Ppi);
         }
 
+        // Create the crossbeam channel for the PIT to send sound samples to the sound output thread.
+        let pit_sample_sender = if machine_config.speaker {
+            // Add this sound source.
+            let (s, r) = unbounded();
+            installed_devices
+                .sound_sources
+                .push(SoundSourceDescriptor::new("PC Speaker", SPEAKER_SAMPLE_RATE, 1, r));
+
+            // Speaker will always be first sound source, if enabled.
+            self.speaker_src = Some(0);
+            Some(s)
+        }
+        else {
+            None
+        };
+
         // Create the PIT. One PIT will always exist, but it may be an 8253 or 8254.
         // Pick the device type from MachineDesc.
         // Provide the timer with its base crystal and divisor.
@@ -1799,23 +1817,8 @@ impl BusInterface {
                 machine_desc.system_crystal
             },
             machine_desc.timer_divisor,
-            machine_config.speaker,
+            pit_sample_sender,
         );
-
-        let pit_sample_sender = if machine_config.speaker {
-            // Add this sound source.
-            let (s, r) = unbounded();
-            installed_devices
-                .sound_sources
-                .push(SoundSourceDescriptor::new("PC Speaker", 1_193_181, 1, r));
-
-            // Speaker will always be first sound source, if enabled.
-            self.speaker_src = Some(0);
-            Some(s)
-        }
-        else {
-            None
-        };
 
         // Add PIT ports to io_map
         add_io_device!(self, pit, IoDeviceType::Pit);
@@ -1972,7 +1975,6 @@ impl BusInterface {
 
                 let mut adlib = AdLibCard::new(card.io_base, 48000, s);
                 println!(">>> TESTING ADLIB <<<");
-                adlib.test();
 
                 add_io_device!(self, adlib, IoDeviceType::Sound);
                 self.adlib = Some(adlib);
@@ -2189,16 +2191,12 @@ impl BusInterface {
         // be an integer number of PIT ticks per system ticks. Therefore, the PIT can take either
         // system ticks (PC/XT) or microseconds as an update parameter.
         if let Some(_crystal) = self.machine_desc.unwrap().timer_crystal {
-            pit.run(self, None, DeviceRunTimeUnit::Microseconds(us));
+            pit.run(self, DeviceRunTimeUnit::Microseconds(us));
         }
         else {
             // We can only adjust phase of PIT if we are using system ticks, and that's okay. It's only really useful
             // on an 5150/5160.
-            pit.run(
-                self,
-                None,
-                DeviceRunTimeUnit::SystemTicks(sys_ticks + self.pit_ticks_advance),
-            );
+            pit.run(self, DeviceRunTimeUnit::SystemTicks(sys_ticks + self.pit_ticks_advance));
             self.pit_ticks_advance = 0;
         }
 
@@ -2264,7 +2262,7 @@ impl BusInterface {
 
         // Run the adlib card {
         if let Some(adlib) = &mut self.adlib {
-            //adlib.run(us);
+            adlib.run(us);
         }
 
         let mut do_area5150_hack = false;
