@@ -24,11 +24,23 @@
 
     --------------------------------------------------------------------------
 
-    devices::implementations::traits.rs
+    device_traits::sounddevice.rs
 
-    Module to organize all device traits
-
+    Defines the SoundDevice trait which any sound device (Adlib,SoundBlaster, etc)
+    must implement.
 */
 
-pub mod sounddevice;
-pub mod videocard;
+use crate::devices::adlib::AdLibCard;
+use enum_dispatch::enum_dispatch;
+
+pub type AudioSample = f32;
+
+#[enum_dispatch]
+pub enum SoundDispatch {
+    AdLibCard,
+}
+
+#[enum_dispatch(SoundDispatch)]
+pub trait SoundDevice {
+    fn run(&mut self, usec: f64);
+}

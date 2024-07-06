@@ -30,6 +30,9 @@
 
 */
 
+use crate::device_traits::sounddevice::AudioSample;
+use crossbeam_channel::Receiver;
+
 pub const DEFAULT_SAMPLE_RATE: u32 = 44100;
 
 #[derive(Debug)]
@@ -53,27 +56,28 @@ impl Default for SoundOutputConfig {
 
 #[derive(Default)]
 pub struct SoundOutput {
-    sources: Vec<SoundSource>,
+    sources: Vec<SoundSourceDescriptor>,
 }
 
 pub struct SoundSourceDescriptor {
     pub name: String,
     pub sample_rate: u32,
     pub channels: usize,
+    pub receiver: Receiver<AudioSample>,
 }
 
 impl SoundSourceDescriptor {
-    pub fn new(name: &str, sample_rate: u32, channels: usize) -> SoundSourceDescriptor {
+    pub fn new(
+        name: &str,
+        sample_rate: u32,
+        channels: usize,
+        receiver: Receiver<AudioSample>,
+    ) -> SoundSourceDescriptor {
         SoundSourceDescriptor {
             name: name.to_string(),
             sample_rate,
             channels,
+            receiver,
         }
     }
-}
-
-pub struct SoundSource {
-    pub desc: SoundSourceDescriptor,
-    pub frame_time: f64,
-    pub samples: Vec<f32>,
 }

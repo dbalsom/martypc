@@ -37,6 +37,7 @@
 #![allow(dead_code)]
 
 use anyhow::Error;
+use crossbeam_channel::unbounded;
 use fxhash::FxHashMap;
 use ringbuf::Producer;
 use std::{collections::VecDeque, fmt, io::Write, path::Path};
@@ -44,13 +45,9 @@ use std::{collections::VecDeque, fmt, io::Write, path::Path};
 use crate::{
     bytequeue::*,
     cpu_808x::*,
-    device_traits::videocard::{
-        ClockingMode,
-        VideoCard,
-        VideoCardDispatch,
-        VideoCardId,
-        VideoCardInterface,
-        VideoType,
+    device_traits::{
+        sounddevice::SoundDevice,
+        videocard::{ClockingMode, VideoCard, VideoCardDispatch, VideoCardId, VideoCardInterface, VideoType},
     },
     devices::{
         cga::{self, CGACard},
@@ -83,6 +80,7 @@ use crate::{
     device_traits::videocard::VideoCardSubType,
     devices::{
         a0::A0Register,
+        adlib::AdLibCard,
         cartridge_slots::CartridgeSlot,
         game_port::GamePort,
         lotech_ems::LotechEmsCard,
@@ -90,8 +88,8 @@ use crate::{
         tga,
         tga::TGACard,
     },
-    machine_types::{EmsType, EmsType::LoTech2MB, FdcType, MachineType},
-    sound::{SoundSource, SoundSourceDescriptor},
+    machine_types::{EmsType, EmsType::LoTech2MB, FdcType, MachineType, SoundType},
+    sound::{SoundOutputConfig, SoundSourceDescriptor},
     syntax_token::SyntaxFormatType,
 };
 
@@ -295,6 +293,7 @@ pub enum IoDeviceType {
     Ems,
     GamePort,
     Video(VideoCardId),
+    Sound,
 }
 
 pub enum IoDeviceDispatch {
@@ -416,6 +415,7 @@ pub struct BusInterface {
     ems: Option<LotechEmsCard>,
     cart_slot: Option<CartridgeSlot>,
     game_port: Option<GamePort>,
+    adlib: Option<AdLibCard>,
 
     videocards:    FxHashMap<VideoCardId, VideoCardDispatch>,
     videocard_ids: Vec<VideoCardId>,
@@ -587,6 +587,7 @@ impl Default for BusInterface {
             ems: None,
             cart_slot: None,
             game_port: None,
+            adlib: None,
             videocards: FxHashMap::default(),
             videocard_ids: Vec::new(),
 
@@ -1723,7 +1724,7 @@ impl BusInterface {
         &mut self,
         machine_desc: &MachineDescriptor,
         machine_config: &MachineConfiguration,
-        sound_enabled: bool,
+        sound_config: &SoundOutputConfig,
         terminal_port: Option<u16>,
     ) -> Result<InstalledDevicesResult, Error> {
         let mut installed_devices = InstalledDevicesResult::new();
@@ -1801,15 +1802,20 @@ impl BusInterface {
             machine_config.speaker,
         );
 
-        if machine_config.speaker {
+        let pit_sample_sender = if machine_config.speaker {
             // Add this sound source.
+            let (s, r) = unbounded();
             installed_devices
                 .sound_sources
-                .push(SoundSourceDescriptor::new("PC Speaker", 1_193_181, 1));
+                .push(SoundSourceDescriptor::new("PC Speaker", 1_193_181, 1, r));
 
             // Speaker will always be first sound source, if enabled.
             self.speaker_src = Some(0);
+            Some(s)
         }
+        else {
+            None
+        };
 
         // Add PIT ports to io_map
         add_io_device!(self, pit, IoDeviceType::Pit);
@@ -1949,6 +1955,28 @@ impl BusInterface {
             let game_port = GamePort::new(Some(game_port_addr));
             add_io_device!(self, game_port, IoDeviceType::GamePort);
             self.game_port = Some(game_port);
+        }
+
+        // Create sound cards
+        for (i, card) in machine_config.sound.iter().enumerate() {
+            if let SoundType::AdLib = card.sound_type {
+                // Create an AdLib card.
+
+                let (s, r) = unbounded();
+                installed_devices.sound_sources.push(SoundSourceDescriptor::new(
+                    "AdLib Music Synthesizer",
+                    sound_config.sample_rate,
+                    2,
+                    r,
+                ));
+
+                let mut adlib = AdLibCard::new(card.io_base, 48000, s);
+                println!(">>> TESTING ADLIB <<<");
+                adlib.test();
+
+                add_io_device!(self, adlib, IoDeviceType::Sound);
+                self.adlib = Some(adlib);
+            }
         }
 
         // Create video cards
@@ -2232,6 +2260,11 @@ impl BusInterface {
         // Run the game port {
         if let Some(game_port) = &mut self.game_port {
             game_port.run(us);
+        }
+
+        // Run the adlib card {
+        if let Some(adlib) = &mut self.adlib {
+            //adlib.run(us);
         }
 
         let mut do_area5150_hack = false;
@@ -2548,6 +2581,11 @@ impl BusInterface {
                         }
                     }
                 }
+                IoDeviceType::Sound => {
+                    if let Some(adlib) = &mut self.adlib {
+                        byte = Some(adlib.read_u8(port, nul_delta));
+                    }
+                }
                 _ => {}
             }
         }
@@ -2711,6 +2749,11 @@ impl BusInterface {
                             }
                             VideoCardDispatch::None => {}
                         }
+                    }
+                }
+                IoDeviceType::Sound => {
+                    if let Some(adlib) = &mut self.adlib {
+                        IoDevice::write_u8(adlib, port, data, None, nul_delta);
                     }
                 }
                 _ => {}

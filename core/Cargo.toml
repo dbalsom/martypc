@@ -33,6 +33,11 @@ serialport.workspace = true
 rodio.workspace = true
 fxhash.workspace = true
 enum_dispatch.workspace = true
+crossbeam-channel.workspace = true
+
+[dependencies.opl3-rs]
+git = "https://github.com/dbalsom/opl3-rs.git"
+branch = "test1"
 
 [dev-dependencies]
 criterion = "0.5"

@@ -31,8 +31,20 @@
 */
 
 use anyhow::{anyhow, Error};
-use marty_core::sound::SoundOutputConfig;
-use rodio::{cpal::traits::HostTrait, DeviceTrait};
+use crossbeam_channel::Receiver;
+use marty_core::{
+    device_traits::sounddevice::AudioSample,
+    sound::{SoundOutputConfig, SoundSourceDescriptor},
+};
+use rodio::{cpal::traits::HostTrait, DeviceTrait, Sink, Source};
+
+pub struct SoundSource {
+    pub name: String,
+    pub sample_rate: u32,
+    pub channels: u16,
+    pub receiver: Receiver<AudioSample>,
+    pub sink: Sink,
+}
 
 pub struct SoundInterface {
     enabled: bool,
@@ -40,7 +52,10 @@ pub struct SoundInterface {
     sample_rate: u32,
     sample_format: String, // We don't really need this, so I am not converting it to an enum.
     channels: usize,
-    cpal_device: Option<rodio::cpal::Device>,
+    device: Option<rodio::cpal::Device>,
+    stream: Option<rodio::OutputStream>,
+    stream_handle: Option<rodio::OutputStreamHandle>,
+    sources: Vec<SoundSource>,
 }
 
 impl Default for SoundInterface {
@@ -51,7 +66,10 @@ impl Default for SoundInterface {
             sample_rate: 0,
             sample_format: String::new(),
             channels: 0,
-            cpal_device: None,
+            device: None,
+            stream: None,
+            stream_handle: None,
+            sources: Vec::new(),
         }
     }
 }
@@ -75,6 +93,8 @@ impl SoundInterface {
         let channels = config.channels() as usize;
         let sample_format = config.sample_format().to_string();
 
+        let (stream, stream_handle) = rodio::OutputStream::try_from_device(&audio_device)?;
+
         *self = {
             SoundInterface {
                 enabled: self.enabled,
@@ -82,19 +102,46 @@ impl SoundInterface {
                 sample_rate,
                 sample_format,
                 channels,
-                cpal_device: Some(audio_device),
+                device: Some(audio_device),
+                stream: Some(stream),
+                stream_handle: Some(stream_handle),
+                sources: Vec::new(),
             }
         };
 
         Ok(())
     }
 
+    pub fn add_source(&mut self, source: &SoundSourceDescriptor) -> Result<(), Error> {
+        let stream_handle = self.stream_handle.as_ref().unwrap();
+        let sink = Sink::try_new(stream_handle)?;
+
+        self.sources.push(SoundSource {
+            name: source.name.clone(),
+            sample_rate: source.sample_rate,
+            channels: source.channels as u16,
+            receiver: source.receiver.clone(),
+            sink,
+        });
+
+        Ok(())
+    }
+
+    pub fn run(&mut self) {
+        for source in self.sources.iter_mut() {
+            let samples_in = source.receiver.try_iter().collect::<Vec<f32>>();
+            //log::debug!("received {} samples from channel {}", samples_in.len(), source.name);
+            let sink_buffer = rodio::buffer::SamplesBuffer::new(source.channels, source.sample_rate, samples_in);
+            source.sink.append(sink_buffer);
+        }
+    }
+
     pub fn open_stream(&mut self) -> Result<(), Error> {
-        if self.cpal_device.is_none() {
+        if self.device.is_none() {
             return Err(anyhow!("No audio device open."));
         }
 
-        let stream = rodio::OutputStream::try_from_device(self.cpal_device.as_ref().unwrap())?;
+        let stream = rodio::OutputStream::try_from_device(self.device.as_ref().unwrap())?;
         log::debug!("Rodio stream successfully opened.");
         Ok(())
     }

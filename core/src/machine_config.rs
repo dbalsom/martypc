@@ -39,6 +39,7 @@ use crate::machine_types::{
     MachineType,
     SerialControllerType,
     SerialMouseType,
+    SoundType,
 };
 use anyhow::{anyhow, Error};
 use lazy_static::lazy_static;
@@ -174,6 +175,13 @@ pub struct VideoCardConfig {
 }
 
 #[derive(Clone, Debug, Deserialize)]
+pub struct SoundDeviceConfig {
+    #[serde(rename = "type")]
+    pub sound_type: SoundType,
+    pub io_base:    u16,
+}
+
+#[derive(Clone, Debug, Deserialize)]
 pub struct SerialPortConfig {
     pub io_base: u32,
     pub irq: u32,
@@ -244,6 +252,7 @@ pub struct MachineConfiguration {
     pub keyboard: Option<KeyboardConfig>,
     pub serial_mouse: Option<SerialMouseConfig>,
     pub video: Vec<VideoCardConfig>,
+    pub sound: Vec<SoundDeviceConfig>,
     pub serial: Vec<SerialControllerConfig>,
     pub game_port: Option<GamePortConfig>,
     pub fdc: Option<FloppyControllerConfig>,
