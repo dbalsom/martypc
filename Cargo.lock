@@ -1343,9 +1343,9 @@ dependencies = [
 
 [[package]]
 name = "egui_ratatui"
-version = "0.0.9"
+version = "0.0.10"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "927cc2e8423b0a21e7b1bdbc4b47c97d88a7f4b475a03a8356a1cc5c258ae03c"
+checksum = "c41cbc1bd94a90d6634b8cf4847ede6624b3feaca60d84da0656a6cec41948b9"
 dependencies = [
  "egui 0.28.1",
  "ratatui 0.27.0",
