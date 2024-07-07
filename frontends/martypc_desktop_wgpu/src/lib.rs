@@ -729,6 +729,9 @@ pub fn run() {
                 std::process::exit(1);
             }
         }
+
+        // PC Speaker is always first sound source. Set its volume to 25%.
+        si.set_volume(0, 0.25);
     }
 
     // Get a list of video devices from machine.

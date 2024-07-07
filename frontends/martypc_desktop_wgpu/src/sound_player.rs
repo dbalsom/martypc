@@ -43,6 +43,7 @@ pub struct SoundSource {
     pub sample_rate: u32,
     pub channels: u16,
     pub receiver: Receiver<AudioSample>,
+    pub volume: f32,
     pub sink: Sink,
 }
 
@@ -122,6 +123,7 @@ impl SoundInterface {
             channels: source.channels as u16,
             receiver: source.receiver.clone(),
             sink,
+            volume: 1.0,
         });
 
         Ok(())
@@ -148,6 +150,14 @@ impl SoundInterface {
 
     pub fn device_name(&self) -> String {
         self.device_name.clone()
+    }
+
+    pub fn set_volume(&mut self, s_idx: usize, volume: f32) {
+        if s_idx < self.sources.len() {
+            let source = &mut self.sources[s_idx];
+            source.volume = volume;
+            source.sink.set_volume(source.volume);
+        }
     }
 
     pub fn config(&self) -> SoundOutputConfig {
