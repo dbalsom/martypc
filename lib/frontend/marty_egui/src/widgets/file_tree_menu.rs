@@ -30,8 +30,7 @@
 
 */
 
-
-use egui::{RichText};
+use egui::RichText;
 use frontend_common::FileTreeNode;
 use std::collections::HashMap;
 
@@ -65,7 +64,10 @@ impl FileTreeMenu {
                     self.draw_node(ui, child, ctx, clicked_fn);
                 });
             }
-            else {
+        }
+
+        for child in node.children() {
+            if !child.is_directory() {
                 ui.horizontal(|ui| {
                     let button_text = if Some(child.idx()) == self.get_selected(ctx) {
                         RichText::new(format!("💾 {}", child.name())).color(egui::Color32::LIGHT_BLUE)
