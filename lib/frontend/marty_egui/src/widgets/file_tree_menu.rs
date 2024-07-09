@@ -37,6 +37,7 @@ use std::collections::HashMap;
 pub struct FileTreeMenu {
     root: FileTreeNode,
     selected_idx: HashMap<usize, Option<usize>>,
+    file_icon: String,
 }
 
 impl FileTreeMenu {
@@ -44,7 +45,13 @@ impl FileTreeMenu {
         Self {
             root: FileTreeNode::default(),
             selected_idx: HashMap::new(),
+            file_icon: String::new(),
         }
+    }
+
+    pub fn with_file_icon(mut self, icon: &str) -> Self {
+        self.file_icon = format!("{} ", icon);
+        self
     }
 
     pub fn draw(&self, ui: &mut egui::Ui, ctx: usize, clicked_fn: &mut dyn FnMut(usize) -> ()) {
@@ -70,10 +77,10 @@ impl FileTreeMenu {
             if !child.is_directory() {
                 ui.horizontal(|ui| {
                     let button_text = if Some(child.idx()) == self.get_selected(ctx) {
-                        RichText::new(format!("💾 {}", child.name())).color(egui::Color32::LIGHT_BLUE)
+                        RichText::new(format!("{}{}", self.file_icon, child.name())).color(egui::Color32::LIGHT_BLUE)
                     }
                     else {
-                        RichText::new(format!("💾 {}", child.name()))
+                        RichText::new(format!("{}{}", self.file_icon, child.name()))
                     };
                     if ui.button(button_text).clicked() {
                         log::debug!("clicked on file {}, idx: {}", child.name(), child.idx());

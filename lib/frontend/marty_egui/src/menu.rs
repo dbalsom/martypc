@@ -299,6 +299,7 @@ impl GuiState {
 
                 ui.menu_button("Memory", |ui| {
                     self.workspace_window_open_button(ui, GuiWindow::MemoryViewer, true);
+                    self.workspace_window_open_button(ui, GuiWindow::DataVisualizer, true);
                     self.workspace_window_open_button(ui, GuiWindow::IvtViewer, true);
 
                     ui.menu_button("Dump Memory", |ui| {

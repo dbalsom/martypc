@@ -73,6 +73,7 @@ use crate::{
         cpu_control::{BreakpointSet, CpuControl},
         cpu_state_viewer::CpuViewerControl,
         cycle_trace_viewer::CycleTraceViewerControl,
+        data_visualizer::DataVisualizerControl,
         delay_adjust::DelayAdjustControl,
         device_control::DeviceControl,
         disassembly_viewer::DisassemblyControl,
@@ -210,6 +211,7 @@ pub struct GuiState {
     pub cpu_viewer: CpuViewerControl,
     pub cycle_trace_viewer: CycleTraceViewerControl,
     pub memory_viewer: MemoryViewerControl,
+    pub data_visualizer: DataVisualizerControl,
 
     pub perf_viewer:  PerformanceViewerControl,
     pub delay_adjust: DelayAdjustControl,
@@ -337,6 +339,7 @@ impl GuiState {
             cpu_viewer: CpuViewerControl::new(),
             cycle_trace_viewer: CycleTraceViewerControl::new(),
             memory_viewer: MemoryViewerControl::new(),
+            data_visualizer: DataVisualizerControl::new(),
 
             perf_viewer: PerformanceViewerControl::new(),
             delay_adjust: DelayAdjustControl::new(),
@@ -359,8 +362,8 @@ impl GuiState {
             text_mode_viewer: TextModeViewer::new(),
             call_stack_viewer: CallStackViewer::new(),
 
-            floppy_tree_menu: FileTreeMenu::new(),
-            hdd_tree_menu: FileTreeMenu::new(),
+            floppy_tree_menu: FileTreeMenu::new().with_file_icon("💾"),
+            hdd_tree_menu: FileTreeMenu::new().with_file_icon("🖴"),
             cart_tree_menu: FileTreeMenu::new(),
             //global_zoom: 1.0,
         }
