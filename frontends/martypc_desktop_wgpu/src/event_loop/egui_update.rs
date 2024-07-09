@@ -138,6 +138,34 @@ pub fn update_egui(emu: &mut Emulator, tm: &TimestepManager, elwt: &EventLoopWin
         emu.gui.memory_viewer.set_memory(mem_dump_vec);
     }
 
+    if emu.gui.is_window_open(GuiWindow::DataVisualizer) {
+        let mem_dump_addr_str = emu.gui.data_visualizer.get_address();
+
+        let addr = match emu.machine.cpu().eval_address(&mem_dump_addr_str) {
+            Some(i) => {
+                let addr: u32 = i.into();
+                // Dump at 16 byte block boundaries
+                addr
+            }
+            None => {
+                // Show address 0 if expression eval fails
+                0
+            }
+        };
+
+        let data_len = emu.gui.data_visualizer.get_required_data_size();
+        let data = emu.machine.bus().get_slice_at(addr as usize, data_len);
+
+        emu.gui.data_visualizer.update_data(data.to_vec());
+
+        emu.machine.primary_videocard().map(|vc| {
+            let palette = vc.get_palette();
+            if let Some(pal) = palette {
+                emu.gui.data_visualizer.update_palette_u8(pal);
+            }
+        });
+    }
+
     // -- Update IVR viewer window if open
     if emu.gui.is_window_open(GuiWindow::IvtViewer) {
         let vec = emu.machine.bus_mut().dump_ivt_tokens();

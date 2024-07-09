@@ -29,7 +29,7 @@
     Main UI drawing code for EGUI.
 */
 
-use crate::{state::GuiState};
+use crate::state::GuiState;
 use egui::Context;
 
 impl GuiState {
@@ -43,6 +43,7 @@ impl GuiState {
     /// Create the UI using egui.
     pub fn ui(&mut self, ctx: &Context) {
         self.toasts.show(ctx);
+        self.data_visualizer.init(ctx.clone());
 
         egui::Window::new("Warning")
             .open(&mut self.warning_dialog_open)

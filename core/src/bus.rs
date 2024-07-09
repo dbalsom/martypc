@@ -799,11 +799,19 @@ impl BusInterface {
     }
 
     pub fn get_slice_at(&self, start: usize, len: usize) -> &[u8] {
-        &self.memory[start..start + len]
+        if start >= self.memory.len() {
+            return &[];
+        }
+
+        &self.memory[start..std::cmp::min(start + len, self.memory.len())]
     }
 
     pub fn get_vec_at(&self, start: usize, len: usize) -> Vec<u8> {
-        self.memory[start..start + len].to_vec()
+        if start >= self.memory.len() {
+            return Vec::new();
+        }
+
+        self.memory[start..std::cmp::min(start + len, self.memory.len())].to_vec()
     }
 
     pub fn set_descriptor(&mut self, start: usize, size: usize, cycle_cost: u32, read_only: bool) {

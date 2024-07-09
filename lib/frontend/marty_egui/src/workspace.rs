@@ -180,7 +180,9 @@ impl GuiState {
                 GuiWindow::VideoCardViewer => {
                     GuiState::draw_video_card_panel(ui, &self.videocard_state);
                 }
-                GuiWindow::VideoMemViewer => {}
+                GuiWindow::DataVisualizer => {
+                    self.data_visualizer.draw(ui, &mut self.event_queue);
+                }
                 GuiWindow::CallStack => {
                     self.call_stack_viewer.draw(ui, &mut self.event_queue);
                 }

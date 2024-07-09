@@ -37,6 +37,7 @@ pub mod about;
 pub mod call_stack_viewer;
 pub mod cpu_state_viewer;
 pub mod cycle_trace_viewer;
+pub mod data_visualizer;
 pub mod delay_adjust;
 pub mod device_control;
 pub mod dma_viewer;
