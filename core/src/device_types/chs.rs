@@ -29,14 +29,13 @@
     Defines the CHS type to be used by FDC and HDC implementations
 */
 
-
 use std::fmt::Display;
 
 #[derive(Copy, Clone, Debug)]
 pub struct DiskChs {
-    c: u8,
-    h: u8,
-    s: u8,
+    pub c: u8,
+    pub h: u8,
+    pub s: u8,
 }
 
 impl Default for DiskChs {
@@ -48,6 +47,12 @@ impl Default for DiskChs {
 impl From<(u8, u8, u8)> for DiskChs {
     fn from((c, h, s): (u8, u8, u8)) -> Self {
         Self { c, h, s }
+    }
+}
+
+impl From<DiskChs> for (u8, u8, u8) {
+    fn from(chs: DiskChs) -> Self {
+        (chs.c, chs.h, chs.s)
     }
 }
 
