@@ -398,23 +398,21 @@ impl Pic {
         self.imr
     }
 
+    /// Set the value of the Interrupt Mask Register (IMR).
+    /// Changing the IMR will allow devices with current high IR lines to generate interrupts.
+    /// It will also lower INTR if the currently requesting lines are masked.
     fn set_imr(&mut self, byte: u8) {
-        // Changing the IMR will allow devices with current high IR lines to generate interrupts
         self.imr = byte;
+        let (intr, irq) = self.calc_intr();
 
-        let mut ir_bit = 0x01;
-        for interrupt in 0..8 {
-            let have_request = ir_bit & self.irr != 0;
-            let is_masked = ir_bit & self.imr != 0;
-            let is_in_service = ir_bit & self.isr != 0;
-
-            if have_request && !is_masked && !is_in_service {
-                // IRR bit is set and now unmasked; Set INTR line high after some delay.
-                self.schedule_intr(3); // TODO: Placeholder value. we should measure the actual delay with a scope.
-                self.interrupt_stats[interrupt as usize].serviced_count += 1;
-            }
-
-            ir_bit <<= 1;
+        if intr {
+            self.schedule_intr(3); // TODO: Placeholder value. we should measure the actual delay with a scope.
+            self.interrupt_stats[irq as usize].serviced_count += 1;
+        }
+        else if self.intr {
+            // If INTR is high, and any triggering IRR bits are now masked, lower it.
+            self.intr_scheduled = false;
+            self.intr = false;
         }
     }
 
@@ -500,7 +498,7 @@ impl Pic {
         self.irr &= !intr_bit;
 
         // Recalculate INTR in case lowering this IR line would withdraw the interrupt.
-        self.intr = self.calc_intr();
+        self.intr = self.calc_intr().0;
     }
 
     pub fn query_interrupt_line(&self) -> bool {
@@ -517,15 +515,15 @@ impl Pic {
             return None;
         }
 
-        // Return the highest priority vector. The mask register does not affect this,
-        // as the IMR can be set after INTR asserts.
+        // Return the highest priority vector.
         let mut ir_bit: u8 = 0x01;
         for irq in 0..8 {
             let have_request = self.irr & ir_bit != 0;
             let in_service = self.isr & ir_bit != 0;
+            let is_masked = self.imr & ir_bit != 0;
 
             // TODO: Can an interrupt vector be delivered while in service? We assume not for now.
-            if have_request && !in_service {
+            if have_request && !in_service && !is_masked {
                 // Found the highest priority IRR not in service
 
                 // If in edge triggered mode, clear the bit in the IRR.
@@ -587,20 +585,21 @@ impl Pic {
 
     /// Calculate the intended INTR line state based on the current state of the PIC.
     #[inline]
-    pub fn calc_intr(&self) -> bool {
+    pub fn calc_intr(&self) -> (bool, u8) {
         let mut ir_bit: u8 = 0x01;
-        for _irq in 0..8 {
+        let mut irq = 0;
+        for irq in 0..8 {
             let have_request = self.irr & ir_bit != 0;
             let is_not_masked = self.imr & ir_bit == 0;
             let is_not_in_service = self.isr & ir_bit == 0;
 
             if have_request && is_not_masked && is_not_in_service {
-                return true;
+                return (true, irq);
             }
 
             ir_bit <<= 1;
         }
-        false
+        (false, irq)
     }
 
     /// Run the PIC. This is primarily used to effect a delay in raising INTR when the IMR is changed.
@@ -615,13 +614,13 @@ impl Pic {
 
         // If INTR is low and not pending, check for unmasked bits in the IRR and raise it again if found.
         if !self.intr && !self.intr_scheduled {
-            if self.calc_intr() {
+            if self.calc_intr().0 {
                 self.schedule_intr(100);
             }
         }
         else if self.intr {
             // If INTR is high check for unmasked bits in the IRR and lower it if none are found.
-            self.intr = self.calc_intr();
+            self.intr = self.calc_intr().0;
         }
     }
 }
