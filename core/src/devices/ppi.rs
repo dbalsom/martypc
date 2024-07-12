@@ -787,6 +787,7 @@ impl Ppi {
     pub fn kb_enabled(&self) -> bool {
         match self.machine_type {
             MachineType::Tandy1000 => true,
+            MachineType::IbmPCJr => false,
             _ => self.kb_enabled && !self.kb_clock_low,
         }
     }
