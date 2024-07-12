@@ -1,18 +1,46 @@
 
-## [0.2.3](https://github.com/dbalsom/martypc/releases/tag/0.2.3) (2024-XX-XX)
+## [0.3.0](https://github.com/dbalsom/martypc/releases/tag/0.2.3) (2024-XX-XX)
 
-### New devices
+### New Sound System
+
+* MartyPC's original sound system only supported the PC speaker, and had a very awkward design (one might call it a gross hack)
+  For 0.3.0, MartyPC has a new sound system. The emulator core determines how many sound producing devices are installed and creates
+  crossbeam channels for each device to send samples to the frontend, which is responsible for mixing and playback.
+
+### New Devices
+
+* #### Adlib Music Card
+
+  * The first audio device in MartyPC besides the PC speaker is the Adlib Music Card. OPL2 emulation is provided by the accurate nuked-opl3 library. 
+    This marks the first device I have not emulated myself, but the time it would take to research FM synthesis and produce anything near nuked-opl3 
+    quality would have you waiting for OPL2 emulation for another decade.
+
+* #### VGA 
+
+  * The IBM VGA card gets an initial implementation at last. MartyPC's VGA is based off its EGA implementation, with appropriate changes and additions.
+    Clocked up to 28Mhz, the VGA is an expensive device to run at a character-clock accurate rate, so you may need a fast computer.
+    Aperture definitions may not be final. Mode 13h and ModeX/Y are supported. 
 
 ### Frontend Bug Fixes / Improvements
 
+  * File tree browser: 
+    * Display directories before files
+    * Display correct icons for different file types
+
 ### Core Bug Fixes / Improvements
 
+* FDC: Fix PCjr keyboard watchdog timer handling
+* BUS/PPI: Improve PCjr keyboard handling  
+* BUS: New sound system. Removed cpal dependency from core. Core now produces samples and sends them to the frontend for mixing and playback.
 * PPI: Fixed memory bank DIP switch masks for memory configurations less than <64K.
 
 ### Debugger Bug Fixes / Improvements
 
+* Memory Visualizer: Add a new debug tool that graphically displays a portion of memory as 1bpp, 2bpp, 4bpp or 8bpp pixels.
+
 ### Distribution Changes
 
+* Added new definition for an alternate 64K PCjr ROM dump (Thanks ImperatorBanana)
 * Added new definition for an alternate 32K BASIC C1.0 ROM (thanks Torinde)
 
 ### Dependency Updates
