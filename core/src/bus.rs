@@ -2088,6 +2088,38 @@ impl BusInterface {
         self.pit_ticks_advance += ticks;
     }
 
+    pub fn process_keyboard_input(&mut self) {
+        if let Some(keyboard) = &mut self.keyboard {
+            // Read a byte from the keyboard
+            if let Some(kb_byte) = keyboard.recv_scancode() {
+                //log::debug!("Received keyboard byte: {:02X}", kb_byte);
+
+                // Do we have a PPI? if so, send the scancode to the PPI
+                if let Some(ppi) = &mut self.ppi {
+                    ppi.send_keyboard(kb_byte);
+
+                    match self.machine_desc.unwrap().machine_type {
+                        MachineType::IbmPCJr => {
+                            // The PCJr is an odd duck and uses NMI for keyboard interrupts.
+                            if let Some(a0) = &mut self.a0 {
+                                a0.set_nmi_latch(true);
+                            }
+                        }
+                        _ => {
+                            if ppi.kb_enabled() {
+                                if let Some(pic) = &mut self.pic1 {
+                                    // TODO: Should we let the PPI do this directly?
+                                    //log::warn!("sending kb interrupt for byte: {:02X}", kb_byte);
+                                    pic.pulse_interrupt(1);
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+        }
+    }
+
     pub fn run_devices(
         &mut self,
         us: f64,
@@ -2097,67 +2129,30 @@ impl BusInterface {
     ) -> Option<DeviceEvent> {
         let mut event = None;
 
+        let mut process_keyboard = false;
         if let Some(keyboard) = &mut self.keyboard {
-            // Send keyboard events to devices.
+            self.kb_us_accum += us;
+
+            // Handle user-initiated keyboard events
             if let Some(kb_event) = kb_event_opt {
                 //log::debug!("Got keyboard byte: {:02X}", kb_byte);
-
                 match kb_event.pressed {
                     true => keyboard.key_down(kb_event.keycode, &kb_event.modifiers, Some(kb_buf)),
                     false => keyboard.key_up(kb_event.keycode),
                 }
-
-                // Read a byte from the keyboard
-                if let Some(kb_byte) = keyboard.recv_scancode() {
-                    //log::debug!("Received keyboard byte: {:02X}", kb_byte);
-
-                    // Do we have a PPI? if so, send the scancode to the PPI
-                    if let Some(ppi) = &mut self.ppi {
-                        ppi.send_keyboard(kb_byte);
-
-                        match self.machine_desc.unwrap().machine_type {
-                            MachineType::IbmPCJr => {
-                                // The PCJr is an odd duck and uses NMI for keyboard interrupts.
-                                if let Some(a0) = &mut self.a0 {
-                                    a0.set_nmi_latch(true);
-                                }
-                            }
-                            _ => {
-                                if ppi.kb_enabled() {
-                                    if let Some(pic) = &mut self.pic1 {
-                                        // TODO: Should we let the PPI do this directly?
-                                        //log::warn!("sending kb interrupt for byte: {:02X}", kb_byte);
-                                        pic.pulse_interrupt(1);
-                                    }
-                                }
-                            }
-                        }
-                    }
-                }
+                process_keyboard = true;
             }
 
-            // Accumulate us and run the keyboard when scheduled.
-            self.kb_us_accum += us;
+            // Run the keyboard device and handle resulting events (typematic repeat)
             if self.kb_us_accum > KB_UPDATE_RATE {
                 keyboard.run(KB_UPDATE_RATE);
                 self.kb_us_accum -= KB_UPDATE_RATE;
-
-                // Read a byte from the keyboard
-                if let Some(kb_byte) = keyboard.recv_scancode() {
-                    // Do we have a PPI? if so, send the scancode to the PPI
-                    if let Some(ppi) = &mut self.ppi {
-                        ppi.send_keyboard(kb_byte);
-
-                        if ppi.kb_enabled() {
-                            if let Some(pic) = &mut self.pic1 {
-                                // TODO: Should we let the PPI do this directly?
-                                //log::warn!("sending kb interrupt for byte: {:02X}", kb_byte);
-                                pic.pulse_interrupt(1);
-                            }
-                        }
-                    }
-                }
+                process_keyboard = true;
             }
+        }
+
+        if process_keyboard {
+            self.process_keyboard_input();
         }
 
         // There will always be a PIC, so safe to unwrap.
