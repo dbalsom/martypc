@@ -1871,7 +1871,7 @@ impl BusInterface {
             // Create the correct kind of FDC (currently only NEC supported)
             match fdc_type {
                 FdcType::IbmNec | FdcType::IbmPCJrNec => {
-                    let fdc = FloppyController::new(fdc_type, floppy_ct);
+                    let fdc = FloppyController::new(fdc_type, fdc_config.drive.clone());
                     // Add FDC ports to io_map
                     add_io_device!(self, fdc, IoDeviceType::FloppyController);
                     self.fdc = Some(fdc);

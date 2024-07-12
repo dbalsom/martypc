@@ -104,8 +104,9 @@ impl FromStr for OnHaltBehavior {
     }
 }
 
-#[derive(Copy, Clone, Debug, Eq, PartialEq)]
+#[derive(Copy, Clone, Default, Debug, Hash, Eq, PartialEq)]
 pub enum FloppyDriveType {
+    #[default]
     Floppy360K,
     Floppy720K,
     Floppy12M,

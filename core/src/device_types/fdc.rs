@@ -29,12 +29,46 @@
     Defines types common to implementations of a Floppy Disk Controller
 */
 
-use crate::device_types::chs::DiskChs;
+use crate::{device_types::chs::DiskChs, machine_types::FloppyDriveType};
 use lazy_static::lazy_static;
 use std::collections::HashMap;
 
 pub struct DiskFormat {
     pub chs: DiskChs,
+}
+
+lazy_static! {
+    /// Define the drive capabilities for each floppy drive type.
+    /// Drives can seek a bit beyond the end of the traditional media sizes.
+    /// TODO: Determine accurate values
+    pub static ref DRIVE_CAPABILITIES: HashMap<FloppyDriveType, DiskFormat> = {
+        let mut map = HashMap::new();
+        map.insert(
+            FloppyDriveType::Floppy360K,
+            DiskFormat {
+                chs: DiskChs::new(45, 2, 9),
+            },
+        );
+        map.insert(
+            FloppyDriveType::Floppy720K,
+            DiskFormat {
+                chs: DiskChs::new(85, 2, 9),
+            },
+        );
+        map.insert(
+            FloppyDriveType::Floppy12M,
+            DiskFormat {
+                chs: DiskChs::new(85, 2, 15),
+            },
+        );
+        map.insert(
+            FloppyDriveType::Floppy144M,
+            DiskFormat {
+                chs: DiskChs::new(85, 2, 18),
+            },
+        );
+        map
+    };
 }
 
 lazy_static! {
