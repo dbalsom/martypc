@@ -168,6 +168,22 @@ checkpoint = [
     { addr = 0xF08E0, lvl = 3, desc = "Printer and Serial Check" },
     { addr = 0xF1004, lvl = 1, desc = "Keyboard Read Error" },
     { addr = 0xF0854, lvl = 3, desc = "Disk Bootstrap" },
+    { addr = 0xFEF57, lvl = 3, desc = "Disk Watchdog"},
+    { addr = 0xFEE64, lvl = 3, desc = "Disk OP_END" },
+]
+
+# ----------------------------------------------------------------------------
+# System BIOS for IBM PCJr
+# Alternate 64K single-file ROM definition
+# ----------------------------------------------------------------------------
+[[romset]]
+alias = "ibm_pcjr_64k"
+desc = "IBM 4860 PCJr"
+priority = 0
+provides = ["bios", "ibm_pcjr", "ibm_basic"]
+oem_for = ["ibm_pcjr"]
+rom = [
+    { md5 = "6338a9808445de12109a2389b71ee2eb", addr = 0xF0000, size = 65536, chip = "u33" }
 ]
 
 # ----------------------------------------------------------------------------
