@@ -260,30 +260,29 @@ impl KbSerializer {
                 self.us_accum -= PCJR_US_PER_BIT;
                 match self.state {
                     KbSerializeState::Idle => {
-                        log::debug!("starting serialization: StartBit");
+                        log::trace!("starting serialization: StartBit");
                         self.state = KbSerializeState::StartBit;
                         self.bit_ct = 0;
                     }
                     KbSerializeState::StartBit => {
-                        log::debug!("Next kb_bit: {:02X}", 0x01);
+                        log::trace!("Next kb_bit: {:02X}", 0x01);
                         self.state = KbSerializeState::DataBit(0x01);
                     }
                     KbSerializeState::DataBit(bit) => {
                         if self.data.unwrap() & bit != 0 {
                             self.bit_ct += 1;
                         }
-
                         if bit < 0x80 {
-                            log::debug!("Next kb_bit: {:02X}", bit << 1);
+                            //log::trace!("Next kb_bit: {:02X}", bit << 1);
                             self.state = KbSerializeState::DataBit(bit << 1);
                         }
                         else {
-                            log::debug!("Sending parity bit");
+                            log::trace!("Sending parity bit");
                             self.state = KbSerializeState::ParityBit;
                         }
                     }
                     KbSerializeState::ParityBit => {
-                        log::warn!("Ending KB serialization");
+                        log::trace!("Ending KB serialization");
                         self.state = KbSerializeState::StopBit;
                     }
                     KbSerializeState::StopBit => {
