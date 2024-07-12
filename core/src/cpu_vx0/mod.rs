@@ -1025,7 +1025,7 @@ impl NecVx0 {
             Flag::Interrupt => {
                 // Only inhibit interrupts if the interrupt flag was not previously set
                 if !self.get_flag(Flag::Interrupt) {
-                    self.interrupt_inhibit = false;
+                    self.interrupt_inhibit = true;
                 }
                 CPU_FLAG_INT_ENABLE
             }
