@@ -36,6 +36,9 @@ name = "ibm_pcjr"
 type = "IbmPCJr"
 rom_set = "ibm_pcjr"
 speaker = true
+overlays = [
+    "microsoft_serial_mouse",
+]
 
     [machine.keyboard]
     # Valid options for keyboard_type are:
