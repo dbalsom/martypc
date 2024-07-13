@@ -29,6 +29,7 @@
 
 ### Core Bug Fixes / Improvements
 
+* TGA: Implement hi-res 2bpp mode (PCJr Colorpaint, etc)
 * FDC: Fix PCjr keyboard watchdog timer handling
 * BUS/PPI: Improve PCjr keyboard handling  
 * BUS: New sound system. Removed cpal dependency from core. Core now produces samples and sends them to the frontend for mixing and playback.

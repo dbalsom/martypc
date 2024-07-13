@@ -242,7 +242,41 @@ impl TGACard {
         }
     }
 
-    /// Draw 16 pixels in medium res 4bpp graphics mode (320x200x16)
+    /// Draw 8 pixels in hi-res 2bpp graphics mode (640x200x4)
+    /// This routine uses precalculated lookups and masks to generate two u64
+    /// values to write to the index frame buffer directly.
+    /// In this mode, one bit from each byte is combined to produce the 2bpp pixel value.
+    /// Pixel colors are then looked up from the gate array's palette registers.
+    pub fn draw_gfx_mode_2bpp_hchar(&mut self, cpumem: &[u8]) {
+        if self.mode_enable {
+            let base_addr = self.get_gfx_addr(self.vlc_c9);
+            let byte0 = self.crt_mem(cpumem)[base_addr] as usize;
+            let byte1 = self.crt_mem(cpumem)[base_addr + 1] as usize;
+
+            let pixel0 = byte1 >> 6 & 0x02 | (byte0 >> 7 & 0x01);
+            let pixel1 = byte1 >> 5 & 0x02 | (byte0 >> 6 & 0x01);
+            let pixel2 = byte1 >> 4 & 0x02 | (byte0 >> 5 & 0x01);
+            let pixel3 = byte1 >> 3 & 0x02 | (byte0 >> 4 & 0x01);
+            let pixel4 = byte1 >> 2 & 0x02 | (byte0 >> 3 & 0x01);
+            let pixel5 = byte1 >> 1 & 0x02 | (byte0 >> 2 & 0x01);
+            let pixel6 = byte1 & 0x02 | (byte0 >> 1 & 0x01);
+            let pixel7 = byte1 << 1 & 0x02 | (byte0 & 0x01);
+
+            self.buf[self.back_buf][self.rba] = self.palette_registers[pixel0];
+            self.buf[self.back_buf][self.rba + 1] = self.palette_registers[pixel1];
+            self.buf[self.back_buf][self.rba + 2] = self.palette_registers[pixel2];
+            self.buf[self.back_buf][self.rba + 3] = self.palette_registers[pixel3];
+            self.buf[self.back_buf][self.rba + 4] = self.palette_registers[pixel4];
+            self.buf[self.back_buf][self.rba + 5] = self.palette_registers[pixel5];
+            self.buf[self.back_buf][self.rba + 6] = self.palette_registers[pixel6];
+            self.buf[self.back_buf][self.rba + 7] = self.palette_registers[pixel7];
+        }
+        else {
+            self.draw_solid_char(self.cc_altcolor);
+        }
+    }
+
+    /// Draw 8 dots in medium res 4bpp graphics mode (320x200x16)
     pub fn draw_gfx_mode_4bpp_mchar(&mut self, cpumem: &[u8]) {
         if self.mode_enable {
             let base_addr = self.get_gfx_addr(self.vlc_c9);
@@ -262,14 +296,13 @@ impl TGACard {
         }
     }
 
-    /// Draw 32 pixels in low res 4bpp graphics mode (160x200x16)
+    /// Draw 16 dots in low res 4bpp graphics mode (160x200x16)
     pub fn draw_gfx_mode_4bpp_lchar(&mut self, cpumem: &[u8]) {
         if self.mode_enable {
             let base_addr = self.get_gfx_addr(self.vlc_c9);
             let pair0 = self.crt_mem(cpumem)[base_addr] as usize;
             let pair1 = self.crt_mem(cpumem)[base_addr + 1] as usize;
             self.buf[self.back_buf][self.rba] = self.palette_registers[pair0 >> 4];
-            self.buf[self.back_buf][self.rba + 1] = self.palette_registers[pair0 >> 4];
             self.buf[self.back_buf][self.rba + 2] = self.palette_registers[pair0 >> 4];
             self.buf[self.back_buf][self.rba + 3] = self.palette_registers[pair0 >> 4];
             self.buf[self.back_buf][self.rba + 4] = self.palette_registers[pair0 & 0x0F];
