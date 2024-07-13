@@ -2537,11 +2537,25 @@ impl TGACard {
             // Implement a fixed hsync width from the monitor's perspective -
             // A wider programmed hsync width than these values shifts the displayed image to the right.
             // in 4bpp low res mode, clock divisor is 2 but the effective character width is halved.
-            let hsync_target = if (self.clock_divisor == 1) || self.mode_4bpp {
-                std::cmp::min(10, self.crtc_sync_width)
-            }
-            else {
-                5
+
+            let hsync_target: u8 = match self.subtype {
+                VideoCardSubType::IbmPCJr => {
+                    // PCjr uses wider hsyncs than Tandy or CGA
+                    if (self.clock_divisor == 1) || self.mode_4bpp {
+                        std::cmp::min(12, self.crtc_sync_width)
+                    }
+                    else {
+                        6
+                    }
+                }
+                _ => {
+                    if (self.clock_divisor == 1) || self.mode_4bpp {
+                        std::cmp::min(10, self.crtc_sync_width)
+                    }
+                    else {
+                        5
+                    }
+                }
             };
 
             // Do a horizontal sync
