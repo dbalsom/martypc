@@ -1401,9 +1401,11 @@ impl TGACard {
                 // Attempt to update clock.
                 self.update_clock();
 
-                // Synthesize a virtual mode byte
+                // The PCjr doesn't have a traditional CGA mode register, so Synthesize a virtual mode byte
                 let mut vmode_byte = 0;
-                if self.mode_hires_txt {
+                if self.mode_hires_txt && !self.mode_graphics {
+                    // The PCjr's 'hi-res' bit is not specific to text mode. It can also indicate hi-res
+                    // 2bpp mode. So only set the hi-res text bit if graphics bit is off.
                     vmode_byte |= MODE_HIRES_TEXT;
                 }
                 if self.mode_graphics {
@@ -1422,7 +1424,7 @@ impl TGACard {
                     // Replaces blinking bit
                     vmode_byte |= VMODE_4BPP;
                 }
-                self.display_mode = match self.mode_byte & CGA_MODE_ENABLE_MASK {
+                self.display_mode = match vmode_byte & CGA_MODE_ENABLE_MASK {
                     0b00_0100 => DisplayMode::Mode0TextBw40,
                     0b00_0000 => DisplayMode::Mode1TextCo40,
                     0b00_0101 => DisplayMode::Mode2TextBw80,
@@ -1434,8 +1436,15 @@ impl TGACard {
                     0b01_0010 => DisplayMode::Mode6HiResGraphics,
                     0b10_0010 => DisplayMode::Mode8LowResGraphics16,
                     _ => {
-                        trace!(self, "Invalid display mode selected: {:02X}", self.mode_byte & 0x1F);
-                        log::warn!("CGA: Invalid display mode selected: {:02X}", self.mode_byte & 0x1F);
+                        trace!(
+                            self,
+                            "Invalid display mode selected: {:02X}",
+                            vmode_byte & CGA_MODE_ENABLE_MASK
+                        );
+                        log::warn!(
+                            "TGA: Invalid display mode selected: {:02X}",
+                            vmode_byte & CGA_MODE_ENABLE_MASK
+                        );
                         DisplayMode::Mode3TextCo80
                     }
                 };
@@ -2041,9 +2050,12 @@ impl TGACard {
                 }
                 else if self.mode_hires_gfx {
                     //self.draw_hires_gfx_mode_char(cpumem);
+                    //self.draw_solid_hchar(CGA_HBLANK_DEBUG_COLOR);
+                    self.draw_gfx_mode_2bpp_hchar(cpumem);
                 }
                 else {
-                    self.draw_solid_hchar(self.cc_overscan_color);
+                    self.draw_solid_hchar(CGA_VBLANK_DEBUG_COLOR);
+                    //self.draw_gfx_mode_2bpp_mchar(cpumem);
                 }
             }
             else if self.in_crtc_hblank {
