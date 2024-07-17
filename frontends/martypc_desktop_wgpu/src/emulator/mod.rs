@@ -378,13 +378,24 @@ impl Emulator {
         self.gui.set_card_list(card_strs);
 
         // Set floppy drives.
-        self.gui.set_floppy_drives(self.machine.bus().floppy_drive_ct());
+        let drive_ct = self.machine.bus().floppy_drive_ct();
+        let mut drive_types = Vec::new();
+        for i in 0..drive_ct {
+            if let Some(fdc) = self.machine.bus().fdc() {
+                drive_types.push(fdc.drive(i).get_type());
+            }
+        }
+        self.gui.set_floppy_drives(drive_types);
 
         // Set hard drives.
         self.gui.set_hdds(self.machine.bus().hdd_ct());
 
         // Set cartridge slots
         self.gui.set_cart_slots(self.machine.bus().cart_ct());
+
+        // Set autofloppy paths
+        self.gui
+            .set_autofloppy_paths(self.floppy_manager.get_autofloppy_paths());
 
         // Request initial events from GUI.
         self.gui.initialize();

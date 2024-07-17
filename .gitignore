@@ -70,6 +70,13 @@ icon.png
 /install/media/roms/romdef_ast.toml
 /install/media/roms/GLaBIOS/parking
 
+# Ignore autofloppy dirs
+/install/media/mount/floppy/*
+!/install/media/mount/floppy/readme.md
+
+# Disk dumps
+/install/*.img
+
 # Frontend files
 /frontends/martypc_web_player_wgpu/web/bin
 
@@ -82,4 +89,5 @@ icon.png
 /tree.txt
 
 /test-gen/
+
 

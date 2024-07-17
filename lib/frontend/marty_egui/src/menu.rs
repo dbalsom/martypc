@@ -391,22 +391,38 @@ impl GuiState {
 
     pub fn draw_floppy_menu(&mut self, ui: &mut egui::Ui, drive_idx: usize) {
         let floppy_name = match drive_idx {
-            0 => "💾 Floppy Drive 0 (A:)".to_string(),
-            1 => "💾 Floppy Drive 1 (B:)".to_string(),
-            _ => format!("💾 Floppy Drive {}", drive_idx),
+            0 => format!("💾 Floppy Drive 0 - {} (A:)", self.floppy_drives[drive_idx].drive_type),
+            1 => format!("💾 Floppy Drive 1 - {} (B:)", self.floppy_drives[drive_idx].drive_type),
+            _ => format!(
+                "💾 Floppy Drive {} - {}",
+                drive_idx, self.floppy_drives[drive_idx].drive_type
+            ),
         };
 
         ui.menu_button(floppy_name, |ui| {
-            ui.menu_button("Load image", |ui| {
+            ui.menu_button("Load from Image file", |ui| {
                 self.floppy_tree_menu.draw(ui, drive_idx, &mut |image_idx| {
-                    log::debug!("Clicked closure called with image_idx {}", image_idx);
+                    //log::debug!("Clicked closure called with image_idx {}", image_idx);
                     self.event_queue.send(GuiEvent::LoadFloppy(drive_idx, image_idx));
                 });
             });
 
+            if !self.autofloppy_paths.is_empty() {
+                ui.menu_button("Load from Directory", |ui| {
+                    for path in self.autofloppy_paths.iter() {
+                        if ui.button(format!("📁 {}", path.name.to_string_lossy())).clicked() {
+                            self.event_queue
+                                .send(GuiEvent::LoadAutoFloppy(drive_idx, path.full_path.clone()));
+                        }
+                    }
+                });
+            }
+
+            ui.separator();
             ui.horizontal(|ui| {
                 if let Some(floppy_name) = &self.floppy_drives[drive_idx].filename() {
-                    if ui.button(format!("Eject image: {}", floppy_name)).clicked() {
+                    let type_str = self.floppy_drives[drive_idx].type_string();
+                    if ui.button(format!("Eject {}{}", type_str, floppy_name)).clicked() {
                         self.event_queue.send(GuiEvent::EjectFloppy(drive_idx));
                     }
                 }
@@ -417,8 +433,9 @@ impl GuiState {
 
             ui.horizontal(|ui| {
                 if let Some(floppy_name) = &self.floppy_drives[drive_idx].filename() {
-                    ui.add_enabled_ui(!self.floppy_drives[drive_idx].write_protected, |ui| {
-                        if ui.button(format!("Save image: {}", floppy_name)).clicked() {
+                    ui.add_enabled_ui(self.floppy_drives[drive_idx].is_writeable(), |ui| {
+                        let type_str = self.floppy_drives[drive_idx].type_string();
+                        if ui.button(format!("Save {}{}", type_str, floppy_name)).clicked() {
                             if let Some(floppy_idx) = self.floppy_drives[drive_idx].selected_idx {
                                 self.event_queue.send(GuiEvent::SaveFloppy(drive_idx, floppy_idx));
                             }

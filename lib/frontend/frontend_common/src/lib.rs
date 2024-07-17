@@ -53,6 +53,7 @@ pub type HotkeyEvent = types::hotkeys::HotkeyEvent;
 pub type HotkeyScope = types::hotkeys::HotkeyScope;
 pub type HotkeyConfigEntry = types::hotkeys::HotkeyConfigEntry;
 pub type JoyKeyEntry = types::joykeys::JoyKeyEntry;
+pub type RelativeDirectory = types::floppy::RelativeDirectory;
 
 #[derive(Copy, Clone, Debug, Default, PartialEq, Deserialize)]
 pub enum BenchmarkEndCondition {

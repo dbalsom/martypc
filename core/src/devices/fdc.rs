@@ -446,6 +446,13 @@ impl FloppyController {
         self.drive_ct
     }
 
+    pub fn drive(&self, idx: usize) -> &FloppyDiskDrive {
+        if idx >= self.drive_ct {
+            panic!("Invalid drive index");
+        }
+        &self.drives[self.drive_select]
+    }
+
     /// Load a disk into the specified drive
     pub fn load_image_from(&mut self, drive_select: usize, src_vec: Vec<u8>, write_protect: bool) -> Result<(), Error> {
         if drive_select >= self.drive_ct {

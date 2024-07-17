@@ -33,7 +33,7 @@
 use core::fmt;
 use serde::{self, Deserializer};
 use serde_derive::Deserialize;
-use std::str::FromStr;
+use std::{fmt::Display, str::FromStr};
 
 #[derive(Copy, Clone, Debug, Deserialize, Hash, Eq, PartialEq)]
 pub enum MachineType {
@@ -111,6 +111,17 @@ pub enum FloppyDriveType {
     Floppy720K,
     Floppy12M,
     Floppy144M,
+}
+
+impl Display for FloppyDriveType {
+    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+        match self {
+            FloppyDriveType::Floppy360K => write!(f, "360K"),
+            FloppyDriveType::Floppy720K => write!(f, "720K"),
+            FloppyDriveType::Floppy12M => write!(f, "1.2M"),
+            FloppyDriveType::Floppy144M => write!(f, "1.44M"),
+        }
+    }
 }
 
 impl FromStr for FloppyDriveType {
