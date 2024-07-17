@@ -53,3 +53,44 @@ overlays = [
         format = "Mfm"
         vhd = "xebec20MB.vhd"
             
+[[machine]]
+name = "tandy1000hx"
+type = "Tandy1000"
+rom_set = "tandy1000hx"
+speaker = true
+overlays = [
+    "pcxt_2_360k_floppies",
+]
+
+    [machine.memory]
+    #conventional.size = 0x20000 # 128KB max. Install additional RAM via expansion cards
+    conventional.size = 0x20000
+    conventional.wait_states = 0
+
+    [machine.keyboard]
+    # Valid options for keyboard_type are:
+    # ModelF - This was the original 83-key keyboard shipped with the PC/XT
+    #          (More keyboard types yet to be implemented)
+    #
+    type = "Tandy1000"
+    # Keyboard layout. Used to load the appropriate keyboard translation file.
+    # MartyPC will look for the file keyboard_XX.toml in the ./keyboard/ directory
+    # where XX is the string specified by keyboard_layout.
+    #
+    # Certain scancodes have changed their meaning since the 1980's. Your help
+    # would be appreciated in developing new translation files.
+    layout = "US"
+    # Enable typematic repeat for the emulated keyboard. Host repeat is ignored.
+    typematic = true
+    # Delay in milliseconds before typematic repeat begins.
+    typematic_delay = 500.0
+    # Delay in milliseconds between each scancode during typematic repeat.
+    typematic_rate= 50.0
+
+    # Video card
+    [[machine.video]]
+    bus_type = "Onboard"
+    type = "TGA"
+    subtype = "Tandy1000"
+    clock_mode = "Default"
+    
