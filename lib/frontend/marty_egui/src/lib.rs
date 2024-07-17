@@ -31,15 +31,15 @@
 
 extern crate core;
 
+use egui::{Color32, Context, Visuals};
 use std::{
     collections::{BTreeMap, HashMap, VecDeque},
     ffi::OsString,
     hash::Hash,
     mem::Discriminant,
+    path::PathBuf,
     time::Duration,
 };
-
-use egui::{Color32, Context, Visuals};
 
 use lazy_static::lazy_static;
 
@@ -170,6 +170,7 @@ pub enum GuiEvent {
     DetachVHD(usize),
     CreateVHD(OsString, HardDiskFormat),
     LoadFloppy(usize, usize),
+    LoadAutoFloppy(usize, PathBuf),
     SaveFloppy(usize, usize),
     EjectFloppy(usize),
     SetFloppyWriteProtect(usize, bool),

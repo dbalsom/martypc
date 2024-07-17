@@ -51,7 +51,13 @@ use marty_egui::{
 use std::{mem::discriminant, time::Duration};
 
 use frontend_common::constants::{LONG_NOTIFICATION_TIME, NORMAL_NOTIFICATION_TIME, SHORT_NOTIFICATION_TIME};
-use marty_core::{cpu_common::Register16, machine::MachineOption, vhd::VirtualHardDisk};
+use marty_core::{
+    cpu_common::Register16,
+    device_types::fdc::FloppyImageType,
+    machine::MachineOption,
+    vhd::VirtualHardDisk,
+};
+use marty_egui::state::FloppyDriveSelection;
 use videocard_renderer::AspectCorrectionMode;
 use winit::event_loop::EventLoopWindowTarget;
 
@@ -242,6 +248,9 @@ pub fn handle_egui_event(emu: &mut Emulator, elwt: &EventLoopWindowTarget<()>, g
             if let Err(e) = emu.floppy_manager.scan_resource(&emu.rm) {
                 log::error!("Error scanning floppy directory: {}", e);
             }
+            if let Err(e) = emu.floppy_manager.scan_autofloppy(&emu.rm) {
+                log::error!("Error scanning autofloppy directory: {}", e);
+            }
             if let Err(e) = emu.vhd_manager.scan_resource(&emu.rm) {
                 log::error!("Error scanning hdd directory: {}", e);
             }
@@ -252,6 +261,7 @@ pub fn handle_egui_event(emu: &mut Emulator, elwt: &EventLoopWindowTarget<()>, g
             if let Ok(floppy_tree) = emu.floppy_manager.make_tree(&emu.rm) {
                 emu.gui.set_floppy_tree(floppy_tree);
             }
+            emu.gui.set_autofloppy_paths(emu.floppy_manager.get_autofloppy_paths());
             // Update VHD Image tree
             if let Ok(hdd_tree) = emu.vhd_manager.make_tree(&emu.rm) {
                 emu.gui.set_hdd_tree(hdd_tree);
@@ -341,8 +351,12 @@ pub fn handle_egui_event(emu: &mut Emulator, elwt: &EventLoopWindowTarget<()>, g
                         ) {
                             Ok(()) => {
                                 log::info!("Floppy image successfully loaded into virtual drive.");
-                                emu.gui
-                                    .set_floppy_selection(*drive_select, Some(*item_idx), Some(name.clone().into()));
+                                emu.gui.set_floppy_selection(
+                                    *drive_select,
+                                    Some(*item_idx),
+                                    FloppyDriveSelection::Image(name.clone().into()),
+                                    false,
+                                );
 
                                 emu.gui.set_floppy_write_protected(
                                     *drive_select,
@@ -373,16 +387,43 @@ pub fn handle_egui_event(emu: &mut Emulator, elwt: &EventLoopWindowTarget<()>, g
                 });
             }
         }
-        /*
-        GuiEvent::LoadFloppy(drive_select, filename) => {
-            log::debug!("Load floppy image: {:?} into drive: {}", filename, drive_select);
+        GuiEvent::LoadAutoFloppy(drive_select, path) => {
+            log::debug!(
+                "Load autofloppy path: {:?} into drive: {}",
+                path.to_string_lossy(),
+                drive_select
+            );
 
-            match emu.floppy_manager.load_floppy_data(&filename) {
+            // Query the indicated floppy drive for the largest supported image format.
+            // An autofloppy will always be built to the largest supported capacity.
+            let mut image_type = None;
+            if let Some(fdc) = emu.machine.fdc() {
+                image_type = Some(fdc.drive(*drive_select).get_largest_supported_image_format());
+            }
+
+            match emu
+                .floppy_manager
+                .build_autofloppy_image(path, Some(FloppyImageType::Image360K), &emu.rm)
+            {
                 Ok(vec) => {
                     if let Some(fdc) = emu.machine.fdc() {
-                        match fdc.load_image_from(*drive_select, vec) {
+                        match fdc.load_image_from(*drive_select, vec, true) {
                             Ok(()) => {
                                 log::info!("Floppy image successfully loaded into virtual drive.");
+
+                                emu.gui.set_floppy_selection(
+                                    *drive_select,
+                                    None,
+                                    FloppyDriveSelection::Directory(path.clone()),
+                                    true,
+                                );
+
+                                emu.gui.set_floppy_write_protected(*drive_select, true);
+
+                                emu.gui
+                                    .toasts()
+                                    .info("Directory successfully mounted!".to_string())
+                                    .set_duration(Some(NORMAL_NOTIFICATION_TIME));
                             }
                             Err(err) => {
                                 log::warn!("Floppy image failed to load: {}", err);
@@ -390,14 +431,15 @@ pub fn handle_egui_event(emu: &mut Emulator, elwt: &EventLoopWindowTarget<()>, g
                         }
                     }
                 }
-                Err(e) => {
-                    log::error!("Failed to load floppy image: {:?} Error: {}", filename, e);
-                    // TODO: Some sort of GUI indication of failure
-                    eprintln!("Failed to read floppy image file: {:?} Error: {}", filename, e);
+                Err(err) => {
+                    log::error!("Failed to build autofloppy image. Error: {}", err);
+                    emu.gui
+                        .toasts()
+                        .error(format!("Directory mount failed: {}", err))
+                        .set_duration(Some(NORMAL_NOTIFICATION_TIME));
                 }
             }
         }
-        */
         GuiEvent::SaveFloppy(drive_select, image_idx) => {
             log::debug!(
                 "Received SaveFloppy event image index: {}, drive: {}",
@@ -428,7 +470,8 @@ pub fn handle_egui_event(emu: &mut Emulator, elwt: &EventLoopWindowTarget<()>, g
             log::info!("Ejecting floppy in drive: {}", drive_select);
             if let Some(fdc) = emu.machine.fdc() {
                 fdc.unload_image(*drive_select);
-                emu.gui.set_floppy_selection(*drive_select, None, None);
+                emu.gui
+                    .set_floppy_selection(*drive_select, None, FloppyDriveSelection::None, false);
                 emu.gui
                     .toasts()
                     .info("Floppy ejected!".to_string())

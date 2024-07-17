@@ -514,6 +514,12 @@ pub fn run() {
         std::process::exit(1);
     }
 
+    // Scan the "autofloppy" resource
+    if let Err(e) = floppy_manager.scan_autofloppy(&resource_manager) {
+        eprintln!("Failed to read autofloppy path: {:?}", e);
+        std::process::exit(1);
+    }
+
     // Instantiate the VHD manager
     let mut vhd_manager = VhdManager::new();
 

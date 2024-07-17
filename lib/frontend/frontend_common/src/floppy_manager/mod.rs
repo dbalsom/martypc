@@ -31,16 +31,23 @@
 
 */
 
-use crate::resource_manager::{PathTreeNode, ResourceItem, ResourceManager};
-use std::{
-    collections::HashMap,
-    ffi::OsString,
-    fmt::Display,
-    fs,
-    path::{Path, PathBuf},
+use crate::{
+    resource_manager::{PathTreeNode, ResourceItem, ResourceItemType, ResourceManager},
+    types::floppy::RelativeDirectory,
 };
-
 use anyhow::Error;
+use marty_core::device_types::fdc::FloppyImageType;
+use std::{
+    cell::RefCell,
+    collections::{HashMap, HashSet},
+    ffi::OsString,
+    fmt::{write, Display},
+    fs,
+    fs::File,
+    io::{Cursor, Read, Write},
+    path::{Path, PathBuf},
+    rc::Rc,
+};
 
 #[derive(Debug)]
 pub enum FloppyError {
@@ -48,6 +55,7 @@ pub enum FloppyError {
     ImageNotFound,
     FileReadError,
     FileWriteError,
+    ImageBuildError,
 }
 impl std::error::Error for FloppyError {}
 impl Display for FloppyError {
@@ -57,6 +65,7 @@ impl Display for FloppyError {
             FloppyError::ImageNotFound => write!(f, "Specified image name could not be found in floppy manager."),
             FloppyError::FileReadError => write!(f, "A file read error occurred."),
             FloppyError::FileWriteError => write!(f, "A file write error occurred."),
+            FloppyError::ImageBuildError => write!(f, "Error building floppy image."),
         }
     }
 }
@@ -73,6 +82,7 @@ pub struct FloppyManager {
     files: Vec<ResourceItem>,
     image_vec: Vec<FloppyImage>,
     image_map: HashMap<OsString, usize>,
+    autofloppy_dir_vec: Vec<RelativeDirectory>,
     extensions: Vec<OsString>,
 }
 
@@ -82,6 +92,7 @@ impl FloppyManager {
             files: Vec::new(),
             image_vec: Vec::new(),
             image_map: HashMap::new(),
+            autofloppy_dir_vec: Vec::new(),
             extensions: vec![OsString::from("img"), OsString::from("ima")],
         }
     }
@@ -122,12 +133,39 @@ impl FloppyManager {
         Ok(true)
     }
 
+    pub fn scan_autofloppy(&mut self, rm: &ResourceManager) -> Result<bool, Error> {
+        // Clear and rebuild autofloppy list.
+        self.autofloppy_dir_vec.clear();
+
+        // Retrieve all items from the floppy resource paths.
+        let autofloppy_dirs = rm.enumerate_items("autofloppy", false, false, None)?;
+
+        // Index mapping between 'files' vec and 'image_vec' should be maintained.
+        for item in autofloppy_dirs.iter() {
+            let idx = self.image_vec.len();
+
+            if matches!(item.rtype, ResourceItemType::Directory) {
+                self.autofloppy_dir_vec.push(RelativeDirectory {
+                    full: item.full_path.clone(),
+                    relative: item.relative_path.clone().unwrap_or(PathBuf::new()),
+                    name: item.filename_only.clone().unwrap_or(OsString::new()),
+                });
+            }
+        }
+
+        for dir in &self.autofloppy_dir_vec {
+            println!("Found autofloppy directory: {:?}", dir.name);
+        }
+
+        Ok(true)
+    }
+
     pub fn make_tree(&mut self, rm: &ResourceManager) -> Result<PathTreeNode, Error> {
         let tree = rm.items_to_tree("floppy", &self.files)?;
         Ok(tree)
     }
 
-    pub fn scan_paths(&mut self, paths: Vec<PathBuf>) -> Result<bool, FloppyError> {
+    pub fn scan_paths(&mut self, paths: Vec<PathBuf>) -> Result<bool, Error> {
         // Clear and rebuild image lists.
         self.image_vec.clear();
         self.image_map.clear();
@@ -199,6 +237,10 @@ impl FloppyManager {
         Ok(true)
     }
 
+    pub fn get_autofloppy_paths(&self) -> Vec<RelativeDirectory> {
+        self.autofloppy_dir_vec.clone()
+    }
+
     pub fn get_floppy_names(&self) -> Vec<OsString> {
         let mut vec: Vec<OsString> = Vec::new();
         for (key, _val) in &self.image_map {
@@ -229,6 +271,131 @@ impl FloppyManager {
             }
         };
         Ok(floppy_vec)
+    }
+
+    pub fn build_autofloppy_image(
+        &self,
+        path: &PathBuf,
+        format: Option<FloppyImageType>,
+        rm: &ResourceManager,
+    ) -> Result<Vec<u8>, Error> {
+        let format = format.unwrap_or(FloppyImageType::Image360K);
+
+        let formatted_image = create_formatted_image("MartyPC", format)?;
+        let mut floppy_buf = Cursor::new(formatted_image);
+
+        let vfat12 = match fatfs::FileSystem::new(&mut floppy_buf, fatfs::FsOptions::new()) {
+            Ok(fs) => fs,
+            Err(err) => {
+                println!("Error creating FAT filesystem: {:?}", err);
+                return Err(FloppyError::ImageBuildError.into());
+            }
+        };
+
+        let dir_items = rm.enumerate_items_from_path(path)?;
+
+        let mut files_visited: HashSet<PathBuf> = HashSet::new();
+        let mut io_sys: Option<PathBuf> = None;
+        let mut dos_sys: Option<PathBuf> = None;
+
+        // First, scan for the special files IO.SYS and MSDOS.SYS, as these need to be the first two files in the root directory.
+        for item in &dir_items {
+            let filename_only = item.filename_only.as_ref().unwrap();
+            let filename = filename_only.to_str().unwrap().clone();
+
+            if filename == "IO.SYS" {
+                files_visited.insert(item.full_path.clone());
+                io_sys = Some(item.full_path.clone());
+            }
+            else if filename == "IBMBIO.COM" {
+                files_visited.insert(item.full_path.clone());
+                io_sys = Some(item.full_path.clone());
+            }
+            else if filename == "MSDOS.SYS" {
+                files_visited.insert(item.full_path.clone());
+                dos_sys = Some(item.full_path.clone());
+            }
+            else if filename == "IBMDOS.COM" {
+                files_visited.insert(item.full_path.clone());
+                dos_sys = Some(item.full_path.clone());
+            }
+        }
+
+        // If we found IO.SYS, write it first.
+        if let Some(io_sys_path) = io_sys {
+            let io_sys_vec = rm.read_resource_from_path(&io_sys_path)?;
+            let filename_only = io_sys_path.file_name().unwrap().to_str().unwrap();
+            let mut io_sys_file = vfat12.root_dir().create_file(filename_only)?;
+            log::debug!("Installing IO SYS: {}", filename_only);
+            io_sys_file.write_all(&io_sys_vec)?;
+            io_sys_file.flush().unwrap();
+        }
+
+        // If we found MSDOS.SYS, write it second.
+        if let Some(dos_sys_path) = dos_sys {
+            let dos_sys_vec = rm.read_resource_from_path(&dos_sys_path)?;
+            let filename_only = dos_sys_path.file_name().unwrap().to_str().unwrap();
+            let mut dos_sys_file = vfat12.root_dir().create_file(filename_only)?;
+            log::debug!("Installing DOS SYS: {}", filename_only);
+            dos_sys_file.write_all(&dos_sys_vec)?;
+            dos_sys_file.flush().unwrap();
+        }
+
+        let mut bootsector_opt = None;
+        for item in &dir_items {
+            let filename_only = item.filename_only.as_ref().unwrap();
+            let filename = filename_only.to_str().unwrap().clone();
+
+            if filename.to_lowercase() == "bootsector.bin" {
+                bootsector_opt = Some(item.full_path.clone());
+                continue;
+            }
+
+            let file_vec = rm.read_resource_from_path(&item.full_path)?;
+
+            if files_visited.get(&item.full_path).is_some() {
+                // Skip files we have already processed, like IO.SYS and MSDOS.SYS
+                log::debug!("Skipping previously installed file: {:?}", item.full_path);
+                continue;
+            }
+
+            log::debug!("Writing file: {:?} size: {}", item.full_path.display(), file_vec.len());
+
+            let mut file = vfat12.root_dir().create_file(filename)?;
+            file.write_all(&file_vec)?;
+            file.flush().unwrap();
+        }
+
+        vfat12.unmount()?;
+
+        let mut buf = floppy_buf.into_inner();
+
+        // Did we find a boot sector file? if so, load it now
+        if let Some(bootsector_path) = bootsector_opt {
+            let mut bootsector_vec = rm.read_resource_from_path(&bootsector_path)?;
+
+            if bootsector_vec.len() > 0 {
+                if bootsector_vec.len() < 512 {
+                    bootsector_vec.extend(vec![0u8; 512 - bootsector_vec.len()]);
+                }
+                else if bootsector_vec.len() > 512 {
+                    bootsector_vec.truncate(512);
+                }
+
+                log::debug!(
+                    "Installing bootsector of len: {} into autofloppy image...",
+                    bootsector_vec.len()
+                );
+                buf[..512].copy_from_slice(&bootsector_vec);
+            }
+        }
+
+        //log::debug!("Created image of size: {}", image_buf.len());
+
+        let mut file = std::fs::File::create("fat_dump.img").map_err(|_| FloppyError::ImageBuildError)?;
+        file.write_all(&buf).map_err(|_| FloppyError::ImageBuildError)?;
+
+        Ok(buf.clone())
     }
 
     /*
@@ -281,4 +448,53 @@ impl FloppyManager {
             }
         }
     }
+}
+
+fn create_formatted_image(label: &str, format: FloppyImageType) -> Result<Vec<u8>, Error> {
+    let (bps, bpc, mrde, spt, heads, media_byte, image_size) = match format {
+        FloppyImageType::Image360K => (512, 2 * 512, 0x70, 9, 2, 0xFD, 368_640),
+        FloppyImageType::Image720K => (512, 2 * 512, 0x70, 9, 2, 0xF9, 737_280),
+        FloppyImageType::Image12M => (512, 2 * 512, 0xE0, 15, 2, 0xF9, 1_228_800),
+        FloppyImageType::Image144M => (512, 2 * 512, 0xE0, 18, 2, 0xF0, 1_474_560),
+        _ => {
+            return Err(anyhow::anyhow!("Unsupported floppy image format: {:?}", format));
+        }
+    };
+
+    log::debug!("Formatting an {:?} format floppy with label: {}", format, label);
+
+    let mut floppy_buf = Cursor::new(vec![0u8; image_size]);
+    let label = create_drive_label(label);
+
+    fatfs::format_volume(
+        &mut floppy_buf,
+        fatfs::FormatVolumeOptions::new()
+            .fat_type(fatfs::FatType::Fat12)
+            //.volume_label(label)
+            .bytes_per_sector(bps)
+            .bytes_per_cluster(bpc)
+            .max_root_dir_entries(mrde)
+            .sectors_per_track(spt)
+            .heads(heads)
+            .media(media_byte)
+            .drive_num(0),
+    )?;
+
+    Ok(floppy_buf.into_inner())
+}
+
+fn create_drive_label(input: &str) -> [u8; 11] {
+    let max_length = 11;
+    let trimmed = if input.len() > max_length {
+        input[..max_length].to_string().to_ascii_uppercase()
+    }
+    else {
+        input.to_string().to_ascii_uppercase()
+    };
+
+    format!("{:<width$}", trimmed, width = max_length)
+        .bytes()
+        .collect::<Vec<u8>>()
+        .try_into()
+        .unwrap()
 }

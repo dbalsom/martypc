@@ -210,6 +210,63 @@ impl ResourceManager {
         Ok(items)
     }
 
+    pub fn enumerate_items_from_path(&self, path: &PathBuf) -> Result<Vec<ResourceItem>, Error> {
+        let mut items: Vec<ResourceItem> = Vec::new();
+        let mut visited = HashSet::new();
+
+        let ignore_dirs = self.ignore_dirs.iter().map(|s| s.as_str()).collect();
+        ResourceManager::visit_dirs(&path, &mut visited, &ignore_dirs, &mut |entry: &fs::DirEntry| {
+            items.push(ResourceItem {
+                rtype: ResourceItemType::LocalFile,
+                full_path: entry.path(),
+                relative_path: None,
+                filename_only: Some(entry.path().file_name().unwrap_or_default().to_os_string()),
+                flags: 0,
+            });
+        })?;
+
+        Ok(items)
+    }
+
+    pub fn enumerate_dirs(&self, multipath: bool, resource: &str) -> Result<Vec<ResourceItem>, Error> {
+        let mut dir_items = Vec::new();
+
+        let mut roots = self
+            .pm
+            .get_resource_paths(resource)
+            .ok_or(anyhow::anyhow!("Resource path not found: {}", resource))?;
+
+        if !multipath {
+            // If multipath is false, only use the first path
+            roots.truncate(1);
+        }
+
+        if roots.is_empty() {
+            return Err(anyhow::anyhow!("No paths defined for resource: {}", resource));
+        }
+
+        for root in roots.iter() {
+            if root.is_dir() {
+                for entry in fs::read_dir(root)? {
+                    let entry = entry?;
+                    let path = entry.path();
+
+                    if path.is_dir() {
+                        dir_items.push(ResourceItem {
+                            rtype: ResourceItemType::Directory,
+                            full_path: path.clone(),
+                            relative_path: None,
+                            filename_only: Some(path.file_name().unwrap_or_default().to_os_string()),
+                            flags: 0,
+                        });
+                    }
+                }
+            }
+        }
+
+        Ok(dir_items)
+    }
+
     fn visit_dirs(
         dir: &Path,
         visited: &mut HashSet<PathBuf>,

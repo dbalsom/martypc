@@ -30,41 +30,6 @@
 */
 
 use crate::{
-    GuiBoolean,
-    GuiEnum,
-    GuiEnumMap,
-    GuiEvent,
-    GuiEventQueue,
-    GuiVariableContext,
-    GuiWindow,
-    MediaTrayState,
-    PerformanceStats,
-};
-use egui::ColorImage;
-use egui_notify::{Anchor, Toasts};
-use frontend_common::{
-    display_manager::DisplayInfo,
-    display_scaler::{ScalerMode, ScalerPreset},
-    resource_manager::PathTreeNode,
-};
-use marty_core::{
-    device_traits::videocard::{DisplayApertureDesc, VideoCardState, VideoCardStateEntry},
-    devices::{pit::PitDisplayState, serial::SerialPortDescriptor},
-    machine::{ExecutionControl, MachineState},
-};
-use serde::{Deserialize, Serialize};
-use serialport::SerialPortInfo;
-use std::{
-    cell::RefCell,
-    collections::{BTreeMap, HashMap},
-    ffi::OsString,
-    mem::discriminant,
-    path::PathBuf,
-    rc::Rc,
-};
-use strum::IntoEnumIterator;
-
-use crate::{
     widgets::file_tree_menu::FileTreeMenu,
     windows::{
         about::AboutDialog,
@@ -91,21 +56,85 @@ use crate::{
         text_mode_viewer::TextModeViewer,
         vhd_creator::VhdCreator,
     },
+    GuiBoolean,
+    GuiEnum,
+    GuiEnumMap,
+    GuiEvent,
+    GuiEventQueue,
+    GuiVariableContext,
+    GuiWindow,
+    MediaTrayState,
+    PerformanceStats,
 };
+use egui::ColorImage;
+use egui_notify::{Anchor, Toasts};
+use frontend_common::{
+    display_manager::DisplayInfo,
+    display_scaler::{ScalerMode, ScalerPreset},
+    resource_manager::PathTreeNode,
+    RelativeDirectory,
+};
+use marty_core::{
+    cpu_common::QueueOp,
+    device_traits::videocard::{DisplayApertureDesc, VideoCardState, VideoCardStateEntry},
+    devices::{pit::PitDisplayState, serial::SerialPortDescriptor},
+    machine::{ExecutionControl, MachineState},
+    machine_types::FloppyDriveType,
+};
+use serde::{Deserialize, Serialize};
+use serialport::SerialPortInfo;
+use std::{
+    cell::RefCell,
+    collections::{BTreeMap, HashMap},
+    ffi::OsString,
+    mem::discriminant,
+    path::PathBuf,
+    rc::Rc,
+};
+use strum::IntoEnumIterator;
+
+pub enum FloppyDriveSelection {
+    None,
+    Image(PathBuf),
+    Directory(PathBuf),
+}
 
 pub struct GuiFloppyDriveInfo {
     pub(crate) idx: usize,
     pub(crate) selected_idx: Option<usize>,
-    pub(crate) selected_path: Option<PathBuf>,
+    pub(crate) selected_path: FloppyDriveSelection,
     pub(crate) write_protected: bool,
+    pub(crate) read_only: bool,
+    pub(crate) drive_type: FloppyDriveType,
 }
 
 impl GuiFloppyDriveInfo {
     pub fn filename(&self) -> Option<String> {
         match &self.selected_path {
-            Some(path) => Some(path.to_string_lossy().to_string()),
-            None => None,
+            FloppyDriveSelection::Image(path) => Some(path.to_string_lossy().to_string()),
+            FloppyDriveSelection::Directory(path) => Some(path.file_name().unwrap().to_string_lossy().to_string()),
+            FloppyDriveSelection::None => None,
         }
+    }
+
+    pub fn type_string(&self) -> String {
+        match &self.selected_path {
+            FloppyDriveSelection::Image(_) => "Image: ".to_string(),
+            FloppyDriveSelection::Directory(_) => "Directory: ".to_string(),
+            FloppyDriveSelection::None => "".to_string(),
+        }
+    }
+
+    pub fn is_writeable(&self) -> bool {
+        !self.read_only
+    }
+
+    pub fn write_protect(&mut self, state: bool) {
+        self.write_protected = state;
+    }
+
+    pub fn read_only(&mut self, state: bool) {
+        self.read_only = state;
     }
 }
 
@@ -138,6 +167,12 @@ impl GuiCartInfo {
             None => None,
         }
     }
+}
+
+pub struct GuiAutofloppyPath {
+    pub(crate) full_path: PathBuf,
+    pub(crate) name: OsString,
+    pub(crate) mounted: bool,
 }
 
 #[derive(Clone, Serialize, Deserialize)]
@@ -192,6 +227,7 @@ pub struct GuiState {
     pub(crate) floppy_drives: Vec<GuiFloppyDriveInfo>,
     pub(crate) hdds: Vec<GuiHddInfo>,
     pub(crate) carts: Vec<GuiCartInfo>,
+    pub(crate) autofloppy_paths: Vec<GuiAutofloppyPath>,
 
     // VHD Images
     pub(crate) vhd_names: Vec<OsString>,
@@ -324,6 +360,7 @@ impl GuiState {
             hdds: Vec::new(),
             carts: Vec::new(),
             vhd_names: Vec::new(),
+            autofloppy_paths: Vec::new(),
 
             serial_ports: Vec::new(),
             host_serial_ports: Vec::new(),
@@ -446,29 +483,51 @@ impl GuiState {
         self.machine_state = state;
     }
 
-    pub fn set_floppy_drives(&mut self, drive_ct: usize) {
+    pub fn set_floppy_drives(&mut self, drives: Vec<FloppyDriveType>) {
         self.floppy_drives.clear();
-        for idx in 0..drive_ct {
+
+        for (idx, drive_type) in drives.iter().enumerate() {
             self.floppy_drives.push(GuiFloppyDriveInfo {
                 idx,
                 selected_idx: None,
-                selected_path: None,
+                selected_path: FloppyDriveSelection::None,
                 write_protected: true,
+                read_only: false,
+                drive_type: *drive_type,
             });
         }
     }
 
     pub fn set_floppy_write_protected(&mut self, drive: usize, state: bool) {
-        self.floppy_drives[drive].write_protected = state;
+        self.floppy_drives[drive].write_protect(state);
     }
 
     pub fn set_floppy_tree(&mut self, tree: PathTreeNode) {
         self.floppy_tree_menu.set_root(tree);
     }
 
-    pub fn set_floppy_selection(&mut self, drive: usize, idx: Option<usize>, name: Option<PathBuf>) {
+    pub fn set_autofloppy_paths(&mut self, paths: Vec<RelativeDirectory>) {
+        let paths = paths
+            .iter()
+            .map(|rd| GuiAutofloppyPath {
+                full_path: rd.full.clone(),
+                name: rd.name.clone(),
+                mounted: false,
+            })
+            .collect();
+        self.autofloppy_paths = paths;
+    }
+
+    pub fn set_floppy_selection(
+        &mut self,
+        drive: usize,
+        idx: Option<usize>,
+        name: FloppyDriveSelection,
+        read_only: bool,
+    ) {
         self.floppy_drives[drive].selected_idx = idx;
         self.floppy_drives[drive].selected_path = name;
+        self.floppy_drives[drive].read_only = read_only;
     }
 
     pub fn set_hdds(&mut self, drivect: usize) {

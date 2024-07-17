@@ -156,6 +156,7 @@ paths = [
     { resource = "keyboard_layout", path = "$basedir$/configs/keyboard_layouts", recurse = false },
     { resource = "rom", path = "$basedir$/media/roms", recurse = true },
     { resource = "hdd", path = "$basedir$/media/hdds", recurse = true },
+    { resource = "autofloppy", path = "$basedir$/media/mount/floppy", create = true, recurse = false },
     { resource = "floppy", path = "$basedir$/media/floppies", recurse = true, create = true },
     { resource = "cartridge", path = "$basedir$/media/cartridges", recurse = true, create = true },
     { resource = "cassette", path = "$basedir$/media/cassettes", recurse = true, create = true },

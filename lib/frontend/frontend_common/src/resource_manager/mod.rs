@@ -67,7 +67,7 @@ pub enum ResourceItemType {
 
 #[derive(Clone, Debug)]
 pub struct ResourceItem {
-    rtype: ResourceItemType,
+    pub(crate) rtype: ResourceItemType,
     pub(crate) full_path: PathBuf,
     pub(crate) relative_path: Option<PathBuf>,
     pub(crate) filename_only: Option<OsString>,

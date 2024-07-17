@@ -19,6 +19,8 @@ anyhow.workspace = true
 serde = { workspace = true, features = ["derive"] }
 regex = "1.10"
 md5 = "0.7.0"
+#fatfs = { git = "https://github.com/rafalh/rust-fatfs.git", branch="master" }
+fatfs = "0.3.6"
 
 # feature dependencies:
 wgpu = { workspace = true, optional = true }

@@ -37,6 +37,17 @@ pub struct DiskFormat {
     pub chs: DiskChs,
 }
 
+#[derive(Copy, Clone, Debug)]
+pub enum FloppyImageType {
+    Image160K,
+    Image180K,
+    Image320K,
+    Image360K,
+    Image720K,
+    Image12M,
+    Image144M,
+}
+
 lazy_static! {
     /// Define the drive capabilities for each floppy drive type.
     /// Drives can seek a bit beyond the end of the traditional media sizes.

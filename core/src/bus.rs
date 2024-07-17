@@ -2782,6 +2782,10 @@ impl BusInterface {
         &self.pit
     }
 
+    pub fn fdc(&self) -> &Option<FloppyController> {
+        &self.fdc
+    }
+
     pub fn pit_mut(&mut self) -> &mut Option<Pit> {
         &mut self.pit
     }
