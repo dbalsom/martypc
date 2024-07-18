@@ -71,6 +71,24 @@ impl TreeNode {
         }
     }
 
+    pub(crate) fn node_type(&self) -> &NodeType {
+        &self.node_type
+    }
+
+    pub(crate) fn descend(&self, dir: &str) -> Option<&TreeNode> {
+        match &self.node_type {
+            NodeType::Directory(children) => children.get(dir),
+            NodeType::File(_) => None,
+        }
+    }
+
+    pub(crate) fn path(&self) -> Option<PathBuf> {
+        match &self.node_type {
+            NodeType::File(path) => Some(path.clone()),
+            NodeType::Directory(_) => None,
+        }
+    }
+
     fn new_file(idx: usize, name: String, path: PathBuf) -> Self {
         TreeNode {
             name,

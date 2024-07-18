@@ -19,8 +19,6 @@ anyhow.workspace = true
 serde = { workspace = true, features = ["derive"] }
 regex = "1.10"
 md5 = "0.7.0"
-#fatfs = { git = "https://github.com/rafalh/rust-fatfs.git", branch="master" }
-fatfs = "0.3.6"
 
 # feature dependencies:
 wgpu = { workspace = true, optional = true }
@@ -32,6 +30,12 @@ web-time.workspace = true
 strum = "0.26"
 strum_macros = "0.26"
 ringbuf = "0.3.3"
+
+[dependencies.fatfs]
+git = "https://github.com/dbalsom/fatfs_martypc.git"
+branch = "master"
+default-features = false
+features = ["chrono", "std", "alloc"]
 
 [features]
 ega = []
