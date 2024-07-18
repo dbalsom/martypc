@@ -30,6 +30,8 @@
 
 */
 
+const MAX_BUFFER_SIZE: u32 = 100;
+
 use anyhow::{anyhow, Error};
 use crossbeam_channel::Receiver;
 use marty_core::{
@@ -97,13 +99,31 @@ impl SoundInterface {
 
         let device_name = audio_device.name()?;
         let default_config = audio_device.default_output_config()?;
+
+        let new_max = match default_config.buffer_size() {
+            SupportedBufferSize::Range { min, max } => {
+                if *min > MAX_BUFFER_SIZE {
+                    *min
+                }
+                else {
+                    MAX_BUFFER_SIZE
+                }
+            }
+            _ => MAX_BUFFER_SIZE,
+        };
+        log::debug!(
+            "Device buffer size: {:?} Overriding max buffer size to: {}",
+            default_config.buffer_size(),
+            new_max
+        );
+
         let config = SupportedStreamConfig::new(
             default_config.channels(),
             default_config.sample_rate(),
-            SupportedBufferSize::Range { min: 1, max: 100 },
+            SupportedBufferSize::Range { min: 0, max: new_max },
             default_config.sample_format(),
         );
-        log::debug!("Device buffer size: {:?}", config.buffer_size());
+
         let sample_rate = config.sample_rate().0;
         let channels = config.channels() as usize;
         let sample_format = config.sample_format().to_string();
