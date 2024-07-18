@@ -3634,9 +3634,8 @@ dependencies = [
 
 [[package]]
 name = "rodio"
-version = "0.18.1"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "d1fceb9d127d515af1586d8d0cc601e1245bdb0af38e75c865a156290184f5b3"
+version = "0.19.0"
+source = "git+https://github.com/dbalsom/rodio_martypc.git?branch=buffer_size#acd1d239d2093ecabc36dec43c7a49ce2388bf21"
 dependencies = [
  "claxon",
  "cpal 0.15.3",
