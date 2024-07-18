@@ -32,10 +32,17 @@
 */
 
 use crate::{
-    resource_manager::{PathTreeNode, ResourceItem, ResourceItemType, ResourceManager},
+    resource_manager::{
+        tree::{NodeType, TreeNode},
+        PathTreeNode,
+        ResourceItem,
+        ResourceItemType,
+        ResourceManager,
+    },
     types::floppy::RelativeDirectory,
 };
 use anyhow::Error;
+use fatfs::{Dir, OemCpConverter, TimeProvider};
 use marty_core::device_types::fdc::FloppyImageType;
 use std::{
     cell::RefCell,
@@ -292,7 +299,7 @@ impl FloppyManager {
             }
         };
 
-        let dir_items = rm.enumerate_items_from_path(path)?;
+        let dir_items = rm.enumerate_items("autofloppy", false, true, None)?;
 
         let mut files_visited: HashSet<PathBuf> = HashSet::new();
         let mut io_sys: Option<PathBuf> = None;
@@ -319,6 +326,11 @@ impl FloppyManager {
                 files_visited.insert(item.full_path.clone());
                 dos_sys = Some(item.full_path.clone());
             }
+            else if filename == "KERNEL.SYS" {
+                // FreeDOS only has one file - KERNEL.SYS. If we find it, use it as the IO SYS file.
+                files_visited.insert(item.full_path.clone());
+                io_sys = Some(item.full_path.clone());
+            }
         }
 
         // If we found IO.SYS, write it first.
@@ -341,7 +353,20 @@ impl FloppyManager {
             dos_sys_file.flush().unwrap();
         }
 
+        // Build tree from the rest of the files
+        let file_tree = rm.items_to_tree("autofloppy", &dir_items)?;
+        let src_root_node_opt = file_tree.descend(path.file_name().unwrap().to_str().unwrap());
+
         let mut bootsector_opt = None;
+
+        {
+            let mut dst_root_dir = vfat12.root_dir();
+
+            if let Some(src_root_node) = src_root_node_opt {
+                build_autofloppy_dir(&src_root_node, dst_root_dir, rm);
+            }
+        }
+        /*
         for item in &dir_items {
             let filename_only = item.filename_only.as_ref().unwrap();
             let filename = filename_only.to_str().unwrap().clone();
@@ -364,7 +389,7 @@ impl FloppyManager {
             let mut file = vfat12.root_dir().create_file(filename)?;
             file.write_all(&file_vec)?;
             file.flush().unwrap();
-        }
+        }*/
 
         vfat12.unmount()?;
 
@@ -463,14 +488,14 @@ fn create_formatted_image(label: &str, format: FloppyImageType) -> Result<Vec<u8
 
     log::debug!("Formatting an {:?} format floppy with label: {}", format, label);
 
-    let mut floppy_buf = Cursor::new(vec![0u8; image_size]);
+    let mut floppy_buf = fatfs::StdIoWrapper::new(Cursor::new(vec![0u8; image_size]));
     let label = create_drive_label(label);
 
     fatfs::format_volume(
         &mut floppy_buf,
         fatfs::FormatVolumeOptions::new()
             .fat_type(fatfs::FatType::Fat12)
-            //.volume_label(label)
+            .volume_label(label)
             .bytes_per_sector(bps)
             .bytes_per_cluster(bpc)
             .max_root_dir_entries(mrde)
@@ -480,7 +505,7 @@ fn create_formatted_image(label: &str, format: FloppyImageType) -> Result<Vec<u8
             .drive_num(0),
     )?;
 
-    Ok(floppy_buf.into_inner())
+    Ok(floppy_buf.into_inner().into_inner())
 }
 
 fn create_drive_label(input: &str) -> [u8; 11] {
@@ -497,4 +522,44 @@ fn create_drive_label(input: &str) -> [u8; 11] {
         .collect::<Vec<u8>>()
         .try_into()
         .unwrap()
+}
+
+pub fn build_autofloppy_dir<IO: fatfs::Read + fatfs::Write + fatfs::Seek, TP, OCC>(
+    dir_node: &TreeNode,
+    fs: Dir<IO, TP, OCC>,
+    rm: &ResourceManager,
+) -> Result<(), Error>
+where
+    OCC: OemCpConverter,
+    TP: TimeProvider,
+{
+    for entry in dir_node.children() {
+        let filename = entry.name();
+
+        match entry.node_type() {
+            NodeType::File(path) => {
+                log::debug!("build_autofloppy_dir: file_name: {}", filename);
+
+                let file_vec = rm.read_resource_from_path(path)?;
+                let mut file = fs
+                    .create_file(&filename)
+                    .map_err(|_| anyhow::anyhow!("Failed to create file: {}", filename))?;
+                use fatfs::Write;
+                file.write_all(&file_vec)
+                    .map_err(|_| anyhow::anyhow!("Failed to write file: {}", filename))?;
+                file.flush()
+                    .map_err(|_| anyhow::anyhow!("Failed to flush file: {}", filename))?;
+            }
+            NodeType::Directory(_) => {
+                log::debug!("build_autofloppy_dir: dir_name: {}", filename);
+
+                let new_dir = fs
+                    .create_dir(&filename)
+                    .map_err(|_| anyhow::anyhow!("Failed to create directory: {}", filename))?;
+                build_autofloppy_dir(entry, new_dir, rm)?;
+            }
+        }
+    }
+
+    Ok(())
 }
