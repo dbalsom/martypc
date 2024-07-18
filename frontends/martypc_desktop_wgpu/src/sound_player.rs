@@ -36,7 +36,13 @@ use marty_core::{
     device_traits::sounddevice::AudioSample,
     sound::{SoundOutputConfig, SoundSourceDescriptor},
 };
-use rodio::{cpal::traits::HostTrait, DeviceTrait, Sink, Source};
+use rodio::{
+    cpal::{traits::HostTrait, FrameCount, SupportedBufferSize},
+    DeviceTrait,
+    Sink,
+    Source,
+    SupportedStreamConfig,
+};
 
 pub struct SoundSource {
     pub name: String,
@@ -88,13 +94,21 @@ impl SoundInterface {
         let audio_device = rodio::cpal::default_host()
             .default_output_device()
             .ok_or(anyhow!("No audio device found."))?;
+
         let device_name = audio_device.name()?;
-        let config = audio_device.default_output_config()?;
+        let default_config = audio_device.default_output_config()?;
+        let config = SupportedStreamConfig::new(
+            default_config.channels(),
+            default_config.sample_rate(),
+            SupportedBufferSize::Range { min: 1, max: 100 },
+            default_config.sample_format(),
+        );
+        log::debug!("Device buffer size: {:?}", config.buffer_size());
         let sample_rate = config.sample_rate().0;
         let channels = config.channels() as usize;
         let sample_format = config.sample_format().to_string();
 
-        let (stream, stream_handle) = rodio::OutputStream::try_from_device(&audio_device)?;
+        let (stream, stream_handle) = rodio::OutputStream::try_from_device_config(&audio_device, config)?;
 
         *self = {
             SoundInterface {
