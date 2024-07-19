@@ -6,3 +6,8 @@ pub struct RelativeDirectory {
     pub relative: PathBuf,
     pub name: OsString,
 }
+
+pub enum FloppyImageSource {
+    RawSectorImage(Vec<u8>),
+    ZipArchive(Vec<u8>),
+}

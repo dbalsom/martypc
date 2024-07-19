@@ -96,6 +96,7 @@ use strum::IntoEnumIterator;
 pub enum FloppyDriveSelection {
     None,
     Image(PathBuf),
+    ZipArchive(PathBuf),
     Directory(PathBuf),
 }
 
@@ -113,6 +114,7 @@ impl GuiFloppyDriveInfo {
         match &self.selected_path {
             FloppyDriveSelection::Image(path) => Some(path.to_string_lossy().to_string()),
             FloppyDriveSelection::Directory(path) => Some(path.file_name().unwrap().to_string_lossy().to_string()),
+            FloppyDriveSelection::ZipArchive(path) => Some(path.to_string_lossy().to_string()),
             FloppyDriveSelection::None => None,
         }
     }
@@ -121,6 +123,7 @@ impl GuiFloppyDriveInfo {
         match &self.selected_path {
             FloppyDriveSelection::Image(_) => "Image: ".to_string(),
             FloppyDriveSelection::Directory(_) => "Directory: ".to_string(),
+            FloppyDriveSelection::ZipArchive(_) => "Zip Archive: ".to_string(),
             FloppyDriveSelection::None => "".to_string(),
         }
     }

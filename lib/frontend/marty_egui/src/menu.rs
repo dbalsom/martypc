@@ -400,7 +400,7 @@ impl GuiState {
         };
 
         ui.menu_button(floppy_name, |ui| {
-            ui.menu_button("Load from Image file", |ui| {
+            ui.menu_button("Load from Image/Zip file", |ui| {
                 self.floppy_tree_menu.draw(ui, drive_idx, &mut |image_idx| {
                     //log::debug!("Clicked closure called with image_idx {}", image_idx);
                     self.event_queue.send(GuiEvent::LoadFloppy(drive_idx, image_idx));

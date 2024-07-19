@@ -34,6 +34,7 @@ const MAX_BUFFER_SIZE: u32 = 100;
 
 use anyhow::{anyhow, Error};
 use crossbeam_channel::Receiver;
+use frontend_common::types::sound::SoundSourceStats;
 use marty_core::{
     device_traits::sounddevice::AudioSample,
     sound::{SoundOutputConfig, SoundSourceDescriptor},
@@ -51,6 +52,7 @@ pub struct SoundSource {
     pub sample_rate: u32,
     pub channels: u16,
     pub receiver: Receiver<AudioSample>,
+    pub sample_ct: u64,
     pub volume: f32,
     pub sink: Sink,
 }
@@ -156,6 +158,7 @@ impl SoundInterface {
             sample_rate: source.sample_rate,
             channels: source.channels as u16,
             receiver: source.receiver.clone(),
+            sample_ct: 0,
             sink,
             volume: 1.0,
         });
@@ -167,6 +170,7 @@ impl SoundInterface {
         for source in self.sources.iter_mut() {
             let samples_in = source.receiver.try_iter().collect::<Vec<f32>>();
             //log::debug!("received {} samples from channel {}", samples_in.len(), source.name);
+            source.sample_ct += (samples_in.len() / source.channels as usize) as u64;
             let sink_buffer = rodio::buffer::SamplesBuffer::new(source.channels, source.sample_rate, samples_in);
             source.sink.append(sink_buffer);
         }
@@ -201,5 +205,18 @@ impl SoundInterface {
             channels: self.channels,
             buffer_size: 1024,
         }
+    }
+
+    pub fn get_stats(&self) -> Vec<SoundSourceStats> {
+        self.sources
+            .iter()
+            .map(|s| SoundSourceStats {
+                name: s.name.clone(),
+                sample_rate: s.sample_rate,
+                channels: s.channels,
+                sample_ct: s.sample_ct,
+                volume: s.volume,
+            })
+            .collect()
     }
 }

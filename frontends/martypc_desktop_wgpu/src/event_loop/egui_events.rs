@@ -50,7 +50,10 @@ use marty_egui::{
 };
 use std::{mem::discriminant, time::Duration};
 
-use frontend_common::constants::{LONG_NOTIFICATION_TIME, NORMAL_NOTIFICATION_TIME, SHORT_NOTIFICATION_TIME};
+use frontend_common::{
+    constants::{LONG_NOTIFICATION_TIME, NORMAL_NOTIFICATION_TIME, SHORT_NOTIFICATION_TIME},
+    types::floppy::FloppyImageSource,
+};
 use marty_core::{
     cpu_common::Register16,
     device_types::fdc::FloppyImageType,
@@ -340,11 +343,56 @@ pub fn handle_egui_event(emu: &mut Emulator, elwt: &EventLoopWindowTarget<()>, g
             log::debug!("Load floppy image: {:?} into drive: {}", item_idx, drive_select);
 
             if let Some(fdc) = emu.machine.fdc() {
-                emu.floppy_manager.get_floppy_name(*item_idx).map(|name| {
+                let name = emu.floppy_manager.get_floppy_name(*item_idx);
+
+                if let Some(name) = name {
                     log::info!("Loading floppy image: {:?} into drive: {}", name, drive_select);
 
                     match emu.floppy_manager.load_floppy_data(*item_idx, &emu.rm) {
-                        Ok(floppy_image) => match fdc.load_image_from(
+                        Ok(FloppyImageSource::ZipArchive(zip_vec)) => {
+                            let mut image_type = None;
+                            image_type = Some(fdc.drive(*drive_select).get_largest_supported_image_format());
+                            match emu.floppy_manager.build_autofloppy_image_from_zip(
+                                zip_vec,
+                                Some(FloppyImageType::Image360K),
+                                &emu.rm,
+                            ) {
+                                Ok(vec) => {
+                                    if let Some(fdc) = emu.machine.fdc() {
+                                        match fdc.load_image_from(*drive_select, vec, true) {
+                                            Ok(()) => {
+                                                log::info!("Floppy image successfully loaded into virtual drive.");
+
+                                                emu.gui.set_floppy_selection(
+                                                    *drive_select,
+                                                    None,
+                                                    FloppyDriveSelection::ZipArchive(name.clone().into()),
+                                                    true,
+                                                );
+
+                                                emu.gui.set_floppy_write_protected(*drive_select, true);
+
+                                                emu.gui
+                                                    .toasts()
+                                                    .info("Directory successfully mounted!".to_string())
+                                                    .set_duration(Some(NORMAL_NOTIFICATION_TIME));
+                                            }
+                                            Err(err) => {
+                                                log::warn!("Floppy image failed to load: {}", err);
+                                            }
+                                        }
+                                    }
+                                }
+                                Err(err) => {
+                                    log::error!("Failed to build autofloppy image. Error: {}", err);
+                                    emu.gui
+                                        .toasts()
+                                        .error(format!("Directory mount failed: {}", err))
+                                        .set_duration(Some(NORMAL_NOTIFICATION_TIME));
+                                }
+                            }
+                        }
+                        Ok(FloppyImageSource::RawSectorImage(floppy_image)) => match fdc.load_image_from(
                             *drive_select,
                             floppy_image,
                             emu.config.emulator.media.write_protect_default,
@@ -384,7 +432,7 @@ pub fn handle_egui_event(emu: &mut Emulator, elwt: &EventLoopWindowTarget<()>, g
                                 .set_duration(Some(NORMAL_NOTIFICATION_TIME));
                         }
                     }
-                });
+                };
             }
         }
         GuiEvent::LoadAutoFloppy(drive_select, path) => {
@@ -403,7 +451,7 @@ pub fn handle_egui_event(emu: &mut Emulator, elwt: &EventLoopWindowTarget<()>, g
 
             match emu
                 .floppy_manager
-                .build_autofloppy_image(path, Some(FloppyImageType::Image360K), &emu.rm)
+                .build_autofloppy_image_from_dir(path, Some(FloppyImageType::Image360K), &emu.rm)
             {
                 Ok(vec) => {
                     if let Some(fdc) = emu.machine.fdc() {

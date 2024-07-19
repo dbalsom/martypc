@@ -30,6 +30,7 @@ web-time.workspace = true
 strum = "0.26"
 strum_macros = "0.26"
 ringbuf = "0.3.3"
+zip.workspace = true
 
 [dependencies.fatfs]
 git = "https://github.com/dbalsom/fatfs_martypc.git"

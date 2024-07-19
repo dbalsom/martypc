@@ -313,6 +313,10 @@ impl ResourceManager {
         build_tree(String::from(root_path.to_string_lossy()), items, skip_size)
     }
 
+    pub fn items_to_tree_raw(&self, items: &Vec<ResourceItem>) -> Result<TreeNode, Error> {
+        build_tree(".".to_string(), items, 0)
+    }
+
     /// Return whether the specified path exists.
     pub fn path_exists(path: &PathBuf) -> bool {
         path.exists()
@@ -337,7 +341,7 @@ impl ResourceManager {
     }
 
     /// Reads the contents of a resource from a specified file system path into a byte vector, or returns an error.
-    pub fn read_resource_from_path(&self, path: &PathBuf) -> Result<Vec<u8>, Error> {
+    pub fn read_resource_from_path(&self, path: &Path) -> Result<Vec<u8>, Error> {
         let buffer = std::fs::read(path)?;
         Ok(buffer)
     }
