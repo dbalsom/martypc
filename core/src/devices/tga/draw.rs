@@ -303,6 +303,7 @@ impl TGACard {
             let pair0 = self.crt_mem(cpumem)[base_addr] as usize;
             let pair1 = self.crt_mem(cpumem)[base_addr + 1] as usize;
             self.buf[self.back_buf][self.rba] = self.palette_registers[pair0 >> 4];
+            self.buf[self.back_buf][self.rba + 1] = self.palette_registers[pair0 >> 4];
             self.buf[self.back_buf][self.rba + 2] = self.palette_registers[pair0 >> 4];
             self.buf[self.back_buf][self.rba + 3] = self.palette_registers[pair0 >> 4];
             self.buf[self.back_buf][self.rba + 4] = self.palette_registers[pair0 & 0x0F];
