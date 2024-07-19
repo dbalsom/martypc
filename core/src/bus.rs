@@ -357,7 +357,7 @@ impl MmioData {
     }
 }
 
-#[derive(Copy, Clone)]
+#[derive(Copy, Clone, PartialEq)]
 pub enum MmioDeviceType {
     None,
     Memory,
@@ -472,7 +472,7 @@ impl ByteQueue for BusInterface {
 
     fn q_read_u8(&mut self, _dtype: QueueType, _reader: QueueReader) -> u8 {
         if self.cursor < self.memory.len() {
-            let b: u8 = self.memory[self.cursor];
+            let (b, _) = self.read_u8(self.cursor, 0).unwrap_or((0xFF, 0));
             self.cursor += 1;
             return b;
         }
@@ -481,16 +481,18 @@ impl ByteQueue for BusInterface {
 
     fn q_read_i8(&mut self, _dtype: QueueType, _reader: QueueReader) -> i8 {
         if self.cursor < self.memory.len() {
-            let b: i8 = self.memory[self.cursor] as i8;
+            let (b, _) = self.read_u8(self.cursor, 0).unwrap_or((0xFF, 0));
             self.cursor += 1;
-            return b;
+            return b as i8;
         }
         -1i8
     }
 
     fn q_read_u16(&mut self, _dtype: QueueType, _reader: QueueReader) -> u16 {
         if self.cursor < self.memory.len() - 1 {
-            let w: u16 = self.memory[self.cursor] as u16 | (self.memory[self.cursor + 1] as u16) << 8;
+            let (b0, _) = self.read_u8(self.cursor, 0).unwrap_or((0xFF, 0));
+            let (b1, _) = self.read_u8(self.cursor + 1, 0).unwrap_or((0xFF, 0));
+            let w: u16 = (b0 as u16 | (b1 as u16) << 8);
             self.cursor += 2;
             return w;
         }
@@ -499,16 +501,18 @@ impl ByteQueue for BusInterface {
 
     fn q_read_i16(&mut self, _dtype: QueueType, _reader: QueueReader) -> i16 {
         if self.cursor < self.memory.len() - 1 {
-            let w: i16 = (self.memory[self.cursor] as u16 | (self.memory[self.cursor + 1] as u16) << 8) as i16;
+            let (b0, _) = self.read_u8(self.cursor, 0).unwrap_or((0xFF, 0));
+            let (b1, _) = self.read_u8(self.cursor + 1, 0).unwrap_or((0xFF, 0));
+            let w: u16 = (b0 as u16 | (b1 as u16) << 8);
             self.cursor += 2;
-            return w;
+            return w as i16;
         }
         -1i16
     }
 
     fn q_peek_u8(&mut self) -> u8 {
         if self.cursor < self.memory.len() {
-            let b: u8 = self.memory[self.cursor];
+            let b = self.peek_u8(self.cursor).unwrap_or(0xFF);
             return b;
         }
         0xffu8
@@ -516,15 +520,17 @@ impl ByteQueue for BusInterface {
 
     fn q_peek_i8(&mut self) -> i8 {
         if self.cursor < self.memory.len() {
-            let b: i8 = self.memory[self.cursor] as i8;
-            return b;
+            let b = self.peek_u8(self.cursor).unwrap_or(0xFF);
+            return b as i8;
         }
         -1i8
     }
 
     fn q_peek_u16(&mut self) -> u16 {
         if self.cursor < self.memory.len() - 1 {
-            let w: u16 = self.memory[self.cursor] as u16 | (self.memory[self.cursor + 1] as u16) << 8;
+            let w: u16 = (self.peek_u8(self.cursor).unwrap_or(0xFF) as u16
+                | self.peek_u8(self.cursor + 1).unwrap_or(0xFF) as u16)
+                << 8;
             return w;
         }
         0xffffu16
@@ -532,16 +538,22 @@ impl ByteQueue for BusInterface {
 
     fn q_peek_i16(&mut self) -> i16 {
         if self.cursor < self.memory.len() - 1 {
-            let w: i16 = (self.memory[self.cursor] as u16 | (self.memory[self.cursor + 1] as u16) << 8) as i16;
-            return w;
+            let w: u16 = (self.peek_u8(self.cursor).unwrap_or(0xFF) as u16
+                | self.peek_u8(self.cursor + 1).unwrap_or(0xFF) as u16)
+                << 8;
+            return w as i16;
         }
         -1i16
     }
 
     fn q_peek_farptr16(&mut self) -> (u16, u16) {
         if self.cursor < self.memory.len() - 3 {
-            let offset: u16 = self.memory[self.cursor] as u16 | (self.memory[self.cursor + 1] as u16) << 8;
-            let segment: u16 = self.memory[self.cursor + 2] as u16 | (self.memory[self.cursor + 3] as u16) << 8;
+            let offset: u16 = (self.peek_u8(self.cursor).unwrap_or(0xFF) as u16
+                | self.peek_u8(self.cursor + 1).unwrap_or(0xFF) as u16)
+                << 8;
+            let segment: u16 = (self.peek_u8(self.cursor + 2).unwrap_or(0xFF) as u16
+                | self.peek_u8(self.cursor + 3).unwrap_or(0xFF) as u16)
+                << 8;
             return (segment, offset);
         }
         (0xffffu16, 0xffffu16)
@@ -798,6 +810,8 @@ impl BusInterface {
         Ok(())
     }
 
+    /// Return a slice of memory at the specified location and length.
+    /// Does not resolve mmio addresses.
     pub fn get_slice_at(&self, start: usize, len: usize) -> &[u8] {
         if start >= self.memory.len() {
             return &[];
@@ -806,12 +820,50 @@ impl BusInterface {
         &self.memory[start..std::cmp::min(start + len, self.memory.len())]
     }
 
+    /// Return a vector of memory at the specified location and length.
+    /// Does not resolve mmio addresses.
     pub fn get_vec_at(&self, start: usize, len: usize) -> Vec<u8> {
         if start >= self.memory.len() {
             return Vec::new();
         }
 
         self.memory[start..std::cmp::min(start + len, self.memory.len())].to_vec()
+    }
+
+    /// Return a vector representing the contents of memory starting from the specified location,
+    /// and continuing for the specified length. This function resolves mmio addresses.
+    pub fn get_vec_at_ex(&self, start: usize, len: usize) -> Vec<u8> {
+        if start >= self.memory.len() {
+            return Vec::new();
+        }
+
+        let start_mmio_block = start >> MMIO_MAP_SHIFT;
+        let end_mmio_block = (start + len) >> MMIO_MAP_SHIFT;
+
+        // First, scan the mmio map to see if the range contains any mmio mapped devices.
+        // If one is found, set a flag to fall back to the slow path.
+        let mut range_has_mmio = false;
+        for i in start_mmio_block..=end_mmio_block {
+            if self.mmio_map_fast[i] != MmioDeviceType::None {
+                range_has_mmio = true;
+            }
+        }
+
+        if !range_has_mmio {
+            // Fast path: No mmio. Just return a slice of conventional.
+            self.memory[start..std::cmp::min(start + len, self.memory.len())].to_vec()
+        }
+        else {
+            // Slow path: Slice has mmio. Build a vector from bus peeks.
+            let mut result = Vec::with_capacity(len);
+            for addr in start..std::cmp::min(start + len, self.memory.len()) {
+                match self.peek_u8(addr) {
+                    Ok(byte) => result.push(byte),
+                    Err(_) => result.push(0xFF),
+                }
+            }
+            result
+        }
     }
 
     pub fn set_descriptor(&mut self, start: usize, size: usize, cycle_cost: u32, read_only: bool) {

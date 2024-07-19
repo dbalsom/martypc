@@ -312,8 +312,8 @@ pub fn update_egui(emu: &mut Emulator, tm: &TimestepManager, elwt: &EventLoopWin
 
                 match cpu_type.decode(bus, true) {
                     Ok(i) => {
-                        let instr_slice = bus.get_slice_at(disassembly_addr_flat, i.size as usize);
-                        let instr_bytes_str = util::fmt_byte_array(instr_slice);
+                        let instr_vec = bus.get_vec_at_ex(disassembly_addr_flat, i.size as usize);
+                        let instr_bytes_str = util::fmt_byte_array(&instr_vec);
 
                         decode_vec.push(SyntaxToken::MemoryAddressFlat(
                             disassembly_addr_flat as u32,
