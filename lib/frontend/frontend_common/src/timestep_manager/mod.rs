@@ -129,7 +129,8 @@ pub struct PerfStats {
     pub cpu_instructions: CycleFrameCounter,
     pub sys_ticks: CycleFrameCounter,
     pub emu_frames: CycleFrameCounter, // Frames reported rendered by the core
-    pub emu_time: Duration,            // Time spent in the emulator core per frame
+    pub emu_frame_time: Duration,      // Time spent in the emulator core per frame
+    pub machine_time: Duration,        // Elapsed time from emulated machine perspective
     pub render_time: Duration,
     pub gui_time: Duration,
     pub frame_time: Duration,
@@ -144,7 +145,7 @@ pub struct PerfSnapshot {
     pub cpu_instructions: u32,
     pub sys_ticks: u32,
     pub emu_frames: u32,
-    pub emu_time: Duration,
+    pub emu_frame_time: Duration,
     pub render_time: Duration,
     pub gui_time: Duration,
     pub frame_time: Duration,
@@ -161,7 +162,7 @@ impl PerfStats {
             cpu_instructions: self.cpu_instructions.cycles_per() as u32,
             sys_ticks: self.sys_ticks.cycles_per() as u32,
             emu_frames: self.emu_frames.cycles_per() as u32,
-            emu_time: self.emu_time,
+            emu_frame_time: self.emu_frame_time,
             render_time: self.render_time,
             gui_time: self.gui_time,
             frame_time: self.frame_time,
@@ -279,7 +280,7 @@ impl TimestepManager {
             let emu_start = Instant::now();
             emu_update_callback(emu, self.cpu_cycle_update_target);
             self.perf_stats.emu_ups.tick();
-            self.perf_stats.emu_time = emu_start.elapsed();
+            self.perf_stats.emu_frame_time = emu_start.elapsed();
         }
 
         // Handle emu frame render
@@ -290,7 +291,7 @@ impl TimestepManager {
             self.perf_stats.frame_time = self.last_frame_instant.elapsed();
 
             self.frame_history.push(FrameEntry {
-                emu_time:   self.perf_stats.emu_time,
+                emu_time:   self.perf_stats.emu_frame_time,
                 frame_time: self.perf_stats.frame_time,
             });
         }
