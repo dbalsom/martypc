@@ -38,12 +38,16 @@ use crate::*;
 use core::fmt;
 use egui::CollapsingHeader;
 use egui_plot::{GridMark, Line, Plot, PlotPoints};
-use frontend_common::timestep_manager::{FrameEntry, PerfSnapshot};
+use frontend_common::{
+    timestep_manager::{FrameEntry, PerfSnapshot},
+    types::sound::SoundSourceStats,
+};
 use marty_common::util::format_duration;
 use videocard_renderer::VideoParams;
 
 pub struct PerformanceViewerControl {
     dti: Vec<DisplayInfo>,
+    sound_stats: Vec<SoundSourceStats>,
     perf: PerfSnapshot,
     video_data: VideoParams,
     frame_history: Vec<FrameEntry>,
@@ -81,6 +85,7 @@ impl PerformanceViewerControl {
     pub fn new() -> Self {
         Self {
             dti: Vec::new(),
+            sound_stats: Vec::new(),
             perf: Default::default(),
             video_data: Default::default(),
             frame_history: Vec::new(),
@@ -106,6 +111,19 @@ impl PerformanceViewerControl {
                                 ui.end_row();
                                 ui.label("GUI Render Time: ");
                                 ui.label(egui::RichText::new(format_duration(dt.gui_render_time)));
+                                ui.end_row();
+                            })
+                        });
+                    ui.end_row();
+                }
+
+                for (i, ss) in self.sound_stats.iter().enumerate() {
+                    CollapsingHeader::new(&format!("Sound Source {}: {}", i, ss.name))
+                        .default_open(true)
+                        .show(ui, |ui| {
+                            egui::Grid::new("sound_sources").striped(false).show(ui, |ui| {
+                                ui.label("Sample Count: ");
+                                ui.label(egui::RichText::new(format!("{}", ss.sample_ct)));
                                 ui.end_row();
                             })
                         });
@@ -155,8 +173,8 @@ impl PerformanceViewerControl {
                 ui.label(egui::RichText::new(format!("{}", self.perf.cpu_cycle_update_target)));
                 ui.end_row();
 
-                ui.label("Emulation time: ");
-                ui.label(egui::RichText::new(format_duration(self.perf.emu_time)));
+                ui.label("Emulation Frame time: ");
+                ui.label(egui::RichText::new(format_duration(self.perf.emu_frame_time)));
                 ui.end_row();
 
                 ui.label("Total Frame time: ");
@@ -204,8 +222,15 @@ impl PerformanceViewerControl {
         self.video_data = video_data.clone();
     }
 
-    pub fn update(&mut self, dti: Vec<DisplayInfo>, perf: &PerfSnapshot, frame_history: Vec<FrameEntry>) {
+    pub fn update(
+        &mut self,
+        dti: Vec<DisplayInfo>,
+        sound_stats: Vec<SoundSourceStats>,
+        perf: &PerfSnapshot,
+        frame_history: Vec<FrameEntry>,
+    ) {
         self.dti = dti;
+        self.sound_stats = sound_stats;
         self.perf = *perf;
         self.frame_history = frame_history;
     }
