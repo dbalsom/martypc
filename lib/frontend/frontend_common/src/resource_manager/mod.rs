@@ -74,6 +74,20 @@ pub struct ResourceItem {
     flags: u32,
 }
 
+impl ResourceItem {
+    pub fn from_filename(filename: &str) -> Self {
+        let mut new_path: PathBuf = PathBuf::from(".");
+        new_path.push(filename.replace("/", "\\"));
+        Self {
+            rtype: ResourceItemType::LocalFile,
+            full_path: new_path.clone(),
+            relative_path: None,
+            filename_only: new_path.file_name().map(|s| s.to_os_string()),
+            flags: 0,
+        }
+    }
+}
+
 pub struct ResourceManager {
     pub pm: PathManager,
     pub ignore_dirs: Vec<String>,

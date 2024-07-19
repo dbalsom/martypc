@@ -105,10 +105,15 @@ pub fn update_egui(emu: &mut Emulator, tm: &TimestepManager, elwt: &EventLoopWin
 
         let dti = emu.dm.get_display_info(&emu.machine);
 
+        let mut sound_stats = Vec::new();
+        if let Some(si) = emu.si.as_ref() {
+            sound_stats = si.get_stats();
+        }
+
         let (_, frame_history) = tm.get_perf_stats();
 
         //emu.gui.perf_viewer.update_video_data(*video.params());
-        emu.gui.perf_viewer.update(dti, &emu.perf, frame_history)
+        emu.gui.perf_viewer.update(dti, sound_stats, &emu.perf, frame_history)
     }
 
     // -- Update memory viewer window if open
