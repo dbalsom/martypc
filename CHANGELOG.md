@@ -1,43 +1,70 @@
 
 ## [0.3.0](https://github.com/dbalsom/martypc/releases/tag/0.2.3) (2024-XX-XX)
 
+### Directory & Zip Floppy Mounting
+
+* Thanks to [rust-fatfs](https://github.com/rafalh/rust-fatfs), we can now dynamically build FAT12 images. This enables
+  mounting both directories and ZIP archives as floppy images. Of course the contents must fit! By default, an image of 
+  the largest supported size will be created. There are a few options as well to enable creation of bootable diskettes.
+  See the Wiki for more information.
+
+### Memory Visualizer
+
+* Using the new Memory Visualizer window, you can now view the contents of memory graphically, interpreting raw 
+  bytes as 1,2,4 or 8bpp pixels. This is a good way to explore the contents of memory, and when investigating a running
+  game one can find things like the game's back buffer as well as sprites loaded into memory.
+
 ### New Sound System
 
-* MartyPC's original sound system only supported the PC speaker, and had a very awkward design (one might call it a gross hack)
-  For 0.3.0, MartyPC has a new sound system. The emulator core determines how many sound producing devices are installed and creates
-  crossbeam channels for each device to send samples to the frontend, which is responsible for mixing and playback.
+* MartyPC's original sound system only supported the PC speaker, and had a very awkward design (one might call it a 
+  gross hack). For 0.3.0, MartyPC has a new sound system. The emulator core determines how many sound producing devices
+  are installed and creates crossbeam channels for each device to send samples to the frontend, which is responsible for
+  mixing and playback.
+
+  The sound backend was changed from cpal to rodio to take advantage of the latter's sound mixing capabilities.
+
+
+* Known Issues:
+  * Some audio latency may be experienced with certain output devices, especially USB speakers that set a large default 
+    buffer size.
 
 ### New Devices
 
 * #### Adlib Music Card
 
-  * The first audio device in MartyPC besides the PC speaker is the Adlib Music Card. OPL2 emulation is provided by the accurate nuked-opl3 library. 
-    This marks the first device I have not emulated myself, but the time it would take to research FM synthesis and produce anything near nuked-opl3 
-    quality would have you waiting for OPL2 emulation for another decade.
+  * The first audio device in MartyPC besides the PC speaker is the Adlib Music Card. OPL2 emulation is provided by the 
+    highly-accurate [nuked-opl3](https://github.com/nukeykt/Nuked-OPL3) library. This marks the first device I have not 
+    emulated myself, but the time it would take to research FM synthesis and produce anything near nuked-opl3 quality 
+    would have you waiting for OPL2 emulation for another decade.
 
 * #### VGA 
 
-  * The IBM VGA card gets an initial implementation at last. MartyPC's VGA is based off its EGA implementation, with appropriate changes and additions.
-    Clocked up to 28Mhz, the VGA is an expensive device to run at a character-clock accurate rate, so you may need a fast computer.
-    Aperture definitions may not be final. Mode 13h and ModeX/Y are supported. 
-
+  * The IBM VGA card gets an initial implementation at last. MartyPC's VGA is based off its EGA implementation, with 
+    appropriate changes and additions. Clocked up to 28Mhz, the VGA is an expensive device to run at a character-clock
+    accurate rate, so you may need a fast computer. Aperture definitions may not be final. Mode 13h and ModeX/Y are 
+    supported (Wolfenstein 3D's 'ModeY' works!) 
+ 
 ### Frontend Bug Fixes / Improvements
-
+  * Performance Viewer:
+    * Show stats for Audio sources 
   * File tree browser: 
     * Display directories before files
     * Display correct icons for different file types
 
 ### Core Bug Fixes / Improvements
 
+* BUS: Reworked ByteQueue trait to support MMIO resolution
 * TGA: Implement hi-res 2bpp mode (PCJr Colorpaint, etc)
+* FDC: Refactoring of various functionality from FDC to FloppyDrive
 * FDC: Fix PCjr keyboard watchdog timer handling
 * BUS/PPI: Improve PCjr keyboard handling  
-* BUS: New sound system. Removed cpal dependency from core. Core now produces samples and sends them to the frontend for mixing and playback.
+* BUS: New sound system. Removed cpal dependency from core. Core now produces samples and sends them to the frontend for 
+  mixing and playback.
 * PPI: Fixed memory bank DIP switch masks for memory configurations less than <64K.
 
 ### Debugger Bug Fixes / Improvements
 
-* Memory Visualizer: Add a new debug tool that graphically displays a portion of memory as 1bpp, 2bpp, 4bpp or 8bpp pixels.
+* Disassembly Viewer: Now displays disassembly from MMIO regions.
 
 ### Distribution Changes
 
