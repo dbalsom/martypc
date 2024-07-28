@@ -135,21 +135,33 @@ impl Emulator {
         if let Some(prog_bin) = self.config.emulator.run_bin.clone() {
             if let Some(prog_seg) = self.config.emulator.run_bin_seg {
                 if let Some(prog_ofs) = self.config.emulator.run_bin_ofs {
-                    let prog_vec = match std::fs::read(prog_bin.clone()) {
-                        Ok(vec) => vec,
-                        Err(e) => {
-                            eprintln!("Error opening filename {:?}: {}", prog_bin, e);
+                    if let Some(vreset_seg) = self.config.emulator.vreset_bin_seg {
+                        if let Some(vreset_ofs) = self.config.emulator.vreset_bin_ofs {
+                            let prog_vec = match std::fs::read(prog_bin.clone()) {
+                                Ok(vec) => vec,
+                                Err(e) => {
+                                    eprintln!("Error opening filename {:?}: {}", prog_bin, e);
+                                    std::process::exit(1);
+                                }
+                            };
+
+                            if let Err(_) = self.machine.load_program(&prog_vec, prog_seg, prog_ofs, vreset_seg, vreset_ofs) {
+                                eprintln!(
+                                    "Error loading program into memory at {:04X}:{:04X}.",
+                                    prog_seg, prog_ofs
+                                );
+                                std::process::exit(1);
+                            };
+                        }
+                        else {
+                            eprintln!("Must specify program start offset.");
                             std::process::exit(1);
                         }
-                    };
-
-                    if let Err(_) = self.machine.load_program(&prog_vec, prog_seg, prog_ofs) {
-                        eprintln!(
-                            "Error loading program into memory at {:04X}:{:04X}.",
-                            prog_seg, prog_ofs
-                        );
+                    }
+                    else {
+                        eprintln!("Must specify program start segment.");
                         std::process::exit(1);
-                    };
+                    }
                 }
                 else {
                     eprintln!("Must specify program load offset.");

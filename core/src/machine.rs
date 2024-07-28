@@ -849,13 +849,13 @@ impl Machine {
         self.cpu_factor
     }
 
-    pub fn load_program(&mut self, program: &[u8], program_seg: u16, program_ofs: u16) -> Result<(), bool> {
+    pub fn load_program(&mut self, program: &[u8], program_seg: u16, program_ofs: u16, vreset_seg: u16, vreset_ofs: u16) -> Result<(), bool> {
         let location = Intel808x::calc_linear_address(program_seg, program_ofs);
 
         self.cpu.bus_mut().copy_from(program, location as usize, 0, false)?;
 
         self.cpu
-            .set_reset_vector(CpuAddress::Segmented(program_seg, program_ofs));
+            .set_reset_vector(CpuAddress::Segmented(vreset_seg, vreset_ofs));
         self.cpu.reset();
 
         //self.cpu.set_end_address(((location as usize) + program.len()) & 0xFFFFF);

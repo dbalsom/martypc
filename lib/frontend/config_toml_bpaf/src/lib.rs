@@ -162,6 +162,8 @@ pub struct Emulator {
     pub run_bin: Option<String>,
     pub run_bin_seg: Option<u16>,
     pub run_bin_ofs: Option<u16>,
+    pub vreset_bin_seg: Option<u16>,
+    pub vreset_bin_ofs: Option<u16>,
 
     pub backend: Backend,
 
@@ -396,6 +398,10 @@ pub struct CmdLineArgs {
     pub run_bin_seg: Option<u16>,
     #[bpaf(long)]
     pub run_bin_ofs: Option<u16>,
+    #[bpaf(long)]
+    pub vreset_bin_seg: Option<u16>,
+    #[bpaf(long)]
+    pub vreset_bin_ofs: Option<u16>,
 
     // Test stuff
     #[bpaf(long)]
@@ -453,6 +459,14 @@ impl ConfigFileParams {
 
         if let Some(run_bin_ofs) = shell_args.run_bin_ofs {
             self.emulator.run_bin_ofs = Some(run_bin_ofs);
+        }
+
+        if let Some(vreset_bin_seg) = shell_args.vreset_bin_seg {
+            self.emulator.vreset_bin_seg = Some(vreset_bin_seg);
+        }
+
+        if let Some(vreset_bin_ofs) = shell_args.vreset_bin_ofs {
+            self.emulator.vreset_bin_ofs = Some(vreset_bin_ofs);
         }
 
         // Test stuff
