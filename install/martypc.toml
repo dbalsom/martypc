@@ -201,11 +201,13 @@ debug_mode = false
 # do so and don't want the nag.
 debug_warn = true
 
-# Run the specified program instead of booting BIOS. The CPU reset vector will
-# be set to 'run_bin_seg:run_bin_ofs'
+# Run the specified program instead of booting BIOS.
 #run_bin = "./program/a_effect.bin"
 run_bin_seg = 0x1000
 run_bin_ofs = 0x0000
+# The CPU reset vector will be set to 'vreset_bin_seg:vreset_bin_ofs'.
+vreset_bin_seg = 0x1000
+vreset_bin_ofs = 0x0000
 
 [emulator.backend]
 # Enable vsync. For wgpu frontend, I would recommend leaving this off. FIFO
