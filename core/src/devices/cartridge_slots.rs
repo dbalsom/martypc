@@ -72,7 +72,7 @@ impl CartridgeSlot {
 }
 
 impl MemoryMappedDevice for CartridgeSlot {
-    fn get_read_wait(&mut self, _address: usize, cycles: u32) -> u32 {
+    fn get_read_wait(&mut self, _address: usize, _cycles: u32) -> u32 {
         0
     }
 
@@ -93,7 +93,7 @@ impl MemoryMappedDevice for CartridgeSlot {
         (0xFF, 0)
     }
 
-    fn mmio_read_u16(&mut self, address: usize, _cycles: u32, cpumem: Option<&[u8]>) -> (u16, u32) {
+    fn mmio_read_u16(&mut self, _address: usize, _cycles: u32, _cpumem: Option<&[u8]>) -> (u16, u32) {
         (0xFFFF, 0)
     }
 
