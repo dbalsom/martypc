@@ -789,7 +789,7 @@ dependencies = [
 
 [[package]]
 name = "config_toml_bpaf"
-version = "0.2.3"
+version = "0.3.0"
 dependencies = [
  "anyhow",
  "bpaf",
@@ -1249,7 +1249,7 @@ checksum = "bd0c93bb4b0c6d9b77f4435b0ae98c24d17f1c45b2ff844c6151a07256ca923b"
 
 [[package]]
 name = "display_backend_pixels"
-version = "0.2.3"
+version = "0.3.0"
 dependencies = [
  "anyhow",
  "display_backend_trait",
@@ -1264,7 +1264,7 @@ dependencies = [
 
 [[package]]
 name = "display_backend_trait"
-version = "0.2.3"
+version = "0.3.0"
 dependencies = [
  "anyhow",
  "thiserror",
@@ -1272,7 +1272,7 @@ dependencies = [
 
 [[package]]
 name = "display_manager_wgpu"
-version = "0.2.3"
+version = "0.3.0"
 dependencies = [
  "anyhow",
  "config_toml_bpaf",
@@ -1777,7 +1777,7 @@ dependencies = [
 
 [[package]]
 name = "frontend_common"
-version = "0.2.3"
+version = "0.3.0"
 dependencies = [
  "anyhow",
  "display_backend_trait",
@@ -2522,7 +2522,7 @@ dependencies = [
 
 [[package]]
 name = "marty_common"
-version = "0.2.3"
+version = "0.3.0"
 dependencies = [
  "serde",
  "web-time 0.2.4",
@@ -2530,7 +2530,7 @@ dependencies = [
 
 [[package]]
 name = "marty_core"
-version = "0.2.3"
+version = "0.3.0"
 dependencies = [
  "anyhow",
  "arraydeque",
@@ -2562,7 +2562,7 @@ dependencies = [
 
 [[package]]
 name = "marty_egui"
-version = "0.2.3"
+version = "0.3.0"
 dependencies = [
  "anyhow",
  "egui 0.27.2",
@@ -2594,7 +2594,7 @@ dependencies = [
 
 [[package]]
 name = "marty_pixels_scaler"
-version = "0.2.3"
+version = "0.3.0"
 dependencies = [
  "bytemuck",
  "frontend_common",
@@ -2640,7 +2640,7 @@ dependencies = [
 
 [[package]]
 name = "martypc"
-version = "0.2.3"
+version = "0.3.0"
 dependencies = [
  "frontend_common",
  "marty_core",
@@ -2652,7 +2652,7 @@ dependencies = [
 
 [[package]]
 name = "martypc_desktop_wgpu"
-version = "0.2.3"
+version = "0.3.0"
 dependencies = [
  "anyhow",
  "bytemuck",
@@ -4609,7 +4609,7 @@ checksum = "49874b5167b65d7193b8aba1567f5c7d93d001cafc34600cee003eda787e483f"
 
 [[package]]
 name = "videocard_renderer"
-version = "0.2.3"
+version = "0.3.0"
 dependencies = [
  "bytemuck",
  "cgmath",
