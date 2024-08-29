@@ -33,7 +33,6 @@
 use super::*;
 use crate::{
     bus::{MemRangeDescriptor, MemoryMappedDevice},
-    devices::cga::CGA_MEM_APERTURE,
 };
 
 /// Unlike the EGA or VGA the CGA doesn't do any operations on video memory on read/write,
@@ -69,7 +68,7 @@ impl MemoryMappedDevice for TGACard {
         }*/
 
         //let a_offset = (address & TGA_MEM_MASK) - TGA_MEM_ADDRESS;
-        let a_offset = (address - TGA_MEM_ADDRESS);
+        let a_offset = address - TGA_MEM_ADDRESS;
         if a_offset < TGA_MEM_SIZE {
             trace!(
                 self,
@@ -86,19 +85,19 @@ impl MemoryMappedDevice for TGACard {
     }
 
     fn mmio_peek_u8(&self, address: usize, cpumem: Option<&[u8]>) -> u8 {
-        let a_offset = (address - TGA_MEM_ADDRESS);
+        let a_offset = address - TGA_MEM_ADDRESS;
 
         self.cpu_mem(cpumem.unwrap())[a_offset]
     }
 
     fn mmio_peek_u16(&self, address: usize, cpumem: Option<&[u8]>) -> u16 {
-        let a_offset = (address - TGA_MEM_ADDRESS);
+        let a_offset = address - TGA_MEM_ADDRESS;
 
         (self.cpu_mem(cpumem.unwrap())[a_offset] as u16) << 8 | self.cpu_mem(cpumem.unwrap())[a_offset + 1] as u16
     }
 
     fn mmio_write_u8(&mut self, address: usize, byte: u8, _cycles: u32, cpumem: Option<&mut [u8]>) -> u32 {
-        let a_offset = (address - TGA_MEM_ADDRESS);
+        let a_offset = address - TGA_MEM_ADDRESS;
         if a_offset < TGA_MEM_SIZE {
             self.cpu_memmut(cpumem.unwrap())[a_offset] = byte;
             trace!(self, "WRITE_U8: {:04X}:{:02X}", a_offset, byte);

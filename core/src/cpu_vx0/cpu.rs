@@ -33,12 +33,9 @@
 use crate::{
     breakpoints::{BreakPointType, StopWatchData},
     bus::BusInterface,
-    bytequeue::ByteQueue,
     cpu_common::{
-        instruction::Instruction,
         Cpu,
         CpuAddress,
-        CpuDispatch,
         CpuError,
         CpuOption,
         CpuStringState,
@@ -50,7 +47,7 @@ use crate::{
         StepResult,
         TraceMode,
     },
-    cpu_validator::{CycleState, VRegisters},
+    cpu_validator::{CycleState},
     cpu_vx0::{
         trace_print,
         BusStatus,

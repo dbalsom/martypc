@@ -31,7 +31,7 @@
 */
 
 use crate::{
-    cpu_common::{operands::OperandSize, AddressingMode, Displacement, OperandType, Segment},
+    cpu_common::{operands::OperandSize, AddressingMode, OperandType, Segment},
     cpu_vx0::{biu::*, decode::DECODE, *},
 };
 

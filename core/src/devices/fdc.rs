@@ -36,7 +36,7 @@ use std::{collections::VecDeque, default::Default};
 
 use crate::{
     bus::{BusInterface, DeviceRunTimeUnit, IoDevice},
-    device_types::{chs::DiskChs, fdc::DISK_FORMATS},
+    device_types::chs::DiskChs,
     devices::{dma, floppy_drive::FloppyDiskDrive},
     machine_config::FloppyDriveConfig,
     machine_types::FdcType,
@@ -1428,7 +1428,7 @@ impl FloppyController {
 
                 self.data_register_out.push_back(byte);
                 self.pio_byte_count += 1;
-                self.pio_sector_byte_count + 1;
+                self.pio_sector_byte_count += 1;
                 self.pio_bytes_left -= 1;
             }
         }

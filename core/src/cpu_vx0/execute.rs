@@ -32,7 +32,6 @@
 
 use crate::{
     cpu_common::{
-        alu::{AluAdc, AluAdd, AluSbb},
         CpuException,
         ExecutionResult,
         Mnemonic,
@@ -141,7 +140,7 @@ impl NecVx0 {
         }
 
         // Check for REPx prefixes
-        if (self.i.prefixes & OPCODE_PREFIX_REPMASK != 0) {
+        if self.i.prefixes & OPCODE_PREFIX_REPMASK != 0 {
             // A REPx prefix was set
 
             let mut invalid_rep = false;
@@ -499,7 +498,7 @@ impl NecVx0 {
 
                 self.set_szp_flags_from_result_u8(product as u8);
             }
-            0x6C | 0x6D | 0x6E | 0x6F => {
+            0x6C..=0x6F => {
                 // INSB | INSW | OUTSB | OUTSW
                 // rep_start() will terminate early if CX==0
                 if self.rep_start() {
@@ -530,9 +529,6 @@ impl NecVx0 {
                         self.cycle_i(MC_JUMP); // jump to 133, RNI
                     }
                 }
-            }
-            0x6C..=0x6F => {
-                unhandled = true;
             }
             0x70..=0x7F => {
                 // JMP rel8 variants
@@ -1191,7 +1187,7 @@ impl NecVx0 {
                 let frame_temp = self.get_register16(Register16::SP);
                 
                 if nesting_level > 1 {
-                    for i in 0..(nesting_level-1) {
+                    for _i in 0..(nesting_level-1) {
                         self.set_register16(Register16::BP, self.get_register16(Register16::BP).wrapping_sub(2));
                         let ptr = self.biu_read_u16(Segment::SS, self.get_register16(Register16::BP), ReadWriteFlag::Normal);
                         self.push_u16(ptr, ReadWriteFlag::Normal);
@@ -1358,7 +1354,7 @@ impl NecVx0 {
                 // AAD - Ascii Adjust before Division
                 
                 // We read the immediate value, but it is not used in the AAD operation on V20
-                let op1_value = self.read_operand8(self.i.operand1_type, None).unwrap();
+                _ = self.read_operand8(self.i.operand1_type, None).unwrap();
                 self.aad(0x0A);
             }
             0xD6 | 0xD7 => {

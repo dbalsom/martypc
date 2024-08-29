@@ -35,7 +35,6 @@
 pub use crate::cpu_common::Cpu;
 use crate::cpu_common::{
     instruction::Instruction,
-    AddressingMode,
     CpuAddress,
     CpuStringState,
     CpuSubType,
@@ -48,7 +47,7 @@ use crate::cpu_common::{
 use core::fmt::Display;
 use lazy_static::lazy_static;
 use regex::Regex;
-use std::{collections::VecDeque, error::Error, fmt, path::Path};
+use std::{collections::VecDeque, fmt, path::Path};
 
 // Pull in all CPU module components
 mod addressing;
@@ -81,7 +80,7 @@ use crate::{
     bus::{BusInterface, MEM_BPA_BIT, MEM_BPE_BIT, MEM_RET_BIT, MEM_SW_BIT},
     bytequeue::*,
     cpu_808x::{microcode::*, queue::InstructionQueue},
-    cpu_common::{CpuOption, CpuType, TraceMode},
+    cpu_common::{CpuType, TraceMode},
     cycles_mc,
     syntax_token::*,
     tracelogger::TraceLogger,

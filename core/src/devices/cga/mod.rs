@@ -1054,7 +1054,7 @@ impl CGACard {
                 self.crtc_interlace_mode = byte;
             }
             CRTCRegister::MaximumScanLineAddress => {
-                self.crtc_maximum_scanline_address = (byte & 0x1F);
+                self.crtc_maximum_scanline_address = byte & 0x1F;
                 self.update_cursor_data();
             }
             CRTCRegister::CursorStartLine => {

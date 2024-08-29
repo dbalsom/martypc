@@ -75,7 +75,6 @@ use frontend_common::{
     RelativeDirectory,
 };
 use marty_core::{
-    cpu_common::QueueOp,
     device_traits::videocard::{DisplayApertureDesc, VideoCardState, VideoCardStateEntry},
     devices::{pit::PitDisplayState, serial::SerialPortDescriptor},
     machine::{ExecutionControl, MachineState},

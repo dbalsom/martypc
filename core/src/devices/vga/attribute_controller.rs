@@ -429,7 +429,7 @@ impl AttributeController {
                         let shift_idx = if !self.shift_flipflop { 7 } else { 3 };
                         for (i, b) in data.chunks_exact(2).enumerate() {
                             self.shift_reg |= ((b[0] as u128) << ((shift_idx - i) * 8)) << 4;
-                            self.shift_reg |= ((b[1] as u128) << ((shift_idx - i) * 8));
+                            self.shift_reg |= (b[1] as u128) << ((shift_idx - i) * 8);
                         }
                         self.shift_flipflop = !self.shift_flipflop;
                     }

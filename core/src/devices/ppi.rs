@@ -36,7 +36,6 @@
 
 use modular_bitfield::{
     bitfield,
-    prelude::{B2, B3},
     BitfieldSpecifier,
 };
 use std::{cell::Cell, collections::BTreeMap};
@@ -44,7 +43,7 @@ use std::{cell::Cell, collections::BTreeMap};
 use crate::{
     bus::{BusInterface, DeviceRunTimeUnit, IoDevice, NO_IO_BYTE},
     device_traits::videocard::VideoType,
-    devices::{pic, pit::PitDisplayState},
+    devices::{pic},
     machine_types::MachineType,
     syntax_token::SyntaxToken,
     updatable::Updatable,

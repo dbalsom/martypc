@@ -40,23 +40,21 @@ use crate::devices::pit::SPEAKER_SAMPLE_RATE;
 use anyhow::Error;
 use crossbeam_channel::unbounded;
 use fxhash::FxHashMap;
-use ringbuf::Producer;
 use std::{collections::VecDeque, fmt, io::Write, path::Path};
 
 use crate::{
     bytequeue::*,
-    cpu_808x::*,
     device_traits::{
         sounddevice::SoundDevice,
         videocard::{ClockingMode, VideoCard, VideoCardDispatch, VideoCardId, VideoCardInterface, VideoType},
     },
     devices::{
-        cga::{self, CGACard},
+        cga::CGACard,
         dma::*,
         fdc::FloppyController,
         hdc::*,
         keyboard::{KeyboardType, *},
-        mda::{self, MDACard},
+        mda::MDACard,
         mouse::*,
         pic::*,
         pit::Pit,
@@ -69,15 +67,14 @@ use crate::{
     memerror::MemError,
     syntax_token::SyntaxToken,
     tracelogger::TraceLogger,
-    updatable::*,
 };
 
 #[cfg(feature = "ega")]
-use crate::devices::ega::{self, EGACard};
+use crate::devices::ega::EGACard;
 #[cfg(feature = "vga")]
-use crate::devices::vga::{self, VGACard};
+use crate::devices::vga::VGACard;
 use crate::{
-    cpu_common::{CpuDispatch, CpuType},
+    cpu_common::CpuType,
     device_traits::videocard::VideoCardSubType,
     devices::{
         a0::A0Register,
@@ -86,11 +83,9 @@ use crate::{
         game_port::GamePort,
         lotech_ems::LotechEmsCard,
         lpt_card::ParallelController,
-        pit,
-        tga,
         tga::TGACard,
     },
-    machine_types::{EmsType, EmsType::LoTech2MB, FdcType, MachineType, SoundType},
+    machine_types::{EmsType, FdcType, MachineType, SoundType},
     sound::{SoundOutputConfig, SoundSourceDescriptor},
     syntax_token::SyntaxFormatType,
 };
@@ -492,7 +487,7 @@ impl ByteQueue for BusInterface {
         if self.cursor < self.memory.len() - 1 {
             let (b0, _) = self.read_u8(self.cursor, 0).unwrap_or((0xFF, 0));
             let (b1, _) = self.read_u8(self.cursor + 1, 0).unwrap_or((0xFF, 0));
-            let w: u16 = (b0 as u16 | (b1 as u16) << 8);
+            let w: u16 = b0 as u16 | (b1 as u16) << 8;
             self.cursor += 2;
             return w;
         }
@@ -503,7 +498,7 @@ impl ByteQueue for BusInterface {
         if self.cursor < self.memory.len() - 1 {
             let (b0, _) = self.read_u8(self.cursor, 0).unwrap_or((0xFF, 0));
             let (b1, _) = self.read_u8(self.cursor + 1, 0).unwrap_or((0xFF, 0));
-            let w: u16 = (b0 as u16 | (b1 as u16) << 8);
+            let w: u16 = b0 as u16 | (b1 as u16) << 8;
             self.cursor += 2;
             return w as i16;
         }
@@ -1917,7 +1912,7 @@ impl BusInterface {
 
         // Create FDC if specified.
         if let Some(fdc_config) = &machine_config.fdc {
-            let floppy_ct = fdc_config.drive.len();
+            //let floppy_ct = fdc_config.drive.len();
             let fdc_type = fdc_config.fdc_type;
 
             // Create the correct kind of FDC (currently only NEC supported)
@@ -1984,6 +1979,7 @@ impl BusInterface {
 
         // Create an EMS board if specified
         if let Some(ems_config) = &machine_config.ems {
+            #[allow(irrefutable_let_patterns)]
             if let EmsType::LoTech2MB = ems_config.ems_type {
                 // Add EMS ports to io_map
                 let ems = LotechEmsCard::new(Some(ems_config.io_base), Some(ems_config.window as usize));
@@ -2021,7 +2017,8 @@ impl BusInterface {
         }
 
         // Create sound cards
-        for (i, card) in machine_config.sound.iter().enumerate() {
+        for (_i, card) in machine_config.sound.iter().enumerate() {
+            #[allow(irrefutable_let_patterns)]
             if let SoundType::AdLib = card.sound_type {
                 // Create an AdLib card.
 
@@ -2033,7 +2030,7 @@ impl BusInterface {
                     r,
                 ));
 
-                let mut adlib = AdLibCard::new(card.io_base, 48000, s);
+                let adlib = AdLibCard::new(card.io_base, 48000, s);
                 println!(">>> TESTING ADLIB <<<");
 
                 add_io_device!(self, adlib, IoDeviceType::Sound);
@@ -2538,8 +2535,6 @@ impl BusInterface {
             ClockFactor::Multiplier(m) => cycles / m as u32,
         };
         let nul_delta = DeviceRunTimeUnit::Microseconds(0.0);
-
-        let mut handled = false;
         let mut byte = None;
         if let Some(device_id) = self.io_map.get(&port) {
             match device_id {

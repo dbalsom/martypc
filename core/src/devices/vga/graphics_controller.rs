@@ -319,7 +319,7 @@ impl GraphicsController {
             ShiftMode::Chain4 => {
                 // Chain 4 mode. One nibble from each plane is serialized, in order of planes.
                 for i in 0..4 {
-                    let mut byte = seq.gc_read_u8(i, offset, address & 0x01);
+                    let byte = seq.gc_read_u8(i, offset, address & 0x01);
 
                     if byte != 0 {
                         //log::debug!("addr: {:04X} byte: {:02X}", address, byte);

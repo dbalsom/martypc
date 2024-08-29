@@ -320,7 +320,7 @@ impl VRegisters {
         self
     }
 
-    pub fn create_delta(mut self, initial_regs: &VRegisters) -> VRegistersDelta {
+    pub fn create_delta(self, initial_regs: &VRegisters) -> VRegistersDelta {
         let mut delta: VRegistersDelta = self.into();
         if self.ax == initial_regs.ax {
             delta.ax = None;

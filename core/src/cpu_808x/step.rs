@@ -31,9 +31,8 @@
 */
 
 use crate::{
-    cpu_808x::{decode::DECODE, *},
+    cpu_808x::{*},
     cpu_common::{CpuAddress, CpuError, CpuException, Disassembly, ExecutionResult, StepResult},
-    gdr,
 };
 
 impl Intel808x {

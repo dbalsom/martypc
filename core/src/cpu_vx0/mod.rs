@@ -63,7 +63,7 @@ use crate::cpu_common::QueueOp;
 use core::fmt::Display;
 use lazy_static::lazy_static;
 use regex::Regex;
-use std::{collections::VecDeque, error::Error, fmt, path::Path};
+use std::{collections::VecDeque, fmt, path::Path};
 
 pub use crate::cpu_common::Cpu;
 
@@ -74,9 +74,7 @@ use crate::{
     cpu_common::{
         instruction::Instruction,
         CpuAddress,
-        CpuOption,
         CpuStringState,
-        CpuSubType,
         CpuType,
         ExecutionResult,
         Mnemonic,

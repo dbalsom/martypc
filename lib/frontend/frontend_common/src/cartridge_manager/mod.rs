@@ -278,7 +278,7 @@ pub fn scan_cart(bytes: &[u8]) -> Option<CartImageType> {
                 return Some(CartImageType::JRipCart);
             }
         }
-        Err(e) => return None,
+        Err(_e) => return None,
     }
 
     None

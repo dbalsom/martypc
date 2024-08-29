@@ -33,7 +33,7 @@
     the appropriate methods on Bus.
 
 */
-use crate::cpu_common::{CpuAddress, CpuDispatch, CpuSubType, Disassembly, format_instruction_bytes, ServiceEvent, StepResult};
+use crate::cpu_common::{CpuAddress, CpuDispatch, Disassembly, format_instruction_bytes, ServiceEvent, StepResult};
 use log;
 
 use anyhow::{anyhow, Error};
@@ -51,7 +51,7 @@ use crate::{
     bus::{BusInterface, ClockFactor, DeviceEvent, MEM_CP_BIT},
     coreconfig::CoreConfig,
     cpu_808x::{Intel808x},
-    cpu_common::{Cpu, CpuOption, CpuError, CpuType, TraceMode},
+    cpu_common::{Cpu, CpuOption, CpuError, TraceMode},
     device_traits::videocard::{VideoCard, VideoCardId, VideoCardInterface, VideoCardState, VideoOption},
     devices::{
         dma::DMAControllerStringState,
@@ -60,7 +60,7 @@ use crate::{
         keyboard::KeyboardModifiers,
         mouse::Mouse,
         pic::PicStringState,
-        pit::{self, PitDisplayState},
+        pit::{PitDisplayState},
         ppi::PpiStringState,
     },
     keys::MartyKey,
@@ -70,13 +70,12 @@ use crate::{
     tracelogger::TraceLogger,
 };
 use crate::cpu_common::builder::CpuBuilder;
-use crate::cpu_validator::ValidatorMode;
 use crate::devices::cartridge_slots::CartridgeSlot;
 use crate::devices::ppi::PpiDisplayState;
 use crate::devices::serial::SerialPortDisplayState;
 use crate::machine_types::OnHaltBehavior;
 
-use ringbuf::{Consumer, Producer, RingBuffer};
+use ringbuf::{Consumer};
 use crate::sound::{SoundOutput, SoundSourceDescriptor};
 
 
@@ -312,7 +311,7 @@ impl MachineRomManifest {
     /// Return false if the specified address range conflicts with an existing rom.
     pub fn check_load(&self, addr: usize, len: usize) -> bool {
         
-        let check_start = addr;
+        let _check_start = addr;
         let check_end = addr + len;
         
         for rom in self.roms.iter() {
@@ -1744,7 +1743,7 @@ impl Machine {
         };
         
         // Attempt to open file
-        let mut file_opt = File::create(&filename);
+        let file_opt = File::create(&filename);
         let file = match file_opt {
             Ok(f) => f,
             Err(e) => {

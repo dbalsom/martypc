@@ -1140,7 +1140,7 @@ impl ProgrammableIntervalTimer {
         self.channels[channel].is_dirty()
     }
 
-    pub fn tick(&mut self, bus: &mut BusInterface, mut buffer_producer: Option<&mut ringbuf::Producer<u8>>) {
+    pub fn tick(&mut self, bus: &mut BusInterface, buffer_producer: Option<&mut ringbuf::Producer<u8>>) {
         self.pit_cycles += 1;
 
         // Get timer channel 2 state from ppi.
@@ -1177,7 +1177,7 @@ impl ProgrammableIntervalTimer {
 
         if let Some(sender) = &self.speaker.sender {
             // Process any samples that have accumulated in the buffer between calls to run().
-            for s in self.speaker_buf.pop_front() {
+            if let Some(s) = self.speaker_buf.pop_front() {
                 self.process_sample(s);
             }
 

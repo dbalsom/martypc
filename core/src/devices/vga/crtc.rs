@@ -602,7 +602,7 @@ impl VgaCrtc {
                 // Bits 6-7: Unused
                 if self.crtc_vertical_retrace_end.protect_regs() == 0 {
                     self.crtc_overflow = COverflow::from_bytes([byte]);
-                    self.set_crtc_overflow_bits(byte);
+                    self.set_crtc_overflow_bits();
                 }
             }
             CRTCRegister::PresetRowScan => {
@@ -724,7 +724,7 @@ impl VgaCrtc {
     /// Bit 4: Line Compare Bit 8
     /// Bit 5: Cursor Location Bit 8 (?? See note below)
     /// Bits 6-7: Unused
-    fn set_crtc_overflow_bits(&mut self, byte: u8) {
+    fn set_crtc_overflow_bits(&mut self) {
         // Bit 0: Vertical Total
         self.crtc_vertical_total &= 0x00FF;
         self.crtc_vertical_total |= (self.crtc_overflow.vertical_total_bit_8() as u16) << 8;

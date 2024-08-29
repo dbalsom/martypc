@@ -489,7 +489,7 @@ pub fn print_changed_flags(initial_regs: &VRegisters, final_regs: &VRegisters, l
 }
 
 pub fn validate_registers(
-    cpu_type: CpuType,
+    _cpu_type: CpuType,
     metadata: &Metadata,
     prefix_opt: Option<u8>,
     opcode: u8,
@@ -499,7 +499,7 @@ pub fn validate_registers(
     log: &mut BufWriter<File>,
 ) -> RegisterValidationResult {
     let mut regs_validate = true;
-    let mut flags_validate = true;
+    let flags_validate;
 
     if test_regs.ax != cpu_regs.ax {
         regs_validate = false;
@@ -741,10 +741,10 @@ pub fn validate_cycles(
 
 pub fn validate_memops(
     cpu: &CpuDispatch,
-    test_cycles: &Vec<CycleState>,
+    _test_cycles: &Vec<CycleState>,
     cycles: &Vec<CycleState>,
     instr_addr: u32,
-    instr_size: usize,
+    _instr_size: usize,
     initial_ram: &Vec<[u32; 2]>,
     final_ram: &Vec<[u32; 2]>,
     flags_on_stack: bool,

@@ -34,9 +34,8 @@
 use crate::{
     bus::{BusInterface, DeviceRunTimeUnit, IoDevice, MemRangeDescriptor, MemoryMappedDevice, NO_IO_BYTE},
     devices::{
-        cga::{trace, CGACard, CGA_MEM_ADDRESS, CGA_MEM_APERTURE, CGA_MEM_MASK, CGA_MEM_SIZE},
-        lpt_card::{ParallelController, LPT_DEFAULT_IO_BASE, LPT_PORT_MASK},
-        lpt_port::ParallelPort,
+        cga::{CGA_MEM_ADDRESS, CGA_MEM_MASK},
+        lpt_card::LPT_DEFAULT_IO_BASE,
     },
 };
 
@@ -124,7 +123,7 @@ impl IoDevice for LotechEmsCard {
 /// Unlike the EGA or VGA the CGA doesn't do any operations on video memory on read/write,
 /// but we handle the mirroring of VRAM this way, and for consistency with other devices
 impl MemoryMappedDevice for LotechEmsCard {
-    fn get_read_wait(&mut self, _address: usize, cycles: u32) -> u32 {
+    fn get_read_wait(&mut self, _address: usize, _cycles: u32) -> u32 {
         0
     }
 
@@ -156,7 +155,7 @@ impl MemoryMappedDevice for LotechEmsCard {
         (self.mem[a_offset] as u16) << 8 | self.mem[a_offset + 1] as u16
     }
 
-    fn get_write_wait(&mut self, _address: usize, cycles: u32) -> u32 {
+    fn get_write_wait(&mut self, _address: usize, _cycles: u32) -> u32 {
         0
     }
 

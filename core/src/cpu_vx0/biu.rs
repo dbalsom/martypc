@@ -55,7 +55,7 @@ impl ByteQueue for NecVx0 {
     }
 
     // No microcode available for VX0
-    fn set_pc(&mut self, pc: u16) {}
+    fn set_pc(&mut self, _pc: u16) {}
 
     fn wait(&mut self, cycles: u32) {
         self.cycles(cycles);

@@ -44,7 +44,7 @@ impl VideoCard for MDACard {
 
     fn set_video_option(&mut self, opt: VideoOption) {
         match opt {
-            VideoOption::EnableSnow(state) => {
+            VideoOption::EnableSnow(_state) => {
                 log::warn!("VideoOption::EnableSnow not supported for MDA.");
             }
             VideoOption::DebugDraw(state) => {
@@ -106,7 +106,7 @@ impl VideoCard for MDACard {
     }
 
     /// Tick the MDA the specified number of video clock cycles.
-    fn debug_tick(&mut self, ticks: u32, cpumem: Option<&[u8]>) {
+    fn debug_tick(&mut self, ticks: u32, _cpumem: Option<&[u8]>) {
         match self.clock_mode {
             ClockingMode::Character | ClockingMode::Dynamic => {
                 let pixel_ticks = ticks % MDA_CHAR_CLOCK as u32;

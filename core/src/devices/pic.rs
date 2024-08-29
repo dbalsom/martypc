@@ -587,7 +587,7 @@ impl Pic {
     #[inline]
     pub fn calc_intr(&self) -> (bool, u8) {
         let mut ir_bit: u8 = 0x01;
-        let mut irq = 0;
+        let irq = 0;
         for irq in 0..8 {
             let have_request = self.irr & ir_bit != 0;
             let is_not_masked = self.imr & ir_bit == 0;

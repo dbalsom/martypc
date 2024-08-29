@@ -59,7 +59,6 @@ mod videocard;
 mod vram;
 
 use attribute_controller::*;
-use crate::device_traits::videocard::*;
 
 use crate::devices::vga::crtc::{VgaCrtc, WordOrByteMode};
 

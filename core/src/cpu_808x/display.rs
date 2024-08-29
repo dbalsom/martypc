@@ -31,12 +31,8 @@
 
 */
 
-use crate::cpu_common::Mnemonic;
-use std::fmt;
 
-use crate::{cpu_808x::*, cpu_common::instruction::Instruction};
 
-use crate::syntax_token::SyntaxToken;
 
 #[cfg(test)]
 mod tests {

@@ -56,7 +56,7 @@ use crate::{
     bus::BusInterface,
     bytequeue::ByteQueue,
     cpu_808x::Intel808x,
-    cpu_validator::{CycleState, VRegisters},
+    cpu_validator::{CycleState},
     cpu_vx0::NecVx0,
     syntax_token::{SyntaxToken, SyntaxTokenize},
 };
