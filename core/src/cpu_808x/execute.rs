@@ -1294,6 +1294,11 @@ impl Intel808x {
                 self.cycle_i(0x0ad);
 
                 let in_byte = self.biu_io_read_u8(op2_value as u16);
+
+                if self.io_flags[op2_value as usize] & IO_READ_BREAKPOINT != 0 {
+                    self.set_breakpoint_flag();
+                }
+                
                 self.set_register8(Register8::AL, in_byte);
                 //println!("IN: Would input value from port {:#02X}", op2_value);  
             }
@@ -1303,6 +1308,11 @@ impl Intel808x {
                 self.cycle_i(0x0ad);
 
                 let in_word = self.biu_io_read_u16(op2_value as u16, ReadWriteFlag::Normal);
+
+                if self.io_flags[op2_value as usize] & IO_READ_BREAKPOINT != 0 {
+                    self.set_breakpoint_flag();
+                }
+                
                 self.set_register16(Register16::AX, in_word);
             }
             0xE6 => {
@@ -1400,12 +1410,22 @@ impl Intel808x {
                 // IN al, dx
                 let op2_value = self.read_operand16(self.i.operand2_type, self.i.segment_override).unwrap(); 
                 let in_byte = self.biu_io_read_u8(op2_value);
+
+                if self.io_flags[op2_value as usize] & IO_READ_BREAKPOINT != 0 {
+                    self.set_breakpoint_flag();
+                }
+                
                 self.set_register8(Register8::AL, in_byte);
             }
             0xED => {
                 // IN ax, dx
                 let op2_value = self.read_operand16(self.i.operand2_type, self.i.segment_override).unwrap(); 
                 let in_word = self.biu_io_read_u16(op2_value, ReadWriteFlag::Normal);
+
+                if self.io_flags[op2_value as usize] & IO_READ_BREAKPOINT != 0 {
+                    self.set_breakpoint_flag();
+                }
+                
                 self.set_register16(Register16::AX, in_word);
             }
             0xEE => {
