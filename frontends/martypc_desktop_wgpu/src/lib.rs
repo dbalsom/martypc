@@ -71,6 +71,7 @@ use config_toml_bpaf::TestMode;
 use marty_core::{
     devices::keyboard::KeyboardModifiers,
     machine::{ExecutionControl, ExecutionState, MachineBuilder},
+    supported_floppy_extensions,
 };
 
 use display_manager_wgpu::{DisplayBackend, DisplayManager, DisplayManagerGuiOptions, WgpuDisplayManagerBuilder};
@@ -506,7 +507,23 @@ pub fn run() {
     // Instantiate the floppy manager
     let mut floppy_manager = FloppyManager::new();
 
-    floppy_manager.set_extensions(config.emulator.media.raw_sector_image_extensions.clone());
+    let mut floppy_extensions = config
+        .emulator
+        .media
+        .raw_sector_image_extensions
+        .clone()
+        .unwrap_or_default();
+    let managed_extensions = supported_floppy_extensions();
+    log::debug!(
+        "marty_core reports native support for the following extensions: {:?}",
+        managed_extensions
+    );
+    managed_extensions.iter().for_each(|ext| {
+        if !floppy_extensions.contains(&ext.to_string()) {
+            floppy_extensions.push(ext.to_string());
+        }
+    });
+    floppy_manager.set_extensions(Some(floppy_extensions));
 
     // Scan the "floppy" resource
     if let Err(e) = floppy_manager.scan_resource(&resource_manager) {

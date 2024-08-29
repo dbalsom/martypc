@@ -437,7 +437,7 @@ pub fn handle_egui_event(emu: &mut Emulator, elwt: &EventLoopWindowTarget<()>, g
         }
         GuiEvent::LoadAutoFloppy(drive_select, path) => {
             log::debug!(
-                "Load autofloppy path: {:?} into drive: {}",
+                "Mounting directory path: {:?} into drive: {}",
                 path.to_string_lossy(),
                 drive_select
             );
@@ -451,13 +451,15 @@ pub fn handle_egui_event(emu: &mut Emulator, elwt: &EventLoopWindowTarget<()>, g
 
             match emu
                 .floppy_manager
-                .build_autofloppy_image_from_dir(path, Some(FloppyImageType::Image360K), &emu.rm)
+                .build_autofloppy_image_from_dir(path, image_type, &emu.rm)
             {
                 Ok(vec) => {
                     if let Some(fdc) = emu.machine.fdc() {
+                        let mut load_success = false;
                         match fdc.load_image_from(*drive_select, vec, true) {
                             Ok(()) => {
                                 log::info!("Floppy image successfully loaded into virtual drive.");
+                                load_success = true;
 
                                 emu.gui.set_floppy_selection(
                                     *drive_select,
@@ -467,15 +469,35 @@ pub fn handle_egui_event(emu: &mut Emulator, elwt: &EventLoopWindowTarget<()>, g
                                 );
 
                                 emu.gui.set_floppy_write_protected(*drive_select, true);
-
-                                emu.gui
-                                    .toasts()
-                                    .info("Directory successfully mounted!".to_string())
-                                    .set_duration(Some(NORMAL_NOTIFICATION_TIME));
                             }
                             Err(err) => {
                                 log::warn!("Floppy image failed to load: {}", err);
                             }
+                        }
+
+                        let mut patch_success = false;
+                        // Patch the floppy image with the correct BPB for the selected format type.
+                        match fdc.patch_image_bpb(*drive_select, image_type) {
+                            Ok(()) => {
+                                log::info!("Floppy image patched with correct BPB.");
+                                patch_success = true;
+                            }
+                            Err(err) => {
+                                log::warn!("Failed to patch floppy image with correct BPB: {}", err);
+                            }
+                        }
+
+                        if load_success & patch_success {
+                            emu.gui
+                                .toasts()
+                                .info("Floppy image successfully mounted!".to_string())
+                                .set_duration(Some(NORMAL_NOTIFICATION_TIME));
+                        }
+                        else {
+                            emu.gui
+                                .toasts()
+                                .error("Failed to mount floppy image!".to_string())
+                                .set_duration(Some(NORMAL_NOTIFICATION_TIME));
                         }
                     }
                 }

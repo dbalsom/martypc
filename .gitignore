@@ -50,6 +50,9 @@ icon.png
 /install/media/hdds/*
 /install/media/cartridges/*
 
+/install/mount/floppy/*
+!/install/mount/floppy/readme.md
+
 /install/output/screenshots/*
 /install/output/traces/*
 /install/output/dumps/*

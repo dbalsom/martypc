@@ -156,7 +156,7 @@ paths = [
     { resource = "keyboard_layout", path = "$basedir$/configs/keyboard_layouts", recurse = false },
     { resource = "rom", path = "$basedir$/media/roms", recurse = true },
     { resource = "hdd", path = "$basedir$/media/hdds", recurse = true },
-    { resource = "autofloppy", path = "$basedir$/media/mount/floppy", create = true, recurse = false },
+    { resource = "autofloppy", path = "$basedir$/mount/floppy", create = true, recurse = false },
     { resource = "floppy", path = "$basedir$/media/floppies", recurse = true, create = true },
     { resource = "cartridge", path = "$basedir$/media/cartridges", recurse = true, create = true },
     { resource = "cassette", path = "$basedir$/media/cassettes", recurse = true, create = true },
@@ -223,7 +223,10 @@ macos_stripe_fix = false
 enabled = true
 
 [emulator.media]
-# Provide a list of file extensions to interpret as raw floppy sector images.
+
+# A list of file extensions to interpret as floppy raw sector images.
+# Files with these extensions will always be shown in the floppy image browser, regardless
+# of whether they can be mounted as a raw sector image.
 raw_sector_image_extensions = ["img", "ima", "dsk", "mnx"]
 
 # Default state of write protection for newly loaded floppy images.

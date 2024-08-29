@@ -125,7 +125,7 @@ impl FloppyManager {
         self.image_map.clear();
 
         // Retrieve all items from the floppy resource paths.
-        let floppy_items = rm.enumerate_items("floppy", true, true, Some(self.extensions.clone()))?;
+        let floppy_items = rm.enumerate_items("floppy", None, true, true, Some(self.extensions.clone()))?;
 
         // Index mapping between 'files' vec and 'image_vec' should be maintained.
         for item in floppy_items.iter() {
@@ -151,7 +151,7 @@ impl FloppyManager {
         self.autofloppy_dir_vec.clear();
 
         // Retrieve all items from the floppy resource paths.
-        let autofloppy_dirs = rm.enumerate_items("autofloppy", false, false, None)?;
+        let autofloppy_dirs = rm.enumerate_items("autofloppy", None, false, false, None)?;
 
         // Index mapping between 'files' vec and 'image_vec' should be maintained.
         for item in autofloppy_dirs.iter() {
@@ -394,30 +394,32 @@ impl FloppyManager {
             let mut dst_root_dir = vfat12.root_dir();
 
             if let Some(src_root_node) = src_root_node_opt {
-                if let Err(err) = build_autofloppy_dir(&src_root_node, dst_root_dir, rm, &mut |path: &Path| {
-                    // This callback strips the first directory entry back off the tree (.\\)
-                    // and converts backslashes to forward slashes.
+                if let Err(err) =
+                    build_autofloppy_dir(&src_root_node, dst_root_dir, rm, &files_visited, &mut |path: &Path| {
+                        // This callback strips the first directory entry back off the tree (.\\)
+                        // and converts backslashes to forward slashes.
 
-                    let mut buf = path.to_path_buf();
-                    if let Some(first_component) = buf.components().next() {
-                        if first_component.as_os_str() == "." {
-                            buf = buf.components().skip(1).collect();
+                        let mut buf = path.to_path_buf();
+                        if let Some(first_component) = buf.components().next() {
+                            if first_component.as_os_str() == "." {
+                                buf = buf.components().skip(1).collect();
+                            }
                         }
-                    }
 
-                    if let Some(path_str) = buf.to_str() {
-                        let zip_path = path_str.replace("\\", "/");
+                        if let Some(path_str) = buf.to_str() {
+                            let zip_path = path_str.replace("\\", "/");
 
-                        log::debug!("Reading file from zip: {}", zip_path);
-                        let mut file = zip.by_name(&zip_path)?;
-                        let mut file_vec = Vec::new();
-                        file.read_to_end(&mut file_vec)?;
-                        Ok(file_vec)
-                    }
-                    else {
-                        Err(FloppyError::ImageBuildError.into())
-                    }
-                }) {
+                            log::debug!("Reading file from zip: {}", zip_path);
+                            let mut file = zip.by_name(&zip_path)?;
+                            let mut file_vec = Vec::new();
+                            file.read_to_end(&mut file_vec)?;
+                            Ok(file_vec)
+                        }
+                        else {
+                            Err(FloppyError::ImageBuildError.into())
+                        }
+                    })
+                {
                     log::error!("Error building autofloppy directory: {}", err);
                 }
             }
@@ -474,7 +476,12 @@ impl FloppyManager {
             }
         };
 
-        let dir_items = rm.enumerate_items("autofloppy", false, true, None)?;
+        let subdir = path.file_name().unwrap();
+
+        log::warn!("Enumerating items under autofloppy path/{}", subdir.to_str().unwrap());
+        //let dir_items = rm.enumerate_items_from_path(path)?;
+        let dir_items = rm.enumerate_items("autofloppy", Some(subdir), false, true, None)?;
+        log::warn!("{:?}", dir_items);
 
         let mut files_visited: HashSet<PathBuf> = HashSet::new();
         let mut io_sys: Option<PathBuf> = None;
@@ -535,15 +542,19 @@ impl FloppyManager {
 
         // Build tree from the rest of the files
         let file_tree = rm.items_to_tree("autofloppy", &dir_items)?;
+        //let src_root_node_opt = Some(file_tree);
         let src_root_node_opt = file_tree.descend(path.file_name().unwrap().to_str().unwrap());
 
         {
             let mut dst_root_dir = vfat12.root_dir();
 
             if let Some(src_root_node) = src_root_node_opt {
-                if let Err(err) = build_autofloppy_dir(&src_root_node, dst_root_dir, rm, &mut |path: &Path| {
-                    rm.read_resource_from_path(path)
-                }) {
+                if let Err(err) =
+                    build_autofloppy_dir(&src_root_node, dst_root_dir, rm, &files_visited, &mut |path: &Path| {
+                        log::trace!("Building FAT image with path: {}", path.display());
+                        rm.read_resource_from_path(path)
+                    })
+                {
                     log::error!("Error building autofloppy directory: {:?}", err);
                 }
             }
@@ -584,15 +595,20 @@ impl FloppyManager {
             if bootsector_vec.len() > 0 {
                 if bootsector_vec.len() < 512 {
                     bootsector_vec.extend(vec![0u8; 512 - bootsector_vec.len()]);
+                    // Add the boot sector marker
+                    bootsector_vec[510] = 0x55;
+                    bootsector_vec[511] = 0xAA;
                 }
                 else if bootsector_vec.len() > 512 {
                     bootsector_vec.truncate(512);
                 }
 
                 log::debug!(
-                    "Installing bootsector of len: {} into autofloppy image...",
+                    "Installing bootsector: {} of len: {} into autofloppy image...",
+                    bootsector_path.display(),
                     bootsector_vec.len()
                 );
+                // TODO: Eventually we would prefer to use fluxfox to write the first sector logically
                 buf[..512].copy_from_slice(&bootsector_vec);
             }
         }
@@ -710,6 +726,7 @@ pub fn build_autofloppy_dir<IO: fatfs::Read + fatfs::Write + fatfs::Seek, TP, OC
     dir_node: &TreeNode,
     fs: Dir<IO, TP, OCC>,
     rm: &ResourceManager,
+    visited: &HashSet<PathBuf>,
     file_callback: &mut dyn FnMut(&Path) -> Result<Vec<u8>, Error>,
 ) -> Result<(), Error>
 where
@@ -726,6 +743,10 @@ where
         log::debug!("Processing child {}", i);
         match entry.node_type() {
             NodeType::File(path) => {
+                if visited.contains(path) {
+                    log::debug!("Skipping previously installed file: {:?}", path);
+                    continue;
+                }
                 log::debug!("build_autofloppy_dir: file_name: {}", path.display());
 
                 let file_vec = file_callback(Path::new(path))?;
@@ -744,7 +765,7 @@ where
                 let new_dir = fs
                     .create_dir(&filename)
                     .map_err(|_| anyhow::anyhow!("Failed to create directory: {}", filename))?;
-                build_autofloppy_dir(entry, new_dir, rm, file_callback)?;
+                build_autofloppy_dir(entry, new_dir, rm, visited, file_callback)?;
             }
         }
         log::debug!("Completed processing child {}", i);

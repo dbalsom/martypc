@@ -128,7 +128,7 @@ impl VhdManager {
         self.image_map.clear();
 
         // Retrieve all items from the floppy resource paths.
-        let floppy_items = rm.enumerate_items("hdd", true, true, Some(self.extensions.clone()))?;
+        let floppy_items = rm.enumerate_items("hdd", None, true, true, Some(self.extensions.clone()))?;
 
         // Index mapping between 'files' vec and 'image_vec' should be maintained.
         for item in floppy_items.iter() {

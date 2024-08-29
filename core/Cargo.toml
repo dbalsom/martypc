@@ -35,6 +35,11 @@ fxhash.workspace = true
 enum_dispatch.workspace = true
 crossbeam-channel.workspace = true
 
+[dependencies.fluxfox]
+path = "../../fluxfox"
+#git = "https://github.com/dbalsom/fluxfox.git"
+#branch = "main"
+
 [dependencies.opl3-rs]
 git = "https://github.com/dbalsom/opl3-rs.git"
 branch = "main"

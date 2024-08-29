@@ -156,7 +156,7 @@ impl MachineManager {
         let mut overlay_configs: Vec<MachineConfigFileOverlayEntry> = Vec::new();
 
         // Get a file listing of 'toml' files in the machine configuration directory.
-        let toml_configs = rm.enumerate_items("machine", false, true, Some(vec![OsString::from("toml")]))?;
+        let toml_configs = rm.enumerate_items("machine", None, false, true, Some(vec![OsString::from("toml")]))?;
 
         log::debug!(
             "load_configs(): Found {} Machine Configuration files:",

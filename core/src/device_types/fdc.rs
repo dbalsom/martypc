@@ -29,7 +29,8 @@
     Defines types common to implementations of a Floppy Disk Controller
 */
 
-use crate::{device_types::chs::DiskChs, machine_types::FloppyDriveType};
+use crate::machine_types::FloppyDriveType;
+use fluxfox::{DiskChs, StandardFormat};
 use lazy_static::lazy_static;
 use std::collections::HashMap;
 
@@ -46,6 +47,22 @@ pub enum FloppyImageType {
     Image720K,
     Image12M,
     Image144M,
+}
+
+impl TryFrom<FloppyImageType> for StandardFormat {
+    type Error = &'static str;
+
+    fn try_from(value: FloppyImageType) -> Result<Self, Self::Error> {
+        match value {
+            FloppyImageType::Image160K => Ok(StandardFormat::PcFloppy160),
+            FloppyImageType::Image180K => Ok(StandardFormat::PcFloppy180),
+            FloppyImageType::Image320K => Ok(StandardFormat::PcFloppy320),
+            FloppyImageType::Image360K => Ok(StandardFormat::PcFloppy360),
+            FloppyImageType::Image720K => Ok(StandardFormat::PcFloppy720),
+            FloppyImageType::Image12M => Ok(StandardFormat::PcFloppy1200),
+            FloppyImageType::Image144M => Ok(StandardFormat::PcFloppy1440),
+        }
+    }
 }
 
 lazy_static! {

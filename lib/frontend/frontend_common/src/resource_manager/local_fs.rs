@@ -38,7 +38,7 @@ use crate::resource_manager::{
 use anyhow::Error;
 use std::{
     collections::HashSet,
-    ffi::OsString,
+    ffi::{OsStr, OsString},
     fs,
     path::{Path, PathBuf},
 };
@@ -72,12 +72,13 @@ impl ResourceManager {
     pub fn enumerate_items(
         &self,
         resource: &str,
+        subdir: Option<&OsStr>,
         multipath: bool,
         resursive: bool,
         extension_filter: Option<Vec<OsString>>,
     ) -> Result<Vec<ResourceItem>, Error> {
         let mut items = if resursive {
-            self.enumerate_items_recursive(multipath, resource)?
+            self.enumerate_items_recursive(multipath, resource, subdir)?
         }
         else {
             let mut items: Vec<ResourceItem> = Vec::new();
@@ -97,8 +98,13 @@ impl ResourceManager {
             }
 
             for path in paths.iter() {
-                let path = path.clone().canonicalize()?;
+                let mut path = path.clone().canonicalize()?;
 
+                if let Some(subdir) = subdir.clone() {
+                    path.push(subdir);
+                }
+
+                log::debug!("Descending into directory: {}", path.display());
                 for entry in fs::read_dir(path.clone())? {
                     match entry {
                         Ok(entry) => {
@@ -176,7 +182,12 @@ impl ResourceManager {
     /// The paths are obtained from a resource manager (`self.pm`). If `multipath` is `true`, it explores all
     /// available paths; otherwise, it only explores the first path. The search avoids directories listed in
     /// `self.ignore_dirs`.
-    fn enumerate_items_recursive(&self, multipath: bool, resource: &str) -> Result<Vec<ResourceItem>, Error> {
+    fn enumerate_items_recursive(
+        &self,
+        multipath: bool,
+        resource: &str,
+        subdir: Option<&OsStr>,
+    ) -> Result<Vec<ResourceItem>, Error> {
         let mut roots = self
             .pm
             .get_resource_paths(resource)
@@ -185,6 +196,10 @@ impl ResourceManager {
         if !multipath {
             // If multipath is false, only use the first path
             roots.truncate(1);
+
+            if let Some(subdir) = subdir {
+                roots[0].push(subdir);
+            }
         }
 
         if roots.is_empty() {

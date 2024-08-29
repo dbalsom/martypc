@@ -56,6 +56,16 @@ impl From<DiskChs> for (u8, u8, u8) {
     }
 }
 
+impl From<fluxfox::DiskChs> for DiskChs {
+    fn from(chs: fluxfox::DiskChs) -> Self {
+        Self {
+            c: chs.c() as u8,
+            h: chs.h(),
+            s: chs.s(),
+        }
+    }
+}
+
 impl Display for DiskChs {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         write!(f, "[c:{} h:{} s:{}]", self.c, self.h, self.s)
