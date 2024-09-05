@@ -24,18 +24,21 @@
 
    ---------------------------------------------------------------------------
 
-   common::lib.rs
+   common::src/path/mod.rs
 
-   Common emulator library.
-   Define types and methods common to both frontend and backend libraries.
+    Common path routines
 */
 
-pub mod bytebuf;
-pub mod path;
-pub mod types;
-pub mod util;
+use std::path::{Path, PathBuf};
 
-pub use crate::{
-    path::find_unique_filename,
-    types::{cartridge::CartImage, video_dimensions::VideoDimensions},
-};
+pub fn find_unique_filename(path: &Path, base: &str, ext: &str) -> PathBuf {
+    let mut i = 1;
+    let mut test_path = path.join(format!("{}{:03}.{}", base, i, ext));
+
+    while test_path.exists() {
+        i += 1;
+        test_path = path.join(format!("{}{:03}.{}", base, i, ext));
+    }
+
+    test_path
+}

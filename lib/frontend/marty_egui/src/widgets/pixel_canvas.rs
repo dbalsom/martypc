@@ -29,7 +29,7 @@
     A resizable texture widget backed by a pixel buffer.
 
 */
-
+use crate::glyphs::FontInfo;
 use egui::{
     epaint::TextureManager,
     mutex::RwLock,
@@ -43,7 +43,10 @@ use egui::{
     TextureId,
     TextureOptions,
 };
-use marty_core::device_traits::videocard::CGAColor;
+use std::path::Path;
+
+use anyhow::Error;
+use frontend_common::color::cga::CGAColor;
 use std::sync::Arc;
 
 #[repr(u8)]
@@ -97,12 +100,26 @@ pub const PALETTE_4BPP: [Color32; 16] = [
     Color32::from_rgb(0xFFu8, 0xFFu8, 0xFFu8),
 ];
 
-#[derive(Copy, Clone, PartialEq, Debug)]
+#[derive(Copy, Clone, PartialEq, Default, Debug)]
 pub enum PixelCanvasDepth {
+    Text,
+    #[default]
     OneBpp,
     TwoBpp,
     FourBpp,
     EightBpp,
+}
+
+impl PixelCanvasDepth {
+    pub fn bits(&self) -> usize {
+        match self {
+            PixelCanvasDepth::Text => 16,
+            PixelCanvasDepth::OneBpp => 1,
+            PixelCanvasDepth::TwoBpp => 2,
+            PixelCanvasDepth::FourBpp => 4,
+            PixelCanvasDepth::EightBpp => 8,
+        }
+    }
 }
 
 pub struct PixelCanvasPalette {
@@ -168,7 +185,7 @@ impl PixelCanvas {
     pub fn new(dims: (u32, u32), ctx: Context) -> Self {
         let mut pc = PixelCanvas::default();
         pc.view_dimensions = dims;
-        pc.data_buf = vec![0; PixelCanvas::calc_slice_size(dims, pc.bpp)];
+        pc.data_buf = vec![0; PixelCanvas::calc_slice_size(dims, pc.bpp, None)];
         pc.backing_buf = vec![Color32::BLACK; (dims.0 * dims.1) as usize];
         pc.ctx = ctx.clone();
         pc.texture = None;
@@ -196,8 +213,15 @@ impl PixelCanvas {
         self.use_device_palette = state;
     }
 
-    pub fn calc_slice_size(dims: (u32, u32), bpp: PixelCanvasDepth) -> usize {
+    pub fn calc_slice_size(dims: (u32, u32), bpp: PixelCanvasDepth, font: Option<&FontInfo>) -> usize {
         let size = match bpp {
+            PixelCanvasDepth::Text if font.is_some() => {
+                ((dims.0 / 8) * (dims.1 / font.unwrap().max_scanline) * 2) as usize
+            }
+            PixelCanvasDepth::Text => {
+                log::warn!("PixelCanvas::calc_slice_size(): Text mode calculation without font reference.");
+                ((dims.0 / 8) * (dims.1 * 2)) as usize
+            }
             PixelCanvasDepth::OneBpp => (dims.0 * dims.1) as usize / 8,
             PixelCanvasDepth::TwoBpp => (dims.0 * dims.1) as usize / 4,
             PixelCanvasDepth::FourBpp => (dims.0 * dims.1) as usize / 1,
@@ -264,12 +288,12 @@ impl PixelCanvas {
         }
     }
 
-    pub fn get_required_data_size(&self) -> usize {
-        PixelCanvas::calc_slice_size(self.view_dimensions, self.bpp)
+    pub fn get_required_data_size(&self, font: Option<&FontInfo>) -> usize {
+        PixelCanvas::calc_slice_size(self.view_dimensions, self.bpp, font)
     }
 
-    pub fn update_data(&mut self, data: &[u8]) {
-        let slice_size = PixelCanvas::calc_slice_size(self.view_dimensions, self.bpp);
+    pub fn update_data(&mut self, data: &[u8], font: Option<&FontInfo>) {
+        let slice_size = PixelCanvas::calc_slice_size(self.view_dimensions, self.bpp, font);
         let shortfall = slice_size - data.len();
         self.data_buf.clear();
         self.data_buf
@@ -280,7 +304,7 @@ impl PixelCanvas {
 
         assert_eq!(self.data_buf.len(), slice_size);
 
-        self.unpack_pixels();
+        self.unpack_pixels(font);
         self.update_texture();
     }
 
@@ -296,7 +320,7 @@ impl PixelCanvas {
         if let Some(depth) = depth {
             self.device_palette.colors = palette;
             self.device_palette.depth = depth;
-            self.unpack_pixels();
+            self.unpack_pixels(None);
             self.update_texture();
         }
     }
@@ -317,16 +341,28 @@ impl PixelCanvas {
         self.zoom = zoom;
     }
 
-    pub fn resize(&mut self, dims: (u32, u32)) {
+    pub fn resize(&mut self, dims: (u32, u32), font: Option<&FontInfo>) {
         self.view_dimensions = dims;
-        self.data_buf = vec![0; PixelCanvas::calc_slice_size(dims, self.bpp)];
+        self.data_buf = vec![0; PixelCanvas::calc_slice_size(dims, self.bpp, font)];
         self.backing_buf = vec![Color32::BLACK; (dims.0 * dims.1) as usize];
 
         self.texture = Some(self.create_texture());
         self.data_valid = false;
     }
 
-    fn unpack_pixels(&mut self) {
+    pub fn save_buffer(&mut self, path: &Path) -> Result<(), Error> {
+        let byte_slice: &[u8] = bytemuck::cast_slice(&self.backing_buf);
+        image::save_buffer(
+            path,
+            byte_slice,
+            self.view_dimensions.0,
+            self.view_dimensions.1,
+            image::ColorType::Rgba8,
+        )?;
+        Ok(())
+    }
+
+    fn unpack_pixels(&mut self, font: Option<&FontInfo>) {
         if !self.data_valid {
             return;
         }
@@ -334,6 +370,45 @@ impl PixelCanvas {
         let dims = self.view_dimensions.0 * self.view_dimensions.1;
         let max_index = std::cmp::min(dims as usize, self.data_buf.len());
         match self.bpp {
+            PixelCanvasDepth::Text => {
+                if let Some(font) = font {
+                    // Render as glyphs
+
+                    let glyph_h = std::cmp::min(font.h, font.max_scanline);
+                    let cols = self.view_dimensions.0 / font.w; // width / 8
+                    let rows = self.view_dimensions.1 / glyph_h; // height / 8
+                    let span = self.view_dimensions.0;
+
+                    let max_index = std::cmp::min(((rows * cols) * 2) as usize, self.data_buf.len());
+
+                    for row in 0..rows {
+                        for col in 0..cols {
+                            let glyph_idx = std::cmp::min(((row * cols + col) * 2) as usize, max_index);
+                            let attr_idx = std::cmp::min(((row * cols + col) * 2 + 1) as usize, max_index);
+
+                            let char = self.data_buf[glyph_idx];
+                            let attr = self.data_buf[attr_idx];
+
+                            let (fg_color, bg_color) = CGAColor::decode_attr(attr);
+                            for y in 0..glyph_h {
+                                let glyph_offset = (y as usize * 256) + char as usize;
+                                let glyph = font.font_data[glyph_offset];
+                                for x in 0..8 {
+                                    let bit = 1 << (7 - x);
+                                    let color = if glyph & bit != 0 { fg_color } else { bg_color };
+                                    let idx = (((row * glyph_h) * self.view_dimensions.0)
+                                        + (y * self.view_dimensions.0)
+                                        + (col * 8)
+                                        + x) as usize;
+
+                                    let rgba = color.to_rgba();
+                                    self.backing_buf[idx] = Color32::from_rgb(rgba[0], rgba[1], rgba[2]);
+                                }
+                            }
+                        }
+                    }
+                }
+            }
             PixelCanvasDepth::OneBpp => {
                 for i in 0..self.view_dimensions.0 * self.view_dimensions.1 {
                     let byte = self.data_buf[(i / 8) as usize];

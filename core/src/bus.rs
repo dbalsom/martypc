@@ -833,7 +833,12 @@ impl BusInterface {
         }
 
         let start_mmio_block = start >> MMIO_MAP_SHIFT;
-        let end_mmio_block = (start + len) >> MMIO_MAP_SHIFT;
+        let mut end_mmio_block = (start + len) >> MMIO_MAP_SHIFT;
+
+        if end_mmio_block >= MMIO_MAP_LEN {
+            // If the end block is out of range, just return a slice of conventional memory.
+            end_mmio_block = MMIO_MAP_LEN - 1;
+        }
 
         // First, scan the mmio map to see if the range contains any mmio mapped devices.
         // If one is found, set a flag to fall back to the slow path.

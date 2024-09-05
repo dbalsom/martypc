@@ -31,6 +31,7 @@
     implementation-defined types, like egui and wgpu Colors.
 
 */
+pub mod cga;
 
 /// Define a universal color type that can be converted to and from implementation-defined types
 /// and other common color formats.

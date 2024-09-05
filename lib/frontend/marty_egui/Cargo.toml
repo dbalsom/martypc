@@ -16,6 +16,7 @@ marty_core = { path = "../../../core" }
 videocard_renderer = { path = "../videocard_renderer" }
 winit.workspace = true
 pixels.workspace = true
+bytemuck = { workspace=true, features = ["derive"] }
 #egui = "0.24"
 #egui-wgpu = "0.24"
 #egui-winit = { version = "0.24", default-features = false, features = ["links"] }

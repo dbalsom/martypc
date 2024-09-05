@@ -481,6 +481,10 @@ impl GuiState {
         self.warning_string = String::new();
     }
 
+    pub fn set_dump_path(&mut self, path: PathBuf) {
+        self.data_visualizer.set_dump_path(path);
+    }
+
     pub fn set_machine_state(&mut self, state: MachineState) {
         self.machine_state = state;
     }
