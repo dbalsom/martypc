@@ -219,6 +219,18 @@ impl CpuViewerControl {
                 ui.add(egui::TextEdit::singleline(&mut self.cpu_state.cycle_count).font(egui::TextStyle::Monospace));
             });
         });
+
+        egui::CollapsingHeader::new("Scheduler")
+            .default_open(false)
+            .show(ui, |ui| {
+                MartyLayout::new(layouts::Layout::KeyValue, "cpu-state-scheduler-grid").show(ui, |ui| {
+                    MartyLayout::kv_row(ui, "DMA State", None, |ui| {
+                        ui.add(
+                            egui::TextEdit::singleline(&mut self.cpu_state.dma_state).font(egui::TextStyle::Monospace),
+                        );
+                    });
+                });
+            });
     }
 
     pub fn update_state(&mut self, state: CpuStringState) {

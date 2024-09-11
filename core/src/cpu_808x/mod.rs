@@ -1546,6 +1546,7 @@ impl Intel808x {
             flags: format!("{:04}", self.flags),
             instruction_count: format!("{}", self.instruction_count),
             cycle_count: format!("{}", self.cycle_num),
+            dma_state: format!("{:?}", self.dma_state),
         }
     }
 

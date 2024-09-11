@@ -56,7 +56,7 @@ use crate::{
     bus::BusInterface,
     bytequeue::ByteQueue,
     cpu_808x::Intel808x,
-    cpu_validator::{CycleState},
+    cpu_validator::CycleState,
     cpu_vx0::NecVx0,
     syntax_token::{SyntaxToken, SyntaxTokenize},
 };
@@ -178,6 +178,7 @@ pub struct CpuStringState {
     pub piq: String,
     pub instruction_count: String,
     pub cycle_count: String,
+    pub dma_state: String,
 }
 
 #[derive(Copy, Clone, Debug, Deserialize, Eq, PartialEq, Hash)]

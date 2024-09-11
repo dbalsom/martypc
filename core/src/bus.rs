@@ -2450,40 +2450,29 @@ impl BusInterface {
             // this represents two CPU cycles, so we need to adjust the scheduler by that much.
             let dma_add_ticks = pit.get_timer_accum();
 
+            // DRAM refresh DMA counter has changed. Update the CPU's DRAM refresh simulation.
             log::trace!(
-                "pit dirty and counting! count register: {} counting element: {} ",
+                "DRAM refresh DMA counter updated: reload: {}, count: {}, adj: +{}, retrigger: {}",
                 dma_count_register,
-                dma_counting_element
+                dma_counting_element,
+                dma_add_ticks,
+                retriggers
             );
 
-            if dma_counting_element <= dma_count_register {
-                // DRAM refresh DMA counter has changed. If the counting element is in range,
-                // update the CPU's DRAM refresh simulation.
-                log::trace!(
-                    "DRAM refresh DMA counter updated: {}, {}, +{}",
+            if dma_counting_element == 0 && !pit_ticked {
+                // Counter is still at initial 0 - not a terminal count.
+                *event = Some(DeviceEvent::DramRefreshUpdate(dma_count_register, 0, 0, retriggers));
+            }
+            else {
+                // Timer is at terminal count!
+                *event = Some(DeviceEvent::DramRefreshUpdate(
                     dma_count_register,
                     dma_counting_element,
-                    dma_add_ticks
-                );
-                self.dma_counter = dma_count_register;
-
-                // Invert the dma counter value as Cpu counts up toward total
-
-                if dma_counting_element == 0 && !pit_ticked {
-                    // Counter is still at initial 0 - not a terminal count.
-                    *event = Some(DeviceEvent::DramRefreshUpdate(dma_count_register, 0, 0, retriggers));
-                }
-                else {
-                    // Timer is at terminal count!
-                    *event = Some(DeviceEvent::DramRefreshUpdate(
-                        dma_count_register,
-                        dma_counting_element,
-                        dma_add_ticks,
-                        retriggers,
-                    ));
-                }
-                self.refresh_active = true;
+                    dma_add_ticks,
+                    retriggers,
+                ));
             }
+            self.refresh_active = true;
         }
         else if !pit_counting && self.refresh_active {
             // Timer 1 isn't counting anymore! Disable DRAM refresh...
