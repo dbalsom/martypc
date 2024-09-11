@@ -258,7 +258,7 @@ impl CpuControl {
             });
 
         egui::CollapsingHeader::new("StopWatch")
-            .default_open(true)
+            .default_open(false)
             .show(ui, |ui| {
                 egui::Grid::new("cpu_control_stopwatch_grid")
                     .num_columns(2)
