@@ -340,7 +340,7 @@ pub trait AluShiftArithmeticRight: Sized {
 macro_rules! impl_sar {
     ($prim:ty) => {
         impl AluShiftArithmeticRight for $prim {
-            fn alu_sar(mut self, mut count: u8) -> (Self, bool) {
+            fn alu_sar(mut self, count: u8) -> (Self, bool) {
                 let mut carry = false;
                 let ho_bit = self & (1 << (<$prim>::BITS - 1));
                 for _ in 0..count {

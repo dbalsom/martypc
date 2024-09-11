@@ -47,7 +47,6 @@ mod sound_player;
 #[cfg(feature = "arduino_validator")]
 mod run_fuzzer;
 
-use rodio::cpal::traits::HostTrait;
 use std::{
     cell::RefCell,
     collections::HashMap,

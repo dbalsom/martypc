@@ -279,11 +279,11 @@ impl IoDevice for ProgrammableIntervalTimer {
     }
 }
 
-impl Channel {
-    pub fn new(c: usize, ptype: PitType) -> Self {
+impl Default for Channel {
+    fn default() -> Self {
         Channel {
-            c,
-            ptype,
+            c: 0,
+            ptype: PitType::Model8253,
             mode: Updatable::Dirty(ChannelMode::InterruptOnTerminalCount, false),
             rw_mode: Updatable::Dirty(RwMode::Lsb, false),
             channel_state: ChannelState::WaitingForReload,
@@ -296,7 +296,6 @@ impl Channel {
             counting_element: Updatable::Dirty(0, false),
             ce_undefined: false,
             armed: false,
-
             read_state: ReadState::NoRead,
             count_is_latched: false,
             output: Updatable::Dirty(false, false),
@@ -309,6 +308,16 @@ impl Channel {
             dirty: false,
             ticked: false,
             defer_reload_flag: false,
+        }
+    }
+}
+
+impl Channel {
+    pub fn new(c: usize, ptype: PitType) -> Self {
+        Channel {
+            c,
+            ptype,
+            ..Default::default()
         }
     }
 
@@ -890,15 +899,12 @@ impl ProgrammableIntervalTimer {
         // Reset the PIT back to sensible defaults.
         // Note: We do not change the gate input state. The PIT does not control gate status.
         for i in 0..3 {
-            self.channels[i].mode.update(ChannelMode::InterruptOnTerminalCount);
-            self.channels[i].channel_state = ChannelState::WaitingForReload;
-            self.channels[i].count_register.update(0);
-            self.channels[i].counting_element.update(0);
-            self.channels[i].read_state = ReadState::NoRead;
-            self.channels[i].count_is_latched = false;
-            self.channels[i].ce_undefined = false;
-            self.channels[i].output.update(false);
-            self.channels[i].bcd_mode = false;
+            self.channels[i] = Channel {
+                c: self.channels[i].c,
+                ptype: self.channels[i].ptype,
+                gate: self.channels[i].gate.clone(),
+                ..Default::default()
+            }
         }
     }
 
@@ -1140,7 +1146,7 @@ impl ProgrammableIntervalTimer {
         self.channels[channel].is_dirty()
     }
 
-    pub fn tick(&mut self, bus: &mut BusInterface, mut buffer_producer: Option<&mut ringbuf::Producer<u8>>) {
+    pub fn tick(&mut self, bus: &mut BusInterface, buffer_producer: Option<&mut ringbuf::Producer<u8>>) {
         self.pit_cycles += 1;
 
         // Get timer channel 2 state from ppi.
@@ -1177,7 +1183,7 @@ impl ProgrammableIntervalTimer {
 
         if let Some(sender) = &self.speaker.sender {
             // Process any samples that have accumulated in the buffer between calls to run().
-            for s in self.speaker_buf.pop_front() {
+            if let Some(s) = self.speaker_buf.pop_front() {
                 self.process_sample(s);
             }
 

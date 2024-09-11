@@ -267,7 +267,6 @@ impl NecVx0 {
 
     pub(crate) fn ror_u16_with_carry_overflow(mut word: u16, mut count: u8) -> (u16, bool, bool) {
         let mut carry = false;
-        let mut msb = false;
         let mut overflow = false;
         while count > 0 {
             carry = word & 0x0001 != 0;

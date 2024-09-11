@@ -143,14 +143,18 @@ pub fn update_egui(emu: &mut Emulator, tm: &TimestepManager, elwt: &EventLoopWin
         emu.gui.memory_viewer.set_memory(mem_dump_vec);
     }
 
+    // Update data visualizer
     if emu.gui.is_window_open(GuiWindow::DataVisualizer) {
-        let mem_dump_addr_str = emu.gui.data_visualizer.get_address();
+        let path_opt = emu.rm.get_resource_path("dump");
+        if let Some(path) = path_opt {
+            emu.gui.data_visualizer.set_dump_path(path);
+        }
 
-        let addr = match emu.machine.cpu().eval_address(&mem_dump_addr_str) {
+        let (viz_addr_str, viz_offset) = emu.gui.data_visualizer.get_address();
+        let addr = match emu.machine.cpu().eval_address(&viz_addr_str) {
             Some(i) => {
-                let addr: u32 = i.into();
-                // Dump at 16 byte block boundaries
-                addr
+                let addr: usize = i.into();
+                addr + viz_offset
             }
             None => {
                 // Show address 0 if expression eval fails
@@ -159,9 +163,9 @@ pub fn update_egui(emu: &mut Emulator, tm: &TimestepManager, elwt: &EventLoopWin
         };
 
         let data_len = emu.gui.data_visualizer.get_required_data_size();
-        let data = emu.machine.bus().get_slice_at(addr as usize, data_len);
-
-        emu.gui.data_visualizer.update_data(data.to_vec());
+        emu.gui
+            .data_visualizer
+            .update_data(emu.machine.bus().get_vec_at_ex(addr, data_len));
 
         emu.machine.primary_videocard().map(|vc| {
             let palette = vc.get_palette();

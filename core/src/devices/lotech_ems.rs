@@ -117,7 +117,7 @@ impl IoDevice for LotechEmsCard {
 /// Unlike the EGA or VGA the CGA doesn't do any operations on video memory on read/write,
 /// but we handle the mirroring of VRAM this way, and for consistency with other devices
 impl MemoryMappedDevice for LotechEmsCard {
-    fn get_read_wait(&mut self, _address: usize, cycles: u32) -> u32 {
+    fn get_read_wait(&mut self, _address: usize, _cycles: u32) -> u32 {
         0
     }
 
@@ -149,7 +149,7 @@ impl MemoryMappedDevice for LotechEmsCard {
         (self.mem[a_offset] as u16) << 8 | self.mem[a_offset + 1] as u16
     }
 
-    fn get_write_wait(&mut self, _address: usize, cycles: u32) -> u32 {
+    fn get_write_wait(&mut self, _address: usize, _cycles: u32) -> u32 {
         0
     }
 

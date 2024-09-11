@@ -311,7 +311,7 @@ impl From<u8> for ModRmByte {
 
 impl ModRmByte {
     pub fn peek(byte: u8) -> (ModRmByte, u32) {
-        let mut modrm = MODRM_TABLE[byte as usize];
+        let modrm = MODRM_TABLE[byte as usize];
         let mut disp_size = 0;
 
         if modrm.b_mod != 0b11 {

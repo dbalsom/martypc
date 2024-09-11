@@ -33,7 +33,6 @@
 use super::*;
 use crate::{
     bus::{MemRangeDescriptor, MemoryMappedDevice},
-    devices::mda::MDA_MEM_APERTURE,
 };
 
 /// Unlike the EGA or VGA the CGA doesn't do any operations on video memory on read/write,

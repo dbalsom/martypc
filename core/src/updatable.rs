@@ -44,7 +44,7 @@ use std::ops::{Deref, DerefMut};
 /// DirtyAging adds a u8 frame age parameter.
 /// Aging8 has a u8 frame age parameter.
 #[allow(dead_code)]
-#[derive(Debug)]
+#[derive(Clone, Debug)]
 pub enum Updatable<T> {
     Dirty(T, bool),
     DirtyAging(T, bool, u8),

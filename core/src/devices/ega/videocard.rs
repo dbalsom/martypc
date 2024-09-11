@@ -106,7 +106,7 @@ impl VideoCard for EGACard {
     }
 
     /// Unimplemented
-    fn debug_tick(&mut self, _ticks: u32, cpumem: Option<&[u8]>) {}
+    fn debug_tick(&mut self, _ticks: u32, _cpumem: Option<&[u8]>) {}
 
     /// Get the current scanline being rendered.
     fn get_scanline(&self) -> u32 {

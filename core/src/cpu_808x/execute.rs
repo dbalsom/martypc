@@ -42,7 +42,6 @@ use crate::{
         Segment,
         OPCODE_PREFIX_REP1,
         OPCODE_PREFIX_REP2,
-        OPCODE_SEG_OVERRIDE_MASK,
     },
     cycles,
     cycles_mc,

@@ -40,10 +40,9 @@ use marty_core::{
     sound::{SoundOutputConfig, SoundSourceDescriptor},
 };
 use rodio::{
-    cpal::{traits::HostTrait, FrameCount, SupportedBufferSize},
+    cpal::{traits::HostTrait, SupportedBufferSize},
     DeviceTrait,
     Sink,
-    Source,
     SupportedStreamConfig,
 };
 
@@ -103,7 +102,7 @@ impl SoundInterface {
         let default_config = audio_device.default_output_config()?;
 
         let new_max = match default_config.buffer_size() {
-            SupportedBufferSize::Range { min, max } => {
+            SupportedBufferSize::Range { min, .. } => {
                 if *min > MAX_BUFFER_SIZE {
                     *min
                 }
@@ -181,7 +180,7 @@ impl SoundInterface {
             return Err(anyhow!("No audio device open."));
         }
 
-        let stream = rodio::OutputStream::try_from_device(self.device.as_ref().unwrap())?;
+        let _stream = rodio::OutputStream::try_from_device(self.device.as_ref().unwrap())?;
         log::debug!("Rodio stream successfully opened.");
         Ok(())
     }

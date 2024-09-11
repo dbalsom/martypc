@@ -75,7 +75,6 @@ use frontend_common::{
     RelativeDirectory,
 };
 use marty_core::{
-    cpu_common::QueueOp,
     device_traits::videocard::{DisplayApertureDesc, VideoCardState, VideoCardStateEntry},
     devices::{pit::PitDisplayState, serial::SerialPortDescriptor},
     machine::{ExecutionControl, MachineState},
@@ -480,6 +479,10 @@ impl GuiState {
     pub fn clear_warning(&mut self) {
         self.warning_dialog_open = false;
         self.warning_string = String::new();
+    }
+
+    pub fn set_dump_path(&mut self, path: PathBuf) {
+        self.data_visualizer.set_dump_path(path);
     }
 
     pub fn set_machine_state(&mut self, state: MachineState) {

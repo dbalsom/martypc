@@ -66,7 +66,7 @@ impl NecVx0 {
     /// (otherwise it should be passed MC_NONE).
     /// The CPU will transition between T-states, execute bus transfers on T3 or TW-last,
     /// and otherwise do all necessary actions to advance the cpu state.
-    pub fn cycle_i(&mut self, instr: u16) {
+    pub fn cycle_i(&mut self, _instr: u16) {
         if self.t_cycle == TCycle::Tinit {
             self.t_cycle = TCycle::T1;
         }

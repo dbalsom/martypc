@@ -1555,7 +1555,7 @@ impl FloppyController {
 
                 self.data_register_out.push_back(byte);
                 self.pio_byte_count += 1;
-                self.pio_sector_byte_count + 1;
+                self.pio_sector_byte_count += 1;
                 self.pio_bytes_left -= 1;
             }
         }

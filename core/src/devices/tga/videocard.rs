@@ -32,9 +32,7 @@
 
 use super::*;
 use crate::{
-    device_traits::videocard::*,
     devices::{
-        ega::{ClockSelect, EGACard},
         pic::Pic,
     },
 };
@@ -167,9 +165,9 @@ impl VideoCard for TGACard {
             }
             ClockingMode::Cycle => {
                 panic!("unsupported mode for TGA");
-                for _ in 0..ticks {
-                    //self.tick();
-                }
+                // for _ in 0..ticks {
+                //     //self.tick();
+                // }
             }
             _ => {}
         }
@@ -531,17 +529,17 @@ impl VideoCard for TGACard {
             }
             ClockingMode::Cycle => {
                 panic!("Unsupported mode for TGA");
-                while self.clocks_accum > 0 {
-                    // Handle blinking. TODO: Move blink handling into tick().
-                    self.blink_accum_clocks += 1;
-                    if self.blink_accum_clocks > CGA_CURSOR_BLINK_RATE_CLOCKS {
-                        self.blink_state = !self.blink_state;
-                        self.blink_accum_clocks -= CGA_CURSOR_BLINK_RATE_CLOCKS;
-                    }
-
-                    //self.tick();
-                    self.clocks_accum = self.clocks_accum.saturating_sub(1);
-                }
+                // while self.clocks_accum > 0 {
+                //     // Handle blinking. TODO: Move blink handling into tick().
+                //     self.blink_accum_clocks += 1;
+                //     if self.blink_accum_clocks > CGA_CURSOR_BLINK_RATE_CLOCKS {
+                //         self.blink_state = !self.blink_state;
+                //         self.blink_accum_clocks -= CGA_CURSOR_BLINK_RATE_CLOCKS;
+                //     }
+                // 
+                //     //self.tick();
+                //     self.clocks_accum = self.clocks_accum.saturating_sub(1);
+                // }
             }
             _ => {
                 panic!("Unsupported ClockingMode: {:?}", self.clock_mode);
@@ -574,7 +572,7 @@ impl VideoCard for TGACard {
         self.frame_count
     }
 
-    fn dump_mem(&self, path: &Path) {
+    fn dump_mem(&self, _path: &Path) {
         // No memory to dump
     }
 

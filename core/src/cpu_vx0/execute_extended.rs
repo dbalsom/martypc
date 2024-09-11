@@ -37,7 +37,6 @@ use crate::{
         CpuException,
         ExecutionResult,
         Mnemonic,
-        OperandType,
         QueueOp,
         Register16,
         Register8,
@@ -61,8 +60,8 @@ impl NecVx0 {
     #[rustfmt::skip]
     pub fn execute_extended_instruction(&mut self) -> ExecutionResult {
         let mut unhandled: bool = false;
-        let mut jump: bool = false;
-        let mut exception: CpuException = CpuException::NoException;
+        let jump: bool = false;
+        let exception: CpuException = CpuException::NoException;
 
         self.step_over_target = None;
 
@@ -254,7 +253,7 @@ impl NecVx0 {
                         Mnemonic::CMP4S => {
                             (result, bcd_carry, bcd_overflow, bcd_aux_carry) = dst.alu_sbb(src, bcd_carry);
                             self.set_flag_state(Flag::Zero, false);
-                            (result, bcd_carry, bcd_overflow, bcd_aux_carry) = self.das_indirect(result, bcd_carry, bcd_overflow, bcd_aux_carry);
+                            (_, bcd_carry, bcd_overflow, bcd_aux_carry) = self.das_indirect(result, bcd_carry, bcd_overflow, bcd_aux_carry);
                         }
                         _ => {
                             unreachable!("bad decode");
@@ -319,7 +318,7 @@ impl NecVx0 {
                         
                         // Use the data read from either r1 or r2, as long as one happened. If neither happened, the data 
                         // doesn't matter anyway since the whole word will be replaced by AX.
-                        let mut word_data: u16 = r2.unwrap_or(r1.unwrap_or(0)) & word_mask;
+                        let word_data: u16 = r2.unwrap_or(r1.unwrap_or(0)) & word_mask;
 
                         // Update bit_idx register to bit_end
                         // This must be done before AX is read in case someone was using AL or AH as operands

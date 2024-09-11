@@ -237,6 +237,26 @@ impl From<&CpuAddress> for u32 {
     }
 }
 
+impl From<CpuAddress> for usize {
+    fn from(cpu_address: CpuAddress) -> Self {
+        match cpu_address {
+            CpuAddress::Flat(a) => a as usize,
+            CpuAddress::Segmented(s, o) => calc_linear_address(s, o) as usize,
+            CpuAddress::Offset(a) => a as Self,
+        }
+    }
+}
+
+impl From<&CpuAddress> for usize {
+    fn from(cpu_address: &CpuAddress) -> Self {
+        match cpu_address {
+            CpuAddress::Flat(a) => *a as usize,
+            CpuAddress::Segmented(s, o) => calc_linear_address(*s, *o) as usize,
+            CpuAddress::Offset(a) => *a as Self,
+        }
+    }
+}
+
 impl Display for CpuAddress {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         match self {

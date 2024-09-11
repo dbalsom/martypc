@@ -32,8 +32,7 @@
 
 use crate::{
     cpu_common::{CpuError, CpuException, Disassembly, ExecutionResult, StepResult, OPCODE_PREFIX_0F},
-    cpu_vx0::{decode::DECODE, *},
-    vgdr,
+    cpu_vx0::{*},
 };
 
 impl NecVx0 {

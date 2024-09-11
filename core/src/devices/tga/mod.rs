@@ -46,7 +46,6 @@ use crate::{
 };
 use bytemuck;
 use const_format::formatcp;
-use lazy_static::lazy_static;
 use modular_bitfield::{
     bitfield,
     prelude::{B1, B2, B3, B4},
@@ -1614,7 +1613,7 @@ impl TGACard {
             trace!(self, "in vblank: vsc: {:03}", self.vsc_c3h);
         }
 
-        let mut byte = self.calc_status_register();
+        let byte = self.calc_status_register();
 
         trace_regs!(self);
         trace!(

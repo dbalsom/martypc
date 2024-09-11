@@ -32,7 +32,7 @@
 
 use crate::{
     bus::{BusInterface, DeviceRunTimeUnit, IoDevice, NO_IO_BYTE},
-    devices::{lpt_port::ParallelPort, mda::MDACard},
+    devices::{lpt_port::ParallelPort},
 };
 
 pub const LPT_DEFAULT_IO_BASE: u16 = 0x3BC;

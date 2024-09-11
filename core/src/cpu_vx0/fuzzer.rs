@@ -157,7 +157,7 @@ impl NecVx0 {
                             33..=64 => {
                                 instr.push_front(0x65); // REPC
                             }
-                            64..=96 => {
+                            65..=96 => {
                                 instr.push_front(0xF2); // REPNZ
                             }
                             97..=128 => {

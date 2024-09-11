@@ -43,7 +43,7 @@ use std::{
 
 use crate::{
     bus::{BusInterface, DeviceRunTimeUnit, IoDevice},
-    devices::{pic, pit::PitDisplayState},
+    devices::{pic},
     syntax_token::SyntaxToken,
 };
 

@@ -141,7 +141,7 @@ impl A0Register {
         self.a0_byte
     }
 
-    pub fn run(&mut self, pit: &mut Pit, _us: f64) -> bool {
+    pub fn run(&mut self, _pit: &mut Pit, _us: f64) -> bool {
         // The run method doesn't need to process time. If the clear_nmi_latch flag is set, then we
         // clear the NMI latch.
         // Otherwise, return the value of the latch.
