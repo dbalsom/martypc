@@ -487,9 +487,8 @@ impl ByteQueue for BusInterface {
         if self.cursor < self.memory.len() - 1 {
             let (b0, _) = self.read_u8(self.cursor, 0).unwrap_or((0xFF, 0));
             let (b1, _) = self.read_u8(self.cursor + 1, 0).unwrap_or((0xFF, 0));
-            let w: u16 = b0 as u16 | (b1 as u16) << 8;
             self.cursor += 2;
-            return w;
+            return b0 as u16 | (b1 as u16) << 8;
         }
         0xffffu16
     }
@@ -498,9 +497,8 @@ impl ByteQueue for BusInterface {
         if self.cursor < self.memory.len() - 1 {
             let (b0, _) = self.read_u8(self.cursor, 0).unwrap_or((0xFF, 0));
             let (b1, _) = self.read_u8(self.cursor + 1, 0).unwrap_or((0xFF, 0));
-            let w: u16 = b0 as u16 | (b1 as u16) << 8;
             self.cursor += 2;
-            return w as i16;
+            return (b0 as u16 | (b1 as u16) << 8) as i16;
         }
         -1i16
     }
@@ -523,20 +521,16 @@ impl ByteQueue for BusInterface {
 
     fn q_peek_u16(&mut self) -> u16 {
         if self.cursor < self.memory.len() - 1 {
-            let w: u16 = (self.peek_u8(self.cursor).unwrap_or(0xFF) as u16
-                | self.peek_u8(self.cursor + 1).unwrap_or(0xFF) as u16)
-                << 8;
-            return w;
+            return self.peek_u8(self.cursor).unwrap_or(0xFF) as u16
+                | (self.peek_u8(self.cursor + 1).unwrap_or(0xFF) as u16) << 8;
         }
         0xffffu16
     }
 
     fn q_peek_i16(&mut self) -> i16 {
         if self.cursor < self.memory.len() - 1 {
-            let w: u16 = (self.peek_u8(self.cursor).unwrap_or(0xFF) as u16
-                | self.peek_u8(self.cursor + 1).unwrap_or(0xFF) as u16)
-                << 8;
-            return w as i16;
+            return (self.peek_u8(self.cursor).unwrap_or(0xFF) as u16
+                | (self.peek_u8(self.cursor + 1).unwrap_or(0xFF) as u16) << 8) as i16;
         }
         -1i16
     }
@@ -1708,7 +1702,7 @@ impl BusInterface {
             let (ip, _) = self.read_u16((v * 4) as usize, 0).unwrap();
             let (cs, _) = self.read_u16(((v * 4) + 2) as usize, 0).unwrap();
 
-            ivr_vec.push(SyntaxToken::Text(format!("{:03}", v)));
+            ivr_vec.push(SyntaxToken::Text(format!("{:02X}h", v)));
             ivr_vec.push(SyntaxToken::Colon);
             ivr_vec.push(SyntaxToken::OpenBracket);
             ivr_vec.push(SyntaxToken::StateMemoryAddressSeg16(
