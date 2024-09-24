@@ -65,7 +65,7 @@ impl IvtViewerControl {
 
         // TLV viewport was scrolled, update address
         if self.row != new_row {
-            log::debug!("update address to: {}", new_row);
+            //log::debug!("update address to: {}", new_row);
             self.row = new_row;
             self.scrolling = true;
         }
