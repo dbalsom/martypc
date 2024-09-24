@@ -11,8 +11,8 @@
 ### Memory Visualizer
 
 * Using the new Memory Visualizer window, you can now view the contents of memory graphically, interpreting raw 
-  bytes as 1,2,4 or 8bpp pixels. This is a good way to explore the contents of memory, and when investigating a running
-  game one can find things like the game's back buffer as well as sprites loaded into memory.
+  bytes as rendered text mode, or 1,2,4 or 8bpp pixels. This is a good way to explore the contents of memory, and when 
+  investigating a running game one can find things like the game's back buffer as well as sprites loaded into memory.
 
 ### New Sound System
 
@@ -50,9 +50,11 @@
   * File tree browser: 
     * Display directories before files
     * Display correct icons for different file types
+  * IVT viewer: Display interrupt numbers as hex
 
 ### Core Bug Fixes / Improvements
 
+* BUS: Fixed race condition in DMA scheduler update
 * BUS: Reworked ByteQueue trait to support MMIO resolution
 * TGA: Implement hi-res 2bpp mode (PCJr Colorpaint, etc)
 * FDC: Refactoring of various functionality from FDC to FloppyDrive
