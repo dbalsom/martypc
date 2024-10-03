@@ -2499,6 +2499,11 @@ impl BusInterface {
             serial.reset();
         }
 
+        // Reset fdc
+        if let Some(fdc) = self.fdc.as_mut() {
+            fdc.reset();
+        }
+
         // Reset video cards
         let vids: Vec<_> = self.videocards.keys().cloned().collect();
         for vid in vids {
