@@ -39,7 +39,7 @@ martypc_desktop_wgpu = { path = "frontends/martypc_desktop_wgpu" }
 
 [workspace.dependencies]
 winit = "0.29.4"
-wgpu = "0.19.4"
+wgpu = "0.20.0"
 bytemuck = "1.14"
 raw-window-handle = "0.5.0"
 thiserror = "1.0.37"
@@ -58,9 +58,9 @@ crossbeam-utils = "0.8.5"
 
 zip = "2.1.3"
 
-egui = "0.27.2"
-egui-wgpu = "0.27.2"
-egui_plot = "0.27.2"
+egui = "0.28.1"
+egui-wgpu = "0.28.1"
+egui_plot = "0.28"
 
 [workspace.dependencies.fluxfox]
 path = "../fluxfox"
@@ -68,13 +68,13 @@ path = "../fluxfox"
 #branch = "main"
 
 [workspace.dependencies.egui-winit]
-version = "0.27.2"
+version = "0.28.1"
 #branch = "0_24_2_winit_0_29_15"
 default-features = false
 features = ["clipboard", "wayland", "x11"]
 
 [workspace.dependencies.egui_extras]
-version = "0.27.2"
+version = "0.28.1"
 #branch = "0_24_2_winit_0_29_15"
 features = ["image"]
 
@@ -85,7 +85,7 @@ features = ["png"]
 
 [workspace.dependencies.pixels]
 git = "https://github.com/dbalsom/pixels_martypc.git"
-branch = "marty_update_deps3"
+branch = "marty_update_deps4"
 
 [workspace.dependencies.rodio]
 git = "https://github.com/dbalsom/rodio_martypc.git"

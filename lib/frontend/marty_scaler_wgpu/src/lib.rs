@@ -410,6 +410,7 @@ impl MartyScaler {
             label: Some("marty_renderer_pipeline"),
             layout: Some(&pipeline_layout),
             vertex: wgpu::VertexState {
+                compilation_options: Default::default(),
                 module: &scale_module,
                 entry_point: "vs_main",
                 buffers: &[vertex_buffer_layout],
@@ -418,6 +419,7 @@ impl MartyScaler {
             depth_stencil: None,
             multisample: wgpu::MultisampleState::default(),
             fragment: Some(wgpu::FragmentState {
+                compilation_options: Default::default(),
                 module: &scale_module,
                 entry_point: "fs_main",
                 targets: &[Some(wgpu::ColorTargetState {
