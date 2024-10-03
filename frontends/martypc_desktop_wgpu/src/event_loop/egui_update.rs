@@ -234,6 +234,27 @@ pub fn update_egui(emu: &mut Emulator, tm: &TimestepManager, elwt: &EventLoopWin
         emu.gui.dma_viewer.update_state(dma_state);
     }
 
+    // -- Update FDC viewer window
+    if emu.gui.is_window_open(GuiWindow::FdcViewer) {
+        if let Some(fdc_state) = emu.machine.fdc_state() {
+            //log::warn!("updating fdc viewer with {} log items", fdc_state.cmd_log.len());
+            emu.gui.fdc_viewer.update_state(fdc_state);
+        }
+    }
+
+    // -- Update floppy viewer window
+    if emu.gui.is_window_open(GuiWindow::FloppyViewer) {
+        if let Some(image_state) = emu.machine.floppy_image_state() {
+            emu.gui.floppy_viewer.update_state(image_state);
+        }
+
+        let di = emu.gui.floppy_viewer.get_drive_idx();
+
+        if let (Some(disk_image), viz_write) = emu.machine.floppy_image(di) {
+            emu.gui.floppy_viewer.update_visualization(di, &disk_image, viz_write);
+        }
+    }
+
     // -- Update VideoCard Viewer (Replace CRTC Viewer)
     if emu.gui.is_window_open(GuiWindow::VideoCardViewer) {
         // Only have an update if we have a videocard to update.

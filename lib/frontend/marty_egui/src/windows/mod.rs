@@ -41,6 +41,8 @@ pub mod data_visualizer;
 pub mod delay_adjust;
 pub mod device_control;
 pub mod dma_viewer;
+pub mod fdc_viewer;
+pub mod floppy_viewer;
 pub mod instruction_history_viewer;
 pub mod io_stats_viewer;
 pub mod ivt_viewer;

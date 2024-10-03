@@ -45,7 +45,8 @@ use std::{
     path::PathBuf,
 };
 use std::collections::BTreeMap;
-
+use std::sync::{Arc, Mutex};
+use fluxfox::DiskImage;
 use crate::{
     breakpoints::BreakPointType,
     bus::{BusInterface, ClockFactor, DeviceEvent, MEM_CP_BIT},
@@ -76,6 +77,8 @@ use crate::devices::serial::SerialPortDisplayState;
 use crate::machine_types::OnHaltBehavior;
 
 use ringbuf::{Consumer};
+use crate::devices::fdc::FdcDebugState;
+use crate::devices::floppy_drive::FloppyImageState;
 use crate::sound::{SoundOutput, SoundSourceDescriptor};
 
 
@@ -1054,6 +1057,23 @@ impl Machine {
         // There will always be a primary DMA, so safe to unwrap.
         // TODO: Handle secondary DMA if present.
         self.cpu.bus_mut().dma_mut().as_mut().unwrap().get_string_state()
+    }
+
+    pub fn fdc_state(&mut self) -> Option<FdcDebugState> {
+        self.cpu.bus_mut().fdc_mut().as_mut().map(|fdc| fdc.get_debug_state())
+    }
+
+    pub fn floppy_image_state(&mut self) -> Option<Vec<Option<FloppyImageState>>> {
+        self.cpu.bus_mut().fdc_mut().as_mut().and_then(|fdc| Some(fdc.get_image_state()))
+    }
+
+    pub fn floppy_image(&mut self, drive_idx: usize) -> (Option<&DiskImage>, u64) {
+        if let Some(fdc) = self.cpu.bus_mut().fdc_mut().as_mut() {
+            fdc.get_image(drive_idx)
+        }
+        else {
+            (None, 0)
+        }
     }
 
     pub fn videocard_state(&mut self) -> Option<VideoCardState> {

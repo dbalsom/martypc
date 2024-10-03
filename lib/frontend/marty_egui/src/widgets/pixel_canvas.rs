@@ -108,6 +108,8 @@ pub enum PixelCanvasDepth {
     TwoBpp,
     FourBpp,
     EightBpp,
+    Rgb,
+    Rgba,
 }
 
 impl PixelCanvasDepth {
@@ -118,6 +120,8 @@ impl PixelCanvasDepth {
             PixelCanvasDepth::TwoBpp => 2,
             PixelCanvasDepth::FourBpp => 4,
             PixelCanvasDepth::EightBpp => 8,
+            PixelCanvasDepth::Rgb => 24,
+            PixelCanvasDepth::Rgba => 32,
         }
     }
 }
@@ -153,7 +157,7 @@ impl Default for PixelCanvas {
             data_buf: Vec::new(),
             backing_buf: Vec::new(),
             view_dimensions: (DEFAULT_WIDTH, DEFAULT_HEIGHT),
-            zoom: 4.0,
+            zoom: 1.0,
             bpp: PixelCanvasDepth::OneBpp,
             device_palette: PixelCanvasPalette {
                 name:   "Default".to_string(),
@@ -216,19 +220,21 @@ impl PixelCanvas {
     pub fn calc_slice_size(dims: (u32, u32), bpp: PixelCanvasDepth, font: Option<&FontInfo>) -> usize {
         let size = match bpp {
             PixelCanvasDepth::Text if font.is_some() => {
-                ((dims.0 / 8) * (dims.1 / font.unwrap().max_scanline) * 2) as usize
+                ((dims.0 / 8) * (dims.1 / font.unwrap().max_scanline) * 2) as usize + 1
             }
             PixelCanvasDepth::Text => {
                 log::warn!("PixelCanvas::calc_slice_size(): Text mode calculation without font reference.");
-                ((dims.0 / 8) * (dims.1 * 2)) as usize
+                ((dims.0 / 8) * (dims.1 * 2)) as usize + 1
             }
-            PixelCanvasDepth::OneBpp => (dims.0 * dims.1) as usize / 8,
-            PixelCanvasDepth::TwoBpp => (dims.0 * dims.1) as usize / 4,
-            PixelCanvasDepth::FourBpp => (dims.0 * dims.1) as usize / 1,
+            PixelCanvasDepth::OneBpp => (dims.0 * dims.1) as usize / 8 + 1,
+            PixelCanvasDepth::TwoBpp => (dims.0 * dims.1) as usize / 4 + 1,
+            PixelCanvasDepth::FourBpp => (dims.0 * dims.1) as usize / 1 + 1,
             PixelCanvasDepth::EightBpp => (dims.0 * dims.1) as usize,
+            PixelCanvasDepth::Rgb => (dims.0 * dims.1) as usize * 3,
+            PixelCanvasDepth::Rgba => (dims.0 * dims.1) as usize * 4,
         };
 
-        size + 1
+        size
     }
 
     pub fn create_texture(&mut self) -> TextureHandle {
@@ -304,6 +310,10 @@ impl PixelCanvas {
 
         assert_eq!(self.data_buf.len(), slice_size);
 
+        // if self.texture.is_none() {
+        //     log::debug!("PixelCanvas::update_data(): Creating initial texture...");
+        //     self.texture = Some(self.create_texture());
+        // }
         self.unpack_pixels(font);
         self.update_texture();
     }
@@ -323,6 +333,10 @@ impl PixelCanvas {
             self.unpack_pixels(None);
             self.update_texture();
         }
+    }
+
+    pub fn has_texture(&self) -> bool {
+        self.texture.is_some()
     }
 
     pub fn update_texture(&mut self) {
@@ -448,6 +462,25 @@ impl PixelCanvas {
                 for i in 0..self.view_dimensions.0 * self.view_dimensions.1 {
                     let byte = self.data_buf[i as usize];
                     self.backing_buf[i as usize] = pal[byte as usize];
+                }
+            }
+            PixelCanvasDepth::Rgb => {
+                for i in 0..self.view_dimensions.0 * self.view_dimensions.1 {
+                    let idx = (i * 3) as usize;
+                    let r = self.data_buf[idx];
+                    let g = self.data_buf[idx + 1];
+                    let b = self.data_buf[idx + 2];
+                    self.backing_buf[i as usize] = Color32::from_rgb(r, g, b);
+                }
+            }
+            PixelCanvasDepth::Rgba => {
+                for i in 0..self.view_dimensions.0 * self.view_dimensions.1 {
+                    let idx = (i * 4) as usize;
+                    let r = self.data_buf[idx];
+                    let g = self.data_buf[idx + 1];
+                    let b = self.data_buf[idx + 2];
+                    let a = self.data_buf[idx + 3];
+                    self.backing_buf[i as usize] = Color32::from_rgba_premultiplied(r, g, b, a);
                 }
             }
         }

@@ -32,6 +32,8 @@
 extern crate core;
 
 use egui::{Color32, Context, Visuals};
+use fluxfox::StandardFormat;
+use lazy_static::lazy_static;
 use std::{
     collections::{BTreeMap, HashMap, VecDeque},
     ffi::OsString,
@@ -40,8 +42,6 @@ use std::{
     path::PathBuf,
     time::Duration,
 };
-
-use lazy_static::lazy_static;
 
 use frontend_common::{
     display_manager::DisplayInfo,
@@ -101,6 +101,8 @@ pub enum GuiWindow {
     VHDCreator,
     CycleTraceViewer,
     TextModeViewer,
+    FdcViewer,
+    FloppyViewer,
 }
 
 #[derive(Copy, Clone, Debug)]
@@ -174,6 +176,8 @@ pub enum GuiEvent {
     LoadAutoFloppy(usize, PathBuf),
     SaveFloppy(usize, usize),
     EjectFloppy(usize),
+    CreateNewFloppy(usize, StandardFormat, bool),
+    QueryCompatibleFloppyFormats(usize),
     SetFloppyWriteProtect(usize, bool),
     BridgeSerialPort(usize, String, usize),
     DumpVRAM,
@@ -498,6 +502,26 @@ lazy_static! {
                 title: "Text Mode Viewer",
                 menu: "Text Mode Viewer",
                 width: 600.0,
+                resizable: false,
+            },
+        ),
+        (
+            GuiWindow::FdcViewer,
+            WorkspaceWindowDef {
+                id: GuiWindow::FdcViewer,
+                title: "FDC Viewer",
+                menu: "FDC",
+                width: 800.0,
+                resizable: false,
+            },
+        ),
+        (
+            GuiWindow::FloppyViewer,
+            WorkspaceWindowDef {
+                id: GuiWindow::FloppyViewer,
+                title: "Floppy Viewer",
+                menu: "Media Viewer",
+                width: 700.0,
                 resizable: false,
             },
         ),

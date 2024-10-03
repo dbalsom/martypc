@@ -114,6 +114,28 @@ pub enum FloppyDriveType {
     Floppy144M,
 }
 
+impl FloppyDriveType {
+    pub fn get_compatible_formats(&self) -> Vec<StandardFormat> {
+        match self {
+            FloppyDriveType::Floppy360K => vec![
+                StandardFormat::PcFloppy160,
+                StandardFormat::PcFloppy180,
+                StandardFormat::PcFloppy320,
+                StandardFormat::PcFloppy360,
+            ],
+            FloppyDriveType::Floppy720K => vec![StandardFormat::PcFloppy720],
+            FloppyDriveType::Floppy12M => vec![
+                StandardFormat::PcFloppy160,
+                StandardFormat::PcFloppy180,
+                StandardFormat::PcFloppy320,
+                StandardFormat::PcFloppy360,
+                StandardFormat::PcFloppy1200,
+            ],
+            FloppyDriveType::Floppy144M => vec![StandardFormat::PcFloppy720, StandardFormat::PcFloppy1440],
+        }
+    }
+}
+
 /// Convert MartyPC's FloppyDriveType to fluxfox's StandardFormat
 impl Into<StandardFormat> for FloppyDriveType {
     fn into(self) -> StandardFormat {

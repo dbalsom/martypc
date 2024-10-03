@@ -288,7 +288,7 @@ impl FloppyManager {
             Ok(FloppyImageSource::ZipArchive(floppy_vec))
         }
         else {
-            Ok(FloppyImageSource::RawSectorImage(floppy_vec))
+            Ok(FloppyImageSource::DiskImage(floppy_vec))
         }
     }
 
@@ -527,7 +527,7 @@ impl FloppyManager {
             let mut io_sys_file = vfat12.root_dir().create_file(filename_only)?;
             log::debug!("Installing IO SYS: {}", filename_only);
             io_sys_file.write_all(&io_sys_vec)?;
-            io_sys_file.flush().unwrap();
+            io_sys_file.flush()?;
         }
 
         // If we found MSDOS.SYS, write it second.
@@ -537,7 +537,7 @@ impl FloppyManager {
             let mut dos_sys_file = vfat12.root_dir().create_file(filename_only)?;
             log::debug!("Installing DOS SYS: {}", filename_only);
             dos_sys_file.write_all(&dos_sys_vec)?;
-            dos_sys_file.flush().unwrap();
+            dos_sys_file.flush()?;
         }
 
         // Build tree from the rest of the files
@@ -545,8 +545,9 @@ impl FloppyManager {
         //let src_root_node_opt = Some(file_tree);
         let src_root_node_opt = file_tree.descend(path.file_name().unwrap().to_str().unwrap());
 
+        // Block scope to avoid borrowing vfat12 forever
         {
-            let mut dst_root_dir = vfat12.root_dir();
+            let dst_root_dir = vfat12.root_dir();
 
             if let Some(src_root_node) = src_root_node_opt {
                 if let Err(err) =
@@ -559,30 +560,6 @@ impl FloppyManager {
                 }
             }
         }
-        /*
-        for item in &dir_items {
-            let filename_only = item.filename_only.as_ref().unwrap();
-            let filename = filename_only.to_str().unwrap().clone();
-
-            if filename.to_lowercase() == "bootsector.bin" {
-                bootsector_opt = Some(item.full_path.clone());
-                continue;
-            }
-
-            let file_vec = rm.read_resource_from_path(&item.full_path)?;
-
-            if files_visited.get(&item.full_path).is_some() {
-                // Skip files we have already processed, like IO.SYS and MSDOS.SYS
-                log::debug!("Skipping previously installed file: {:?}", item.full_path);
-                continue;
-            }
-
-            log::debug!("Writing file: {:?} size: {}", item.full_path.display(), file_vec.len());
-
-            let mut file = vfat12.root_dir().create_file(filename)?;
-            file.write_all(&file_vec)?;
-            file.flush().unwrap();
-        }*/
 
         vfat12.unmount()?;
 
@@ -613,9 +590,7 @@ impl FloppyManager {
             }
         }
 
-        //log::debug!("Created image of size: {}", image_buf.len());
-
-        let mut file = std::fs::File::create("fat_dump.img").map_err(|_| FloppyError::ImageBuildError)?;
+        let mut file = File::create("fat_dump.img").map_err(|_| FloppyError::ImageBuildError)?;
         file.write_all(&buf).map_err(|_| FloppyError::ImageBuildError)?;
 
         Ok(buf.clone())

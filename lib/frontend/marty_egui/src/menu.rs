@@ -214,8 +214,8 @@ impl GuiState {
 
             ui.menu_button("Debug", |ui| {
                 ui.menu_button("CPU", |ui| {
-                    self.workspace_window_open_button(ui, GuiWindow::CpuControl, true);
-                    self.workspace_window_open_button(ui, GuiWindow::CpuStateViewer, true);
+                    self.workspace_window_open_button(ui, GuiWindow::CpuControl, true, true);
+                    self.workspace_window_open_button(ui, GuiWindow::CpuStateViewer, true, true);
 
                     ui.menu_button("CPU Debug Options", |ui| {
                         if ui
@@ -280,10 +280,10 @@ impl GuiState {
                         }
                     });
 
-                    self.workspace_window_open_button(ui, GuiWindow::InstructionHistoryViewer, true);
-                    self.workspace_window_open_button(ui, GuiWindow::CycleTraceViewer, true);
-                    self.workspace_window_open_button(ui, GuiWindow::CallStack, true);
-                    self.workspace_window_open_button(ui, GuiWindow::DisassemblyViewer, true);
+                    self.workspace_window_open_button(ui, GuiWindow::InstructionHistoryViewer, true, true);
+                    self.workspace_window_open_button(ui, GuiWindow::CycleTraceViewer, true, true);
+                    self.workspace_window_open_button(ui, GuiWindow::CallStack, true, true);
+                    self.workspace_window_open_button(ui, GuiWindow::DisassemblyViewer, true, true);
 
                     ui.menu_button("Disassembly Listing", |ui| {
                         if ui.button("⏺ Start Recording").clicked() {
@@ -298,9 +298,9 @@ impl GuiState {
                 });
 
                 ui.menu_button("Memory", |ui| {
-                    self.workspace_window_open_button(ui, GuiWindow::MemoryViewer, true);
-                    self.workspace_window_open_button(ui, GuiWindow::DataVisualizer, true);
-                    self.workspace_window_open_button(ui, GuiWindow::IvtViewer, true);
+                    self.workspace_window_open_button(ui, GuiWindow::MemoryViewer, true, true);
+                    self.workspace_window_open_button(ui, GuiWindow::DataVisualizer, true, true);
+                    self.workspace_window_open_button(ui, GuiWindow::IvtViewer, true, true);
 
                     ui.menu_button("Dump Memory", |ui| {
                         if ui.button("Video Memory").clicked() {
@@ -324,13 +324,14 @@ impl GuiState {
                         *self.window_flag(GuiWindow::DeviceControl) = true;
                         ui.close_menu();
                     }
-                    self.workspace_window_open_button(ui, GuiWindow::IoStatsViewer, true);
-                    self.workspace_window_open_button(ui, GuiWindow::PicViewer, true);
-                    self.workspace_window_open_button(ui, GuiWindow::PitViewer, true);
-                    self.workspace_window_open_button(ui, GuiWindow::PpiViewer, true);
-                    self.workspace_window_open_button(ui, GuiWindow::DmaViewer, true);
-                    self.workspace_window_open_button(ui, GuiWindow::SerialViewer, true);
-                    self.workspace_window_open_button(ui, GuiWindow::VideoCardViewer, true);
+                    self.workspace_window_open_button(ui, GuiWindow::IoStatsViewer, true, true);
+                    self.workspace_window_open_button(ui, GuiWindow::PicViewer, true, true);
+                    self.workspace_window_open_button(ui, GuiWindow::PitViewer, true, true);
+                    self.workspace_window_open_button(ui, GuiWindow::PpiViewer, true, true);
+                    self.workspace_window_open_button(ui, GuiWindow::DmaViewer, true, true);
+                    self.workspace_window_open_button(ui, GuiWindow::SerialViewer, true, true);
+                    self.workspace_window_open_button(ui, GuiWindow::FdcViewer, true, true);
+                    self.workspace_window_open_button(ui, GuiWindow::VideoCardViewer, true, true);
 
                     /*
                     if ui
@@ -399,64 +400,109 @@ impl GuiState {
             ),
         };
 
-        ui.menu_button(floppy_name, |ui| {
-            ui.menu_button("Load from Image/Zip file", |ui| {
-                self.floppy_tree_menu.draw(ui, drive_idx, &mut |image_idx| {
-                    //log::debug!("Clicked closure called with image_idx {}", image_idx);
-                    self.event_queue.send(GuiEvent::LoadFloppy(drive_idx, image_idx));
+        let _menu_response = ui
+            .menu_button(floppy_name, |ui| {
+                self.event_queue.send(GuiEvent::QueryCompatibleFloppyFormats(drive_idx));
+
+                ui.menu_button("Load from Image/Zip file", |ui| {
+                    self.floppy_tree_menu.draw(ui, drive_idx, &mut |image_idx| {
+                        //log::debug!("Clicked closure called with image_idx {}", image_idx);
+                        self.event_queue.send(GuiEvent::LoadFloppy(drive_idx, image_idx));
+                    });
                 });
-            });
 
-            if !self.autofloppy_paths.is_empty() {
-                ui.menu_button("Load from Directory", |ui| {
-                    for path in self.autofloppy_paths.iter() {
-                        if ui.button(format!("📁 {}", path.name.to_string_lossy())).clicked() {
-                            self.event_queue
-                                .send(GuiEvent::LoadAutoFloppy(drive_idx, path.full_path.clone()));
-                        }
-                    }
-                });
-            }
-
-            ui.separator();
-            ui.horizontal(|ui| {
-                if let Some(floppy_name) = &self.floppy_drives[drive_idx].filename() {
-                    let type_str = self.floppy_drives[drive_idx].type_string();
-                    if ui.button(format!("Eject {}{}", type_str, floppy_name)).clicked() {
-                        self.event_queue.send(GuiEvent::EjectFloppy(drive_idx));
-                    }
-                }
-                else {
-                    ui.add_enabled(false, egui::Button::new("Eject image: <No Disk>"));
-                }
-            });
-
-            ui.horizontal(|ui| {
-                if let Some(floppy_name) = &self.floppy_drives[drive_idx].filename() {
-                    ui.add_enabled_ui(self.floppy_drives[drive_idx].is_writeable(), |ui| {
-                        let type_str = self.floppy_drives[drive_idx].type_string();
-                        if ui.button(format!("Save {}{}", type_str, floppy_name)).clicked() {
-                            if let Some(floppy_idx) = self.floppy_drives[drive_idx].selected_idx {
-                                self.event_queue.send(GuiEvent::SaveFloppy(drive_idx, floppy_idx));
+                if !self.autofloppy_paths.is_empty() {
+                    ui.menu_button("Create from Directory", |ui| {
+                        for path in self.autofloppy_paths.iter() {
+                            if ui.button(format!("📁 {}", path.name.to_string_lossy())).clicked() {
+                                self.event_queue
+                                    .send(GuiEvent::LoadAutoFloppy(drive_idx, path.full_path.clone()));
                             }
                         }
                     });
                 }
-                else {
-                    ui.add_enabled(false, egui::Button::new("Save image: <No Disk>"));
-                }
-            });
 
-            if ui
-                .checkbox(&mut self.floppy_drives[drive_idx].write_protected, "Write Protect")
-                .changed()
-            {
-                self.event_queue.send(GuiEvent::SetFloppyWriteProtect(
-                    drive_idx,
-                    self.floppy_drives[drive_idx].write_protected,
-                ));
-            }
-        });
+                ui.menu_button("Create New", |ui| {
+                    for format in self.floppy_drives[drive_idx].drive_type.get_compatible_formats() {
+                        let format_options = vec![("(Blank)", false), ("(Formatted)", true)];
+                        for fo in format_options {
+                            if ui.button(format!("{} {}", format, fo.0)).clicked() {
+                                self.event_queue
+                                    .send(GuiEvent::CreateNewFloppy(drive_idx, format, fo.1));
+                            }
+                        }
+                    }
+                });
+
+                ui.separator();
+
+                let floppy_viewer_enabled = self.floppy_drives[drive_idx].filename().is_some()
+                    || self.floppy_drives[drive_idx].is_new().is_some();
+                if self.workspace_window_open_button(ui, GuiWindow::FloppyViewer, true, floppy_viewer_enabled) {
+                    self.floppy_viewer.set_drive_idx(drive_idx);
+                }
+
+                ui.separator();
+                ui.horizontal(|ui| {
+                    if let Some(floppy_name) = &self.floppy_drives[drive_idx].filename() {
+                        let type_str = self.floppy_drives[drive_idx].type_string();
+                        if ui.button(format!("Eject {}{}", type_str, floppy_name)).clicked() {
+                            self.event_queue.send(GuiEvent::EjectFloppy(drive_idx));
+                        }
+                    }
+                    else if let Some(format) = &self.floppy_drives[drive_idx].is_new() {
+                        let type_str = self.floppy_drives[drive_idx].type_string();
+                        if ui.button(format!("Eject {}{}", type_str, format)).clicked() {
+                            self.event_queue.send(GuiEvent::EjectFloppy(drive_idx));
+                        }
+                    }
+                    else {
+                        ui.add_enabled(false, egui::Button::new("Eject image: <No Disk>"));
+                    }
+                });
+
+                ui.horizontal(|ui| {
+                    if let Some(floppy_name) = &self.floppy_drives[drive_idx].filename() {
+                        ui.add_enabled_ui(self.floppy_drives[drive_idx].is_writeable(), |ui| {
+                            let type_str = self.floppy_drives[drive_idx].type_string();
+                            if ui.button(format!("Save {}{}", type_str, floppy_name)).clicked() {
+                                if let Some(floppy_idx) = self.floppy_drives[drive_idx].selected_idx {
+                                    self.event_queue.send(GuiEvent::SaveFloppy(drive_idx, floppy_idx));
+                                }
+                            }
+                        });
+                    }
+                    else {
+                        ui.add_enabled(false, egui::Button::new("Save image: <No Disk>"));
+                    }
+                });
+
+                // Add 'Save As' options for compatible formats.
+                for format_tuple in &self.floppy_drives[drive_idx].supported_formats {
+                    let format = format_tuple.0;
+                    let extensions = &format_tuple.1;
+
+                    if !extensions.is_empty() {
+                        if ui
+                            .button(format!("Save As .{}...", extensions[0].to_uppercase()))
+                            .clicked()
+                        {
+                            //self.event_queue.send(GuiEvent::EjectFloppy(drive_idx));
+                        }
+                    }
+                }
+
+                if ui
+                    .checkbox(&mut self.floppy_drives[drive_idx].write_protected, "Write Protect")
+                    .changed()
+                {
+                    self.event_queue.send(GuiEvent::SetFloppyWriteProtect(
+                        drive_idx,
+                        self.floppy_drives[drive_idx].write_protected,
+                    ));
+                }
+            })
+            .response;
         ui.end_row();
     }
 
