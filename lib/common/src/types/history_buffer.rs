@@ -96,6 +96,13 @@ where
         }
     }
 
+    pub fn clear(&mut self) {
+        self.start = 0;
+        self.end = 0;
+        self.full = false;
+        self.buffer.clear();
+    }
+
     pub fn is_empty(&self) -> bool {
         self.end == 0 && !self.full
     }
