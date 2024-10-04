@@ -33,6 +33,7 @@ use crate::state::GuiState;
 use egui::Context;
 
 impl GuiState {
+    /// Draw the menu bar
     pub fn menu_ui(&mut self, ctx: &Context) {
         // Draw top menu bar
         egui::TopBottomPanel::top("menubar_container").show(ctx, |ui| {
@@ -40,12 +41,15 @@ impl GuiState {
         });
     }
 
-    /// Create the UI using egui.
+    /// Draw the main GUI
     pub fn ui(&mut self, ctx: &Context) {
         // Init things that need the context
         self.toasts.show(ctx);
         self.data_visualizer.init(ctx.clone());
         self.floppy_viewer.init(ctx.clone());
+
+        // Do file dialogs
+        self.modal.show(ctx, &mut self.event_queue);
 
         egui::Window::new("Warning")
             .open(&mut self.warning_dialog_open)
@@ -73,6 +77,8 @@ impl GuiState {
                 });
             });
 
-        self.draw_workspace(ctx);
+        if !self.modal.is_open() {
+            self.draw_workspace(ctx);
+        }
     }
 }

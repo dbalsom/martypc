@@ -31,30 +31,43 @@
 */
 
 use crate::{state::GuiState, GuiBoolean, GuiEnum, GuiEvent, GuiVariable, GuiVariableContext, GuiWindow};
+use egui_file::FileDialog;
 
 use marty_core::{device_traits::videocard::VideoType, devices::serial::SerialPortDescriptor};
 
+use crate::modal::ModalContext;
 use marty_core::machine::MachineState;
 
 impl GuiState {
     pub fn draw_menu(&mut self, ui: &mut egui::Ui) {
         egui::menu::bar(ui, |ui| {
             ui.menu_button("Emulator", |ui| {
-                if ui.button("⏱ Performance...").clicked() {
-                    *self.window_flag(GuiWindow::PerfViewer) = true;
-                    ui.close_menu();
+                ui.set_width_range(egui::Rangef { min: 80.0, max: 100.0 });
+
+                if !self.modal.is_open() {
+                    if ui.button("⏱ Performance...").clicked() {
+                        *self.window_flag(GuiWindow::PerfViewer) = true;
+                        ui.close_menu();
+                    }
+
+                    if ui.button("❓ About...").clicked() {
+                        *self.window_flag(GuiWindow::About) = true;
+                        ui.close_menu();
+                    }
+                    ui.separator();
                 }
 
-                if ui.button("❓ About...").clicked() {
-                    *self.window_flag(GuiWindow::About) = true;
-                    ui.close_menu();
-                }
-                ui.separator();
                 if ui.button("🚫 Quit").clicked() {
                     self.event_queue.send(GuiEvent::Exit);
                     ui.close_menu();
                 }
             });
+
+            // Only show the Emulator menu if a modal dialog is open.
+            if self.modal.is_open() {
+                return;
+            }
+
             ui.menu_button("Machine", |ui| {
                 ui.menu_button("Input/Output", |ui| {
                     // Create a vector of ports that are currently bridged. We will use this to disable
@@ -487,6 +500,9 @@ impl GuiState {
                             .button(format!("Save As .{}...", extensions[0].to_uppercase()))
                             .clicked()
                         {
+                            self.modal
+                                .open(ModalContext::SaveFloppyImage(drive_idx, extensions.clone()), None);
+                            ui.close_menu();
                             //self.event_queue.send(GuiEvent::EjectFloppy(drive_idx));
                         }
                     }

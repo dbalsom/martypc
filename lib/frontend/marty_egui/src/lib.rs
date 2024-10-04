@@ -56,6 +56,7 @@ pub mod context;
 mod glyphs;
 mod layouts;
 mod menu;
+mod modal;
 pub mod state;
 mod themes;
 mod token_listview;

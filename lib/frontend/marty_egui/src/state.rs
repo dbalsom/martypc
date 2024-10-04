@@ -30,6 +30,7 @@
 */
 
 use crate::{
+    modal::ModalState,
     widgets::file_tree_menu::FileTreeMenu,
     windows::{
         about::AboutDialog,
@@ -69,6 +70,7 @@ use crate::{
     PerformanceStats,
 };
 use egui::ColorImage;
+use egui_file::FileDialog;
 use egui_notify::{Anchor, Toasts};
 use fluxfox::{DiskImageFormat, StandardFormat};
 use frontend_common::{
@@ -297,7 +299,9 @@ pub struct GuiState {
     pub floppy_tree_menu: FileTreeMenu,
     pub hdd_tree_menu:    FileTreeMenu,
     pub cart_tree_menu:   FileTreeMenu,
+
     //pub(crate) global_zoom: f32,
+    pub modal: ModalState,
 }
 
 impl GuiState {
@@ -401,6 +405,7 @@ impl GuiState {
             hdd_tree_menu: FileTreeMenu::new().with_file_icon("🖴"),
             cart_tree_menu: FileTreeMenu::new(),
             //global_zoom: 1.0,
+            modal: ModalState::new(),
         }
     }
 
