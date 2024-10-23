@@ -204,7 +204,11 @@ impl FloppyViewerControl {
                     ))
                     .show_ui(ui, |ui| {
                         for (i, _) in self.image_state.iter().enumerate() {
-                            ui.selectable_value(&mut self.drive_idx, i, format!("{}", i));
+                            if ui.selectable_value(&mut self.drive_idx, i, format!("{}", i)).clicked() {
+                                // Set write counter to 0 if drive is clicked so that we regen the visualization
+                                // on the next update.
+                                self.viz_write_cts[self.drive_idx] = 0;
+                            };
                         }
                     });
             });
@@ -342,6 +346,13 @@ impl FloppyViewerControl {
                 }
             }
         }
+    }
+
+    pub fn clear_visualization(&mut self, drive: usize) {
+        self.viz_unsupported = true;
+        self.rendered_disk = 0xFF;
+        self.viz_write_cts[drive] = 0;
+        self.viz_pixmaps[drive].fill(Color::TRANSPARENT);
     }
 
     pub fn update_visualization(&mut self, drive: usize, image: &DiskImage, write_ct: u64) {

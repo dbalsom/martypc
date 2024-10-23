@@ -43,14 +43,17 @@ use fluxfox::{
     DiskSectorMap,
     StandardFormat,
 };
-use std::io::{Cursor, Read, Seek};
+use std::{
+    io::{Cursor, Read, Seek},
+    path::PathBuf,
+};
 
 #[derive(Copy, Clone, Debug, Default)]
 pub enum FloppyDriveOperation {
     #[default]
     NoOperation,
-    ReadSector,
-    WriteSector,
+    ReadData,
+    WriteData,
 }
 
 pub enum FloppyDriveMechanicalState {
@@ -69,6 +72,17 @@ pub struct OperationStatus {
     pub(crate) data_crc_error: bool,
     pub(crate) deleted_mark: bool,
     pub(crate) no_dam: bool,
+    pub(crate) wrong_cylinder: bool,
+    pub(crate) wrong_head: bool,
+}
+
+impl OperationStatus {
+    pub fn reset(&mut self, op_type: FloppyDriveOperation) {
+        *self = Self {
+            op_type,
+            ..Default::default()
+        };
+    }
 }
 
 pub struct DriveReadResult {
@@ -79,6 +93,7 @@ pub struct DriveReadResult {
 }
 
 pub struct DriveWriteResult {
+    pub(crate) not_found: bool,
     pub(crate) sectors_written: u8,
     pub(crate) new_sid: u8,
 }
@@ -114,6 +129,7 @@ pub struct FloppyDiskDrive {
     drive_n: usize,
     pub(crate) error_signal: bool,
 
+    cylinder: u16,
     pub(crate) chsn: DiskChsn,
     drive_geom: DiskChs,
     pub(crate) media_geom: DiskChs,
@@ -141,6 +157,7 @@ impl Default for FloppyDiskDrive {
             drive_type: Default::default(),
             drive_n: 0,
             error_signal: false,
+            cylinder: 0,
             chsn: Default::default(),
             drive_geom: Default::default(),
             media_geom: Default::default(),
@@ -212,7 +229,12 @@ impl FloppyDiskDrive {
     }
 
     /// Load a disk into the specified drive
-    pub fn load_image_from(&mut self, src_vec: Vec<u8>, write_protect: bool) -> Result<(), Error> {
+    pub fn load_image_from(
+        &mut self,
+        src_vec: Vec<u8>,
+        path: Option<PathBuf>,
+        write_protect: bool,
+    ) -> Result<(), Error> {
         /*        let image_len: usize = src_vec.len();
 
         // Disk images must contain whole sectors
@@ -239,7 +261,7 @@ impl FloppyDiskDrive {
         }*/
 
         let mut image_buffer = Cursor::new(src_vec);
-        let image = DiskImage::load(&mut image_buffer)?;
+        let image = DiskImage::load(&mut image_buffer, path, None)?;
 
         self.media_geom = DiskChs::from((
             image.image_format().geometry.c(),
@@ -260,6 +282,12 @@ impl FloppyDiskDrive {
         self.ref_write = self.disk_image.as_mut().map_or(0, |image| image.write_ct());
         //log::trace!("get_image(): ref_write: {}", self.ref_write);
         (self.disk_image.as_ref(), self.ref_write)
+    }
+
+    pub fn get_image_mut(&mut self) -> (Option<(&mut DiskImage)>, u64) {
+        self.ref_write = self.disk_image.as_mut().map_or(0, |image| image.write_ct());
+        //log::trace!("get_image(): ref_write: {}", self.ref_write);
+        (self.disk_image.as_mut(), self.ref_write)
     }
 
     /// Unload (eject) the disk in the specified drive
@@ -301,18 +329,20 @@ impl FloppyDiskDrive {
 
     pub fn command_write_data(
         &mut self,
-        chs: DiskChs,
+        h: u8,
+        id_chs: DiskChs,
         ct: usize,
         n: u8,
         sector_data: &[u8],
         _skip_flag: bool,
+        deleted: bool,
     ) -> Result<DriveWriteResult, Error> {
         if self.disk_image.is_none() {
             return Err(anyhow!("No media in drive"));
         }
 
         let image = self.disk_image.as_mut().unwrap();
-        let chsn = fluxfox::DiskChsn::from((chs, n));
+        let chsn = fluxfox::DiskChsn::from((id_chs, n));
 
         let sector_data_size = chsn.n_size();
         if sector_data.len() != sector_data_size * ct {
@@ -324,10 +354,7 @@ impl FloppyDiskDrive {
             ));
         }
 
-        self.operation_status.sector_not_found = false;
-        self.operation_status.address_crc_error = false;
-        self.operation_status.data_crc_error = false;
-        self.operation_status.deleted_mark = false;
+        self.operation_status.reset(FloppyDriveOperation::WriteData);
 
         let mut sid = chsn.s();
         let mut sectors_written = 0;
@@ -343,19 +370,36 @@ impl FloppyDiskDrive {
             );
 
             let write_sector_result = image.write_sector(
+                DiskCh::new(self.cylinder, h),
                 fluxfox::DiskChs::from((chsn.c(), chsn.h(), sid)),
                 Some(n),
                 data_slice,
                 RwSectorScope::DataOnly,
-                false,
+                deleted,
                 false,
             )?;
 
-            log::debug!(
-                "command_write_data(): wrote sector: {} bytes, wrong cylinder: {}",
-                sector_data_size,
-                write_sector_result.wrong_cylinder
-            );
+            self.operation_status.wrong_cylinder |= write_sector_result.wrong_cylinder;
+            self.operation_status.address_crc_error |= write_sector_result.address_crc_error;
+            self.operation_status.wrong_head |= write_sector_result.wrong_head;
+
+            if write_sector_result.not_found {
+                log::warn!("command_write_data(): sector not found");
+                self.operation_status.sector_not_found = true;
+
+                return Ok(DriveWriteResult {
+                    not_found: true,
+                    sectors_written: sectors_written as u8,
+                    new_sid: sid,
+                });
+            }
+            else {
+                log::debug!(
+                    "command_write_data(): wrote sector: {} bytes, wrong cylinder: {}",
+                    sector_data_size,
+                    write_sector_result.wrong_cylinder
+                );
+            }
 
             write_buf_idx += sector_data_size;
             sid += 1;
@@ -363,6 +407,7 @@ impl FloppyDiskDrive {
         }
 
         Ok(DriveWriteResult {
+            not_found: false,
             sectors_written: sectors_written as u8,
             new_sid: sid,
         })
@@ -370,7 +415,8 @@ impl FloppyDiskDrive {
 
     pub fn command_read_data(
         &mut self,
-        chs: DiskChs,
+        h: u8,
+        id_chs: DiskChs,
         ct: usize,
         n: u8,
         _track_len: u8,
@@ -382,31 +428,35 @@ impl FloppyDiskDrive {
             return Err(anyhow!("No media in drive"));
         }
 
+        log::trace!(
+            "command_read_data(): phys_c: {} h: {} id_chs: {}",
+            self.cylinder,
+            h,
+            id_chs
+        );
+
         let image = self.disk_image.as_mut().unwrap();
 
         let sector_size = fluxfox::DiskChsn::n_to_bytes(n);
 
         let mut operation_buf = Vec::with_capacity(sector_size * ct);
-        let ff_chs = fluxfox::DiskChs::from((chs.c() as u16, chs.h(), chs.s()));
 
-        self.operation_status.sector_not_found = false;
-        self.operation_status.address_crc_error = false;
-        self.operation_status.data_crc_error = false;
-        self.operation_status.deleted_mark = false;
-        self.operation_status.no_dam = false;
+        self.operation_status.reset(FloppyDriveOperation::ReadData);
 
-        let mut sid = ff_chs.s();
+        let mut sid = id_chs.s();
         let mut sectors_read = 0;
 
         while sectors_read < ct {
             let read_sector_result = match image.read_sector(
-                fluxfox::DiskChs::from((ff_chs.c(), ff_chs.h(), sid)),
+                DiskCh::new(self.cylinder, h),
+                DiskChs::from((id_chs.c(), id_chs.h(), sid)),
                 Some(n),
                 RwSectorScope::DataOnly,
                 false,
             ) {
                 Ok(result) => result,
                 Err(DiskImageError::DataError) => {
+                    log::warn!("command_read_data(): sector id not found");
                     self.operation_status.sector_not_found = true;
                     return Ok(DriveReadResult {
                         not_found: true,
@@ -497,7 +547,8 @@ impl FloppyDiskDrive {
 
     pub fn command_read_track(
         &mut self,
-        ch: DiskCh,
+        h: u8,
+        id_ch: DiskCh,
         n: u8,
         eot: u8,
         xfer_size: Option<usize>,
@@ -520,7 +571,8 @@ impl FloppyDiskDrive {
 
         let mut sectors_read = 0;
 
-        let read_track_result = image.read_all_sectors(ch, n, eot)?;
+        let phys_ch = DiskCh::new(self.cylinder, h);
+        let read_track_result = image.read_all_sectors(phys_ch, id_ch, n, eot)?;
 
         if read_track_result.not_found {
             log::debug!("command_read_track(): sector not found");
@@ -583,7 +635,7 @@ impl FloppyDiskDrive {
             ch,
             sector_ct
         );
-        match image.format_track(ch, fox_format_buffer, fill_byte, gap3_len as usize) {
+        match image.format_track(ch, fox_format_buffer, &[fill_byte], gap3_len as usize) {
             Ok(_) => Ok(DriveFormatResult {
                 sectors_formatted: sector_ct as u8,
                 new_sid: (sector_ct + 1) as u8,
@@ -631,36 +683,30 @@ impl FloppyDiskDrive {
     /// Note this is different from checking if the id is valid for a seek, for which there is a
     /// separate function. We can seek a bit beyond the end of a disk, as well as seek with no
     /// disk in the drive.
-    pub fn is_id_valid(&self, chs: DiskChs) -> bool {
-        if let Some(image) = &self.disk_image {
-            image.is_id_valid(chs)
-        }
-        else {
-            log::warn!("is_id_valid(): no disk image");
-            false
-        }
-    }
+    // pub fn is_id_valid(&self, chs: DiskChs) -> bool {
+    //     if let Some(image) = &self.disk_image {
+    //         image.is_id_valid(chs)
+    //     }
+    //     else {
+    //         log::warn!("is_id_valid(): no disk image");
+    //         false
+    //     }
+    // }
 
-    /// Return whether the drive is physically capable of seeking to the specified chs.
-    pub fn is_seek_valid(&self, chs: DiskChs) -> bool {
-        if chs.c() >= self.drive_geom.c() {
-            return false;
-        }
-        if chs.h() >= self.drive_geom.h() {
-            return false;
-        }
-        if chs.s() > self.drive_geom.s() {
-            // Note sectors are 1 based, so we can seek to the last sector
+    /// Return whether the drive is physically capable of seeking to the specified cylinder
+    pub fn is_seek_valid(&self, c: u16) -> bool {
+        if c >= self.drive_geom.c() {
             return false;
         }
         true
     }
 
-    pub fn seek(&mut self, chs: DiskChs) {
-        if !self.is_seek_valid(chs) {
+    pub fn seek(&mut self, c: u16) {
+        if !self.is_seek_valid(c) {
             return;
         }
-        self.chsn.seek(&chs);
+        self.cylinder = c;
+        self.chsn.set_c(c);
     }
 
     pub fn advance_sector(&mut self) {

@@ -123,9 +123,19 @@ impl GuiFloppyDriveInfo {
     pub fn filename(&self) -> Option<String> {
         match &self.selected_path {
             FloppyDriveSelection::NewImage(_) => None,
-            FloppyDriveSelection::Image(path) => Some(path.to_string_lossy().to_string()),
-            FloppyDriveSelection::Directory(path) => Some(path.file_name().unwrap().to_string_lossy().to_string()),
+            FloppyDriveSelection::Image(path) => Some(path.file_name()?.to_string_lossy().to_string()),
+            FloppyDriveSelection::Directory(path) => Some(path.file_name()?.to_string_lossy().to_string()),
             FloppyDriveSelection::ZipArchive(path) => Some(path.to_string_lossy().to_string()),
+            FloppyDriveSelection::None => None,
+        }
+    }
+
+    pub fn file_path(&self) -> Option<&PathBuf> {
+        match &self.selected_path {
+            FloppyDriveSelection::NewImage(_) => None,
+            FloppyDriveSelection::Image(path) => Some(path),
+            FloppyDriveSelection::Directory(path) => Some(path),
+            FloppyDriveSelection::ZipArchive(path) => Some(path),
             FloppyDriveSelection::None => None,
         }
     }
@@ -225,6 +235,8 @@ pub struct GuiState {
 
     pub(crate) toasts: Toasts,
     media_tray: MediaTrayState,
+
+    pub(crate) default_floppy_path: Option<PathBuf>,
 
     /// Only show the associated window when true.
     pub(crate) window_open_flags: HashMap<GuiWindow, bool>,
@@ -339,6 +351,8 @@ impl GuiState {
             toasts: Toasts::new().with_anchor(Anchor::BottomRight),
             media_tray: Default::default(),
 
+            default_floppy_path: None,
+
             window_open_flags,
             window_state,
             error_dialog_open: false,
@@ -412,6 +426,11 @@ impl GuiState {
     /// Allow the GUI to send events to the frontend to request initialization.
     pub fn initialize(&mut self) {
         self.event_queue.send(GuiEvent::RescanMediaFolders);
+    }
+
+    pub fn set_paths(&mut self, default_floppy_path: PathBuf) {
+        self.default_floppy_path = Some(default_floppy_path.clone());
+        self.modal.set_paths(default_floppy_path.clone());
     }
 
     pub fn toasts(&mut self) -> &mut Toasts {
@@ -537,14 +556,27 @@ impl GuiState {
         name: FloppyDriveSelection,
         source_format: Option<DiskImageFormat>,
         supported_formats: Vec<(DiskImageFormat, Vec<String>)>,
-        read_only: bool,
+        read_only: Option<bool>,
     ) {
         self.floppy_drives[drive].selected_idx = idx;
+
+        if matches!(name, FloppyDriveSelection::None) {
+            // Disk has been ejected - update viewer
+            self.floppy_viewer.clear_visualization(drive);
+        }
         self.floppy_drives[drive].selected_path = name;
-        self.floppy_drives[drive].read_only = read_only;
+
+        if let Some(read_only) = read_only {
+            self.floppy_drives[drive].read_only = read_only;
+        }
 
         let fmts_alone = supported_formats.iter().map(|(fmt, _)| *fmt).collect::<Vec<_>>();
 
+        log::warn!(
+            "Source format: {:?} Supported formats: {:?}",
+            source_format,
+            supported_formats
+        );
         if let Some(source_format) = source_format {
             self.floppy_drives[drive].source_writeback = fmts_alone.contains(&source_format);
             self.floppy_drives[drive].source_format = Some(source_format);

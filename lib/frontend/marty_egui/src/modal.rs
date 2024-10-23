@@ -29,12 +29,13 @@
     Implement modal contexts, mostly for handling save/open dialogs.
 
 */
-use crate::{GuiEventQueue, PathBuf};
+use crate::{GuiEvent, GuiEventQueue, PathBuf};
 use egui_file::{FileDialog, Filter};
+use fluxfox::DiskImageFormat;
 
 pub enum ModalContext {
-    SaveFloppyImage(usize, Vec<String>), // Index of the floppy drive, list of extensions
-    OpenFloppyImage(usize, Vec<String>), // Index of the floppy drive, list of extensions
+    SaveFloppyImage(usize, DiskImageFormat, Vec<String>), // Index of the floppy drive, list of extensions
+    OpenFloppyImage(usize, Vec<String>),                  // Index of the floppy drive, list of extensions
 }
 
 pub enum ModalDialog {
@@ -48,11 +49,16 @@ pub struct ModalState {
     pub dialog: Option<ModalDialog>,
     pub selected_path: Option<PathBuf>,
     pub extensions: Vec<String>,
+    pub default_floppy_path: Option<PathBuf>,
 }
 
 impl ModalState {
     pub fn new() -> Self {
         Self::default()
+    }
+
+    pub fn set_paths(&mut self, floppy_path: PathBuf) {
+        self.default_floppy_path = Some(floppy_path);
     }
 
     pub fn is_open(&self) -> bool {
@@ -127,7 +133,7 @@ impl ModalState {
         // };
 
         match &context {
-            ModalContext::SaveFloppyImage(_, exts) => {
+            ModalContext::SaveFloppyImage(_, _, exts) => {
                 let select_exts = exts.clone();
                 let show_exts = exts.clone();
                 let select_filter: egui_file::Filter<&str> = Box::new(move |path| {
@@ -155,7 +161,7 @@ impl ModalState {
                     }
                     false
                 });
-                log::warn!("shouldn't see this a bunch");
+
                 let mut dialog = FileDialog::save_file(initial_path)
                     .title(&format!("Save Floppy Image (As {})...", exts.join(", ")))
                     .default_pos(egui::Pos2::new(20.0, 40.0))
@@ -235,11 +241,16 @@ impl ModalState {
         }
     }
 
-    fn resolve(&mut self, events: &mut GuiEventQueue) {
+    fn resolve(&mut self, event_queue: &mut GuiEventQueue) {
         if let Some(context) = &self.context {
             match context {
-                ModalContext::SaveFloppyImage(drive_idx, _) => {
+                ModalContext::SaveFloppyImage(drive_idx, format, _) => {
                     log::warn!("Would sent save floppy image request for drive {}", drive_idx);
+
+                    if let Some(path) = &self.selected_path {
+                        log::debug!("ModalState::resolve(): Sending SaveFloppyAs event for drive {} with format {:?} and path {:?}", drive_idx, format, path);
+                        event_queue.send(GuiEvent::SaveFloppyAs(*drive_idx, *format, path.clone()));
+                    }
                 }
                 ModalContext::OpenFloppyImage(drive_idx, _) => {
                     log::warn!("Would sent open floppy image request");

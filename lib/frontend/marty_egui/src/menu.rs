@@ -470,7 +470,7 @@ impl GuiState {
                         }
                     }
                     else {
-                        ui.add_enabled(false, egui::Button::new("Eject image: <No Disk>"));
+                        ui.add_enabled(false, egui::Button::new("Eject image: <No Image>"));
                     }
                 });
 
@@ -479,14 +479,20 @@ impl GuiState {
                         ui.add_enabled_ui(self.floppy_drives[drive_idx].is_writeable(), |ui| {
                             let type_str = self.floppy_drives[drive_idx].type_string();
                             if ui.button(format!("Save {}{}", type_str, floppy_name)).clicked() {
-                                if let Some(floppy_idx) = self.floppy_drives[drive_idx].selected_idx {
-                                    self.event_queue.send(GuiEvent::SaveFloppy(drive_idx, floppy_idx));
+                                if let Some(floppy_path) = self.floppy_drives[drive_idx].file_path() {
+                                    if let Some(fmt) = self.floppy_drives[drive_idx].source_format {
+                                        self.event_queue.send(GuiEvent::SaveFloppyAs(
+                                            drive_idx,
+                                            fmt,
+                                            floppy_path.clone(),
+                                        ));
+                                    }
                                 }
                             }
                         });
                     }
                     else {
-                        ui.add_enabled(false, egui::Button::new("Save image: <No Disk>"));
+                        ui.add_enabled(false, egui::Button::new("Save image: <No Image File>"));
                     }
                 });
 
@@ -500,10 +506,11 @@ impl GuiState {
                             .button(format!("Save As .{}...", extensions[0].to_uppercase()))
                             .clicked()
                         {
-                            self.modal
-                                .open(ModalContext::SaveFloppyImage(drive_idx, extensions.clone()), None);
+                            self.modal.open(
+                                ModalContext::SaveFloppyImage(drive_idx, format, extensions.clone()),
+                                self.default_floppy_path.clone(),
+                            );
                             ui.close_menu();
-                            //self.event_queue.send(GuiEvent::EjectFloppy(drive_idx));
                         }
                     }
                 }

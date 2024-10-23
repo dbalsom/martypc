@@ -349,6 +349,38 @@ pub fn handle_egui_event(emu: &mut Emulator, elwt: &EventLoopWindowTarget<()>, g
                     log::info!("Loading floppy image: {:?} into drive: {}", name, drive_select);
 
                     match emu.floppy_manager.load_floppy_data(*item_idx, &emu.rm) {
+                        Ok(FloppyImageSource::KryoFluxSet(kryo_vec, path)) => {
+                            match fdc.load_image_from(
+                                *drive_select,
+                                kryo_vec,
+                                Some(path),
+                                emu.config.emulator.media.write_protect_default,
+                            ) {
+                                Ok(image) => {
+                                    log::info!("Floppy successfully loaded into virtual drive.");
+                                    emu.gui.set_floppy_selection(
+                                        *drive_select,
+                                        Some(*item_idx),
+                                        FloppyDriveSelection::Image(name.clone().into()),
+                                        image.source_format(),
+                                        image.compatible_formats(true),
+                                        Some(emu.config.emulator.media.write_protect_default),
+                                    );
+
+                                    emu.gui
+                                        .toasts()
+                                        .info(format!("Floppy loaded: {:?}", name.clone()))
+                                        .set_duration(Some(NORMAL_NOTIFICATION_TIME));
+                                }
+                                Err(err) => {
+                                    log::error!("Floppy image failed to load into virtual drive: {}", err);
+                                    emu.gui
+                                        .toasts()
+                                        .error(format!("Floppy load failed: {}", err))
+                                        .set_duration(Some(NORMAL_NOTIFICATION_TIME));
+                                }
+                            }
+                        }
                         Ok(FloppyImageSource::ZipArchive(zip_vec)) => {
                             let mut image_type = None;
                             image_type = Some(fdc.drive(*drive_select).get_largest_supported_image_format());
@@ -359,7 +391,7 @@ pub fn handle_egui_event(emu: &mut Emulator, elwt: &EventLoopWindowTarget<()>, g
                             ) {
                                 Ok(vec) => {
                                     if let Some(fdc) = emu.machine.fdc() {
-                                        match fdc.load_image_from(*drive_select, vec, true) {
+                                        match fdc.load_image_from(*drive_select, vec, None, true) {
                                             Ok(image) => {
                                                 log::info!("Floppy image successfully loaded into virtual drive.");
 
@@ -370,7 +402,7 @@ pub fn handle_egui_event(emu: &mut Emulator, elwt: &EventLoopWindowTarget<()>, g
                                                     FloppyDriveSelection::ZipArchive(name.clone().into()),
                                                     image.source_format(),
                                                     compat_formats,
-                                                    true,
+                                                    None,
                                                 );
 
                                                 emu.gui.set_floppy_write_protected(*drive_select, true);
@@ -398,6 +430,7 @@ pub fn handle_egui_event(emu: &mut Emulator, elwt: &EventLoopWindowTarget<()>, g
                         Ok(FloppyImageSource::DiskImage(floppy_image)) => match fdc.load_image_from(
                             *drive_select,
                             floppy_image,
+                            None,
                             emu.config.emulator.media.write_protect_default,
                         ) {
                             Ok(image) => {
@@ -408,12 +441,7 @@ pub fn handle_egui_event(emu: &mut Emulator, elwt: &EventLoopWindowTarget<()>, g
                                     FloppyDriveSelection::Image(name.clone().into()),
                                     image.source_format(),
                                     image.compatible_formats(true),
-                                    false,
-                                );
-
-                                emu.gui.set_floppy_write_protected(
-                                    *drive_select,
-                                    emu.config.emulator.media.write_protect_default,
+                                    Some(emu.config.emulator.media.write_protect_default),
                                 );
 
                                 emu.gui
@@ -461,7 +489,7 @@ pub fn handle_egui_event(emu: &mut Emulator, elwt: &EventLoopWindowTarget<()>, g
                 Ok(vec) => {
                     if let Some(fdc) = emu.machine.fdc() {
                         let mut load_success = false;
-                        match fdc.load_image_from(*drive_select, vec, true) {
+                        match fdc.load_image_from(*drive_select, vec, None, true) {
                             Ok(image) => {
                                 log::info!("Floppy image successfully loaded into virtual drive.");
                                 load_success = true;
@@ -472,7 +500,7 @@ pub fn handle_egui_event(emu: &mut Emulator, elwt: &EventLoopWindowTarget<()>, g
                                     FloppyDriveSelection::Directory(path.clone()),
                                     image.source_format(),
                                     image.compatible_formats(true),
-                                    true,
+                                    Some(true),
                                 );
 
                                 emu.gui.set_floppy_write_protected(*drive_select, true);
@@ -543,12 +571,63 @@ pub fn handle_egui_event(emu: &mut Emulator, elwt: &EventLoopWindowTarget<()>, g
                 }
             }
         }
+        GuiEvent::SaveFloppyAs(drive_select, format, filepath) => {
+            log::debug!(
+                "Received SaveFloppyAs event drive: {} format: {:?} filename: {:?}",
+                drive_select,
+                format,
+                filepath,
+            );
+
+            if let Some(fdc) = emu.machine.fdc() {
+                let floppy = fdc.get_image_mut(*drive_select);
+                if let Some(floppy_image) = floppy.0 {
+                    match fluxfox::ImageWriter::new()
+                        .with_format(*format)
+                        .with_path(filepath.clone())
+                        .write(floppy_image)
+                    {
+                        Ok(_) => {
+                            log::info!("Floppy image successfully saved: {:?}", filepath);
+
+                            emu.gui.set_floppy_selection(
+                                *drive_select,
+                                None,
+                                FloppyDriveSelection::Image(filepath.clone()),
+                                Some(*format),
+                                floppy_image.compatible_formats(true),
+                                None,
+                            );
+
+                            emu.gui
+                                .toasts()
+                                .info(format!("Floppy saved: {:?}", filepath.file_name().unwrap_or_default()))
+                                .set_duration(Some(NORMAL_NOTIFICATION_TIME));
+                        }
+                        Err(err) => {
+                            log::error!("Floppy image failed to save: {}", err);
+
+                            emu.gui
+                                .toasts()
+                                .error(format!("Failed to save: {}", err))
+                                .set_duration(Some(NORMAL_NOTIFICATION_TIME));
+                        }
+                    }
+                }
+            }
+        }
         GuiEvent::EjectFloppy(drive_select) => {
             log::info!("Ejecting floppy in drive: {}", drive_select);
             if let Some(fdc) = emu.machine.fdc() {
                 fdc.unload_image(*drive_select);
-                emu.gui
-                    .set_floppy_selection(*drive_select, None, FloppyDriveSelection::None, None, Vec::new(), false);
+                emu.gui.set_floppy_selection(
+                    *drive_select,
+                    None,
+                    FloppyDriveSelection::None,
+                    None,
+                    Vec::new(),
+                    Some(false),
+                );
                 emu.gui
                     .toasts()
                     .info("Floppy ejected!".to_string())
@@ -564,8 +643,14 @@ pub fn handle_egui_event(emu: &mut Emulator, elwt: &EventLoopWindowTarget<()>, g
             );
             if let Some(fdc) = emu.machine.fdc() {
                 fdc.unload_image(*drive_select);
-                emu.gui
-                    .set_floppy_selection(*drive_select, None, FloppyDriveSelection::None, None, Vec::new(), false);
+                emu.gui.set_floppy_selection(
+                    *drive_select,
+                    None,
+                    FloppyDriveSelection::None,
+                    None,
+                    Vec::new(),
+                    Some(false),
+                );
 
                 match fdc.create_new_image(*drive_select, *format, *formatted) {
                     Ok(image) => {
@@ -575,7 +660,7 @@ pub fn handle_egui_event(emu: &mut Emulator, elwt: &EventLoopWindowTarget<()>, g
                             FloppyDriveSelection::NewImage(*format),
                             image.source_format(),
                             image.compatible_formats(true),
-                            false,
+                            Some(false),
                         );
 
                         emu.gui

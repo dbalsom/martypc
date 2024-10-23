@@ -57,6 +57,11 @@ use std::{
 };
 use zip::ZipArchive;
 
+pub enum ArchiveType {
+    Mountable,
+    CompressedImage,
+}
+
 #[derive(Debug)]
 pub enum FloppyError {
     DirNotFound,
@@ -134,7 +139,7 @@ impl FloppyManager {
                 idx,
                 name: item.full_path.file_name().unwrap().to_os_string(),
                 path: item.full_path.clone(),
-                size: item.full_path.metadata().unwrap().len(),
+                size: item.full_path.metadata()?.len(),
             });
 
             self.image_map
@@ -155,7 +160,7 @@ impl FloppyManager {
 
         // Index mapping between 'files' vec and 'image_vec' should be maintained.
         for item in autofloppy_dirs.iter() {
-            let idx = self.image_vec.len();
+            //let idx = self.image_vec.len();
 
             if matches!(item.rtype, ResourceItemType::Directory) {
                 self.autofloppy_dir_vec.push(RelativeDirectory {
@@ -188,18 +193,14 @@ impl FloppyManager {
             if path.is_file() {
                 if let Some(extension) = path.extension() {
                     if self.extensions.contains(&extension.to_ascii_lowercase()) {
-                        println!(
-                            "Found floppy image: {:?} size: {}",
-                            path,
-                            path.metadata().unwrap().len()
-                        );
+                        println!("Found floppy image: {:?} size: {}", path, path.metadata()?.len());
 
                         let idx = self.image_vec.len();
                         self.image_vec.push(FloppyImage {
                             idx,
                             name: path.file_name().unwrap().to_os_string(),
                             path: path.clone(),
-                            size: path.metadata().unwrap().len(),
+                            size: path.metadata()?.len(),
                         });
 
                         self.image_map.insert(path.file_name().unwrap().to_os_string(), idx);
@@ -270,6 +271,13 @@ impl FloppyManager {
         Some(self.image_vec[idx].name.clone())
     }
 
+    pub fn get_floppy_path(&self, idx: usize) -> Option<PathBuf> {
+        if idx >= self.image_vec.len() {
+            return None;
+        }
+        Some(self.image_vec[idx].path.clone())
+    }
+
     pub fn load_floppy_data(&self, idx: usize, rm: &ResourceManager) -> Result<FloppyImageSource, FloppyError> {
         let floppy_vec;
 
@@ -284,8 +292,24 @@ impl FloppyManager {
             }
         };
 
-        if floppy_path.extension().unwrap().to_ascii_lowercase() == "zip" {
-            Ok(FloppyImageSource::ZipArchive(floppy_vec))
+        // TODO: use regex instead of simple extension check for kryoflux
+        if floppy_path.extension().unwrap().to_ascii_lowercase() == "raw" {
+            Ok(FloppyImageSource::KryoFluxSet(floppy_vec, floppy_path))
+        }
+        else if floppy_path.extension().unwrap().to_ascii_lowercase() == "zip" {
+            // Determine whether we should treat the zip as a mountable archive or a compressed image.
+            // The current logic is to treat it as a mountable archive, unless:
+            // - The zip contains a single file with a known image extension
+            // - The zip contains over 5MB of uncompressed files, and a file with a .raw extension
+            // If those conditions are met, the file is treated as a compressed image.
+            // fluxfox handles this for us so we simply return it as a standard disk image in this case.
+            let archive_type = self
+                .discover_archive_type(&floppy_vec)
+                .map_err(|e| FloppyError::ImageBuildError)?;
+            match archive_type {
+                ArchiveType::Mountable => Ok(FloppyImageSource::ZipArchive(floppy_vec)),
+                ArchiveType::CompressedImage => Ok(FloppyImageSource::DiskImage(floppy_vec)),
+            }
         }
         else {
             Ok(FloppyImageSource::DiskImage(floppy_vec))
@@ -645,6 +669,44 @@ impl FloppyManager {
                 return Err(FloppyError::FileWriteError);
             }
         }
+    }
+
+    fn discover_archive_type(&self, archive_vec: &[u8]) -> Result<ArchiveType, Error> {
+        let mut cursor = Cursor::new(archive_vec);
+        let zip = ZipArchive::new(cursor)?;
+
+        let files = zip.file_names().map(|str| str.to_string()).collect::<Vec<String>>();
+        let total_size = zip.decompressed_size().unwrap_or(0);
+
+        if files.len() == 1 {
+            // Single file present in archive. See if it's a known extension.
+            let path = Path::new(&files[0]);
+
+            if path.extension().is_some() {
+                let ext = path.extension().unwrap().to_ascii_lowercase();
+                if self.extensions.contains(&ext) {
+                    log::debug!(
+                        "discover_archive_type(): Found single file in archive with known extension: {:?}",
+                        ext
+                    );
+                    return Ok(ArchiveType::CompressedImage);
+                }
+            }
+        }
+        else if total_size > 5_000_000 {
+            // Only look for Kryoflux sets if we have at least 5MB worth of files
+            let path = Path::new(&files[0]);
+
+            if path.extension().is_some() {
+                let ext = path.extension().unwrap().to_ascii_lowercase();
+                if ext == "raw" {
+                    log::debug!("discover_archive_type(): Found multiple files in archive, first file is a .raw file. Assuming compressed Kryoflux set");
+                    return Ok(ArchiveType::CompressedImage);
+                }
+            }
+        }
+
+        Ok(ArchiveType::Mountable)
     }
 }
 

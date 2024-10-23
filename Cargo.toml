@@ -63,9 +63,8 @@ egui-wgpu = "0.28.1"
 egui_plot = "0.28"
 
 [workspace.dependencies.fluxfox]
-path = "../fluxfox"
-#git = "https://github.com/dbalsom/fluxfox.git"
-#branch = "main"
+git = "https://github.com/dbalsom/fluxfox.git"
+branch = "main"
 
 [workspace.dependencies.egui-winit]
 version = "0.28.1"
