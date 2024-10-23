@@ -24,19 +24,28 @@
 
     --------------------------------------------------------------------------
 
-    event_loop/mod.rs
+    event_loop/thread_events.rs
 
-    Main winit event handler. This handler is repeatedly called by the winit
-    event loop closure. The event handler is split into a few different
-    functionality domains for readability as it was originally very long.
+    Handle events received from background threads spawned by the frontend.
 */
+use crate::emulator::Emulator;
+use fluxfox::DiskImage;
+use std::path::PathBuf;
 
-mod egui_events;
-mod egui_update;
-mod keyboard;
-mod render_frame;
-pub(crate) mod thread_events;
-mod update;
-mod winit_events;
+pub enum FrontendThreadEvent {
+    FloppyImageLoadComplete(DiskImage, PathBuf),
+    FloppyImageSaveComplete(PathBuf),
+}
 
-pub use winit_events::handle_event;
+pub fn handle_thread_event(emu: &mut Emulator) {
+    while let Ok(event) = emu.receiver.try_recv() {
+        match event {
+            FrontendThreadEvent::FloppyImageLoadComplete(disk_image, path) => {
+                log::info!("Floppy image loaded: {:?}", path);
+            }
+            FrontendThreadEvent::FloppyImageSaveComplete(path) => {
+                log::info!("Floppy image saved: {:?}", path);
+            }
+        }
+    }
+}

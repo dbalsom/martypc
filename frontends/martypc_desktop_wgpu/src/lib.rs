@@ -88,7 +88,7 @@ use marty_egui::state::GuiState;
 
 use crate::{
     emulator::{EmuFlags, Emulator},
-    event_loop::handle_event,
+    event_loop::{handle_event, thread_events::handle_thread_event},
     input::HotkeyManager,
     sound_player::SoundInterface,
 };
@@ -813,6 +813,8 @@ pub fn run() {
 
     let machine_events = Vec::new();
 
+    let (sender, receiver) = crossbeam_channel::unbounded();
+
     // Put everything we want to handle in event loop into an Emulator struct
     let mut emu = Emulator {
         rm: resource_manager,
@@ -838,6 +840,8 @@ pub fn run() {
         },
         hkm: hotkey_manager,
         si: sound_player,
+        sender,
+        receiver,
     };
 
     // Resize video cards
@@ -891,6 +895,7 @@ pub fn run() {
 
     // Run the winit event loop
     if let Err(_e) = event_loop.run(move |event, elwt| {
+        handle_thread_event(&mut emu);
         handle_event(&mut emu, &mut timestep_manager, event, elwt);
     }) {
         log::error!("Failed to start event loop!");
