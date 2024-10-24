@@ -307,12 +307,12 @@ impl FloppyManager {
                 .discover_archive_type(&floppy_vec)
                 .map_err(|e| FloppyError::ImageBuildError)?;
             match archive_type {
-                ArchiveType::Mountable => Ok(FloppyImageSource::ZipArchive(floppy_vec)),
-                ArchiveType::CompressedImage => Ok(FloppyImageSource::DiskImage(floppy_vec)),
+                ArchiveType::Mountable => Ok(FloppyImageSource::ZipArchive(floppy_vec, floppy_path)),
+                ArchiveType::CompressedImage => Ok(FloppyImageSource::DiskImage(floppy_vec, floppy_path)),
             }
         }
         else {
-            Ok(FloppyImageSource::DiskImage(floppy_vec))
+            Ok(FloppyImageSource::DiskImage(floppy_vec, floppy_path))
         }
     }
 
@@ -665,9 +665,7 @@ impl FloppyManager {
         // TODO: Implement write through resource manager instead of direct file access.
         match std::fs::write(&floppy_path, data) {
             Ok(_) => Ok(floppy_path.clone()),
-            Err(_e) => {
-                return Err(FloppyError::FileWriteError);
-            }
+            Err(_e) => Err(FloppyError::FileWriteError),
         }
     }
 

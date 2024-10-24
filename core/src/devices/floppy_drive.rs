@@ -235,31 +235,6 @@ impl FloppyDiskDrive {
         path: Option<PathBuf>,
         write_protect: bool,
     ) -> Result<(), Error> {
-        /*        let image_len: usize = src_vec.len();
-
-        // Disk images must contain whole sectors
-        if image_len % SECTOR_SIZE > 0 {
-            return Err(anyhow!("Invalid image length"));
-        }
-
-        // Look up disk parameters based on image size
-        if let Some(fmt) = DISK_FORMATS.get(&image_len) {
-            self.media_geom = fmt.chs;
-        }
-        else {
-            // No image format found.
-            if image_len < 163_840 {
-                // If image is smaller than single sided disk, assume single sided disk, 8 sectors per track
-                // This is useful for loading things like boot sector images without having to copy them to
-                // a full disk image
-
-                self.media_geom = DiskChs::new(40, 1, 8);
-            }
-            else {
-                return Err(anyhow!("Invalid image length"));
-            }
-        }*/
-
         let mut image_buffer = Cursor::new(src_vec);
         let image = DiskImage::load(&mut image_buffer, path, None)?;
 
@@ -276,6 +251,20 @@ impl FloppyDiskDrive {
         log::debug!("Loaded floppy image, CHS: {}", self.media_geom,);
 
         Ok(())
+    }
+
+    pub fn attach_image(&mut self, image: DiskImage, path: Option<PathBuf>, write_protect: bool) {
+        self.media_geom = DiskChs::from((
+            image.image_format().geometry.c(),
+            image.image_format().geometry.h(),
+            0u8,
+        ));
+
+        self.disk_present = true;
+        self.disk_image = Some(image);
+        self.write_protected = write_protect;
+
+        log::debug!("Attached floppy image, CHS: {}", self.media_geom);
     }
 
     pub fn get_image(&mut self) -> (Option<(&DiskImage)>, u64) {

@@ -42,6 +42,7 @@ egui-winit.workspace = true
 egui_extras.workspace = true
 egui_plot.workspace = true
 
+#egui-file-dialog = "0.6.1"
 egui_file = {  git = "https://github.com/Barugon/egui_file", rev="f08fe3f9ea22de0312d062384544c5d2af5b76a1" }
 egui-notify = { git = "https://github.com/dbalsom/egui-notify_martypc.git", branch = "egui_0_28_1"}
 

@@ -533,6 +533,21 @@ impl FloppyController {
         Ok(self.drives[drive_select].get_image().0.unwrap())
     }
 
+    pub fn attach_image(
+        &mut self,
+        drive_select: usize,
+        image: DiskImage,
+        path: Option<PathBuf>,
+        write_protect: bool,
+    ) -> Result<&DiskImage, Error> {
+        if drive_select >= self.drive_ct {
+            return Err(anyhow!("Invalid drive selection"));
+        }
+        let drive = &mut self.drives[drive_select];
+        drive.attach_image(image, path, write_protect);
+        Ok(self.drives[drive_select].get_image().0.unwrap())
+    }
+
     pub fn get_image(&mut self, drive_select: usize) -> (Option<&DiskImage>, u64) {
         self.drives[drive_select].get_image()
     }

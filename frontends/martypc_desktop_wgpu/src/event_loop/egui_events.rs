@@ -29,8 +29,9 @@
     Process received egui events.
 */
 
-use crate::Emulator;
+use crate::{event_loop::thread_events::FrontendThreadEvent, Emulator};
 use display_manager_wgpu::DisplayManager;
+use fluxfox::{DiskImage, LoadingStatus};
 use frontend_common::{
     constants::{LONG_NOTIFICATION_TIME, NORMAL_NOTIFICATION_TIME, SHORT_NOTIFICATION_TIME},
     types::floppy::FloppyImageSource,
@@ -46,6 +47,7 @@ use marty_core::{
     vhd::VirtualHardDisk,
 };
 use marty_egui::{
+    modal::ModalContext,
     state::FloppyDriveSelection,
     DeviceSelection,
     GuiBoolean,
@@ -55,7 +57,7 @@ use marty_egui::{
     GuiVariableContext,
     InputFieldChangeSource,
 };
-use std::{mem::discriminant, path::PathBuf, time::Duration};
+use std::{io::Cursor, mem::discriminant, path::PathBuf, time::Duration};
 use videocard_renderer::AspectCorrectionMode;
 use winit::event_loop::EventLoopWindowTarget;
 
@@ -839,39 +841,39 @@ pub fn handle_load_floppy(emu: &mut Emulator, drive_select: usize, context: File
                     log::info!("Loading floppy image: {:?} into drive: {}", name, drive_select);
 
                     match emu.floppy_manager.load_floppy_data(item_idx, &emu.rm) {
-                        Ok(FloppyImageSource::KryoFluxSet(kryo_vec, path)) => {
-                            match fdc.load_image_from(
-                                drive_select,
-                                kryo_vec,
-                                Some(path),
-                                emu.config.emulator.media.write_protect_default,
-                            ) {
-                                Ok(image) => {
-                                    log::info!("Floppy successfully loaded into virtual drive.");
-                                    emu.gui.set_floppy_selection(
-                                        drive_select,
-                                        Some(item_idx),
-                                        FloppyDriveSelection::Image(name.clone().into()),
-                                        image.source_format(),
-                                        image.compatible_formats(true),
-                                        Some(emu.config.emulator.media.write_protect_default),
-                                    );
-
-                                    emu.gui
-                                        .toasts()
-                                        .info(format!("Floppy loaded: {:?}", name.clone()))
-                                        .set_duration(Some(NORMAL_NOTIFICATION_TIME));
-                                }
-                                Err(err) => {
-                                    log::error!("Floppy image failed to load into virtual drive: {}", err);
-                                    emu.gui
-                                        .toasts()
-                                        .error(format!("Floppy load failed: {}", err))
-                                        .set_duration(Some(NORMAL_NOTIFICATION_TIME));
-                                }
-                            }
-                        }
-                        Ok(FloppyImageSource::ZipArchive(zip_vec)) => {
+                        // Ok(FloppyImageSource::KryoFluxSet(kryo_vec, path)) => {
+                        //     match fdc.load_image_from(
+                        //         drive_select,
+                        //         kryo_vec,
+                        //         Some(path),
+                        //         emu.config.emulator.media.write_protect_default,
+                        //     ) {
+                        //         Ok(image) => {
+                        //             log::info!("Floppy successfully loaded into virtual drive.");
+                        //             emu.gui.set_floppy_selection(
+                        //                 drive_select,
+                        //                 Some(item_idx),
+                        //                 FloppyDriveSelection::Image(name.clone().into()),
+                        //                 image.source_format(),
+                        //                 image.compatible_formats(true),
+                        //                 Some(emu.config.emulator.media.write_protect_default),
+                        //             );
+                        //
+                        //             emu.gui
+                        //                 .toasts()
+                        //                 .info(format!("Floppy loaded: {:?}", name.clone()))
+                        //                 .set_duration(Some(NORMAL_NOTIFICATION_TIME));
+                        //         }
+                        //         Err(err) => {
+                        //             log::error!("Floppy image failed to load into virtual drive: {}", err);
+                        //             emu.gui
+                        //                 .toasts()
+                        //                 .error(format!("Floppy load failed: {}", err))
+                        //                 .set_duration(Some(NORMAL_NOTIFICATION_TIME));
+                        //         }
+                        //     }
+                        // }
+                        Ok(FloppyImageSource::ZipArchive(zip_vec, path)) => {
                             let mut image_type = None;
                             image_type = Some(fdc.drive(drive_select).get_largest_supported_image_format());
                             match emu.floppy_manager.build_autofloppy_image_from_zip(
@@ -917,41 +919,51 @@ pub fn handle_load_floppy(emu: &mut Emulator, drive_select: usize, context: File
                                 }
                             }
                         }
-                        Ok(FloppyImageSource::DiskImage(floppy_image)) => match fdc.load_image_from(
-                            drive_select,
-                            floppy_image,
-                            None,
-                            emu.config.emulator.media.write_protect_default,
-                        ) {
-                            Ok(image) => {
-                                log::info!("Floppy image successfully loaded into virtual drive.");
-                                emu.gui.set_floppy_selection(
-                                    drive_select,
-                                    Some(item_idx),
-                                    FloppyDriveSelection::Image(name.clone().into()),
-                                    image.source_format(),
-                                    image.compatible_formats(true),
-                                    Some(emu.config.emulator.media.write_protect_default),
-                                );
+                        Ok(FloppyImageSource::KryoFluxSet(floppy_image, floppy_path))
+                        | Ok(FloppyImageSource::DiskImage(floppy_image, floppy_path)) => {
+                            let sender = emu.sender.clone();
+                            std::thread::spawn(move || {
+                                let mut image_buffer = Cursor::new(floppy_image);
+                                let inner_sender = sender.clone();
+                                let loading_callback = Box::new(move |status| match status {
+                                    LoadingStatus::Progress(progress) => {
+                                        _ = inner_sender.send(FrontendThreadEvent::FloppyImageLoadProgress(
+                                            "Loading floppy image...".to_string(),
+                                            progress,
+                                        ));
+                                    }
+                                    LoadingStatus::ProgressSupport(enabled) => {
+                                        if enabled {
+                                            _ = inner_sender.send(FrontendThreadEvent::FloppyImageBeginLongLoad);
+                                        }
+                                    }
+                                    _ => {}
+                                });
 
-                                emu.gui
-                                    .toasts()
-                                    .info(format!("Floppy loaded: {:?}", name.clone()))
-                                    .set_duration(Some(NORMAL_NOTIFICATION_TIME));
-                            }
-                            Err(err) => {
-                                log::error!("Floppy image failed to load into virtual drive: {}", err);
-                                emu.gui
-                                    .toasts()
-                                    .error(format!("Floppy load failed: {}", err))
-                                    .set_duration(Some(NORMAL_NOTIFICATION_TIME));
-                            }
-                        },
-                        Err(err) => {
-                            log::error!("Failed to load floppy image: {:?} Error: {}", item_idx, err);
+                                match DiskImage::load(
+                                    &mut image_buffer,
+                                    Some(floppy_path.clone()),
+                                    Some(loading_callback),
+                                ) {
+                                    Ok(disk_image) => {
+                                        _ = sender.send(FrontendThreadEvent::FloppyImageLoadComplete {
+                                            drive_select,
+                                            image: disk_image,
+                                            item_idx,
+                                            path: Some(floppy_path),
+                                        });
+                                    }
+                                    Err(err) => {
+                                        _ = sender.send(FrontendThreadEvent::FloppyImageLoadError(err.to_string()));
+                                    }
+                                }
+                            });
+                        }
+                        Err(e) => {
+                            log::error!("Failed to load floppy image: {}", e);
                             emu.gui
                                 .toasts()
-                                .error(format!("Floppy load failed: {}", err))
+                                .error(format!("Failed to load floppy image: {}", e))
                                 .set_duration(Some(NORMAL_NOTIFICATION_TIME));
                         }
                     }

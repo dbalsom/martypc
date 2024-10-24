@@ -28,22 +28,90 @@
 
     Handle events received from background threads spawned by the frontend.
 */
-use crate::emulator::Emulator;
+use crate::{emulator::Emulator, event_loop::thread_events::FrontendThreadEvent::FloppyImageLoadProgress};
 use fluxfox::DiskImage;
+use frontend_common::constants::NORMAL_NOTIFICATION_TIME;
+use marty_egui::{modal::ModalContext, state::FloppyDriveSelection};
 use std::path::PathBuf;
 
 pub enum FrontendThreadEvent {
-    FloppyImageLoadComplete(DiskImage, PathBuf),
+    FloppyImageLoadError(String),
+    FloppyImageBeginLongLoad,
+    FloppyImageLoadProgress(String, f64),
+    FloppyImageLoadComplete {
+        drive_select: usize,
+        item_idx: usize,
+        image: DiskImage,
+        path: Option<PathBuf>,
+    },
+    FloppyImageSaveError(String),
     FloppyImageSaveComplete(PathBuf),
 }
 
 pub fn handle_thread_event(emu: &mut Emulator) {
     while let Ok(event) = emu.receiver.try_recv() {
         match event {
-            FrontendThreadEvent::FloppyImageLoadComplete(disk_image, path) => {
-                log::info!("Floppy image loaded: {:?}", path);
+            FrontendThreadEvent::FloppyImageLoadError(err) => {
+                log::error!("Failed to load floppy image! Error: {}", err);
+                emu.gui
+                    .toasts()
+                    .error(format!("Floppy load failed: {}", err))
+                    .set_duration(Some(NORMAL_NOTIFICATION_TIME));
+
+                emu.gui.modal.close();
+            }
+            FrontendThreadEvent::FloppyImageBeginLongLoad => {
+                emu.gui
+                    .modal
+                    .open(ModalContext::ProgressBar("Loading floppy image...".into(), 0.0), None);
+            }
+            FrontendThreadEvent::FloppyImageLoadProgress(title, progress) => {
+                emu.gui
+                    .modal
+                    .open(ModalContext::ProgressBar(title.into(), progress), None);
+            }
+            FrontendThreadEvent::FloppyImageLoadComplete {
+                drive_select,
+                item_idx,
+                image,
+                path,
+            } => {
+                if let Some(fdc) = emu.machine.fdc() {
+                    match fdc.attach_image(
+                        drive_select,
+                        image,
+                        path.clone(),
+                        emu.config.emulator.media.write_protect_default,
+                    ) {
+                        Ok(image) => {
+                            log::info!("Floppy image successfully loaded into virtual drive.");
+                            emu.gui.set_floppy_selection(
+                                drive_select,
+                                Some(item_idx),
+                                FloppyDriveSelection::Image(path.clone().unwrap_or_default().into()),
+                                image.source_format(),
+                                image.compatible_formats(true),
+                                Some(emu.config.emulator.media.write_protect_default),
+                            );
+
+                            emu.gui
+                                .toasts()
+                                .info(format!("Floppy loaded: {:?}", path.clone()))
+                                .set_duration(Some(NORMAL_NOTIFICATION_TIME));
+
+                            emu.gui.modal.close();
+                        }
+                        Err(err) => {
+                            log::warn!("Floppy image failed to load: {}", err);
+                        }
+                    }
+                }
+            }
+            FrontendThreadEvent::FloppyImageSaveError(err) => {
+                log::error!("Floppy image save error: {}", err);
             }
             FrontendThreadEvent::FloppyImageSaveComplete(path) => {
+                emu.gui.modal.close();
                 log::info!("Floppy image saved: {:?}", path);
             }
         }

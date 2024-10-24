@@ -54,8 +54,8 @@ impl FileTreeMenu {
         self
     }
 
-    pub fn draw(&self, ui: &mut egui::Ui, ctx: usize, clicked_fn: &mut dyn FnMut(usize) -> ()) {
-        self.draw_node(ui, &self.root, ctx, clicked_fn);
+    pub fn draw(&self, ui: &mut egui::Ui, ctx: usize, close: bool, clicked_fn: &mut dyn FnMut(usize) -> ()) {
+        self.draw_node(ui, &self.root, ctx, close, clicked_fn);
     }
 
     pub fn draw_node(
@@ -63,12 +63,13 @@ impl FileTreeMenu {
         ui: &mut egui::Ui,
         node: &FileTreeNode,
         ctx: usize,
+        close: bool,
         clicked_fn: &mut dyn FnMut(usize) -> (),
     ) {
         for child in node.children() {
             if child.is_directory() {
                 ui.menu_button(format!("📁 {}", child.name()), |ui| {
-                    self.draw_node(ui, child, ctx, clicked_fn);
+                    self.draw_node(ui, child, ctx, close, clicked_fn);
                 });
             }
         }
@@ -85,6 +86,7 @@ impl FileTreeMenu {
                     if ui.button(button_text).clicked() {
                         log::debug!("clicked on file {}, idx: {}", child.name(), child.idx());
                         clicked_fn(child.idx());
+                        ui.close_menu();
                     }
                 });
             }

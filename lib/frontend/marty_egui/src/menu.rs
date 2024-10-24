@@ -32,6 +32,7 @@
 
 use crate::{state::GuiState, GuiBoolean, GuiEnum, GuiEvent, GuiVariable, GuiVariableContext, GuiWindow};
 use egui_file::FileDialog;
+//use egui_file_dialog::FileDialog;
 
 use marty_core::{device_traits::videocard::VideoType, devices::serial::SerialPortDescriptor};
 
@@ -418,7 +419,7 @@ impl GuiState {
                 self.event_queue.send(GuiEvent::QueryCompatibleFloppyFormats(drive_idx));
 
                 ui.menu_button("Load from Image/Zip file", |ui| {
-                    self.floppy_tree_menu.draw(ui, drive_idx, &mut |image_idx| {
+                    self.floppy_tree_menu.draw(ui, drive_idx, true, &mut |image_idx| {
                         //log::debug!("Clicked closure called with image_idx {}", image_idx);
                         self.event_queue.send(GuiEvent::LoadFloppy(drive_idx, image_idx));
                     });
@@ -430,6 +431,7 @@ impl GuiState {
                             if ui.button(format!("📁 {}", path.name.to_string_lossy())).clicked() {
                                 self.event_queue
                                     .send(GuiEvent::LoadAutoFloppy(drive_idx, path.full_path.clone()));
+                                ui.close_menu();
                             }
                         }
                     });
@@ -442,6 +444,7 @@ impl GuiState {
                             if ui.button(format!("{} {}", format, fo.0)).clicked() {
                                 self.event_queue
                                     .send(GuiEvent::CreateNewFloppy(drive_idx, format, fo.1));
+                                ui.close_menu();
                             }
                         }
                     }
@@ -545,7 +548,7 @@ impl GuiState {
             }
             ui.add_enabled_ui(!self.machine_state.is_on(), |ui| {
                 ui.menu_button("Load image", |ui| {
-                    self.hdd_tree_menu.draw(ui, drive_idx, &mut |image_idx| {
+                    self.hdd_tree_menu.draw(ui, drive_idx, true, &mut |image_idx| {
                         self.event_queue.send(GuiEvent::LoadVHD(drive_idx, image_idx));
                     });
                 });
@@ -569,7 +572,7 @@ impl GuiState {
 
         ui.menu_button(cart_name, |ui| {
             ui.menu_button("Insert Cartridge", |ui| {
-                self.cart_tree_menu.draw(ui, cart_idx, &mut |image_idx| {
+                self.cart_tree_menu.draw(ui, cart_idx, true, &mut |image_idx| {
                     self.event_queue.send(GuiEvent::InsertCartridge(cart_idx, image_idx));
                 });
             });
