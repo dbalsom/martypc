@@ -68,7 +68,7 @@ pub fn handle_thread_event(emu: &mut Emulator) {
             FrontendThreadEvent::FloppyImageLoadProgress(title, progress) => {
                 emu.gui
                     .modal
-                    .open(ModalContext::ProgressBar(title.into(), progress), None);
+                    .open(ModalContext::ProgressBar(title.into(), progress as f32), None);
             }
             FrontendThreadEvent::FloppyImageLoadComplete {
                 drive_select,

@@ -36,11 +36,18 @@ use fluxfox::DiskImageFormat;
 pub enum ModalContext {
     SaveFloppyImage(usize, DiskImageFormat, Vec<String>), // Index of the floppy drive, list of extensions
     OpenFloppyImage(usize, Vec<String>),                  // Index of the floppy drive, list of extensions
+    ProgressBar(String, f32),                             // Progress bar with message and progress
+}
+
+pub struct ProgressWindow {
+    pub title:    String,
+    pub progress: f32,
 }
 
 pub enum ModalDialog {
     Save(FileDialog),
     Open(FileDialog),
+    ProgressBar(ProgressWindow),
 }
 
 #[derive(Default)]
@@ -66,9 +73,9 @@ impl ModalState {
     }
 
     pub fn open(&mut self, context: ModalContext, initial_path: Option<PathBuf>) {
-        if self.context.is_some() {
-            log::warn!("open(): Modal context already open, close it first.");
-        }
+        // if self.context.is_some() {
+        //     log::warn!("open(): Modal context already open, close it first.");
+        // }
 
         // let create_filters = move |extensions: Vec<String>| -> (Filter<&str>, Filter<PathBuf>) {
         //     let select_filter: egui_file::Filter<&str> = Box::new(|path| {
@@ -206,38 +213,64 @@ impl ModalState {
                 dialog.open();
                 self.dialog = Some(ModalDialog::Open(dialog));
             }
+            ModalContext::ProgressBar(title, progress) => {
+                self.dialog = Some(ModalDialog::ProgressBar(ProgressWindow {
+                    title:    title.clone(),
+                    progress: *progress,
+                }));
+            }
         }
         self.context = Some(context);
+    }
+
+    pub fn close(&mut self) {
+        self.context = None;
+        self.dialog = None;
+        self.selected_path = None;
+        self.extensions.clear();
     }
 
     pub fn show(&mut self, ctx: &egui::Context, events: &mut GuiEventQueue) {
         let mut dialog_resolved = false;
 
-        if let Some(ModalDialog::Save(dialog)) | Some(ModalDialog::Open(dialog)) = &mut self.dialog {
-            if dialog.show(ctx).selected() {
-                if let Some(path) = dialog.path() {
-                    self.selected_path = Some(path.to_path_buf());
-                    //log::warn!("Selected dialog path: {:?}", &self.selected_path.as_ref().unwrap());
+        match &mut self.dialog {
+            Some(ModalDialog::Save(dialog)) | Some(ModalDialog::Open(dialog)) => {
+                if dialog.show(ctx).selected() {
+                    if let Some(path) = dialog.path() {
+                        self.selected_path = Some(path.to_path_buf());
+                        //log::warn!("Selected dialog path: {:?}", &self.selected_path.as_ref().unwrap());
+                        dialog_resolved = true;
+                    }
+                }
+
+                if matches!(dialog.state(), egui_file::State::Cancelled | egui_file::State::Closed) {
+                    self.selected_path = None;
                     dialog_resolved = true;
                 }
-            }
 
-            if matches!(dialog.state(), egui_file::State::Cancelled | egui_file::State::Closed) {
-                self.selected_path = None;
-                dialog_resolved = true;
-            }
+                if dialog_resolved {
+                    if let Some(path) = &self.selected_path {
+                        log::warn!("Selected dialog path: {:?}", path);
+                        self.resolve(events);
+                    }
 
-            if dialog_resolved {
-                if let Some(path) = &self.selected_path {
-                    log::warn!("Selected dialog path: {:?}", path);
-                    self.resolve(events);
+                    self.context = None;
+                    self.dialog = None;
+                    self.extensions.clear();
                 }
-
-                self.context = None;
-                self.dialog = None;
-                self.extensions.clear();
+                //log::warn!("dialog state: {:?}", dialog.state());
             }
-            //log::warn!("dialog state: {:?}", dialog.state());
+            Some(ModalDialog::ProgressBar(progress)) => {
+                egui::Window::new(progress.title.clone())
+                    .default_size(egui::vec2(400.0, 100.0))
+                    .show(ctx, |ui| {
+                        ui.add(
+                            egui::ProgressBar::new(progress.progress as f32)
+                                .text(format!("{:.1}%", progress.progress * 100.0)),
+                        );
+                    });
+            }
+            None => {}
         }
     }
 
@@ -254,6 +287,9 @@ impl ModalState {
                 }
                 ModalContext::OpenFloppyImage(drive_idx, _) => {
                     log::warn!("Would sent open floppy image request");
+                }
+                ModalContext::ProgressBar(_, _) => {
+                    // Nothing to do to resolve a ProgressBar
                 }
             }
         }
