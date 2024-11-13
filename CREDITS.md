@@ -2,12 +2,14 @@
 
 ## Special Thanks To
 
-reenigne, Ken Shirriff, trixter, Tom Harte, 640KB, Bigbass
+reenigne, Ken Shirriff, trixter, VileR, Tom Harte, 640KB, Battler, NewRisingSun
 
 ## Code Contributors
 
 * Composite color conversion algorithm by Andrew Jenner aka [reenigne](https://www.reenigne.org/blog/)
 * wgpu backend and scaler code adapted from Pixels by Jay Oster aka [parasyte](https://github.com/parasyte/)
+* td0 decompression routines from [retrocompressor](https://github.com/dfgordon/retrocompressor) by [dfgordon](https://github.com/dfgordon),
+* boot sector code originally by Christoph H. Hochstaetter, (C)1991
 
 ## Essential Libraries
 
@@ -17,31 +19,20 @@ reenigne, Ken Shirriff, trixter, Tom Harte, 640KB, Bigbass
 
 ## 3rd Party Software
 
-The distribution of MartyPC contains the following 3rd party software, included with permission or via license terms:
+The distribution of MartyPC contains the following 3rd party software, included by permission, license terms or 
+fair use:
 
-[GLaBIOS](https://github.com/640-KB/GLaBIOS/) Copyright © 2022-2023, 640KB and contributors.
-
-FreeDOS 1.3 customized for the 8088 by [Tech Tangents](https://www.youtube.com/watch?v=EOVLlMQs9f8)
-FreeDOS © the FreeDOS project [https://www.freedos.org/](https://www.freedos.org/)
-
-SvarDOS © the FreeDOS project and Mateusz Viste [http://www.svardos.org/](http://www.svardos.org/) 
-
-LoTech EMS Board Utilities [http://www.lo-tech.co.uk/](http://www.lo-tech.co.uk/wiki/LTEMM.EXE) © Alex Tsourikov
-
-[8088MPH](https://www.pouet.net/prod.php?which=65371) by Hornet, CRTC & Desire
-
-[Area 5150](https://www.pouet.net/prod.php?which=91938) by CRTC & Hornet
-
-[CGADEMO](https://www.pouet.net/prod.php?which=64406) by The Codeblasters
-
-[Ratillery](https://raphnet.itch.io/ratillery) and [Stellar Roads](https://raphnet.itch.io/stellar-roads) by Raphaël
-Assenat
-
-[MagiDuck](https://www.indiedb.com/games/magiduck/downloads/magi-v10) by mangis
-
-[The CGA Compatibility Tester](https://github.com/MobyGamer/CGACompatibilityTester) by MobyGamer
-
-[JOYCALIB](http://www.oldskool.org/pc/joycalib) by MobyGamer
-
-[EGAD!](https://archive.org/details/EGAD_EGA_Demo) by David Morrill
+* [GLaBIOS](https://github.com/640-KB/GLaBIOS/) Copyright © 2022-2023, 640KB and contributors
+* FreeDOS © the FreeDOS project [https://www.freedos.org/](https://www.freedos.org/)
+* FreeDOS 1.3 customized for the 8088 by [Tech Tangents](https://www.youtube.com/watch?v=EOVLlMQs9f8)
+* SvarDOS © the FreeDOS project and Mateusz Viste [http://www.svardos.org/](http://www.svardos.org/)
+* LoTech EMS Board Utilities [http://www.lo-tech.co.uk/](http://www.lo-tech.co.uk/wiki/LTEMM.EXE) © Alex Tsourikov
+* [8088MPH](https://www.pouet.net/prod.php?which=65371) by Hornet, CRTC & Desire
+* [Area 5150](https://www.pouet.net/prod.php?which=91938) by CRTC & Hornet
+* [CGADEMO](https://www.pouet.net/prod.php?which=64406) by The Codeblasters
+* [Ratillery](https://raphnet.itch.io/ratillery) and [Stellar Roads](https://raphnet.itch.io/stellar-roads) by Raphaël Assena
+* [MagiDuck](https://www.indiedb.com/games/magiduck/downloads/magi-v10) by mangis
+* [The CGA Compatibility Tester](https://github.com/MobyGamer/CGACompatibilityTester) by MobyGamer
+* [JOYCALIB](http://www.oldskool.org/pc/joycalib) by MobyGamer
+* [EGAD!](https://archive.org/details/EGAD_EGA_Demo) by David Morrill
 

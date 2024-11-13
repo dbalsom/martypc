@@ -23,7 +23,7 @@ Development of MartyPC started in April 2022. I began work on making MartyPC's 8
 November 2022. To do so, I validated the operation of the CPU against a real 8088 CPU connected to an Arduino MEGA 
 microcontroller. See my [Arduino8088 project](https://github.com/dbalsom/arduino_8088) for more details. This allows an instruction to be simultaneously executed on the emulator and a real CPU and the execution results compared, cycle-by-cycle. More info on this process is described [on my blog](https://martypc.blogspot.com/2023/06/hardware-validating-emulator.html).
 
-In June of 2024 I updated the 8088 test suite once again to support exercising of the 8088's prefetch queue. Many more cycle inaccuracies were found and corrected. MartyPC passes the [8088 V2 Test Suite](https://github.com/SingleStepTests/8088) with 99.9997% cycle-accuracy.
+In June 2024 I updated the 8088 test suite once again to support exercising of the 8088's prefetch queue. Many more cycle inaccuracies were found and corrected. MartyPC passes the [8088 V2 Test Suite](https://github.com/SingleStepTests/8088) with 99.9997% cycle-accuracy.
 
 Extensive hardware research has been performed to improve MartyPC's peripheral emulation as well, including
 investigating the 8253 timer chip with an Arduino, investigating [DMA timings with an oscilloscope](https://martypc.blogspot.com/2023/05/exploring-dma-on-ibm-pc.html), and ultimately, [building a bus sniffer](https://martypc.blogspot.com/2023/10/bus-sniffing-ibm-5150.html) using a logic analyzer.

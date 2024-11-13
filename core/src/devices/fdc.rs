@@ -33,7 +33,6 @@
 
 use crate::{
     bus::{BusInterface, DeviceRunTimeUnit, IoDevice},
-    device_types::fdc::DISK_FORMATS,
     devices::{dma, floppy_drive::FloppyDiskDrive},
     machine_config::FloppyDriveConfig,
     machine_types::FdcType,
@@ -41,10 +40,7 @@ use crate::{
 use anyhow::{anyhow, Error};
 use std::{collections::VecDeque, default::Default, path::PathBuf};
 
-use crate::{
-    device_types::fdc::{DiskFormat, FloppyImageType},
-    devices::floppy_drive::FloppyImageState,
-};
+use crate::{device_types::fdc::FloppyImageType, devices::floppy_drive::FloppyImageState};
 use fluxfox::{DiskCh, DiskChs, DiskChsn, DiskImage, StandardFormat};
 use marty_common::types::history_buffer::HistoryBuffer;
 
@@ -1270,9 +1266,6 @@ impl FloppyController {
             log::warn!("command_read_track(): non-matching head specifiers");
         }
 
-        // Set drive_select for status register reads
-        let drive_opt = self.select_drive_mut(drive_select);
-
         if self.select_drive_mut(drive_select).is_some() {
             // Is there no disk in the drive?
             //
@@ -1954,12 +1947,6 @@ impl FloppyController {
                         .selected_drive()
                         .get_chs_sector_offset(self.xfer_completed_sectors + 1, chs)
                         .into();
-
-                    let new_chs = DiskChs::new(
-                        self.selected_drive().chsn.c(),
-                        self.selected_drive().chsn.h(),
-                        write_result.new_sid,
-                    );
 
                     //let (new_c, new_h, new_s) = self.get_next_sector(self.drive_select, chs.c(), chs.h(), chs.s());
                     let new_chs = DiskChs::new(new_c, new_h, new_s);

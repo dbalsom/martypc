@@ -58,7 +58,7 @@ impl GuiState {
                     ui.separator();
                 }
 
-                if ui.button("🚫 Quit").clicked() {
+                if ui.button("⎆ Quit").clicked() {
                     self.event_queue.send(GuiEvent::Exit);
                     ui.close_menu();
                 }
@@ -418,15 +418,23 @@ impl GuiState {
             .menu_button(floppy_name, |ui| {
                 self.event_queue.send(GuiEvent::QueryCompatibleFloppyFormats(drive_idx));
 
-                ui.menu_button("Load from Image/Zip file", |ui| {
+                ui.menu_button("🗁 Quick Access Image/Zip file", |ui| {
                     self.floppy_tree_menu.draw(ui, drive_idx, true, &mut |image_idx| {
                         //log::debug!("Clicked closure called with image_idx {}", image_idx);
-                        self.event_queue.send(GuiEvent::LoadFloppy(drive_idx, image_idx));
+                        self.event_queue.send(GuiEvent::LoadQuickFloppy(drive_idx, image_idx));
                     });
                 });
 
+                if ui.button("🗁 Browse for Image/Zip file...").clicked() {
+                    // Do something
+                    self.modal.open(
+                        ModalContext::OpenFloppyImage(drive_idx, Vec::new()),
+                        self.default_floppy_path.clone(),
+                    );
+                };
+
                 if !self.autofloppy_paths.is_empty() {
-                    ui.menu_button("Create from Directory", |ui| {
+                    ui.menu_button("🗐 Create from Directory", |ui| {
                         for path in self.autofloppy_paths.iter() {
                             if ui.button(format!("📁 {}", path.name.to_string_lossy())).clicked() {
                                 self.event_queue
@@ -437,11 +445,11 @@ impl GuiState {
                     });
                 }
 
-                ui.menu_button("Create New", |ui| {
+                ui.menu_button("🗋 Create New", |ui| {
                     for format in self.floppy_drives[drive_idx].drive_type.get_compatible_formats() {
                         let format_options = vec![("(Blank)", false), ("(Formatted)", true)];
                         for fo in format_options {
-                            if ui.button(format!("{} {}", format, fo.0)).clicked() {
+                            if ui.button(format!("💾{} {}", format, fo.0)).clicked() {
                                 self.event_queue
                                     .send(GuiEvent::CreateNewFloppy(drive_idx, format, fo.1));
                                 ui.close_menu();
@@ -462,13 +470,13 @@ impl GuiState {
                 ui.horizontal(|ui| {
                     if let Some(floppy_name) = &self.floppy_drives[drive_idx].filename() {
                         let type_str = self.floppy_drives[drive_idx].type_string();
-                        if ui.button(format!("Eject {}{}", type_str, floppy_name)).clicked() {
+                        if ui.button(format!("⏏ Eject {}{}", type_str, floppy_name)).clicked() {
                             self.event_queue.send(GuiEvent::EjectFloppy(drive_idx));
                         }
                     }
                     else if let Some(format) = &self.floppy_drives[drive_idx].is_new() {
                         let type_str = self.floppy_drives[drive_idx].type_string();
-                        if ui.button(format!("Eject {}{}", type_str, format)).clicked() {
+                        if ui.button(format!("⏏ Eject {}{}", type_str, format)).clicked() {
                             self.event_queue.send(GuiEvent::EjectFloppy(drive_idx));
                         }
                     }
@@ -481,7 +489,7 @@ impl GuiState {
                     if let Some(floppy_name) = &self.floppy_drives[drive_idx].filename() {
                         ui.add_enabled_ui(self.floppy_drives[drive_idx].is_writeable(), |ui| {
                             let type_str = self.floppy_drives[drive_idx].type_string();
-                            if ui.button(format!("Save {}{}", type_str, floppy_name)).clicked() {
+                            if ui.button(format!("💾 Save {}{}", type_str, floppy_name)).clicked() {
                                 if let Some(floppy_path) = self.floppy_drives[drive_idx].file_path() {
                                     if let Some(fmt) = self.floppy_drives[drive_idx].source_format {
                                         self.event_queue.send(GuiEvent::SaveFloppyAs(

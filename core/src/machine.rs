@@ -45,7 +45,7 @@ use std::{
     path::PathBuf,
 };
 use std::collections::BTreeMap;
-use std::sync::{Arc, Mutex};
+
 use fluxfox::DiskImage;
 use crate::{
     breakpoints::BreakPointType,
@@ -634,7 +634,7 @@ impl Machine {
         }
         */
 
-        let have_audio = core_config.get_audio_enabled() && sound_config.enabled;
+        //let have_audio = core_config.get_audio_enabled() && sound_config.enabled;
 
         // Install devices
         

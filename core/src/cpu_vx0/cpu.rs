@@ -47,7 +47,6 @@ use crate::{
         StepResult,
         TraceMode,
     },
-    cpu_validator::{CycleState},
     cpu_vx0::{
         trace_print,
         BusStatus,
@@ -64,6 +63,8 @@ use crate::{
 
 #[cfg(feature = "cpu_validator")]
 use crate::cpu_validator::CpuValidator;
+#[cfg(feature = "cpu_validator")]
+use crate::cpu_validator::CycleState;
 #[cfg(feature = "cpu_validator")]
 use crate::cpu_vx0::CpuValidatorState;
 
@@ -355,8 +356,9 @@ impl Cpu for NecVx0 {
     }
 
     #[inline]
+    #[cfg(feature = "cpu_validator")]
     fn get_cycle_states(&self) -> &Vec<CycleState> {
-        self.get_cycle_states()
+        self.get_cycle_states_internal()
     }
 
     fn get_cycle_trace(&self) -> &Vec<String> {

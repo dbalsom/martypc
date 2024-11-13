@@ -31,12 +31,12 @@
 */
 use crate::{GuiEvent, GuiEventQueue, PathBuf};
 use egui_file::{FileDialog, Filter};
-use fluxfox::DiskImageFormat;
+use fluxfox::DiskImageFileFormat;
 
 pub enum ModalContext {
-    SaveFloppyImage(usize, DiskImageFormat, Vec<String>), // Index of the floppy drive, list of extensions
-    OpenFloppyImage(usize, Vec<String>),                  // Index of the floppy drive, list of extensions
-    ProgressBar(String, f32),                             // Progress bar with message and progress
+    SaveFloppyImage(usize, DiskImageFileFormat, Vec<String>), // Index of the floppy drive, list of extensions
+    OpenFloppyImage(usize, Vec<String>),                      // Index of the floppy drive, list of extensions
+    ProgressBar(String, f32),                                 // Progress bar with message and progress
 }
 
 pub struct ProgressWindow {
@@ -278,15 +278,20 @@ impl ModalState {
         if let Some(context) = &self.context {
             match context {
                 ModalContext::SaveFloppyImage(drive_idx, format, _) => {
-                    log::warn!("Would sent save floppy image request for drive {}", drive_idx);
-
                     if let Some(path) = &self.selected_path {
                         log::debug!("ModalState::resolve(): Sending SaveFloppyAs event for drive {} with format {:?} and path {:?}", drive_idx, format, path);
                         event_queue.send(GuiEvent::SaveFloppyAs(*drive_idx, *format, path.clone()));
                     }
                 }
                 ModalContext::OpenFloppyImage(drive_idx, _) => {
-                    log::warn!("Would sent open floppy image request");
+                    if let Some(path) = &self.selected_path {
+                        log::debug!(
+                            "ModalState::resolve(): Sending OpenFloppyFrom event for drive {} with path {:?}",
+                            drive_idx,
+                            path
+                        );
+                        event_queue.send(GuiEvent::LoadFloppyAs(*drive_idx, path.clone()));
+                    }
                 }
                 ModalContext::ProgressBar(_, _) => {
                     // Nothing to do to resolve a ProgressBar

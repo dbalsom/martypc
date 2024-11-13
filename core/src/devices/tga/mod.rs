@@ -2884,25 +2884,25 @@ impl TGACard {
     }
 
     #[inline]
-    pub fn crt_mem<'a>(&'a self, cpumem: &'a [u8]) -> &[u8] {
+    pub fn crt_mem<'a>(&'a self, cpumem: &'a [u8]) -> &'a [u8] {
         let start = self.aperture_base + self.crt_page_offset;
         cpumem[start..start + self.page_size].as_ref()
     }
 
     #[inline]
-    pub fn crt_memmut<'a>(&'a self, cpumem: &'a mut [u8]) -> &mut [u8] {
+    pub fn crt_memmut<'a>(&'a self, cpumem: &'a mut [u8]) -> &'a mut [u8] {
         let start = self.aperture_base + self.crt_page_offset;
         cpumem[start..start + self.page_size].as_mut()
     }
 
     #[inline]
-    pub fn cpu_mem<'a>(&'a self, cpumem: &'a [u8]) -> &[u8] {
+    pub fn cpu_mem<'a>(&'a self, cpumem: &'a [u8]) -> &'a [u8] {
         let start = self.aperture_base + self.cpu_page_offset;
         cpumem[start..start + self.page_size].as_ref()
     }
 
     #[inline]
-    pub fn cpu_memmut<'a>(&'a self, cpumem: &'a mut [u8]) -> &mut [u8] {
+    pub fn cpu_memmut<'a>(&'a self, cpumem: &'a mut [u8]) -> &'a mut [u8] {
         let start = self.aperture_base + self.cpu_page_offset;
         cpumem[start..start + self.page_size].as_mut()
     }

@@ -42,7 +42,7 @@ use std::sync::{Arc, Mutex};
 use egui::{Label, Sense};
 use fluxfox::{
     structure_parsers::DiskStructureGenericElement,
-    visualization::{render_track_metadata_quadrant, RotationDirection},
+    visualization::{render_track_metadata_quadrant, RenderTrackMetadataParams, RotationDirection},
     DiskDataResolution,
     DiskImage,
 };
@@ -356,7 +356,10 @@ impl FloppyViewerControl {
     }
 
     pub fn update_visualization(&mut self, drive: usize, image: &DiskImage, write_ct: u64) {
-        self.viz_unsupported = !matches!(image.resolution(), DiskDataResolution::BitStream);
+        self.viz_unsupported = !matches!(
+            image.resolution(),
+            DiskDataResolution::BitStream | DiskDataResolution::FluxStream
+        );
         if self.viz_unsupported || ((write_ct <= self.viz_write_cts[drive]) && (write_ct > 0)) {
             return;
         }
@@ -399,19 +402,19 @@ impl FloppyViewerControl {
                     let mut pixmap = pixmap.lock().unwrap();
                     //let l_disk = disk.lock().unwrap();
                     let track_ct = image.get_track_ct(side.into());
-                    match render_track_metadata_quadrant(
-                        image,
-                        &mut pixmap,
+                    let render_params = RenderTrackMetadataParams {
                         quadrant,
-                        side,
+                        head: side,
                         min_radius_fraction,
-                        angle,
-                        track_ct,
-                        render_track_gap,
+                        index_angle: angle,
+                        track_limit: track_ct,
+                        track_gap: render_track_gap,
                         direction,
                         palette,
-                        true,
-                    ) {
+                        draw_empty_tracks: true,
+                        pin_last_standard_track: true,
+                    };
+                    match render_track_metadata_quadrant(image, &mut pixmap, &render_params) {
                         Ok(_) => {
                             log::debug!("...Rendered quadrant {}", quadrant);
                         }

@@ -72,7 +72,7 @@ use crate::{
 use egui::ColorImage;
 use egui_file::FileDialog;
 use egui_notify::{Anchor, Toasts};
-use fluxfox::{DiskImageFormat, StandardFormat};
+use fluxfox::{DiskImageFileFormat, StandardFormat};
 use frontend_common::{
     display_manager::DisplayInfo,
     display_scaler::{ScalerMode, ScalerPreset},
@@ -113,8 +113,8 @@ pub struct GuiFloppyDriveInfo {
     pub(crate) write_protected: bool,
     pub(crate) read_only: bool,
     pub(crate) drive_type: FloppyDriveType,
-    pub(crate) supported_formats: Vec<(DiskImageFormat, Vec<String>)>,
-    pub(crate) source_format: Option<DiskImageFormat>,
+    pub(crate) supported_formats: Vec<(DiskImageFileFormat, Vec<String>)>,
+    pub(crate) source_format: Option<DiskImageFileFormat>,
     pub(crate) source_writeback: bool,
     write_ct: u64,
 }
@@ -554,8 +554,8 @@ impl GuiState {
         drive: usize,
         idx: Option<usize>,
         name: FloppyDriveSelection,
-        source_format: Option<DiskImageFormat>,
-        supported_formats: Vec<(DiskImageFormat, Vec<String>)>,
+        source_format: Option<DiskImageFileFormat>,
+        supported_formats: Vec<(DiskImageFileFormat, Vec<String>)>,
         read_only: Option<bool>,
     ) {
         self.floppy_drives[drive].selected_idx = idx;
@@ -593,7 +593,7 @@ impl GuiState {
         &mut self,
         drive: usize,
         write_ct: u64,
-        supported_formats: Vec<(DiskImageFormat, Vec<String>)>,
+        supported_formats: Vec<(DiskImageFileFormat, Vec<String>)>,
     ) {
         self.floppy_drives[drive].supported_formats = supported_formats;
     }

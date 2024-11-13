@@ -28,7 +28,10 @@
 
     Handle events received from background threads spawned by the frontend.
 */
-use crate::{emulator::Emulator, event_loop::thread_events::FrontendThreadEvent::FloppyImageLoadProgress};
+use crate::{
+    emulator::Emulator,
+    event_loop::{egui_events::FileSelectionContext, thread_events::FrontendThreadEvent::FloppyImageLoadProgress},
+};
 use fluxfox::DiskImage;
 use frontend_common::constants::NORMAL_NOTIFICATION_TIME;
 use marty_egui::{modal::ModalContext, state::FloppyDriveSelection};
@@ -40,7 +43,7 @@ pub enum FrontendThreadEvent {
     FloppyImageLoadProgress(String, f64),
     FloppyImageLoadComplete {
         drive_select: usize,
-        item_idx: usize,
+        item: FileSelectionContext,
         image: DiskImage,
         path: Option<PathBuf>,
     },
@@ -72,7 +75,7 @@ pub fn handle_thread_event(emu: &mut Emulator) {
             }
             FrontendThreadEvent::FloppyImageLoadComplete {
                 drive_select,
-                item_idx,
+                item,
                 image,
                 path,
             } => {
@@ -84,10 +87,17 @@ pub fn handle_thread_event(emu: &mut Emulator) {
                         emu.config.emulator.media.write_protect_default,
                     ) {
                         Ok(image) => {
+                            let item_idx = if let FileSelectionContext::Index(idx) = item {
+                                Some(idx)
+                            }
+                            else {
+                                None
+                            };
+
                             log::info!("Floppy image successfully loaded into virtual drive.");
                             emu.gui.set_floppy_selection(
                                 drive_select,
-                                Some(item_idx),
+                                item_idx,
                                 FloppyDriveSelection::Image(path.clone().unwrap_or_default().into()),
                                 image.source_format(),
                                 image.compatible_formats(true),

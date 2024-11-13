@@ -278,7 +278,7 @@ impl FloppyManager {
         Some(self.image_vec[idx].path.clone())
     }
 
-    pub fn load_floppy_data(&self, idx: usize, rm: &ResourceManager) -> Result<FloppyImageSource, FloppyError> {
+    pub fn load_floppy_by_idx(&self, idx: usize, rm: &ResourceManager) -> Result<FloppyImageSource, FloppyError> {
         let floppy_vec;
 
         if idx >= self.image_vec.len() {
@@ -286,6 +286,21 @@ impl FloppyManager {
         }
         let floppy_path = self.image_vec[idx].path.clone();
         floppy_vec = match rm.read_resource_from_path(&floppy_path) {
+            Ok(vec) => vec,
+            Err(_e) => {
+                return Err(FloppyError::FileReadError);
+            }
+        };
+
+        self.load_floppy_by_path(floppy_path, rm)
+    }
+
+    pub fn load_floppy_by_path(
+        &self,
+        floppy_path: PathBuf,
+        rm: &ResourceManager,
+    ) -> Result<FloppyImageSource, FloppyError> {
+        let floppy_vec = match rm.read_resource_from_path(&floppy_path) {
             Ok(vec) => vec,
             Err(_e) => {
                 return Err(FloppyError::FileReadError);

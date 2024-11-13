@@ -76,10 +76,10 @@ pub fn sector_status(ui: &mut Ui, entry: &SectorMapEntry, open: bool) -> Respons
         // pub deleted_mark: bool,
         // pub no_dam: bool,
         let color = match (
-            entry.address_crc_valid,
-            entry.data_crc_valid,
-            entry.deleted_mark,
-            entry.no_dam,
+            entry.attributes.address_crc_valid,
+            entry.attributes.data_crc_valid,
+            entry.attributes.deleted_mark,
+            entry.attributes.no_dam,
         ) {
             (true, true, false, false) => COLOR_SECTOR_OK,
             (true, true, true, _) => COLOR_DELETED_DATA,

@@ -268,7 +268,7 @@ impl GraphicsController {
     /// Implement the serializer output of the Graphics Controller, for graphics modes.
     /// Unlike CPU reads, this does not set the latches, however it performs address manipulation
     /// and allows for processing such as CGA compatibility shifting.
-    pub fn serialize<'a>(&'a mut self, seq: &'a Sequencer, address: usize) -> &[u8] {
+    pub fn serialize<'a>(&'a mut self, seq: &'a Sequencer, address: usize) -> &'a [u8] {
         let offset = address;
 
         if let ShiftMode::CGACompatible = self.graphics_mode.shift_mode() {
@@ -291,7 +291,7 @@ impl GraphicsController {
         }
     }
 
-    pub fn parallel<'a>(&'a mut self, seq: &'a Sequencer, address: usize, row: u8) -> (&[u8], u8) {
+    pub fn parallel<'a>(&'a mut self, seq: &'a Sequencer, address: usize, row: u8) -> (&'a [u8], u8) {
         let glyph = seq.read_u8(0, address, address & 0x01);
         let attr = seq.read_u8(1, address + 1, (address + 1) & 0x01);
         let glyph_span_addr = seq.get_glyph_address(glyph, 0, row);

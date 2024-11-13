@@ -1,32 +1,72 @@
 
 ## [0.3.0](https://github.com/dbalsom/martypc/releases/tag/0.2.3) (2024-XX-XX)
 
-### Directory & Zip Floppy Mounting
+## Fluxfox is here!
+
+The inclusion of the [fluxfox](https://github.com/dbalsom/fluxfox) disk image library has greatly expanded MartyPC's 
+floppy disk emulation capabilities.
+
+### Bitstream-level disk emulation
+
+MartyPC now can emulate floppy disks at the sector or bitstream level. This makes support for many copy-protected titles
+possible. 
+
+### Disk Image Support
+
+fluxfox adds support for reading a wide array of disk image formats:
+ * TD0 (TeleDisk)
+ * IMD (ImageDisk)
+ * PSI (PCE Sector Image)
+ * TC (TransCopy Image)
+ * PRI (PCE Bitstream Image)
+ * MFM (HxC/MFM Bitstream Image)
+ * HFE (v1) (HxC Bitstream Image)
+ * 86f (86Box Disk Image)
+ * MFI (Mame Floppy Image)
+ * SCP (SuperCardPro Image)
+ * RAW (Kryoflux stream file set)
+
+fluxfox can write bitstream images to 86f and PRI formats. 
+
+Not every feature of every format may be fully implemented, and there's just too much to test all by myself. I hope that
+I'll get a lot of issues opened so that I can squash any bugs.
+
+See the wiki for more information on MartyPC's new disk support.
+
+## Disk Visualization
+
+fluxfox also enables a new Floppy Image info window, including a Disk View that shows a graphical visualization of the 
+disk surface.
+
+## Directory & Zip Floppy Mounting
 
 * Thanks to [rust-fatfs](https://github.com/rafalh/rust-fatfs), we can now dynamically build FAT12 images. This enables
   mounting both directories and ZIP archives as floppy images. Of course the contents must fit! By default, an image of 
-  the largest supported size will be created. There are a few options as well to enable creation of bootable diskettes.
-  See the Wiki for more information.
+  the largest supported size for the applicable drive will be created. There are a few options as well to enable
+  creation of bootable diskettes.
+    * See the Wiki for more information.
+* Added a basic file browser for opening and saving files, so you can do so outside MartyPC's /media/ directory.
 
-### Memory Visualizer
+## Memory Visualizer
 
 * Using the new Memory Visualizer window, you can now view the contents of memory graphically, interpreting raw 
   bytes as rendered text mode, or 1,2,4 or 8bpp pixels. This is a good way to explore the contents of memory, and when 
   investigating a running game one can find things like the game's back buffer as well as sprites loaded into memory.
 
-### New Sound System
+## New Sound System
 
 * MartyPC's original sound system only supported the PC speaker, and had a very awkward design (one might call it a 
   gross hack). For 0.3.0, MartyPC has a new sound system. The emulator core determines how many sound producing devices
   are installed and creates crossbeam channels for each device to send samples to the frontend, which is responsible for
   mixing and playback.
 
-  The sound backend was changed from cpal to rodio to take advantage of the latter's sound mixing capabilities.
-
+* The sound backend was changed from cpal to rodio to take advantage of the latter's sound mixing capabilities.
 
 * Known Issues:
   * Some audio latency may be experienced with certain output devices, especially USB speakers that set a large default 
     buffer size.
+  * Some pop/crackles may be heard due to large timestep skipping if when the window is moved while program drives the 
+    silent speaker high. Need to repeat the last sample level instead of 0 when the sample buffer is exhausted. 
 
 ### New Devices
 
@@ -39,15 +79,22 @@
 
 * #### VGA 
 
+  * **PRERELEASE feature** - may not be included in official release!
+
   * The IBM VGA card gets an initial implementation at last. MartyPC's VGA is based off its EGA implementation, with 
     appropriate changes and additions. Clocked up to 28Mhz, the VGA is an expensive device to run at a character-clock
     accurate rate, so you may need a fast computer. Aperture definitions may not be final. Mode 13h and ModeX/Y are 
     supported (Wolfenstein 3D's 'ModeY' works!) 
  
-### Frontend Bug Fixes / Improvements
+### Frontend Bug Fixes / Improvements 
+  * Added basic debug window for floppy disk controller
+  * Threaded disk image loading so that we don't freeze loading large images (Kryoflux)
+  * Modal GUI mode implemented for file browsers and file loading status
   * Performance Viewer:
     * Show stats for Audio sources 
   * File tree browser: 
+    * Refactored floppy media menu
+    * Added support for creating new disk images, formatted or unformatted
     * Display directories before files
     * Display correct icons for different file types
   * IVT viewer: Display interrupt numbers as hex

@@ -603,7 +603,7 @@ impl NecVx0 {
     }
 
     #[cfg(feature = "cpu_validator")]
-    pub fn get_cycle_states(&self) -> &Vec<CycleState> {
+    pub fn get_cycle_states_internal(&self) -> &Vec<CycleState> {
         &self.cycle_states
     }
 }

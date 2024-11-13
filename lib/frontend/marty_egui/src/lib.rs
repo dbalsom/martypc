@@ -32,7 +32,7 @@
 extern crate core;
 
 use egui::{Color32, Context, Visuals};
-use fluxfox::{DiskImageFormat, StandardFormat};
+use fluxfox::{DiskImageFileFormat, StandardFormat};
 use lazy_static::lazy_static;
 use std::{
     collections::{BTreeMap, HashMap, VecDeque},
@@ -173,10 +173,11 @@ pub enum GuiEvent {
     LoadVHD(usize, usize),
     DetachVHD(usize),
     CreateVHD(OsString, HardDiskFormat),
-    LoadFloppy(usize, usize),
+    LoadQuickFloppy(usize, usize),
+    LoadFloppyAs(usize, PathBuf),
     LoadAutoFloppy(usize, PathBuf),
-    SaveFloppy(usize, usize),                      // Drive index, disk index
-    SaveFloppyAs(usize, DiskImageFormat, PathBuf), // Drive image, format, requested path
+    SaveFloppy(usize, usize),                          // Drive index, disk index
+    SaveFloppyAs(usize, DiskImageFileFormat, PathBuf), // Drive image, format, requested path
     EjectFloppy(usize),
     CreateNewFloppy(usize, StandardFormat, bool),
     QueryCompatibleFloppyFormats(usize),

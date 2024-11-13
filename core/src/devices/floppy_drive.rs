@@ -29,15 +29,16 @@
     Implements a floppy drive
 */
 use crate::{
-    device_types::fdc::{DiskFormat, FloppyImageType, DISK_FORMATS, DRIVE_CAPABILITIES},
+    device_types::fdc::{FloppyImageType, DRIVE_CAPABILITIES},
     machine_types::FloppyDriveType,
 };
 use anyhow::{anyhow, Error};
 use fluxfox::{
-    diskimage::{RwSectorScope, SectorMapEntry},
+    diskimage::RwSectorScope,
     DiskCh,
     DiskChs,
     DiskChsn,
+    DiskChsnQuery,
     DiskImage,
     DiskImageError,
     DiskSectorMap,
@@ -236,7 +237,7 @@ impl FloppyDiskDrive {
         write_protect: bool,
     ) -> Result<(), Error> {
         let mut image_buffer = Cursor::new(src_vec);
-        let image = DiskImage::load(&mut image_buffer, path, None)?;
+        let image = DiskImage::load(&mut image_buffer, path, None, None)?;
 
         self.media_geom = DiskChs::from((
             image.image_format().geometry.c(),
@@ -253,7 +254,7 @@ impl FloppyDiskDrive {
         Ok(())
     }
 
-    pub fn attach_image(&mut self, image: DiskImage, path: Option<PathBuf>, write_protect: bool) {
+    pub fn attach_image(&mut self, image: DiskImage, _path: Option<PathBuf>, write_protect: bool) {
         self.media_geom = DiskChs::from((
             image.image_format().geometry.c(),
             image.image_format().geometry.h(),
@@ -267,13 +268,13 @@ impl FloppyDiskDrive {
         log::debug!("Attached floppy image, CHS: {}", self.media_geom);
     }
 
-    pub fn get_image(&mut self) -> (Option<(&DiskImage)>, u64) {
+    pub fn get_image(&mut self) -> (Option<&DiskImage>, u64) {
         self.ref_write = self.disk_image.as_mut().map_or(0, |image| image.write_ct());
         //log::trace!("get_image(): ref_write: {}", self.ref_write);
         (self.disk_image.as_ref(), self.ref_write)
     }
 
-    pub fn get_image_mut(&mut self) -> (Option<(&mut DiskImage)>, u64) {
+    pub fn get_image_mut(&mut self) -> (Option<&mut DiskImage>, u64) {
         self.ref_write = self.disk_image.as_mut().map_or(0, |image| image.write_ct());
         //log::trace!("get_image(): ref_write: {}", self.ref_write);
         (self.disk_image.as_mut(), self.ref_write)
@@ -360,8 +361,8 @@ impl FloppyDiskDrive {
 
             let write_sector_result = image.write_sector(
                 DiskCh::new(self.cylinder, h),
-                fluxfox::DiskChs::from((chsn.c(), chsn.h(), sid)),
-                Some(n),
+                fluxfox::DiskChsnQuery::new(chsn.c(), chsn.h(), sid, n),
+                None,
                 data_slice,
                 RwSectorScope::DataOnly,
                 deleted,
@@ -438,8 +439,9 @@ impl FloppyDiskDrive {
         while sectors_read < ct {
             let read_sector_result = match image.read_sector(
                 DiskCh::new(self.cylinder, h),
-                DiskChs::from((id_chs.c(), id_chs.h(), sid)),
-                Some(n),
+                DiskChsnQuery::new(id_chs.c(), id_chs.h(), sid, n),
+                None,
+                None,
                 RwSectorScope::DataOnly,
                 false,
             ) {
@@ -547,7 +549,7 @@ impl FloppyDiskDrive {
         }
 
         let image = self.disk_image.as_mut().unwrap();
-        let sector_size = fluxfox::DiskChsn::n_to_bytes(n);
+        let sector_size = DiskChsn::n_to_bytes(n);
         let capacity = match xfer_size {
             Some(size) => size,
             None => sector_size * 9,

@@ -57,10 +57,11 @@ use marty_egui::{
     GuiVariableContext,
     InputFieldChangeSource,
 };
-use std::{io::Cursor, mem::discriminant, path::PathBuf, time::Duration};
+use std::{ffi::OsString, io::Cursor, mem::discriminant, path::PathBuf, time::Duration};
 use videocard_renderer::AspectCorrectionMode;
 use winit::event_loop::EventLoopWindowTarget;
 
+#[derive(Clone)]
 pub enum FileSelectionContext {
     Index(usize),
     Path(PathBuf),
@@ -341,10 +342,17 @@ pub fn handle_egui_event(emu: &mut Emulator, elwt: &EventLoopWindowTarget<()>, g
                 emu.machine.change_state(MachineState::Rebooting);
             }
         }
-        GuiEvent::LoadFloppy(drive_select, item_idx) => {
-            log::debug!("Load floppy image: {:?} into drive: {}", item_idx, drive_select);
-
+        GuiEvent::LoadQuickFloppy(drive_select, item_idx) => {
+            log::debug!("Load floppy quick image: {:?} into drive: {}", item_idx, drive_select);
             handle_load_floppy(emu, *drive_select, FileSelectionContext::Index(*item_idx));
+        }
+        GuiEvent::LoadFloppyAs(drive_select, path) => {
+            log::debug!(
+                "Load floppy image: {} into drive: {}",
+                path.to_string_lossy(),
+                drive_select
+            );
+            handle_load_floppy(emu, *drive_select, FileSelectionContext::Path(path.clone()));
         }
         GuiEvent::LoadAutoFloppy(drive_select, path) => {
             log::debug!(
@@ -832,144 +840,129 @@ pub fn handle_egui_event(emu: &mut Emulator, elwt: &EventLoopWindowTarget<()>, g
 
 /// handle_load_floppy(emu, *drive_select, path);
 pub fn handle_load_floppy(emu: &mut Emulator, drive_select: usize, context: FileSelectionContext) {
-    match context {
-        FileSelectionContext::Index(item_idx) => {
-            if let Some(fdc) = emu.machine.fdc() {
+    if let Some(fdc) = emu.machine.fdc() {
+        let mut floppy_result = None;
+        let mut floppy_name = None;
+        match context.clone() {
+            FileSelectionContext::Index(item_idx) => {
                 let name = emu.floppy_manager.get_floppy_name(item_idx);
 
                 if let Some(name) = name {
+                    floppy_name = Some(name.clone());
                     log::info!("Loading floppy image: {:?} into drive: {}", name, drive_select);
+                    floppy_result = Some(emu.floppy_manager.load_floppy_by_idx(item_idx, &emu.rm));
+                };
+            }
+            FileSelectionContext::Path(path) => {
+                if let Some(file_name) = path.file_name() {
+                    floppy_name = Some(file_name.to_os_string());
+                }
 
-                    match emu.floppy_manager.load_floppy_data(item_idx, &emu.rm) {
-                        // Ok(FloppyImageSource::KryoFluxSet(kryo_vec, path)) => {
-                        //     match fdc.load_image_from(
-                        //         drive_select,
-                        //         kryo_vec,
-                        //         Some(path),
-                        //         emu.config.emulator.media.write_protect_default,
-                        //     ) {
-                        //         Ok(image) => {
-                        //             log::info!("Floppy successfully loaded into virtual drive.");
-                        //             emu.gui.set_floppy_selection(
-                        //                 drive_select,
-                        //                 Some(item_idx),
-                        //                 FloppyDriveSelection::Image(name.clone().into()),
-                        //                 image.source_format(),
-                        //                 image.compatible_formats(true),
-                        //                 Some(emu.config.emulator.media.write_protect_default),
-                        //             );
-                        //
-                        //             emu.gui
-                        //                 .toasts()
-                        //                 .info(format!("Floppy loaded: {:?}", name.clone()))
-                        //                 .set_duration(Some(NORMAL_NOTIFICATION_TIME));
-                        //         }
-                        //         Err(err) => {
-                        //             log::error!("Floppy image failed to load into virtual drive: {}", err);
-                        //             emu.gui
-                        //                 .toasts()
-                        //                 .error(format!("Floppy load failed: {}", err))
-                        //                 .set_duration(Some(NORMAL_NOTIFICATION_TIME));
-                        //         }
-                        //     }
-                        // }
-                        Ok(FloppyImageSource::ZipArchive(zip_vec, path)) => {
-                            let mut image_type = None;
-                            image_type = Some(fdc.drive(drive_select).get_largest_supported_image_format());
-                            match emu.floppy_manager.build_autofloppy_image_from_zip(
-                                zip_vec,
-                                Some(FloppyImageType::Image360K),
-                                &emu.rm,
-                            ) {
-                                Ok(vec) => {
-                                    if let Some(fdc) = emu.machine.fdc() {
-                                        match fdc.load_image_from(drive_select, vec, None, true) {
-                                            Ok(image) => {
-                                                log::info!("Floppy image successfully loaded into virtual drive.");
+                log::info!("Loading floppy image: {:?} into drive: {}", path, drive_select);
+                floppy_result = Some(emu.floppy_manager.load_floppy_by_path(path, &emu.rm));
+            }
+        }
 
-                                                let compat_formats = image.compatible_formats(true);
-                                                emu.gui.set_floppy_selection(
-                                                    drive_select,
-                                                    None,
-                                                    FloppyDriveSelection::ZipArchive(name.clone().into()),
-                                                    image.source_format(),
-                                                    compat_formats,
-                                                    None,
-                                                );
+        if let Some(floppy_result) = floppy_result {
+            match floppy_result {
+                Ok(FloppyImageSource::ZipArchive(zip_vec, path)) => {
+                    let mut image_type = None;
+                    image_type = Some(fdc.drive(drive_select).get_largest_supported_image_format());
+                    match emu.floppy_manager.build_autofloppy_image_from_zip(
+                        zip_vec,
+                        Some(FloppyImageType::Image360K),
+                        &emu.rm,
+                    ) {
+                        Ok(vec) => {
+                            if let Some(fdc) = emu.machine.fdc() {
+                                match fdc.load_image_from(drive_select, vec, None, true) {
+                                    Ok(image) => {
+                                        log::info!("Floppy image successfully loaded into virtual drive.");
 
-                                                emu.gui.set_floppy_write_protected(drive_select, true);
+                                        let compat_formats = image.compatible_formats(true);
 
-                                                emu.gui
-                                                    .toasts()
-                                                    .info("Directory successfully mounted!".to_string())
-                                                    .set_duration(Some(NORMAL_NOTIFICATION_TIME));
-                                            }
-                                            Err(err) => {
-                                                log::warn!("Floppy image failed to load: {}", err);
-                                            }
-                                        }
+                                        let name = floppy_name.unwrap_or_else(|| OsString::from("Unknown"));
+
+                                        emu.gui.set_floppy_selection(
+                                            drive_select,
+                                            None,
+                                            FloppyDriveSelection::ZipArchive(name.into()),
+                                            image.source_format(),
+                                            compat_formats,
+                                            None,
+                                        );
+
+                                        emu.gui.set_floppy_write_protected(drive_select, true);
+
+                                        emu.gui
+                                            .toasts()
+                                            .info("Directory successfully mounted!".to_string())
+                                            .set_duration(Some(NORMAL_NOTIFICATION_TIME));
                                     }
-                                }
-                                Err(err) => {
-                                    log::error!("Failed to build autofloppy image. Error: {}", err);
-                                    emu.gui
-                                        .toasts()
-                                        .error(format!("Directory mount failed: {}", err))
-                                        .set_duration(Some(NORMAL_NOTIFICATION_TIME));
+                                    Err(err) => {
+                                        log::warn!("Floppy image failed to load: {}", err);
+                                    }
                                 }
                             }
                         }
-                        Ok(FloppyImageSource::KryoFluxSet(floppy_image, floppy_path))
-                        | Ok(FloppyImageSource::DiskImage(floppy_image, floppy_path)) => {
-                            let sender = emu.sender.clone();
-                            std::thread::spawn(move || {
-                                let mut image_buffer = Cursor::new(floppy_image);
-                                let inner_sender = sender.clone();
-                                let loading_callback = Box::new(move |status| match status {
-                                    LoadingStatus::Progress(progress) => {
-                                        _ = inner_sender.send(FrontendThreadEvent::FloppyImageLoadProgress(
-                                            "Loading floppy image...".to_string(),
-                                            progress,
-                                        ));
-                                    }
-                                    LoadingStatus::ProgressSupport(enabled) => {
-                                        if enabled {
-                                            _ = inner_sender.send(FrontendThreadEvent::FloppyImageBeginLongLoad);
-                                        }
-                                    }
-                                    _ => {}
-                                });
-
-                                match DiskImage::load(
-                                    &mut image_buffer,
-                                    Some(floppy_path.clone()),
-                                    Some(loading_callback),
-                                ) {
-                                    Ok(disk_image) => {
-                                        _ = sender.send(FrontendThreadEvent::FloppyImageLoadComplete {
-                                            drive_select,
-                                            image: disk_image,
-                                            item_idx,
-                                            path: Some(floppy_path),
-                                        });
-                                    }
-                                    Err(err) => {
-                                        _ = sender.send(FrontendThreadEvent::FloppyImageLoadError(err.to_string()));
-                                    }
-                                }
-                            });
-                        }
-                        Err(e) => {
-                            log::error!("Failed to load floppy image: {}", e);
+                        Err(err) => {
+                            log::error!("Failed to build autofloppy image. Error: {}", err);
                             emu.gui
                                 .toasts()
-                                .error(format!("Failed to load floppy image: {}", e))
+                                .error(format!("Directory mount failed: {}", err))
                                 .set_duration(Some(NORMAL_NOTIFICATION_TIME));
                         }
                     }
-                };
+                }
+                Ok(FloppyImageSource::KryoFluxSet(floppy_image, floppy_path))
+                | Ok(FloppyImageSource::DiskImage(floppy_image, floppy_path)) => {
+                    let sender = emu.sender.clone();
+                    std::thread::spawn(move || {
+                        let mut image_buffer = Cursor::new(floppy_image);
+                        let inner_sender = sender.clone();
+                        let loading_callback = Box::new(move |status| match status {
+                            LoadingStatus::Progress(progress) => {
+                                _ = inner_sender.send(FrontendThreadEvent::FloppyImageLoadProgress(
+                                    "Loading floppy image...".to_string(),
+                                    progress,
+                                ));
+                            }
+                            LoadingStatus::ProgressSupport(enabled) => {
+                                if enabled {
+                                    _ = inner_sender.send(FrontendThreadEvent::FloppyImageBeginLongLoad);
+                                }
+                            }
+                            _ => {}
+                        });
+
+                        match DiskImage::load(
+                            &mut image_buffer,
+                            Some(floppy_path.clone()),
+                            None,
+                            Some(loading_callback),
+                        ) {
+                            Ok(disk_image) => {
+                                _ = sender.send(FrontendThreadEvent::FloppyImageLoadComplete {
+                                    drive_select,
+                                    image: disk_image,
+                                    item: context,
+                                    path: Some(floppy_path),
+                                });
+                            }
+                            Err(err) => {
+                                _ = sender.send(FrontendThreadEvent::FloppyImageLoadError(err.to_string()));
+                            }
+                        }
+                    });
+                }
+                Err(e) => {
+                    log::error!("Failed to load floppy image: {}", e);
+                    emu.gui
+                        .toasts()
+                        .error(format!("Failed to load floppy image: {}", e))
+                        .set_duration(Some(NORMAL_NOTIFICATION_TIME));
+                }
             }
         }
-        FileSelectionContext::Path(path) => {}
     }
 }

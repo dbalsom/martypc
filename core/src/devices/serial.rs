@@ -43,7 +43,7 @@ use std::{
 
 use crate::{
     bus::{BusInterface, DeviceRunTimeUnit, IoDevice},
-    devices::{pic},
+    devices::pic,
     syntax_token::SyntaxToken,
 };
 
@@ -727,7 +727,7 @@ impl SerialPort {
     }
 
     /// Send a byte out of this serial port.
-    fn transmit(&mut self, byte: u8) {}
+    fn transmit(&mut self, _byte: u8) {}
 
     fn raise_interrupt_type(&mut self, interrupt_flag: u8) {
         // Interrupt enable register completely disables interrupts
@@ -783,7 +783,7 @@ impl SerialPort {
         }
     }
 
-    pub fn get_display_state(&mut self, clean: bool) -> SerialPortDisplayState {
+    pub fn get_display_state(&mut self, _clean: bool) -> SerialPortDisplayState {
         let mut state = BTreeMap::<&str, SyntaxToken>::new();
 
         state.insert(
