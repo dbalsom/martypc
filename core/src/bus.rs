@@ -36,17 +36,27 @@
 
 #![allow(dead_code)]
 
-use crate::devices::pit::SPEAKER_SAMPLE_RATE;
 use anyhow::Error;
-use crossbeam_channel::unbounded;
+
 use fxhash::FxHashMap;
 use std::{collections::VecDeque, fmt, io::Write, path::Path};
 
+#[cfg(feature = "sound")]
+use crate::device_traits::sounddevice::SoundDevice;
+#[cfg(feature = "sound")]
+use crate::devices::pit::SPEAKER_SAMPLE_RATE;
+#[cfg(feature = "sound")]
+use crossbeam_channel::unbounded;
+
 use crate::{
     bytequeue::*,
-    device_traits::{
-        sounddevice::SoundDevice,
-        videocard::{ClockingMode, VideoCard, VideoCardDispatch, VideoCardId, VideoCardInterface, VideoType},
+    device_traits::videocard::{
+        ClockingMode,
+        VideoCard,
+        VideoCardDispatch,
+        VideoCardId,
+        VideoCardInterface,
+        VideoType,
     },
     devices::{
         cga::CGACard,
@@ -69,28 +79,33 @@ use crate::{
     tracelogger::TraceLogger,
 };
 
+#[cfg(feature = "opl")]
+use crate::devices::adlib::AdLibCard;
 #[cfg(feature = "ega")]
 use crate::devices::ega::EGACard;
 #[cfg(feature = "vga")]
 use crate::devices::vga::VGACard;
+#[cfg(feature = "sound")]
+use crate::machine_types::SoundType;
+#[cfg(feature = "sound")]
+use crate::sound::{SoundOutputConfig, SoundSourceDescriptor};
+
 use crate::{
     cpu_common::CpuType,
     device_traits::videocard::VideoCardSubType,
     devices::{
         a0::A0Register,
-        adlib::AdLibCard,
         cartridge_slots::CartridgeSlot,
         game_port::GamePort,
         lotech_ems::LotechEmsCard,
         lpt_card::ParallelController,
         tga::TGACard,
     },
-    machine_types::{EmsType, FdcType, MachineType, SoundType},
-    sound::{SoundOutputConfig, SoundSourceDescriptor},
+    machine_types::{EmsType, FdcType, MachineType},
     syntax_token::SyntaxFormatType,
 };
 
-pub const NO_IO_BYTE: u8 = 0xFF; // This is the byte read from a unconnected IO address.
+pub const NO_IO_BYTE: u8 = 0xFF; // This is the byte read from an unconnected IO address.
 pub const OPEN_BUS_BYTE: u8 = 0xFF; // This is the byte read from an unmapped memory address.
 
 const ADDRESS_SPACE: usize = 0x10_0000;
@@ -180,6 +195,8 @@ impl DeviceRunContext {
 
 #[derive(Default)]
 pub struct InstalledDevicesResult {
+    pub dummy: bool,
+    #[cfg(feature = "sound")]
     pub sound_sources: Vec<SoundSourceDescriptor>,
 }
 
@@ -412,6 +429,7 @@ pub struct BusInterface {
     ems: Option<LotechEmsCard>,
     cart_slot: Option<CartridgeSlot>,
     game_port: Option<GamePort>,
+    #[cfg(feature = "opl")]
     adlib: Option<AdLibCard>,
 
     videocards:    FxHashMap<VideoCardId, VideoCardDispatch>,
@@ -487,9 +505,8 @@ impl ByteQueue for BusInterface {
         if self.cursor < self.memory.len() - 1 {
             let (b0, _) = self.read_u8(self.cursor, 0).unwrap_or((0xFF, 0));
             let (b1, _) = self.read_u8(self.cursor + 1, 0).unwrap_or((0xFF, 0));
-            let w: u16 = b0 as u16 | (b1 as u16) << 8;
             self.cursor += 2;
-            return w;
+            return b0 as u16 | (b1 as u16) << 8;
         }
         0xffffu16
     }
@@ -498,9 +515,8 @@ impl ByteQueue for BusInterface {
         if self.cursor < self.memory.len() - 1 {
             let (b0, _) = self.read_u8(self.cursor, 0).unwrap_or((0xFF, 0));
             let (b1, _) = self.read_u8(self.cursor + 1, 0).unwrap_or((0xFF, 0));
-            let w: u16 = b0 as u16 | (b1 as u16) << 8;
             self.cursor += 2;
-            return w as i16;
+            return (b0 as u16 | (b1 as u16) << 8) as i16;
         }
         -1i16
     }
@@ -523,20 +539,16 @@ impl ByteQueue for BusInterface {
 
     fn q_peek_u16(&mut self) -> u16 {
         if self.cursor < self.memory.len() - 1 {
-            let w: u16 = (self.peek_u8(self.cursor).unwrap_or(0xFF) as u16
-                | self.peek_u8(self.cursor + 1).unwrap_or(0xFF) as u16)
-                << 8;
-            return w;
+            return self.peek_u8(self.cursor).unwrap_or(0xFF) as u16
+                | (self.peek_u8(self.cursor + 1).unwrap_or(0xFF) as u16) << 8;
         }
         0xffffu16
     }
 
     fn q_peek_i16(&mut self) -> i16 {
         if self.cursor < self.memory.len() - 1 {
-            let w: u16 = (self.peek_u8(self.cursor).unwrap_or(0xFF) as u16
-                | self.peek_u8(self.cursor + 1).unwrap_or(0xFF) as u16)
-                << 8;
-            return w as i16;
+            return (self.peek_u8(self.cursor).unwrap_or(0xFF) as u16
+                | (self.peek_u8(self.cursor + 1).unwrap_or(0xFF) as u16) << 8) as i16;
         }
         -1i16
     }
@@ -596,6 +608,7 @@ impl Default for BusInterface {
             ems: None,
             cart_slot: None,
             game_port: None,
+            #[cfg(feature = "sound")]
             adlib: None,
             videocards: FxHashMap::default(),
             videocard_ids: Vec::new(),
@@ -1708,7 +1721,7 @@ impl BusInterface {
             let (ip, _) = self.read_u16((v * 4) as usize, 0).unwrap();
             let (cs, _) = self.read_u16(((v * 4) + 2) as usize, 0).unwrap();
 
-            ivr_vec.push(SyntaxToken::Text(format!("{:03}", v)));
+            ivr_vec.push(SyntaxToken::Text(format!("{:02X}h", v)));
             ivr_vec.push(SyntaxToken::Colon);
             ivr_vec.push(SyntaxToken::OpenBracket);
             ivr_vec.push(SyntaxToken::StateMemoryAddressSeg16(
@@ -1786,7 +1799,7 @@ impl BusInterface {
         &mut self,
         machine_desc: &MachineDescriptor,
         machine_config: &MachineConfiguration,
-        sound_config: &SoundOutputConfig,
+        #[cfg(feature = "sound")] sound_config: &SoundOutputConfig,
         terminal_port: Option<u16>,
     ) -> Result<InstalledDevicesResult, Error> {
         let mut installed_devices = InstalledDevicesResult::new();
@@ -1850,6 +1863,7 @@ impl BusInterface {
         }
 
         // Create the crossbeam channel for the PIT to send sound samples to the sound output thread.
+        #[cfg(feature = "sound")]
         let pit_sample_sender = if machine_config.speaker {
             // Add this sound source.
             let (s, r) = unbounded();
@@ -1864,6 +1878,8 @@ impl BusInterface {
         else {
             None
         };
+        #[cfg(not(feature = "sound"))]
+        let pit_sample_sender = None;
 
         // Create the PIT. One PIT will always exist, but it may be an 8253 or 8254.
         // Pick the device type from MachineDesc.
@@ -2022,6 +2038,7 @@ impl BusInterface {
         }
 
         // Create sound cards
+        #[cfg(feature = "sound")]
         for (_i, card) in machine_config.sound.iter().enumerate() {
             #[allow(irrefutable_let_patterns)]
             if let SoundType::AdLib = card.sound_type {
@@ -2318,6 +2335,7 @@ impl BusInterface {
         }
 
         // Run the adlib card {
+        #[cfg(feature = "opl")]
         if let Some(adlib) = &mut self.adlib {
             adlib.run(us);
         }
@@ -2505,6 +2523,11 @@ impl BusInterface {
             serial.reset();
         }
 
+        // Reset fdc
+        if let Some(fdc) = self.fdc.as_mut() {
+            fdc.reset();
+        }
+
         // Reset video cards
         let vids: Vec<_> = self.videocards.keys().cloned().collect();
         for vid in vids {
@@ -2623,7 +2646,9 @@ impl BusInterface {
                         }
                     }
                 }
-                IoDeviceType::Sound => {
+                IoDeviceType::Sound =>
+                {
+                    #[cfg(feature = "opl")]
                     if let Some(adlib) = &mut self.adlib {
                         byte = Some(adlib.read_u8(port, nul_delta));
                     }
@@ -2793,7 +2818,9 @@ impl BusInterface {
                         }
                     }
                 }
-                IoDeviceType::Sound => {
+                IoDeviceType::Sound =>
+                {
+                    #[cfg(feature = "opl")]
                     if let Some(adlib) = &mut self.adlib {
                         IoDevice::write_u8(adlib, port, data, None, nul_delta);
                     }

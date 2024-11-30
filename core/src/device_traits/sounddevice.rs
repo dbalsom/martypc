@@ -30,7 +30,9 @@
     must implement.
 */
 
+#[cfg(feature = "opl")]
 use crate::devices::adlib::AdLibCard;
+
 use enum_dispatch::enum_dispatch;
 
 pub type AudioSample = f32;

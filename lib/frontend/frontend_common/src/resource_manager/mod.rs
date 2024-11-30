@@ -139,7 +139,7 @@ impl ResourceManager {
 
         // First, generate a map of all items starting with 'base_name'
         let mut existing_basenames: HashSet<OsString> = HashSet::new();
-        match self.enumerate_items(resource, false, false, None) {
+        match self.enumerate_items(resource, None, false, false, None) {
             Ok(items) => {
                 for item in items {
                     //log::debug!("Item: {:?}", item);

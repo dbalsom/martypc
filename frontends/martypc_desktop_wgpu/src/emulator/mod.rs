@@ -33,7 +33,14 @@ use crate::JoystickData;
 use display_manager_wgpu::DisplayManager;
 use std::{cell::RefCell, ffi::OsString, rc::Rc};
 
-use crate::{input::HotkeyManager, sound_player::SoundInterface, Counter, KeyboardData, MouseData};
+use crate::{
+    event_loop::thread_events,
+    input::HotkeyManager,
+    sound_player::SoundInterface,
+    Counter,
+    KeyboardData,
+    MouseData,
+};
 use anyhow::Error;
 use config_toml_bpaf::ConfigFileParams;
 use display_manager_wgpu::WgpuDisplayManager;
@@ -85,6 +92,8 @@ pub struct Emulator {
     pub perf: PerfSnapshot,
     pub hkm: HotkeyManager,
     pub si: Option<SoundInterface>,
+    pub receiver: crossbeam_channel::Receiver<thread_events::FrontendThreadEvent>,
+    pub sender: crossbeam_channel::Sender<thread_events::FrontendThreadEvent>,
 }
 
 impl Emulator {
@@ -145,7 +154,10 @@ impl Emulator {
                                 }
                             };
 
-                            if let Err(_) = self.machine.load_program(&prog_vec, prog_seg, prog_ofs, vreset_seg, vreset_ofs) {
+                            if let Err(_) = self
+                                .machine
+                                .load_program(&prog_vec, prog_seg, prog_ofs, vreset_seg, vreset_ofs)
+                            {
                                 eprintln!(
                                     "Error loading program into memory at {:04X}:{:04X}.",
                                     prog_seg, prog_ofs
@@ -398,6 +410,9 @@ impl Emulator {
             }
         }
         self.gui.set_floppy_drives(drive_types);
+
+        // Set default floppy path. This is used to set the default path for Save As dialogs.
+        self.gui.set_paths(self.rm.get_resource_path("floppy").unwrap());
 
         // Set hard drives.
         self.gui.set_hdds(self.machine.bus().hdd_ct());

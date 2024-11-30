@@ -88,7 +88,6 @@ impl CycleTraceViewerControl {
     pub fn col_select_menu(&mut self, _ui: &mut egui::Ui) {}
 
     pub fn draw(&mut self, ui: &mut egui::Ui, _events: &mut GuiEventQueue) {
-
         ui.horizontal(|ui| {
             ui.label(egui::RichText::new("Cycles:").text_style(egui::TextStyle::Monospace));
             ui.label(egui::RichText::new(format!("{}", self.instr_len)).text_style(egui::TextStyle::Monospace));
@@ -131,7 +130,7 @@ impl CycleTraceViewerControl {
                                                 .text_style(egui::TextStyle::Monospace)
                                                 .strong(),
                                         )
-                                        .wrap(false),
+                                        .wrap(),
                                     );
                                 })
                                 .1
@@ -155,7 +154,7 @@ impl CycleTraceViewerControl {
                                                 egui::RichText::new(token.to_string())
                                                     .text_style(egui::TextStyle::Monospace),
                                             )
-                                            .wrap(false),
+                                            .wrap(),
                                         );
                                     });
                                 }
@@ -172,8 +171,6 @@ impl CycleTraceViewerControl {
         }
 
         //
-
-
     }
 
     pub fn update(&mut self, trace_vec: &Vec<String>) {

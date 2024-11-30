@@ -31,6 +31,7 @@
 */
 
 pub mod a0;
+#[cfg(feature = "opl")]
 pub mod adlib;
 pub mod cartridge_slots;
 pub mod cga;

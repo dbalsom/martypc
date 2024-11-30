@@ -31,13 +31,7 @@
 
 */
 
-use crate::{
-    bus::{BusInterface, DeviceRunTimeUnit, IoDevice, MemRangeDescriptor, MemoryMappedDevice, NO_IO_BYTE},
-    devices::{
-        cga::{CGA_MEM_ADDRESS, CGA_MEM_MASK},
-        lpt_card::LPT_DEFAULT_IO_BASE,
-    },
-};
+use crate::bus::{BusInterface, DeviceRunTimeUnit, IoDevice, MemRangeDescriptor, MemoryMappedDevice, NO_IO_BYTE};
 
 pub const LOTECH_DEFAULT_IO_BASE: u16 = 0x260;
 pub const LOTECH_IO_MASK: u16 = !0x03;
@@ -76,7 +70,7 @@ impl Default for LotechEmsCard {
 impl LotechEmsCard {
     pub fn new(port_base: Option<u16>, window_seg: Option<usize>) -> Self {
         LotechEmsCard {
-            port_base: port_base.unwrap_or(LPT_DEFAULT_IO_BASE),
+            port_base: port_base.unwrap_or(LOTECH_DEFAULT_IO_BASE),
             window_addr: window_seg.unwrap_or(LOTECH_DEFAULT_EMS_WINDOW_SEG) << 4,
             ..Default::default()
         }
@@ -150,7 +144,7 @@ impl MemoryMappedDevice for LotechEmsCard {
     }
 
     fn mmio_peek_u16(&self, address: usize, _cpumem: Option<&[u8]>) -> u16 {
-        let a_offset = (address & CGA_MEM_MASK) - CGA_MEM_ADDRESS;
+        let a_offset = (address & LOTECH_PAGE_MASK) >> LOTECH_PAGE_SHIFT;
 
         (self.mem[a_offset] as u16) << 8 | self.mem[a_offset + 1] as u16
     }

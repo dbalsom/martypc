@@ -108,6 +108,8 @@ pub enum PixelCanvasDepth {
     TwoBpp,
     FourBpp,
     EightBpp,
+    Rgb,
+    Rgba,
 }
 
 impl PixelCanvasDepth {
@@ -118,6 +120,8 @@ impl PixelCanvasDepth {
             PixelCanvasDepth::TwoBpp => 2,
             PixelCanvasDepth::FourBpp => 4,
             PixelCanvasDepth::EightBpp => 8,
+            PixelCanvasDepth::Rgb => 24,
+            PixelCanvasDepth::Rgba => 32,
         }
     }
 }
@@ -144,7 +148,7 @@ pub struct PixelCanvas {
     texture_opts: TextureOptions,
     default_uv: Rect,
     ctx: Context,
-    data_valid: bool,
+    data_unpacked: bool,
 }
 
 impl Default for PixelCanvas {
@@ -153,7 +157,7 @@ impl Default for PixelCanvas {
             data_buf: Vec::new(),
             backing_buf: Vec::new(),
             view_dimensions: (DEFAULT_WIDTH, DEFAULT_HEIGHT),
-            zoom: 4.0,
+            zoom: 1.0,
             bpp: PixelCanvasDepth::OneBpp,
             device_palette: PixelCanvasPalette {
                 name:   "Default".to_string(),
@@ -176,7 +180,7 @@ impl Default for PixelCanvas {
             },
             default_uv: Rect::from_min_max(egui::pos2(0.0, 0.0), egui::pos2(1.0, 1.0)),
             ctx: Context::default(),
-            data_valid: false,
+            data_unpacked: false,
         }
     }
 }
@@ -201,12 +205,15 @@ impl PixelCanvas {
     }
 
     pub fn update_imagedata(&mut self) {
+        if !self.data_unpacked {
+            log::warn!("PixelCanvas::update_imagedata(): Data not unpacked.");
+        }
         let color_image = ColorImage {
             size:   [self.view_dimensions.0 as usize, self.view_dimensions.1 as usize],
             pixels: self.backing_buf.clone(),
         };
         self.image_data = ImageData::Color(Arc::new(color_image));
-        self.data_valid = true;
+        self.data_unpacked = true;
     }
 
     pub fn use_device_palette(&mut self, state: bool) {
@@ -216,19 +223,21 @@ impl PixelCanvas {
     pub fn calc_slice_size(dims: (u32, u32), bpp: PixelCanvasDepth, font: Option<&FontInfo>) -> usize {
         let size = match bpp {
             PixelCanvasDepth::Text if font.is_some() => {
-                ((dims.0 / 8) * (dims.1 / font.unwrap().max_scanline) * 2) as usize
+                ((dims.0 / 8) * (dims.1 / font.unwrap().max_scanline) * 2) as usize + 1
             }
             PixelCanvasDepth::Text => {
                 log::warn!("PixelCanvas::calc_slice_size(): Text mode calculation without font reference.");
-                ((dims.0 / 8) * (dims.1 * 2)) as usize
+                ((dims.0 / 8) * (dims.1 * 2)) as usize + 1
             }
-            PixelCanvasDepth::OneBpp => (dims.0 * dims.1) as usize / 8,
-            PixelCanvasDepth::TwoBpp => (dims.0 * dims.1) as usize / 4,
-            PixelCanvasDepth::FourBpp => (dims.0 * dims.1) as usize / 1,
+            PixelCanvasDepth::OneBpp => (dims.0 * dims.1) as usize / 8 + 1,
+            PixelCanvasDepth::TwoBpp => (dims.0 * dims.1) as usize / 4 + 1,
+            PixelCanvasDepth::FourBpp => (dims.0 * dims.1) as usize / 1 + 1,
             PixelCanvasDepth::EightBpp => (dims.0 * dims.1) as usize,
+            PixelCanvasDepth::Rgb => (dims.0 * dims.1) as usize * 3,
+            PixelCanvasDepth::Rgba => (dims.0 * dims.1) as usize * 4,
         };
 
-        size + 1
+        size
     }
 
     pub fn create_texture(&mut self) -> TextureHandle {
@@ -304,6 +313,10 @@ impl PixelCanvas {
 
         assert_eq!(self.data_buf.len(), slice_size);
 
+        // if self.texture.is_none() {
+        //     log::debug!("PixelCanvas::update_data(): Creating initial texture...");
+        //     self.texture = Some(self.create_texture());
+        // }
         self.unpack_pixels(font);
         self.update_texture();
     }
@@ -325,6 +338,10 @@ impl PixelCanvas {
         }
     }
 
+    pub fn has_texture(&self) -> bool {
+        self.texture.is_some()
+    }
+
     pub fn update_texture(&mut self) {
         self.update_imagedata();
         if let Some(texture) = &mut self.texture {
@@ -334,7 +351,7 @@ impl PixelCanvas {
 
     pub fn set_bpp(&mut self, bpp: PixelCanvasDepth) {
         self.bpp = bpp;
-        self.data_valid = false;
+        self.data_unpacked = false;
     }
 
     pub fn set_zoom(&mut self, zoom: f32) {
@@ -347,7 +364,7 @@ impl PixelCanvas {
         self.backing_buf = vec![Color32::BLACK; (dims.0 * dims.1) as usize];
 
         self.texture = Some(self.create_texture());
-        self.data_valid = false;
+        self.data_unpacked = false;
     }
 
     pub fn save_buffer(&mut self, path: &Path) -> Result<(), Error> {
@@ -363,10 +380,6 @@ impl PixelCanvas {
     }
 
     fn unpack_pixels(&mut self, font: Option<&FontInfo>) {
-        if !self.data_valid {
-            return;
-        }
-
         let dims = self.view_dimensions.0 * self.view_dimensions.1;
         let max_index = std::cmp::min(dims as usize, self.data_buf.len());
         match self.bpp {
@@ -450,6 +463,26 @@ impl PixelCanvas {
                     self.backing_buf[i as usize] = pal[byte as usize];
                 }
             }
+            PixelCanvasDepth::Rgb => {
+                for i in 0..self.view_dimensions.0 * self.view_dimensions.1 {
+                    let idx = (i * 3) as usize;
+                    let r = self.data_buf[idx];
+                    let g = self.data_buf[idx + 1];
+                    let b = self.data_buf[idx + 2];
+                    self.backing_buf[i as usize] = Color32::from_rgb(r, g, b);
+                }
+            }
+            PixelCanvasDepth::Rgba => {
+                for i in 0..self.view_dimensions.0 * self.view_dimensions.1 {
+                    let idx = (i * 4) as usize;
+                    let r = self.data_buf[idx];
+                    let g = self.data_buf[idx + 1];
+                    let b = self.data_buf[idx + 2];
+                    let a = self.data_buf[idx + 3];
+                    self.backing_buf[i as usize] = Color32::from_rgba_premultiplied(r, g, b, a);
+                }
+            }
         }
+        self.data_unpacked = true;
     }
 }

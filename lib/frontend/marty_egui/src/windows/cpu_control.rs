@@ -225,7 +225,7 @@ impl CpuControl {
 
                 ui.label("StepOver Target: ");
                 if let Some(target) = self.step_over_target {
-                    ui.label(&format!("{:?}", self.step_over_target));
+                    ui.label(&format!("{:?}", target));
                 }
                 else {
                     ui.label("None");

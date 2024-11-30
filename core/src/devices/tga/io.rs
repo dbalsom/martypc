@@ -55,7 +55,7 @@ pub const TGA_VIDEO_ARRAY_DATA: u16 = 0x3DE;
 pub const TGA_PAGE_REGISTER: u16 = 0x3DF;
 
 impl IoDevice for TGACard {
-    fn read_u8(&mut self, port: u16, delta: DeviceRunTimeUnit) -> u8 {
+    fn read_u8(&mut self, port: u16, _delta: DeviceRunTimeUnit) -> u8 {
         // Catch up to CPU state.
         //let _ticks = self.catch_up(delta, false);
 
@@ -90,8 +90,8 @@ impl IoDevice for TGACard {
         }
     }
 
-    fn write_u8(&mut self, port: u16, data: u8, _bus: Option<&mut BusInterface>, delta: DeviceRunTimeUnit) {
-        let debug_port = (if port == 0x3D5 { true } else { false }) && self.debug;
+    fn write_u8(&mut self, port: u16, data: u8, _bus: Option<&mut BusInterface>, _delta: DeviceRunTimeUnit) {
+        //let debug_port = (if port == 0x3D5 { true } else { false }) && self.debug;
 
         // Catch up to CPU state.
         //let _ticks = self.catch_up(delta, debug_port);

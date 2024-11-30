@@ -8,6 +8,7 @@ pub struct RelativeDirectory {
 }
 
 pub enum FloppyImageSource {
-    RawSectorImage(Vec<u8>),
-    ZipArchive(Vec<u8>),
+    DiskImage(Vec<u8>, PathBuf),
+    ZipArchive(Vec<u8>, PathBuf),
+    KryoFluxSet(Vec<u8>, PathBuf),
 }

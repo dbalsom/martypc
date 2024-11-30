@@ -70,6 +70,7 @@ use config_toml_bpaf::TestMode;
 use marty_core::{
     devices::keyboard::KeyboardModifiers,
     machine::{ExecutionControl, ExecutionState, MachineBuilder},
+    supported_floppy_extensions,
 };
 
 use display_manager_wgpu::{DisplayBackend, DisplayManager, DisplayManagerGuiOptions, WgpuDisplayManagerBuilder};
@@ -87,7 +88,7 @@ use marty_egui::state::GuiState;
 
 use crate::{
     emulator::{EmuFlags, Emulator},
-    event_loop::handle_event,
+    event_loop::{handle_event, thread_events::handle_thread_event},
     input::HotkeyManager,
     sound_player::SoundInterface,
 };
@@ -505,7 +506,23 @@ pub fn run() {
     // Instantiate the floppy manager
     let mut floppy_manager = FloppyManager::new();
 
-    floppy_manager.set_extensions(config.emulator.media.raw_sector_image_extensions.clone());
+    let mut floppy_extensions = config
+        .emulator
+        .media
+        .raw_sector_image_extensions
+        .clone()
+        .unwrap_or_default();
+    let managed_extensions = supported_floppy_extensions();
+    log::debug!(
+        "marty_core reports native support for the following extensions: {:?}",
+        managed_extensions
+    );
+    managed_extensions.iter().for_each(|ext| {
+        if !floppy_extensions.contains(&ext.to_string()) {
+            floppy_extensions.push(ext.to_string());
+        }
+    });
+    floppy_manager.set_extensions(Some(floppy_extensions));
 
     // Scan the "floppy" resource
     if let Err(e) = floppy_manager.scan_resource(&resource_manager) {
@@ -796,6 +813,8 @@ pub fn run() {
 
     let machine_events = Vec::new();
 
+    let (sender, receiver) = crossbeam_channel::unbounded();
+
     // Put everything we want to handle in event loop into an Emulator struct
     let mut emu = Emulator {
         rm: resource_manager,
@@ -821,6 +840,8 @@ pub fn run() {
         },
         hkm: hotkey_manager,
         si: sound_player,
+        sender,
+        receiver,
     };
 
     // Resize video cards
@@ -874,6 +895,7 @@ pub fn run() {
 
     // Run the winit event loop
     if let Err(_e) = event_loop.run(move |event, elwt| {
+        handle_thread_event(&mut emu);
         handle_event(&mut emu, &mut timestep_manager, event, elwt);
     }) {
         log::error!("Failed to start event loop!");

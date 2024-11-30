@@ -33,18 +33,21 @@
     the appropriate methods on Bus.
 
 */
-use crate::cpu_common::{CpuAddress, CpuDispatch, Disassembly, format_instruction_bytes, ServiceEvent, StepResult};
-use log;
 
-use anyhow::{anyhow, Error};
 use std::{
     cell::Cell,
-    collections::{HashMap, VecDeque},
+    collections::{HashMap, BTreeMap, VecDeque},
     fs::File,
     io::{BufWriter, Write},
     path::PathBuf,
 };
-use std::collections::BTreeMap;
+
+use log;
+use anyhow::{anyhow, Error};
+use fluxfox::DiskImage;
+
+#[cfg(feature = "sound")]
+use crate::sound::{SoundOutputConfig, SoundOutput, SoundSourceDescriptor};
 
 use crate::{
     breakpoints::BreakPointType,
@@ -61,23 +64,21 @@ use crate::{
         mouse::Mouse,
         pic::PicStringState,
         pit::{PitDisplayState},
-        ppi::PpiStringState,
+        ppi::{PpiDisplayState, PpiStringState},
+        cartridge_slots::CartridgeSlot,
+        serial::SerialPortDisplayState,
     },
     keys::MartyKey,
     machine_config::{get_machine_descriptor, MachineConfiguration, MachineDescriptor},
-    machine_types::MachineType,
-    sound::{SoundOutputConfig},
+    machine_types::{OnHaltBehavior, MachineType},
     tracelogger::TraceLogger,
 };
+use crate::cpu_common::{CpuAddress, CpuDispatch, Disassembly, format_instruction_bytes, ServiceEvent, StepResult};
 use crate::cpu_common::builder::CpuBuilder;
-use crate::devices::cartridge_slots::CartridgeSlot;
-use crate::devices::ppi::PpiDisplayState;
-use crate::devices::serial::SerialPortDisplayState;
-use crate::machine_types::OnHaltBehavior;
+use crate::devices::fdc::FdcDebugState;
+use crate::devices::floppy_drive::FloppyImageState;
 
 use ringbuf::{Consumer};
-use crate::sound::{SoundOutput, SoundSourceDescriptor};
-
 
 pub const STEP_OVER_TIMEOUT: u32 = 320000;
 
@@ -92,8 +93,8 @@ pub struct DisassemblyListingEntry {
 
 #[derive(Copy, Clone, Debug)]
 pub struct KeybufferEntry {
-    pub keycode:   MartyKey,
-    pub pressed:   bool,
+    pub keycode: MartyKey,
+    pub pressed: bool,
     pub modifiers: KeyboardModifiers,
     pub translate: bool,
 }
@@ -176,7 +177,7 @@ impl Default for ExecutionControl {
     fn default() -> Self {
         Self {
             state: ExecutionState::Paused,
-            op:    Cell::new(ExecutionOperation::None),
+            op: Cell::new(ExecutionOperation::None),
         }
     }
 }
@@ -261,7 +262,7 @@ pub struct PitData {
 
 #[derive(Clone, Default, Debug)]
 pub struct MachineRomEntry {
-    pub md5:  String,
+    pub md5: String,
     pub addr: u32,
     pub data: Vec<u8>,
 }
@@ -269,7 +270,7 @@ pub struct MachineRomEntry {
 #[derive(Clone, Default, Debug)]
 pub struct MachineCheckpoint {
     pub addr: u32,
-    pub lvl:  u32,
+    pub lvl: u32,
     pub desc: String,
 }
 
@@ -277,8 +278,8 @@ pub struct MachineCheckpoint {
 pub struct MachinePatch {
     pub desc: String,
     pub trigger: u32,
-    pub addr:    u32,
-    pub bytes:    Vec<u8>,
+    pub addr: u32,
+    pub bytes: Vec<u8>,
     pub installed: bool,
 }
 
@@ -299,6 +300,7 @@ pub struct MachineOptions {
 pub struct MachineRunResult {
     pub cycles: u64,
     pub instructions: u64,
+    #[cfg(feature = "sound")]
     pub sound_output: SoundOutput,
 }
 
@@ -306,25 +308,24 @@ impl MachineRomManifest {
     pub fn new() -> Self {
         Default::default()
     }
-    
+
     /// Return true if the specified address range is not covered by any ROM in the manifest.
     /// Return false if the specified address range conflicts with an existing rom.
     pub fn check_load(&self, addr: usize, len: usize) -> bool {
-        
         let _check_start = addr;
         let check_end = addr + len;
-        
+
         for rom in self.roms.iter() {
             let rom_start = rom.addr as usize;
             let rom_end = rom_start + rom.data.len();
-            
+
             if (check_end > rom_start) && (check_end < rom_end) {
                 return false;
             }
         }
         true
     }
-    
+
     pub fn checkpoint_map(&self) -> HashMap<u32, usize> {
         let mut map = HashMap::new();
         for (idx, cp) in self.checkpoints.iter().enumerate() {
@@ -332,7 +333,7 @@ impl MachineRomManifest {
         }
         map
     }
-    
+
     pub fn patch_map(&self) -> HashMap<u32, usize> {
         let mut map = HashMap::new();
         for (idx, patch) in self.patches.iter().enumerate() {
@@ -352,7 +353,9 @@ pub struct MachineBuilder<'a> {
     trace_mode: TraceMode,
     trace_logger: TraceLogger,
     listing_file: Option<PathBuf>,
+    #[cfg(feature = "sound")]
     sound_config: SoundOutputConfig,
+    #[cfg(feature = "sound")]
     sound_override: Option<bool>,
     keyboard_layout_file: Option<PathBuf>,
 }
@@ -386,6 +389,7 @@ impl<'a> MachineBuilder<'a> {
         self
     }
 
+    #[cfg(feature = "sound")]
     pub fn with_sound_config(mut self, sound_config: SoundOutputConfig) -> Self {
         self.sound_config = sound_config;
         self
@@ -408,11 +412,12 @@ impl<'a> MachineBuilder<'a> {
         self
     }
 
+    #[cfg(feature = "sound")]
     pub fn with_sound_override(mut self, sound_override: bool) -> Self {
         self.sound_override = Some(sound_override);
         self
     }
-    
+
     pub fn with_keyboard_layout(mut self, layout_file: Option<PathBuf>) -> Self {
         self.keyboard_layout_file = layout_file;
         self
@@ -434,6 +439,7 @@ impl<'a> MachineBuilder<'a> {
         let trace_logger = self.trace_logger;
 
         // Remove sound player if sound_override is Some(false)
+        #[cfg(feature = "sound")]
         if let Some(sound_override) = self.sound_override {
             if self.sound_override.is_some() && !sound_override {
                 self.sound_override = None;
@@ -447,6 +453,7 @@ impl<'a> MachineBuilder<'a> {
             machine_desc,
             self.trace_mode,
             trace_logger,
+            #[cfg(feature = "sound")]
             self.sound_config,
             rom_manifest,
             self.keyboard_layout_file,
@@ -462,11 +469,13 @@ pub struct Machine {
     machine_config: MachineConfiguration,
     state: MachineState,
     options: MachineOptions,
+    #[cfg(feature = "sound")]
     sound_config: SoundOutputConfig,
     rom_manifest: MachineRomManifest,
     load_bios: bool,
     cpu: CpuDispatch,
     //pit_data: PitData,
+    #[cfg(feature = "sound")]
     sound_sources: Vec<SoundSourceDescriptor>,
     debug_snd_file: Option<File>,
     kb_buf: VecDeque<KeybufferEntry>,
@@ -497,16 +506,17 @@ impl Machine {
         machine_desc: MachineDescriptor,
         trace_mode: TraceMode,
         trace_logger: TraceLogger,
+        #[cfg(feature = "sound")]
         sound_config: SoundOutputConfig,
         rom_manifest: MachineRomManifest,
         keyboard_layout_file: Option<PathBuf>,
         disassembly_listing_file: Option<PathBuf>,
         //rom_manager: RomManager,
     ) -> Machine {
-        
+
         // TODO: Many of the operations in this constructor can fail. 
         //       We should probably move much of this to an initialize() method that can return a Result<Machine, Error>
-        
+
         // Create PIT output log file if specified
         //let pit_output_file_option = None;
         /*
@@ -534,21 +544,21 @@ impl Machine {
 
         #[cfg(feature = "cpu_validator")]
         use crate::cpu_validator::ValidatorMode;
-        
+
         // Check the requested CPU
         if !machine_desc.is_compatible_configuration(&machine_config) {
             eprintln!("Specified machine configuration is incompatible with machine description.");
             eprintln!("Have you specified incompatible hardware?");
             std::process::exit(1);
         };
-        
+
         // Resolve the CPU type. 
         // TODO: We should probably resolve a Machine configuration against the base machine description
         //       before instantiating a Machine, and pass new() the merged struct instead of separate
         //       description / configuration structs.
-        let resolved_cpu_type 
+        let resolved_cpu_type
             = machine_config.cpu.as_ref().and_then(|cpu| cpu.upgrade_type).unwrap_or(machine_desc.cpu_type);
-        
+
         // Build the CPU
         let mut cpu;
 
@@ -631,19 +641,32 @@ impl Machine {
         }
         */
 
-        let have_audio = core_config.get_audio_enabled() && sound_config.enabled;
+        //let have_audio = core_config.get_audio_enabled() && sound_config.enabled;
 
         // Install devices
-        
+
+        #[cfg(feature = "sound")]
         let install_result = cpu
             .bus_mut()
             .install_devices(&machine_desc, &machine_config, &sound_config, core_config.get_terminal_port());
-        
-        let mut sound_sources = Vec::new(); 
+        #[cfg(not(feature = "sound"))]
+        let install_result = cpu
+            .bus_mut()
+            .install_devices(&machine_desc, &machine_config, core_config.get_terminal_port());
+
+        #[cfg(feature = "sound")]
+        let mut sound_sources = Vec::new();
         match install_result {
             Ok(result) => {
-                log::debug!("Installed devices, including {} sound sources.", result.sound_sources.len());
-                sound_sources = result.sound_sources;
+                #[cfg(feature = "sound")]
+                {
+                    log::debug!("Installed devices, including {} sound sources.", result.sound_sources.len());
+                    sound_sources = result.sound_sources;
+                }
+                #[cfg(not(feature = "sound"))]
+                {
+                    log::debug!("Installed devices.");
+                }
             }
             Err(err) => {
                 log::error!("Failed to install devices: {}", err);
@@ -674,14 +697,14 @@ impl Machine {
         // Load BIOS ROM images unless config option suppressed rom loading
         if !core_config.get_machine_noroms() {
             Machine::install_roms(cpu.bus_mut(), &rom_manifest);
-            
+
             // Load checkpoint flags into memory
             cpu.bus_mut().install_checkpoints(&rom_manifest.checkpoints);
 
             if core_config.get_patch_enabled() {
                 cpu.bus_mut().install_patch_checkpoints(&rom_manifest.patches);
             }
-            
+
             // TODO: Reimplement support for manual reset vector in rom set?
             // Set entry point for ROM (mostly used for diagnostic ROMs that used the wrong jump at reset vector)
             //let rom_entry_point = rom_manager.get_entrypoint();
@@ -691,8 +714,7 @@ impl Machine {
         // Set CPU clock divisor/multiplier
         let cpu_factor = if core_config.get_machine_turbo() {
             machine_desc.cpu_turbo_factor
-        }
-        else {
+        } else {
             machine_desc.cpu_factor
         };
 
@@ -712,11 +734,13 @@ impl Machine {
             machine_config,
             options: MachineOptions::default(),
             state: MachineState::On,
+            #[cfg(feature = "sound")]
             sound_config,
             rom_manifest,
             load_bios: !core_config.get_machine_noroms(),
             cpu,
             //pit_data,
+            #[cfg(feature = "sound")]
             sound_sources,
             debug_snd_file: None,
             kb_buf: VecDeque::new(),
@@ -736,14 +760,15 @@ impl Machine {
             halt_behavior: core_config.get_halt_behavior(),
             disassembly: Disassembly::default(),
             disassembly_listing: BTreeMap::new(),
-            disassembly_listing_file
+            disassembly_listing_file,
         }
     }
 
+    #[cfg(feature = "sound")]
     pub fn get_sound_sources(&self) -> &Vec<SoundSourceDescriptor> {
         &self.sound_sources
     }
-    
+
     pub fn set_option(&mut self, opt: MachineOption) {
         match opt {
             MachineOption::RecordListing(state) => {
@@ -760,8 +785,8 @@ impl Machine {
                         if old_state {
                             log::debug!("Disassembly listing recording: OFF");
                             log::debug!("Dumping disassembly listing to: {:?}", self.disassembly_listing_file);
-                        } 
-                        
+                        }
+
                         self.dump_disassembly_listing();
                         self.disassembly_listing.clear();
                     }
@@ -769,7 +794,7 @@ impl Machine {
             }
         }
     }
-    
+
     pub fn get_option(&self, opt: MachineOption) -> MachineOption {
         match opt {
             MachineOption::RecordListing(_) => MachineOption::RecordListing(self.options.record_listing),
@@ -920,7 +945,7 @@ impl Machine {
     pub fn get_cpu_option(&mut self, opt: CpuOption) -> bool {
         self.cpu.get_option(opt)
     }
-    
+
     //noinspection ALL
     /// Send the specified video option to the active videocard device
     pub fn set_video_option(&mut self, opt: VideoOption) {
@@ -958,8 +983,7 @@ impl Machine {
         self.turbo_button = state;
         if state {
             self.next_cpu_factor = self.machine_desc.cpu_turbo_factor;
-        }
-        else {
+        } else {
             self.next_cpu_factor = self.machine_desc.cpu_factor;
         }
         log::debug!(
@@ -978,7 +1002,7 @@ impl Machine {
     }
 
     pub fn cart_slot(&mut self) -> &mut Option<CartridgeSlot> { self.cpu.bus_mut().cart_slot_mut() }
-    
+
     pub fn cpu_cycles(&self) -> u64 {
         self.cpu_cycles
     }
@@ -1012,7 +1036,7 @@ impl Machine {
 
         a.iter().cloned().chain(b.iter().cloned()).collect()
     }*/
-    
+
     /// Return the serial port's state as a Vec of SerialPortState types. We may compile this 
     /// vector from a number of sources if multiple devices contain serial ports. For now, we only
     /// support one controller.
@@ -1024,7 +1048,7 @@ impl Machine {
         }
         serial_states
     }
-    
+
 
     /// Adjust the relative phase of CPU and PIT; this is done by subtracting the relevant number of
     /// system ticks from the next run of the PIT.
@@ -1054,6 +1078,22 @@ impl Machine {
         // There will always be a primary DMA, so safe to unwrap.
         // TODO: Handle secondary DMA if present.
         self.cpu.bus_mut().dma_mut().as_mut().unwrap().get_string_state()
+    }
+
+    pub fn fdc_state(&mut self) -> Option<FdcDebugState> {
+        self.cpu.bus_mut().fdc_mut().as_mut().map(|fdc| fdc.get_debug_state())
+    }
+
+    pub fn floppy_image_state(&mut self) -> Option<Vec<Option<FloppyImageState>>> {
+        self.cpu.bus_mut().fdc_mut().as_mut().and_then(|fdc| Some(fdc.get_image_state()))
+    }
+
+    pub fn floppy_image(&mut self, drive_idx: usize) -> (Option<&DiskImage>, u64) {
+        if let Some(fdc) = self.cpu.bus_mut().fdc_mut().as_mut() {
+            fdc.get_image(drive_idx)
+        } else {
+            (None, 0)
+        }
     }
 
     pub fn videocard_state(&mut self) -> Option<VideoCardState> {
@@ -1122,14 +1162,14 @@ impl Machine {
         self.cpu.bus_mut().mouse_mut()
     }
 
+    #[cfg(feature = "serial")]
     pub fn bridge_serial_port(&mut self, port_num: usize, host_port_name: String, host_port_id: usize) -> Result<(), Error> {
         if let Some(spc) = self.cpu.bus_mut().serial_mut() {
             if let Err(e) = spc.bridge_port(port_num, host_port_name, host_port_id) {
                 log::error!("Failed to bridge serial port: {}", e);
                 return Err(anyhow!(format!("Failed to bridge serial port: {}", e)));
             }
-        }
-        else {
+        } else {
             log::error!("No serial port controller present!");
             return Err(anyhow!("No serial port controller present!"));
         }
@@ -1210,8 +1250,7 @@ impl Machine {
     pub fn get_checkpoint_string(&self, idx: usize) -> Option<String> {
         if idx < self.rom_manifest.checkpoints.len() {
             Some(self.rom_manifest.checkpoints[idx].desc.clone())
-        }
-        else {
+        } else {
             None
         }
     }
@@ -1333,7 +1372,7 @@ impl Machine {
         while cycles_elapsed < cycle_target_adj {
             let fake_cycles: u32 = 7;
             let mut cpu_cycles;
-            
+
             // if self.cpu.is_error() {
             //     break;
             // }
@@ -1363,7 +1402,7 @@ impl Machine {
                     self.bus_mut().install_patch(&mut patch);
                     self.rom_manifest.patches[cp] = patch;
                 }
-                
+
                 /*
                 if let Some(cp) = self.rom_manager.get_checkpoint(flat_address) {
                     log::debug!("ROM CHECKPOINT: [{:05X}] {}", flat_address, cp);
@@ -1463,8 +1502,7 @@ impl Machine {
             // disassembly listing.
             let listing_entry = if self.options.record_listing {
                 Some(&mut self.disassembly)
-            }
-            else {
+            } else {
                 None
             };
 
@@ -1478,13 +1516,12 @@ impl Machine {
             if self.options.record_listing {
                 let cpu_address = CpuAddress::Segmented(self.disassembly.cs, self.disassembly.ip);
                 let listing_entry = DisassemblyListingEntry {
-                    visit_count : 0,
-                    disassembly : self.disassembly.clone()
+                    visit_count: 0,
+                    disassembly: self.disassembly.clone(),
                 };
                 let entry = self.disassembly_listing.entry(cpu_address).or_insert(listing_entry);
                 entry.visit_count += 1;
             }
-
 
 
             // If we returned a step over target address, execution is paused, and step over was requested,
@@ -1596,8 +1633,7 @@ impl Machine {
             // We have an alternate
             todo!("Unimplemented conversion for AT timer");
             //1
-        }
-        else {
+        } else {
             match self.machine_desc.cpu_factor {
                 ClockFactor::Divisor(n) => self.machine_desc.timer_divisor / (n as u32),
                 ClockFactor::Multiplier(_n) => {
@@ -1729,8 +1765,8 @@ impl Machine {
     {
         self.bus_mut().for_each_videocard(f)
     }
-    
-    
+
+
     pub fn dump_disassembly_listing(&mut self) {
 
         // Resolve filename option
@@ -1741,7 +1777,7 @@ impl Machine {
                 return;
             }
         };
-        
+
         // Attempt to open file
         let file_opt = File::create(&filename);
         let file = match file_opt {
@@ -1755,21 +1791,21 @@ impl Machine {
         // We should have an open file now. Create a BufWriter for it.
         let mut writer = BufWriter::new(file);
 
-/*        _ = writer.write_all("flat,cs,ip,bytes,disasm,comments".as_bytes());
-        
-        for (addr, entry) in self.disassembly_listing.iter() {  
-            let disasm = &entry.disassembly;
-            let line = format!(
-                "{:05X},{:04X},{:04X},{:?},{},{}\n",
-                u32::from(addr),
-                disasm.cs,
-                disasm.ip,
-                disasm.bytes,
-                disasm.i,
-                ";"
-            );
-            _ = writer.write_all(line.as_bytes());
-        }*/
+        /*        _ = writer.write_all("flat,cs,ip,bytes,disasm,comments".as_bytes());
+
+                for (addr, entry) in self.disassembly_listing.iter() {
+                    let disasm = &entry.disassembly;
+                    let line = format!(
+                        "{:05X},{:04X},{:04X},{:?},{},{}\n",
+                        u32::from(addr),
+                        disasm.cs,
+                        disasm.ip,
+                        disasm.bytes,
+                        disasm.i,
+                        ";"
+                    );
+                    _ = writer.write_all(line.as_bytes());
+                }*/
 
         for (addr, entry) in self.disassembly_listing.iter() {
             let disasm = &entry.disassembly;
@@ -1778,7 +1814,7 @@ impl Machine {
                 u32::from(addr),
                 disasm.cs,
                 disasm.ip,
-                format_instruction_bytes(&disasm.bytes), 
+                format_instruction_bytes(&disasm.bytes),
                 format!("{}", disasm.i),
                 ";"
             );

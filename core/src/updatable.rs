@@ -114,7 +114,7 @@ impl<'a, T: 'a + std::cmp::PartialEq> Updatable<T> {
         }
     }
     #[inline]
-    pub fn get(&'a self) -> &T {
+    pub fn get(&'a self) -> &'a T {
         match self {
             Updatable::Dirty(t, _) => t,
             Updatable::DirtyAging(t, _, _) => t,

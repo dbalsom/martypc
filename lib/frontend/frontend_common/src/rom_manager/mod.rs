@@ -199,7 +199,7 @@ impl RomManager {
         let mut rom_defs: Vec<RomSetDefinition> = Vec::new();
 
         // Get a file listing of the rom directory.
-        let items = rm.enumerate_items("rom", true, true, None)?;
+        let items = rm.enumerate_items("rom", None, true, true, None)?;
 
         // Filter out any non-toml files.
         let toml_defs: Vec<_> = items
@@ -420,7 +420,7 @@ impl RomManager {
     }
 
     pub fn scan(&mut self, rm: &ResourceManager) -> Result<(), Error> {
-        let roms = rm.enumerate_items("rom", true, true, None)?;
+        let roms = rm.enumerate_items("rom", None, true, true, None)?;
 
         // Clear the list of ROM candidates so we can rebuild it
         self.rom_candidates.clear();

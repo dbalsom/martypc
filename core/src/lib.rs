@@ -51,6 +51,7 @@ pub mod keys;
 pub mod machine;
 pub mod machine_config;
 pub mod memerror;
+#[cfg(feature = "sound")]
 pub mod sound;
 pub mod syntax_token;
 pub mod tracelogger;
@@ -67,3 +68,6 @@ pub mod arduino8088_client;
 #[macro_use]
 pub mod arduino8088_validator;
 pub mod machine_types;
+
+// Re-exported for use by frontend to populate file browser.
+pub use fluxfox::supported_extensions as supported_floppy_extensions;

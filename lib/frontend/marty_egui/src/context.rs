@@ -233,7 +233,7 @@ impl GuiRenderContext {
 
             let ctx = self.egui_ctx.clone();
             let vpi = self.viewport_mut();
-            egui_winit::update_viewport_info(vpi, &ctx, window);
+            egui_winit::update_viewport_info(vpi, &ctx, window, true);
             let raw_input = self.egui_state.take_egui_input(window);
 
             let mut ran = false;

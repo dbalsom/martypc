@@ -32,6 +32,8 @@
 extern crate core;
 
 use egui::{Color32, Context, Visuals};
+use fluxfox::{DiskImageFileFormat, StandardFormat};
+use lazy_static::lazy_static;
 use std::{
     collections::{BTreeMap, HashMap, VecDeque},
     ffi::OsString,
@@ -40,8 +42,6 @@ use std::{
     path::PathBuf,
     time::Duration,
 };
-
-use lazy_static::lazy_static;
 
 use frontend_common::{
     display_manager::DisplayInfo,
@@ -56,6 +56,7 @@ pub mod context;
 mod glyphs;
 mod layouts;
 mod menu;
+pub mod modal;
 pub mod state;
 mod themes;
 mod token_listview;
@@ -101,6 +102,8 @@ pub enum GuiWindow {
     VHDCreator,
     CycleTraceViewer,
     TextModeViewer,
+    FdcViewer,
+    FloppyViewer,
 }
 
 #[derive(Copy, Clone, Debug)]
@@ -170,10 +173,14 @@ pub enum GuiEvent {
     LoadVHD(usize, usize),
     DetachVHD(usize),
     CreateVHD(OsString, HardDiskFormat),
-    LoadFloppy(usize, usize),
+    LoadQuickFloppy(usize, usize),
+    LoadFloppyAs(usize, PathBuf),
     LoadAutoFloppy(usize, PathBuf),
-    SaveFloppy(usize, usize),
+    SaveFloppy(usize, usize),                          // Drive index, disk index
+    SaveFloppyAs(usize, DiskImageFileFormat, PathBuf), // Drive image, format, requested path
     EjectFloppy(usize),
+    CreateNewFloppy(usize, StandardFormat, bool),
+    QueryCompatibleFloppyFormats(usize),
     SetFloppyWriteProtect(usize, bool),
     BridgeSerialPort(usize, String, usize),
     DumpVRAM,
@@ -498,6 +505,26 @@ lazy_static! {
                 title: "Text Mode Viewer",
                 menu: "Text Mode Viewer",
                 width: 600.0,
+                resizable: false,
+            },
+        ),
+        (
+            GuiWindow::FdcViewer,
+            WorkspaceWindowDef {
+                id: GuiWindow::FdcViewer,
+                title: "FDC Viewer",
+                menu: "FDC",
+                width: 800.0,
+                resizable: false,
+            },
+        ),
+        (
+            GuiWindow::FloppyViewer,
+            WorkspaceWindowDef {
+                id: GuiWindow::FloppyViewer,
+                title: "Floppy Viewer",
+                menu: "Media Viewer",
+                width: 700.0,
                 resizable: false,
             },
         ),

@@ -57,6 +57,11 @@ use std::{
 };
 use zip::ZipArchive;
 
+pub enum ArchiveType {
+    Mountable,
+    CompressedImage,
+}
+
 #[derive(Debug)]
 pub enum FloppyError {
     DirNotFound,
@@ -125,7 +130,7 @@ impl FloppyManager {
         self.image_map.clear();
 
         // Retrieve all items from the floppy resource paths.
-        let floppy_items = rm.enumerate_items("floppy", true, true, Some(self.extensions.clone()))?;
+        let floppy_items = rm.enumerate_items("floppy", None, true, true, Some(self.extensions.clone()))?;
 
         // Index mapping between 'files' vec and 'image_vec' should be maintained.
         for item in floppy_items.iter() {
@@ -134,7 +139,7 @@ impl FloppyManager {
                 idx,
                 name: item.full_path.file_name().unwrap().to_os_string(),
                 path: item.full_path.clone(),
-                size: item.full_path.metadata().unwrap().len(),
+                size: item.full_path.metadata()?.len(),
             });
 
             self.image_map
@@ -151,11 +156,11 @@ impl FloppyManager {
         self.autofloppy_dir_vec.clear();
 
         // Retrieve all items from the floppy resource paths.
-        let autofloppy_dirs = rm.enumerate_items("autofloppy", false, false, None)?;
+        let autofloppy_dirs = rm.enumerate_items("autofloppy", None, false, false, None)?;
 
         // Index mapping between 'files' vec and 'image_vec' should be maintained.
         for item in autofloppy_dirs.iter() {
-            let idx = self.image_vec.len();
+            //let idx = self.image_vec.len();
 
             if matches!(item.rtype, ResourceItemType::Directory) {
                 self.autofloppy_dir_vec.push(RelativeDirectory {
@@ -188,18 +193,14 @@ impl FloppyManager {
             if path.is_file() {
                 if let Some(extension) = path.extension() {
                     if self.extensions.contains(&extension.to_ascii_lowercase()) {
-                        println!(
-                            "Found floppy image: {:?} size: {}",
-                            path,
-                            path.metadata().unwrap().len()
-                        );
+                        println!("Found floppy image: {:?} size: {}", path, path.metadata()?.len());
 
                         let idx = self.image_vec.len();
                         self.image_vec.push(FloppyImage {
                             idx,
                             name: path.file_name().unwrap().to_os_string(),
                             path: path.clone(),
-                            size: path.metadata().unwrap().len(),
+                            size: path.metadata()?.len(),
                         });
 
                         self.image_map.insert(path.file_name().unwrap().to_os_string(), idx);
@@ -270,7 +271,14 @@ impl FloppyManager {
         Some(self.image_vec[idx].name.clone())
     }
 
-    pub fn load_floppy_data(&self, idx: usize, rm: &ResourceManager) -> Result<FloppyImageSource, FloppyError> {
+    pub fn get_floppy_path(&self, idx: usize) -> Option<PathBuf> {
+        if idx >= self.image_vec.len() {
+            return None;
+        }
+        Some(self.image_vec[idx].path.clone())
+    }
+
+    pub fn load_floppy_by_idx(&self, idx: usize, rm: &ResourceManager) -> Result<FloppyImageSource, FloppyError> {
         let floppy_vec;
 
         if idx >= self.image_vec.len() {
@@ -284,11 +292,42 @@ impl FloppyManager {
             }
         };
 
-        if floppy_path.extension().unwrap().to_ascii_lowercase() == "zip" {
-            Ok(FloppyImageSource::ZipArchive(floppy_vec))
+        self.load_floppy_by_path(floppy_path, rm)
+    }
+
+    pub fn load_floppy_by_path(
+        &self,
+        floppy_path: PathBuf,
+        rm: &ResourceManager,
+    ) -> Result<FloppyImageSource, FloppyError> {
+        let floppy_vec = match rm.read_resource_from_path(&floppy_path) {
+            Ok(vec) => vec,
+            Err(_e) => {
+                return Err(FloppyError::FileReadError);
+            }
+        };
+
+        // TODO: use regex instead of simple extension check for kryoflux
+        if floppy_path.extension().unwrap().to_ascii_lowercase() == "raw" {
+            Ok(FloppyImageSource::KryoFluxSet(floppy_vec, floppy_path))
+        }
+        else if floppy_path.extension().unwrap().to_ascii_lowercase() == "zip" {
+            // Determine whether we should treat the zip as a mountable archive or a compressed image.
+            // The current logic is to treat it as a mountable archive, unless:
+            // - The zip contains a single file with a known image extension
+            // - The zip contains over 5MB of uncompressed files, and a file with a .raw extension
+            // If those conditions are met, the file is treated as a compressed image.
+            // fluxfox handles this for us so we simply return it as a standard disk image in this case.
+            let archive_type = self
+                .discover_archive_type(&floppy_vec)
+                .map_err(|e| FloppyError::ImageBuildError)?;
+            match archive_type {
+                ArchiveType::Mountable => Ok(FloppyImageSource::ZipArchive(floppy_vec, floppy_path)),
+                ArchiveType::CompressedImage => Ok(FloppyImageSource::DiskImage(floppy_vec, floppy_path)),
+            }
         }
         else {
-            Ok(FloppyImageSource::RawSectorImage(floppy_vec))
+            Ok(FloppyImageSource::DiskImage(floppy_vec, floppy_path))
         }
     }
 
@@ -394,30 +433,32 @@ impl FloppyManager {
             let mut dst_root_dir = vfat12.root_dir();
 
             if let Some(src_root_node) = src_root_node_opt {
-                if let Err(err) = build_autofloppy_dir(&src_root_node, dst_root_dir, rm, &mut |path: &Path| {
-                    // This callback strips the first directory entry back off the tree (.\\)
-                    // and converts backslashes to forward slashes.
+                if let Err(err) =
+                    build_autofloppy_dir(&src_root_node, dst_root_dir, rm, &files_visited, &mut |path: &Path| {
+                        // This callback strips the first directory entry back off the tree (.\\)
+                        // and converts backslashes to forward slashes.
 
-                    let mut buf = path.to_path_buf();
-                    if let Some(first_component) = buf.components().next() {
-                        if first_component.as_os_str() == "." {
-                            buf = buf.components().skip(1).collect();
+                        let mut buf = path.to_path_buf();
+                        if let Some(first_component) = buf.components().next() {
+                            if first_component.as_os_str() == "." {
+                                buf = buf.components().skip(1).collect();
+                            }
                         }
-                    }
 
-                    if let Some(path_str) = buf.to_str() {
-                        let zip_path = path_str.replace("\\", "/");
+                        if let Some(path_str) = buf.to_str() {
+                            let zip_path = path_str.replace("\\", "/");
 
-                        log::debug!("Reading file from zip: {}", zip_path);
-                        let mut file = zip.by_name(&zip_path)?;
-                        let mut file_vec = Vec::new();
-                        file.read_to_end(&mut file_vec)?;
-                        Ok(file_vec)
-                    }
-                    else {
-                        Err(FloppyError::ImageBuildError.into())
-                    }
-                }) {
+                            log::debug!("Reading file from zip: {}", zip_path);
+                            let mut file = zip.by_name(&zip_path)?;
+                            let mut file_vec = Vec::new();
+                            file.read_to_end(&mut file_vec)?;
+                            Ok(file_vec)
+                        }
+                        else {
+                            Err(FloppyError::ImageBuildError.into())
+                        }
+                    })
+                {
                     log::error!("Error building autofloppy directory: {}", err);
                 }
             }
@@ -474,7 +515,12 @@ impl FloppyManager {
             }
         };
 
-        let dir_items = rm.enumerate_items("autofloppy", false, true, None)?;
+        let subdir = path.file_name().unwrap();
+
+        log::warn!("Enumerating items under autofloppy path/{}", subdir.to_str().unwrap());
+        //let dir_items = rm.enumerate_items_from_path(path)?;
+        let dir_items = rm.enumerate_items("autofloppy", Some(subdir), false, true, None)?;
+        log::warn!("{:?}", dir_items);
 
         let mut files_visited: HashSet<PathBuf> = HashSet::new();
         let mut io_sys: Option<PathBuf> = None;
@@ -520,7 +566,7 @@ impl FloppyManager {
             let mut io_sys_file = vfat12.root_dir().create_file(filename_only)?;
             log::debug!("Installing IO SYS: {}", filename_only);
             io_sys_file.write_all(&io_sys_vec)?;
-            io_sys_file.flush().unwrap();
+            io_sys_file.flush()?;
         }
 
         // If we found MSDOS.SYS, write it second.
@@ -530,48 +576,29 @@ impl FloppyManager {
             let mut dos_sys_file = vfat12.root_dir().create_file(filename_only)?;
             log::debug!("Installing DOS SYS: {}", filename_only);
             dos_sys_file.write_all(&dos_sys_vec)?;
-            dos_sys_file.flush().unwrap();
+            dos_sys_file.flush()?;
         }
 
         // Build tree from the rest of the files
         let file_tree = rm.items_to_tree("autofloppy", &dir_items)?;
+        //let src_root_node_opt = Some(file_tree);
         let src_root_node_opt = file_tree.descend(path.file_name().unwrap().to_str().unwrap());
 
+        // Block scope to avoid borrowing vfat12 forever
         {
-            let mut dst_root_dir = vfat12.root_dir();
+            let dst_root_dir = vfat12.root_dir();
 
             if let Some(src_root_node) = src_root_node_opt {
-                if let Err(err) = build_autofloppy_dir(&src_root_node, dst_root_dir, rm, &mut |path: &Path| {
-                    rm.read_resource_from_path(path)
-                }) {
+                if let Err(err) =
+                    build_autofloppy_dir(&src_root_node, dst_root_dir, rm, &files_visited, &mut |path: &Path| {
+                        log::trace!("Building FAT image with path: {}", path.display());
+                        rm.read_resource_from_path(path)
+                    })
+                {
                     log::error!("Error building autofloppy directory: {:?}", err);
                 }
             }
         }
-        /*
-        for item in &dir_items {
-            let filename_only = item.filename_only.as_ref().unwrap();
-            let filename = filename_only.to_str().unwrap().clone();
-
-            if filename.to_lowercase() == "bootsector.bin" {
-                bootsector_opt = Some(item.full_path.clone());
-                continue;
-            }
-
-            let file_vec = rm.read_resource_from_path(&item.full_path)?;
-
-            if files_visited.get(&item.full_path).is_some() {
-                // Skip files we have already processed, like IO.SYS and MSDOS.SYS
-                log::debug!("Skipping previously installed file: {:?}", item.full_path);
-                continue;
-            }
-
-            log::debug!("Writing file: {:?} size: {}", item.full_path.display(), file_vec.len());
-
-            let mut file = vfat12.root_dir().create_file(filename)?;
-            file.write_all(&file_vec)?;
-            file.flush().unwrap();
-        }*/
 
         vfat12.unmount()?;
 
@@ -584,22 +611,25 @@ impl FloppyManager {
             if bootsector_vec.len() > 0 {
                 if bootsector_vec.len() < 512 {
                     bootsector_vec.extend(vec![0u8; 512 - bootsector_vec.len()]);
+                    // Add the boot sector marker
+                    bootsector_vec[510] = 0x55;
+                    bootsector_vec[511] = 0xAA;
                 }
                 else if bootsector_vec.len() > 512 {
                     bootsector_vec.truncate(512);
                 }
 
                 log::debug!(
-                    "Installing bootsector of len: {} into autofloppy image...",
+                    "Installing bootsector: {} of len: {} into autofloppy image...",
+                    bootsector_path.display(),
                     bootsector_vec.len()
                 );
+                // TODO: Eventually we would prefer to use fluxfox to write the first sector logically
                 buf[..512].copy_from_slice(&bootsector_vec);
             }
         }
 
-        //log::debug!("Created image of size: {}", image_buf.len());
-
-        let mut file = std::fs::File::create("fat_dump.img").map_err(|_| FloppyError::ImageBuildError)?;
+        let mut file = File::create("fat_dump.img").map_err(|_| FloppyError::ImageBuildError)?;
         file.write_all(&buf).map_err(|_| FloppyError::ImageBuildError)?;
 
         Ok(buf.clone())
@@ -650,10 +680,46 @@ impl FloppyManager {
         // TODO: Implement write through resource manager instead of direct file access.
         match std::fs::write(&floppy_path, data) {
             Ok(_) => Ok(floppy_path.clone()),
-            Err(_e) => {
-                return Err(FloppyError::FileWriteError);
+            Err(_e) => Err(FloppyError::FileWriteError),
+        }
+    }
+
+    fn discover_archive_type(&self, archive_vec: &[u8]) -> Result<ArchiveType, Error> {
+        let mut cursor = Cursor::new(archive_vec);
+        let zip = ZipArchive::new(cursor)?;
+
+        let files = zip.file_names().map(|str| str.to_string()).collect::<Vec<String>>();
+        let total_size = zip.decompressed_size().unwrap_or(0);
+
+        if files.len() == 1 {
+            // Single file present in archive. See if it's a known extension.
+            let path = Path::new(&files[0]);
+
+            if path.extension().is_some() {
+                let ext = path.extension().unwrap().to_ascii_lowercase();
+                if self.extensions.contains(&ext) {
+                    log::debug!(
+                        "discover_archive_type(): Found single file in archive with known extension: {:?}",
+                        ext
+                    );
+                    return Ok(ArchiveType::CompressedImage);
+                }
             }
         }
+        else if total_size > 5_000_000 {
+            // Only look for Kryoflux sets if we have at least 5MB worth of files
+            let path = Path::new(&files[0]);
+
+            if path.extension().is_some() {
+                let ext = path.extension().unwrap().to_ascii_lowercase();
+                if ext == "raw" {
+                    log::debug!("discover_archive_type(): Found multiple files in archive, first file is a .raw file. Assuming compressed Kryoflux set");
+                    return Ok(ArchiveType::CompressedImage);
+                }
+            }
+        }
+
+        Ok(ArchiveType::Mountable)
     }
 }
 
@@ -710,6 +776,7 @@ pub fn build_autofloppy_dir<IO: fatfs::Read + fatfs::Write + fatfs::Seek, TP, OC
     dir_node: &TreeNode,
     fs: Dir<IO, TP, OCC>,
     rm: &ResourceManager,
+    visited: &HashSet<PathBuf>,
     file_callback: &mut dyn FnMut(&Path) -> Result<Vec<u8>, Error>,
 ) -> Result<(), Error>
 where
@@ -726,6 +793,10 @@ where
         log::debug!("Processing child {}", i);
         match entry.node_type() {
             NodeType::File(path) => {
+                if visited.contains(path) {
+                    log::debug!("Skipping previously installed file: {:?}", path);
+                    continue;
+                }
                 log::debug!("build_autofloppy_dir: file_name: {}", path.display());
 
                 let file_vec = file_callback(Path::new(path))?;
@@ -744,7 +815,7 @@ where
                 let new_dir = fs
                     .create_dir(&filename)
                     .map_err(|_| anyhow::anyhow!("Failed to create directory: {}", filename))?;
-                build_autofloppy_dir(entry, new_dir, rm, file_callback)?;
+                build_autofloppy_dir(entry, new_dir, rm, visited, file_callback)?;
             }
         }
         log::debug!("Completed processing child {}", i);

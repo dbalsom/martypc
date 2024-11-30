@@ -136,8 +136,8 @@ pub struct GraphicsControllerStats {
     pub mode_1_writes: u32,
     pub mode_2_writes: u32,
     pub mode_3_writes: u32,
-    pub mode_0_reads:  u32,
-    pub mode_1_reads:  u32,
+    pub mode_0_reads: u32,
+    pub mode_1_reads: u32,
 }
 pub struct GraphicsController {
     graphics_register_select_byte: u8,
@@ -190,8 +190,8 @@ impl Default for GraphicsController {
             debug_ctr: 1,
 
             c4_flipflop: false,
-            
-            stats: GraphicsControllerStats::default()
+
+            stats: GraphicsControllerStats::default(),
         }
     }
 }
@@ -308,7 +308,7 @@ impl GraphicsController {
     /// Implement the serializer output of the Graphics Controller, for graphics modes.
     /// Unlike CPU reads, this does not set the latches, however it performs address manipulation
     /// and allows for processing such as CGA compatibility shifting.
-    pub fn serialize<'a>(&'a mut self, seq: &'a Sequencer, address: usize) -> &[u8] {
+    pub fn serialize<'a>(&'a mut self, seq: &'a Sequencer, address: usize) -> &'a [u8] {
         let offset = address;
 
         match self.graphics_mode.shift_mode() {
@@ -348,7 +348,7 @@ impl GraphicsController {
         }
     }
 
-    pub fn parallel<'a>(&'a mut self, seq: &'a Sequencer, address: usize, row: u8) -> (&[u8], u8) {
+    pub fn parallel<'a>(&'a mut self, seq: &'a Sequencer, address: usize, row: u8) -> (&'a [u8], u8) {
         let glyph = seq.gc_read_u8(0, address, address & 0x01);
         let attr = seq.gc_read_u8(1, address + 1, (address + 1) & 0x01);
         let glyph_span_addr = seq.get_glyph_address(glyph, 0, row);
@@ -453,8 +453,7 @@ impl GraphicsController {
                             true => 0xFF,
                             false => 0x00,
                         }
-                    }
-                    else {
+                    } else {
                         // Set/Reset Enable bit not set, use data from rotate step
                         self.pipeline_buf[i] = data_rot
                     }
@@ -587,19 +586,16 @@ impl GraphicsController {
                         if address > 0xFFFF {
                             // Replace bit 0 with bit 16
                             offset = (address & !1) | (((address & 0x10000) >> 16) & 1);
-                        }
-                        else {
+                        } else {
                             // Replace bit 0 with bit 14
                             offset = (address & !1) | (((address & 0x04000) >> 14) & 1);
                         }
-                    }
-                    else {
+                    } else {
                         // Not sure what to do in this case if we're out of bounds of a 64k plane.
                         // So just mask it to 64k for now.
                         offset = address & 0xFFFF;
                     }
-                }
-                else {
+                } else {
                     return None;
                 }
             }
@@ -608,20 +604,17 @@ impl GraphicsController {
                     if self.graphics_micellaneous.chain_odd_even() {
                         // Replace bit 0 with the page select bit
                         offset = (address & !1) | page_select as usize;
-                    }
-                    else {
+                    } else {
                         offset = address - VGA_MEM_ADDRESS;
                     }
-                }
-                else {
+                } else {
                     return None;
                 }
             }
             MemoryMap::B8000_32K => {
                 if let CGA_MEM_ADDRESS..=CGA_MEM_END = address {
                     offset = address - CGA_MEM_ADDRESS;
-                }
-                else {
+                } else {
                     return None;
                 }
             }

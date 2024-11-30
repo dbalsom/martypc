@@ -29,8 +29,12 @@ log = "0.4"
 web-time.workspace = true
 strum = "0.25"
 strum_macros = "0.25"
+tiny-skia = "0.11"
 toml.workspace = true
 anyhow.workspace = true
+fluxfox.workspace = true
+crossbeam-channel.workspace = true
+crossbeam-utils.workspace = true
 
 egui.workspace = true
 egui-wgpu.workspace = true
@@ -38,11 +42,13 @@ egui-winit.workspace = true
 egui_extras.workspace = true
 egui_plot.workspace = true
 
-egui-notify = { git = "https://github.com/dbalsom/egui-notify_martypc.git", branch = "egui_0_27_2"}
+#egui-file-dialog = "0.6.1"
+egui_file = {  git = "https://github.com/Barugon/egui_file", rev="f08fe3f9ea22de0312d062384544c5d2af5b76a1" }
+egui-notify = { git = "https://github.com/dbalsom/egui-notify_martypc.git", branch = "egui_0_28_1"}
 
 # Debug TUI interface imports
-ratatui = { version = "0.26.2", default-features = false }
-egui_ratatui = "0.0.10"
+#ratatui = { version = "0.26.2", default-features = false }
+#egui_ratatui = "0.0.10"
 #egui_ratatui = { git = "https://github.com/dbalsom/egui_ratatui_martypc.git", branch = "resize_fix"}
 serde = { workspace = true, features = ["derive"] }
 lazy_static = "1.4.0"

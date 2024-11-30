@@ -33,21 +33,8 @@
 use crate::{
     breakpoints::{BreakPointType, StopWatchData},
     bus::BusInterface,
-    cpu_808x::{
-        Intel808x,
-        Register16,
-    },
-    cpu_common::{
-        Cpu,
-        CpuAddress,
-        CpuError,
-        CpuOption,
-        CpuStringState,
-        CpuType,
-        ServiceEvent,
-        StepResult,
-    },
-    cpu_validator::{CycleState},
+    cpu_808x::{Intel808x, Register16},
+    cpu_common::{Cpu, CpuAddress, CpuError, CpuOption, CpuStringState, CpuType, ServiceEvent, StepResult},
     syntax_token::SyntaxToken,
 };
 
@@ -56,6 +43,8 @@ use crate::cpu_808x::CpuValidatorState;
 use crate::cpu_common::{Disassembly, Register8};
 #[cfg(feature = "cpu_validator")]
 use crate::cpu_validator::CpuValidator;
+#[cfg(feature = "cpu_validator")]
+use crate::cpu_validator::CycleState;
 
 impl Cpu for Intel808x {
     fn reset(&mut self) {
@@ -201,8 +190,9 @@ impl Cpu for Intel808x {
     }
 
     #[inline]
+    #[cfg(feature = "cpu_validator")]
     fn get_cycle_states(&self) -> &Vec<CycleState> {
-        self.get_cycle_states()
+        self.get_cycle_states_internal()
     }
 
     fn get_cycle_trace(&self) -> &Vec<String> {

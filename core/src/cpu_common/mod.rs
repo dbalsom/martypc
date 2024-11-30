@@ -56,13 +56,14 @@ use crate::{
     bus::BusInterface,
     bytequeue::ByteQueue,
     cpu_808x::Intel808x,
-    cpu_validator::CycleState,
     cpu_vx0::NecVx0,
     syntax_token::{SyntaxToken, SyntaxTokenize},
 };
 
 #[cfg(feature = "cpu_validator")]
 use crate::cpu_validator::CpuValidator;
+#[cfg(feature = "cpu_validator")]
+use crate::cpu_validator::CycleState;
 
 // Instruction prefixes
 pub const OPCODE_PREFIX_0F: u32 = 0b_1000_0000_0000_0000;
@@ -415,6 +416,7 @@ pub trait Cpu {
     fn dump_instruction_history_tokens(&self) -> Vec<Vec<SyntaxToken>>;
     fn dump_call_stack(&self) -> String;
     fn get_service_event(&mut self) -> Option<ServiceEvent>;
+    #[cfg(feature = "cpu_validator")]
     fn get_cycle_states(&self) -> &Vec<CycleState>;
     fn get_cycle_trace(&self) -> &Vec<String>;
     fn get_cycle_trace_tokens(&self) -> &Vec<Vec<SyntaxToken>>;

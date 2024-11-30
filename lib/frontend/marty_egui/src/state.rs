@@ -30,6 +30,7 @@
 */
 
 use crate::{
+    modal::ModalState,
     widgets::file_tree_menu::FileTreeMenu,
     windows::{
         about::AboutDialog,
@@ -43,6 +44,8 @@ use crate::{
         device_control::DeviceControl,
         disassembly_viewer::DisassemblyControl,
         dma_viewer::DmaViewerControl,
+        fdc_viewer::FdcViewerControl,
+        floppy_viewer::FloppyViewerControl,
         instruction_history_viewer::InstructionHistoryControl,
         io_stats_viewer::IoStatsViewerControl,
         ivt_viewer::IvtViewerControl,
@@ -67,7 +70,9 @@ use crate::{
     PerformanceStats,
 };
 use egui::ColorImage;
+use egui_file::FileDialog;
 use egui_notify::{Anchor, Toasts};
+use fluxfox::{DiskImageFileFormat, StandardFormat};
 use frontend_common::{
     display_manager::DisplayInfo,
     display_scaler::{ScalerMode, ScalerPreset},
@@ -94,6 +99,7 @@ use strum::IntoEnumIterator;
 
 pub enum FloppyDriveSelection {
     None,
+    NewImage(StandardFormat),
     Image(PathBuf),
     ZipArchive(PathBuf),
     Directory(PathBuf),
@@ -101,25 +107,42 @@ pub enum FloppyDriveSelection {
 
 pub struct GuiFloppyDriveInfo {
     pub(crate) idx: usize,
+    pub(crate) selection_new: Option<StandardFormat>,
     pub(crate) selected_idx: Option<usize>,
     pub(crate) selected_path: FloppyDriveSelection,
     pub(crate) write_protected: bool,
     pub(crate) read_only: bool,
     pub(crate) drive_type: FloppyDriveType,
+    pub(crate) supported_formats: Vec<(DiskImageFileFormat, Vec<String>)>,
+    pub(crate) source_format: Option<DiskImageFileFormat>,
+    pub(crate) source_writeback: bool,
+    write_ct: u64,
 }
 
 impl GuiFloppyDriveInfo {
     pub fn filename(&self) -> Option<String> {
         match &self.selected_path {
-            FloppyDriveSelection::Image(path) => Some(path.to_string_lossy().to_string()),
-            FloppyDriveSelection::Directory(path) => Some(path.file_name().unwrap().to_string_lossy().to_string()),
+            FloppyDriveSelection::NewImage(_) => None,
+            FloppyDriveSelection::Image(path) => Some(path.file_name()?.to_string_lossy().to_string()),
+            FloppyDriveSelection::Directory(path) => Some(path.file_name()?.to_string_lossy().to_string()),
             FloppyDriveSelection::ZipArchive(path) => Some(path.to_string_lossy().to_string()),
+            FloppyDriveSelection::None => None,
+        }
+    }
+
+    pub fn file_path(&self) -> Option<&PathBuf> {
+        match &self.selected_path {
+            FloppyDriveSelection::NewImage(_) => None,
+            FloppyDriveSelection::Image(path) => Some(path),
+            FloppyDriveSelection::Directory(path) => Some(path),
+            FloppyDriveSelection::ZipArchive(path) => Some(path),
             FloppyDriveSelection::None => None,
         }
     }
 
     pub fn type_string(&self) -> String {
         match &self.selected_path {
+            FloppyDriveSelection::NewImage(_) => "New Image: ".to_string(),
             FloppyDriveSelection::Image(_) => "Image: ".to_string(),
             FloppyDriveSelection::Directory(_) => "Directory: ".to_string(),
             FloppyDriveSelection::ZipArchive(_) => "Zip Archive: ".to_string(),
@@ -127,8 +150,15 @@ impl GuiFloppyDriveInfo {
         }
     }
 
+    pub fn is_new(&self) -> Option<StandardFormat> {
+        match &self.selected_path {
+            FloppyDriveSelection::NewImage(sf) => Some(*sf),
+            _ => None,
+        }
+    }
+
     pub fn is_writeable(&self) -> bool {
-        !self.read_only
+        !self.read_only & self.source_writeback
     }
 
     pub fn write_protect(&mut self, state: bool) {
@@ -206,6 +236,8 @@ pub struct GuiState {
     pub(crate) toasts: Toasts,
     media_tray: MediaTrayState,
 
+    pub(crate) default_floppy_path: Option<PathBuf>,
+
     /// Only show the associated window when true.
     pub(crate) window_open_flags: HashMap<GuiWindow, bool>,
     pub(crate) window_state: BTreeMap<GuiWindow, WorkspaceWindowState>,
@@ -272,12 +304,16 @@ pub struct GuiState {
     pub device_control: DeviceControl,
     pub vhd_creator: VhdCreator,
     pub text_mode_viewer: TextModeViewer,
+    pub fdc_viewer: FdcViewerControl,
+    pub floppy_viewer: FloppyViewerControl,
     pub call_stack_viewer: CallStackViewer,
 
     pub floppy_tree_menu: FileTreeMenu,
     pub hdd_tree_menu:    FileTreeMenu,
     pub cart_tree_menu:   FileTreeMenu,
+
     //pub(crate) global_zoom: f32,
+    pub modal: ModalState,
 }
 
 impl GuiState {
@@ -294,32 +330,6 @@ impl GuiState {
         for window in GuiWindow::iter() {
             window_state.insert(window, WorkspaceWindowState::default());
         }
-
-        /*        let window_open_flags: HashMap<GuiWindow, bool> = [
-            (GuiWindow::About, false),
-            (GuiWindow::CpuControl, false),
-            (GuiWindow::PerfViewer, false),
-            (GuiWindow::MemoryViewer, false),
-            (GuiWindow::CompositeAdjust, false),
-            (GuiWindow::ScalerAdjust, false),
-            (GuiWindow::CpuStateViewer, false),
-            (GuiWindow::HistoryViewer, false),
-            (GuiWindow::IvtViewer, false),
-            (GuiWindow::DelayAdjust, false),
-            (GuiWindow::DeviceControl, false),
-            (GuiWindow::DisassemblyViewer, false),
-            (GuiWindow::PitViewer, false),
-            (GuiWindow::PicViewer, false),
-            (GuiWindow::PpiViewer, false),
-            (GuiWindow::DmaViewer, false),
-            (GuiWindow::VideoCardViewer, false),
-            (GuiWindow::VideoMemViewer, false),
-            (GuiWindow::CallStack, false),
-            (GuiWindow::VHDCreator, false),
-            (GuiWindow::CycleTraceViewer, false),
-            (GuiWindow::TextModeViewer, false),
-        ]
-        .into();*/
 
         let option_flags: HashMap<GuiBoolean, bool> = [
             //(GuiBoolean::CompositeDisplay, false),
@@ -340,6 +350,8 @@ impl GuiState {
             event_queue: GuiEventQueue::new(),
             toasts: Toasts::new().with_anchor(Anchor::BottomRight),
             media_tray: Default::default(),
+
+            default_floppy_path: None,
 
             window_open_flags,
             window_state,
@@ -399,18 +411,26 @@ impl GuiState {
             device_control: DeviceControl::new(),
             vhd_creator: VhdCreator::new(),
             text_mode_viewer: TextModeViewer::new(),
+            fdc_viewer: FdcViewerControl::new(),
+            floppy_viewer: FloppyViewerControl::new(),
             call_stack_viewer: CallStackViewer::new(),
 
             floppy_tree_menu: FileTreeMenu::new().with_file_icon("💾"),
             hdd_tree_menu: FileTreeMenu::new().with_file_icon("🖴"),
             cart_tree_menu: FileTreeMenu::new(),
             //global_zoom: 1.0,
+            modal: ModalState::new(),
         }
     }
 
     /// Allow the GUI to send events to the frontend to request initialization.
     pub fn initialize(&mut self) {
         self.event_queue.send(GuiEvent::RescanMediaFolders);
+    }
+
+    pub fn set_paths(&mut self, default_floppy_path: PathBuf) {
+        self.default_floppy_path = Some(default_floppy_path.clone());
+        self.modal.set_paths(default_floppy_path.clone());
     }
 
     pub fn toasts(&mut self) -> &mut Toasts {
@@ -495,11 +515,16 @@ impl GuiState {
         for (idx, drive_type) in drives.iter().enumerate() {
             self.floppy_drives.push(GuiFloppyDriveInfo {
                 idx,
+                selection_new: None,
                 selected_idx: None,
                 selected_path: FloppyDriveSelection::None,
                 write_protected: true,
                 read_only: false,
                 drive_type: *drive_type,
+                supported_formats: Vec::new(),
+                source_format: None,
+                source_writeback: false,
+                write_ct: 0,
             });
         }
     }
@@ -529,11 +554,48 @@ impl GuiState {
         drive: usize,
         idx: Option<usize>,
         name: FloppyDriveSelection,
-        read_only: bool,
+        source_format: Option<DiskImageFileFormat>,
+        supported_formats: Vec<(DiskImageFileFormat, Vec<String>)>,
+        read_only: Option<bool>,
     ) {
         self.floppy_drives[drive].selected_idx = idx;
+
+        if matches!(name, FloppyDriveSelection::None) {
+            // Disk has been ejected - update viewer
+            self.floppy_viewer.clear_visualization(drive);
+        }
         self.floppy_drives[drive].selected_path = name;
-        self.floppy_drives[drive].read_only = read_only;
+
+        if let Some(read_only) = read_only {
+            self.floppy_drives[drive].read_only = read_only;
+        }
+
+        let fmts_alone = supported_formats.iter().map(|(fmt, _)| *fmt).collect::<Vec<_>>();
+
+        log::warn!(
+            "Source format: {:?} Supported formats: {:?}",
+            source_format,
+            supported_formats
+        );
+        if let Some(source_format) = source_format {
+            self.floppy_drives[drive].source_writeback = fmts_alone.contains(&source_format);
+            self.floppy_drives[drive].source_format = Some(source_format);
+        }
+        else {
+            self.floppy_drives[drive].source_writeback = false;
+            self.floppy_drives[drive].source_format = None;
+        }
+        self.floppy_drives[drive].supported_formats = supported_formats;
+        self.floppy_viewer.reset();
+    }
+
+    pub fn set_floppy_supported_formats(
+        &mut self,
+        drive: usize,
+        write_ct: u64,
+        supported_formats: Vec<(DiskImageFileFormat, Vec<String>)>,
+    ) {
+        self.floppy_drives[drive].supported_formats = supported_formats;
     }
 
     pub fn set_hdds(&mut self, drivect: usize) {

@@ -44,6 +44,7 @@ winit.workspace = true
 anyhow.workspace = true
 indexmap.workspace = true
 crossbeam-channel.workspace = true
+fluxfox.workspace = true
 
 egui.workspace = true
 egui-wgpu.workspace = true

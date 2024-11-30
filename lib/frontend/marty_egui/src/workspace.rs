@@ -37,22 +37,35 @@
 use crate::{state::GuiState, GuiWindow, WORKSPACE_WINDOWS};
 use anyhow::Error;
 use egui::{Context, Ui};
+use marty_core::device_traits::videocard::VideoCardId;
 use std::collections::HashMap;
 
 pub struct GuiWorkspaceConfig {}
 
 impl GuiState {
-    pub fn workspace_window_open_button(&mut self, ui: &mut Ui, win_enum: GuiWindow, close: bool) {
+    pub fn workspace_window_open_button(
+        &mut self,
+        ui: &mut Ui,
+        win_enum: GuiWindow,
+        close: bool,
+        enabled: bool,
+    ) -> bool {
         let win_def = WORKSPACE_WINDOWS
             .get(&win_enum)
             .expect(format!("Invalid window enum: {:?}", win_enum).as_str());
 
-        if ui.button(format!("{}...", win_def.menu)).clicked() {
-            self.window_state.entry(win_enum).and_modify(|e| e.open = true);
-            if close {
-                ui.close_menu();
+        let mut clicked = false;
+        ui.add_enabled_ui(enabled, |ui| {
+            if ui.button(format!("{}...", win_def.menu)).clicked() {
+                self.window_state.entry(win_enum).and_modify(|e| e.open = true);
+                if close {
+                    ui.close_menu();
+                }
+                clicked = true;
             }
-        }
+        });
+
+        clicked
     }
 
     pub fn workspace_window_open_button_with(
@@ -194,6 +207,12 @@ impl GuiState {
                 }
                 GuiWindow::TextModeViewer => {
                     self.text_mode_viewer.draw(ui, &mut self.event_queue);
+                }
+                GuiWindow::FdcViewer => {
+                    self.fdc_viewer.draw(ui, &mut self.event_queue);
+                }
+                GuiWindow::FloppyViewer => {
+                    self.floppy_viewer.draw(ui, &mut self.event_queue);
                 }
             });
 
