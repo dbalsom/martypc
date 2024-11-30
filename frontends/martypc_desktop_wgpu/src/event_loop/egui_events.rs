@@ -57,7 +57,7 @@ use marty_egui::{
     GuiVariableContext,
     InputFieldChangeSource,
 };
-use std::{ffi::OsString, io::Cursor, mem::discriminant, path::PathBuf, time::Duration};
+use std::{ffi::OsString, io::Cursor, mem::discriminant, path::PathBuf, sync::Arc, time::Duration};
 use videocard_renderer::AspectCorrectionMode;
 use winit::event_loop::EventLoopWindowTarget;
 
@@ -920,20 +920,18 @@ pub fn handle_load_floppy(emu: &mut Emulator, drive_select: usize, context: File
                     std::thread::spawn(move || {
                         let mut image_buffer = Cursor::new(floppy_image);
                         let inner_sender = sender.clone();
-                        let loading_callback = Box::new(move |status| match status {
+                        let loading_callback = Arc::new(Box::new(move |status| match status {
                             LoadingStatus::Progress(progress) => {
                                 _ = inner_sender.send(FrontendThreadEvent::FloppyImageLoadProgress(
                                     "Loading floppy image...".to_string(),
                                     progress,
                                 ));
                             }
-                            LoadingStatus::ProgressSupport(enabled) => {
-                                if enabled {
-                                    _ = inner_sender.send(FrontendThreadEvent::FloppyImageBeginLongLoad);
-                                }
+                            LoadingStatus::ProgressSupport => {
+                                _ = inner_sender.send(FrontendThreadEvent::FloppyImageBeginLongLoad);
                             }
                             _ => {}
-                        });
+                        }));
 
                         match DiskImage::load(
                             &mut image_buffer,
