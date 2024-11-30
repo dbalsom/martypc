@@ -148,7 +148,7 @@ pub struct PixelCanvas {
     texture_opts: TextureOptions,
     default_uv: Rect,
     ctx: Context,
-    data_valid: bool,
+    data_unpacked: bool,
 }
 
 impl Default for PixelCanvas {
@@ -180,7 +180,7 @@ impl Default for PixelCanvas {
             },
             default_uv: Rect::from_min_max(egui::pos2(0.0, 0.0), egui::pos2(1.0, 1.0)),
             ctx: Context::default(),
-            data_valid: false,
+            data_unpacked: false,
         }
     }
 }
@@ -205,12 +205,15 @@ impl PixelCanvas {
     }
 
     pub fn update_imagedata(&mut self) {
+        if !self.data_unpacked {
+            log::warn!("PixelCanvas::update_imagedata(): Data not unpacked.");
+        }
         let color_image = ColorImage {
             size:   [self.view_dimensions.0 as usize, self.view_dimensions.1 as usize],
             pixels: self.backing_buf.clone(),
         };
         self.image_data = ImageData::Color(Arc::new(color_image));
-        self.data_valid = true;
+        self.data_unpacked = true;
     }
 
     pub fn use_device_palette(&mut self, state: bool) {
@@ -348,7 +351,7 @@ impl PixelCanvas {
 
     pub fn set_bpp(&mut self, bpp: PixelCanvasDepth) {
         self.bpp = bpp;
-        self.data_valid = false;
+        self.data_unpacked = false;
     }
 
     pub fn set_zoom(&mut self, zoom: f32) {
@@ -361,7 +364,7 @@ impl PixelCanvas {
         self.backing_buf = vec![Color32::BLACK; (dims.0 * dims.1) as usize];
 
         self.texture = Some(self.create_texture());
-        self.data_valid = false;
+        self.data_unpacked = false;
     }
 
     pub fn save_buffer(&mut self, path: &Path) -> Result<(), Error> {
@@ -377,10 +380,6 @@ impl PixelCanvas {
     }
 
     fn unpack_pixels(&mut self, font: Option<&FontInfo>) {
-        if !self.data_valid {
-            return;
-        }
-
         let dims = self.view_dimensions.0 * self.view_dimensions.1;
         let max_index = std::cmp::min(dims as usize, self.data_buf.len());
         match self.bpp {
@@ -484,5 +483,6 @@ impl PixelCanvas {
                 }
             }
         }
+        self.data_unpacked = true;
     }
 }
