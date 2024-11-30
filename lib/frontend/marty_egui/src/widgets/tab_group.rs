@@ -24,12 +24,10 @@
 
     --------------------------------------------------------------------------
 
-    marty_egui::widgets::big_icon.rs
+    marty_egui::widgets::tab_group.rs
 
-    Displays a big icon designed to flow in-line with text.
+    Implements fake tabs with SelectableLabels
 */
-
-use egui::Response;
 
 #[allow(dead_code)]
 pub struct MartyTabGroup {
@@ -43,6 +41,11 @@ impl MartyTabGroup {
             tab_labels:   Vec::new(),
             selected_tab: 0,
         }
+    }
+
+    pub fn with_tab(mut self, label: &str) -> Self {
+        self.add_tab(label);
+        self
     }
 
     pub fn draw(&mut self, ui: &mut egui::Ui) -> egui::InnerResponse<()> {
