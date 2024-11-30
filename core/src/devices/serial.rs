@@ -224,6 +224,7 @@ pub type SerialPortDisplayState = BTreeMap<&'static str, SyntaxToken>;
 pub struct SerialPortDescriptor {
     pub id: usize,
     pub name: String,
+    #[cfg(feature = "serial")]
     pub brige_port_id: Option<usize>,
 }
 
@@ -258,8 +259,11 @@ pub struct SerialPort {
     us_per_byte: f64,
 
     // Serial port bridge
+    #[cfg(feature = "serial")]
     bridge_port_id: Option<usize>,
+    #[cfg(feature = "serial")]
     bridge_port: Option<Box<dyn serialport::SerialPort>>,
+    #[cfg(feature = "serial")]
     bridge_buf: Vec<u8>,
 }
 
@@ -295,8 +299,11 @@ impl Default for SerialPort {
             tx_timer: 0.0,
             us_per_byte: 833.333, // 9600 baud
 
+            #[cfg(feature = "serial")]
             bridge_port_id: None,
+            #[cfg(feature = "serial")]
             bridge_port: None,
+            #[cfg(feature = "serial")]
             bridge_buf: vec![0; 1000],
         }
     }
@@ -761,6 +768,7 @@ impl SerialPort {
         }
     }
 
+    #[cfg(feature = "serial")]
     fn bridge_port(&mut self, port_name: String, port_id: usize) -> anyhow::Result<bool> {
         let port_result = serialport::new(port_name.clone(), 9600)
             .timeout(std::time::Duration::from_millis(5))
@@ -882,6 +890,7 @@ impl SerialPortController {
             ports.push(SerialPortDescriptor {
                 id: i,
                 name: port.name.clone(),
+                #[cfg(feature = "serial")]
                 brige_port_id: port.bridge_port_id,
             });
         }
@@ -922,6 +931,7 @@ impl SerialPortController {
     }
 
     /// Bridge the specified serial port
+    #[cfg(feature = "serial")]
     pub fn bridge_port(&mut self, port: usize, host_port_name: String, host_port_id: usize) -> anyhow::Result<bool> {
         self.port[port].bridge_port(host_port_name, host_port_id)
     }
@@ -961,6 +971,7 @@ impl SerialPortController {
                 // Is there a byte waiting to be sent in the tx holding register?
                 if !port.tx_holding_empty {
                     // If we have bridged this serial port, send the byte to the tx queue
+                    #[cfg(feature = "serial")]
                     if let Some(_) = &port.bridge_port {
                         //log::trace!("{}: Sending byte: {:02X}", port.name, port.tx_holding_reg);
                         port.tx_queue.push_back(port.tx_holding_reg);
@@ -991,6 +1002,7 @@ impl SerialPortController {
     /// The update function is called per-frame, instead of within the emulation loop.
     /// This allows bridging realtime events with virtual device.
     pub fn update(&mut self) {
+        #[cfg(feature = "serial")]
         for port in &mut self.port {
             match &mut port.bridge_port {
                 Some(bridge_port) => {
