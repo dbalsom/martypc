@@ -18,6 +18,8 @@ Next, make sure you have git installed. If you need to install it, you can use y
 * Clone the repository
     * Type `git clone https://github.com/dbalsom/martypc.git`
 * Type `cd martypc/install`
+* Make sure LIBCLANG_PATH is set 
+    * e.g.) Type `set LIBCLANG_PATH=C:\Program Files\Microsoft Visual Studio\2022\Community\VC\Tools\Llvm\x64\bin`
 * Type `cargo run -r --features ega` (features may vary - see Cargo.toml for a list)
 
 ### Building for Linux
