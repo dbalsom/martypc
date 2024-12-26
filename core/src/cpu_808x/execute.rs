@@ -1142,7 +1142,7 @@ impl Intel808x {
                 //self.cycles_i(5, &[0x08d, 0x08e, MC_JUMP, 0x090, 0x091]);
 
                 if self.c.l() > 0 {
-                    for _ in 0..(self.c.l() ) {
+                    for _ in 0..self.c.l() {
                         cycles_mc!(self, MC_JUMP, 0x08f, 0x090, 0x091);
                     }
                 }
@@ -1165,7 +1165,7 @@ impl Intel808x {
                 //self.cycles_i(5, &[0x08d, 0x08e, MC_JUMP, 0x090, 0x091]);
 
                 if self.c.l() > 0 {
-                    for _ in 0..(self.c.l() ) {
+                    for _ in 0..self.c.l() {
                         cycles_mc!(self, MC_JUMP, 0x08f, 0x090, 0x091);
                     }
                 }

@@ -73,7 +73,7 @@ use marty_core::{
     supported_floppy_extensions,
 };
 
-use display_manager_wgpu::{DisplayBackend, DisplayManager, DisplayManagerGuiOptions, WgpuDisplayManagerBuilder};
+use display_manager_wgpu::{DisplayBackend, DisplayManager, DmGuiOptions, WgpuDisplayManagerBuilder};
 use frontend_common::{
     cartridge_manager::CartridgeManager,
     floppy_manager::FloppyManager,
@@ -773,7 +773,7 @@ pub fn run() {
     timestep_manager.set_emu_update_rate(highest_rate);
     timestep_manager.set_emu_render_rate(highest_rate);
 
-    let gui_options = DisplayManagerGuiOptions {
+    let gui_options = DmGuiOptions {
         enabled: !config.gui.disabled,
         theme: config.gui.theme,
         menu_theme: config.gui.menu_theme,
@@ -807,9 +807,7 @@ pub fn run() {
     let gui = GuiState::new(exec_control.clone());
 
     // Get main GUI context from Display Manager
-    let _gui_ctx = display_manager
-        .get_main_gui_mut()
-        .expect("Couldn't get main gui context!");
+    let _gui_ctx = display_manager.main_gui_mut().expect("Couldn't get main gui context!");
 
     let machine_events = Vec::new();
 

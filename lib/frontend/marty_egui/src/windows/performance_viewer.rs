@@ -46,7 +46,7 @@ use marty_common::util::format_duration;
 use videocard_renderer::VideoParams;
 
 pub struct PerformanceViewerControl {
-    dti: Vec<DisplayInfo>,
+    dti: Vec<DisplayTargetInfo>,
     sound_stats: Vec<SoundSourceStats>,
     perf: PerfSnapshot,
     video_data: VideoParams,
@@ -224,7 +224,7 @@ impl PerformanceViewerControl {
 
     pub fn update(
         &mut self,
-        dti: Vec<DisplayInfo>,
+        dti: Vec<DisplayTargetInfo>,
         sound_stats: Vec<SoundSourceStats>,
         perf: &PerfSnapshot,
         frame_history: Vec<FrameEntry>,

@@ -30,6 +30,7 @@
 
 */
 use crate::{GuiEvent, GuiEventQueue, PathBuf};
+use egui::Pos2;
 use egui_file::{FileDialog, Filter};
 use fluxfox::DiskImageFileFormat;
 
@@ -171,7 +172,7 @@ impl ModalState {
 
                 let mut dialog = FileDialog::save_file(initial_path)
                     .title(&format!("Save Floppy Image (As {})...", exts.join(", ")))
-                    .default_pos(egui::Pos2::new(20.0, 40.0))
+                    .default_pos((20.0, 40.0))
                     .filename_filter(select_filter)
                     .show_files_filter(show_filter);
                 dialog.open();
@@ -207,7 +208,7 @@ impl ModalState {
                 });
                 let mut dialog = FileDialog::open_file(initial_path)
                     .title("Open Floppy Image")
-                    .default_pos(egui::Pos2::new(20.0, 40.0))
+                    .default_pos((20.0, 40.0))
                     .filename_filter(select_filter)
                     .show_files_filter(show_filter);
                 dialog.open();

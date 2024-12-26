@@ -54,7 +54,7 @@ pub fn handle_event(emu: &mut Emulator, tm: &mut TimestepManager, event: Event<(
             emu.stat_counter.last_second = Instant::now();
 
             // -- Update display info
-            let dti = emu.dm.get_display_info(&emu.machine);
+            let dti = emu.dm.display_info(&emu.machine);
             emu.gui.init_display_info(dti);
         }
 
@@ -122,7 +122,7 @@ pub fn handle_event(emu: &mut Emulator, tm: &mut TimestepManager, event: Event<(
                 WindowEvent::Resized(size) => {
                     let event_window = emu
                         .dm
-                        .get_window_by_id(window_id)
+                        .viewport_by_id(window_id)
                         .expect(&format!("Couldn't resolve window id {:?} to window.", window_id));
 
                     let is_fullscreen = match event_window.fullscreen() {
@@ -145,7 +145,7 @@ pub fn handle_event(emu: &mut Emulator, tm: &mut TimestepManager, event: Event<(
                     };
 
                     if size.width > 0 && size.height > 0 {
-                        if let Err(e) = emu.dm.on_window_resized(
+                        if let Err(e) = emu.dm.on_viewport_resized(
                             window_id,
                             size.width.saturating_sub(adjust_x),
                             size.height.saturating_sub(adjust_y),
@@ -188,7 +188,7 @@ pub fn handle_event(emu: &mut Emulator, tm: &mut TimestepManager, event: Event<(
                     }
                     false => {
                         log::debug!("Window {:?} lost focus", window_id);
-                        emu.dm.for_each_window(|window, on_top| {
+                        emu.dm.for_each_viewport(|window, on_top| {
                             if on_top {
                                 window.set_window_level(WindowLevel::Normal);
                             }
@@ -216,7 +216,7 @@ pub fn handle_event(emu: &mut Emulator, tm: &mut TimestepManager, event: Event<(
         Event::AboutToWait => {
             // Throttle updates to maximum of 1000Hz
             //std::thread::sleep(Duration::from_millis(1));
-            emu.dm.for_each_window(|window, _on_top| {
+            emu.dm.for_each_viewport(|window, _on_top| {
                 window.request_redraw();
                 None
             });

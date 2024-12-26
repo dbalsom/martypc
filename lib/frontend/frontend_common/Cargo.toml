@@ -12,6 +12,7 @@ crate-type = ["lib"]
 
 [dependencies]
 marty_common = { path = "../../common" }
+#display_manager_wgpu = { path = "../../frontend/display_manager_wgpu", optional = true }
 display_backend_trait = { path = "../../backend/display_backend_trait" }
 videocard_renderer = { path = "../videocard_renderer" }
 marty_core = { path = "../../../core" }
@@ -22,7 +23,7 @@ md5 = "0.7.0"
 
 # feature dependencies:
 wgpu = { workspace = true, optional = true }
-pixels = { workspace = true, optional = true }
+#pixels = { workspace = true, optional = true }
 log = "0.4.20"
 toml = "0.5.11"
 serde_derive.workspace = true
@@ -38,7 +39,9 @@ branch = "master"
 default-features = false
 features = ["chrono", "std", "alloc"]
 
+
+
 [features]
 ega = []
 vga = []
-use_wgpu = ["wgpu", "pixels"]
+use_wgpu = ["wgpu"]

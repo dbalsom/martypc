@@ -1,0 +1,22 @@
+[package]
+name = "wgpu_wrapper"
+authors = [""]
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+
+[lib]
+name = "wgpu_wrapper"
+path = "src/lib.rs"
+crate-type = ["lib"]
+
+[dependencies]
+bytemuck.workspace = true
+raw-window-handle = "0.6"
+winit.workspace = true
+wgpu.workspace = true
+thiserror.workspace = true
+ultraviolet = "0.9"
+
+[target.'cfg(not(target_arch = "wasm32"))'.dependencies]
+pollster = "0.3"

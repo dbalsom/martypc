@@ -126,7 +126,7 @@ pub fn handle_egui_event(emu: &mut Emulator, elwt: &EventLoopWindowTarget<()>, g
                         if let Some(_scaler_params) = emu.dm.get_scaler_params(*d_idx) {
                             //emu.gui.set_option_enum(GuiEnum::DisplayComposite(scaler_params), GuiVariableContext::Display(*d_idx));
                         }
-                        if let Some(renderer) = emu.dm.get_renderer(*d_idx) {
+                        if let Some(renderer) = emu.dm.renderer_mut(*d_idx) {
                             // Update composite checkbox state
                             let composite_enable = renderer.get_composite();
                             emu.gui.set_option_enum(
@@ -145,7 +145,7 @@ pub fn handle_egui_event(emu: &mut Emulator, elwt: &EventLoopWindowTarget<()>, g
                     }
                     GuiEnum::DisplayComposite(state) => {
                         log::debug!("Got composite state update event: {}", state);
-                        if let Some(renderer) = emu.dm.get_renderer(*d_idx) {
+                        if let Some(renderer) = emu.dm.renderer_mut(*d_idx) {
                             renderer.set_composite(*state);
                         }
                     }
@@ -790,7 +790,7 @@ pub fn handle_egui_event(emu: &mut Emulator, elwt: &EventLoopWindowTarget<()>, g
             }
         }
         GuiEvent::ToggleFullscreen(dt_idx) => {
-            if let Some(window) = emu.dm.get_window(*dt_idx) {
+            if let Some(window) = emu.dm.viewport(*dt_idx) {
                 match window.fullscreen() {
                     Some(_) => {
                         log::debug!("ToggleFullscreen: Resetting fullscreen state.");

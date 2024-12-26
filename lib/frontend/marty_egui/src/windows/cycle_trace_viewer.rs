@@ -160,7 +160,7 @@ impl CycleTraceViewerControl {
                                 }
                             });
                         }
-                    })
+                    });
             }
             TraceMode::CycleSigrok => {
                 ui.label("Cycle tracing in sigrok mode. No display available.");

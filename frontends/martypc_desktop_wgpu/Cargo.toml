@@ -11,7 +11,7 @@ path = "src/lib.rs"
 crate-type = ["lib"]
 
 [dependencies]
-display_backend_pixels = { path = "../../lib/backend/display_backend_pixels" }
+display_backend_wgpu = { path = "../../lib/backend/display_backend_wgpu" }
 marty_core = { path = "../../core" }
 frontend_common = { path = "../../lib/frontend/frontend_common" }
 videocard_renderer = { path = "../../lib/frontend/videocard_renderer" }

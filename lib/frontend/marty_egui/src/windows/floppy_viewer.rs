@@ -413,6 +413,7 @@ impl FloppyViewerControl {
                         palette,
                         draw_empty_tracks: true,
                         pin_last_standard_track: true,
+                        ..Default::default()
                     };
                     match render_track_metadata_quadrant(image, &mut pixmap, &render_params) {
                         Ok(_) => {

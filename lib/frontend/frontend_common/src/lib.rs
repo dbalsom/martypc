@@ -39,6 +39,7 @@ pub mod constants;
 pub mod display_manager;
 #[cfg(feature = "use_wgpu")]
 pub mod display_scaler;
+//mod emulator_manager;
 pub mod floppy_manager;
 pub mod machine_manager;
 pub mod resource_manager;

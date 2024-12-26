@@ -44,7 +44,7 @@ use std::{
 };
 
 use frontend_common::{
-    display_manager::DisplayInfo,
+    display_manager::DisplayTargetInfo,
     display_scaler::{ScalerMode, ScalerParams},
 };
 
@@ -52,7 +52,6 @@ mod color;
 mod constants;
 mod image;
 
-pub mod context;
 mod glyphs;
 mod layouts;
 mod menu;
@@ -220,7 +219,7 @@ pub enum DeviceSelection {
 pub struct PerformanceStats {
     pub adapter: String,
     pub backend: String,
-    pub dti: Vec<DisplayInfo>,
+    pub dti: Vec<DisplayTargetInfo>,
     pub current_ups: u32,
     pub current_fps: u32,
     pub emulated_fps: u32,

@@ -176,6 +176,7 @@ impl Default for PixelCanvas {
             texture_opts: TextureOptions {
                 magnification: egui::TextureFilter::Nearest,
                 minification: egui::TextureFilter::Nearest,
+                mipmap_mode: Some(egui::TextureFilter::Nearest),
                 wrap_mode: egui::TextureWrapMode::ClampToEdge,
             },
             default_uv: Rect::from_min_max(egui::pos2(0.0, 0.0), egui::pos2(1.0, 1.0)),

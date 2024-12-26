@@ -31,28 +31,46 @@
    This trait defines an interface for managing display targets for a given
    graphics backend and windowing system combination.
 */
-use anyhow::Error;
-use marty_core::machine::Machine;
+
 use std::{
     fmt::{Display, Formatter},
     path::PathBuf,
 };
-use web_time::Duration;
 
-pub use crate::types::display_target_dimensions::DisplayTargetDimensions;
+#[cfg(feature = "use_wgpu")]
+use crate::display_scaler::{ScalerMode, ScalerParams, ScalerPreset};
 
-use crate::{
-    display_scaler::{ScalerMode, ScalerParams, ScalerPreset},
-    types::display_target_margins::DisplayTargetMargins,
+pub use crate::{
+    types::{display_target_dimensions::DisplayTargetDimensions, display_target_margins::DisplayTargetMargins},
     MartyGuiTheme,
 };
-use marty_core::device_traits::videocard::{DisplayApertureType, DisplayExtents, VideoCardId, VideoType};
+use marty_core::{
+    device_traits::videocard::{DisplayApertureType, DisplayExtents, VideoCardId, VideoType},
+    machine::Machine,
+};
 use videocard_renderer::{RendererConfigParams, VideoRenderer};
+
+use anyhow::Error;
+use web_time::Duration;
+
+pub struct DtHandle(pub usize);
+
+impl Default for DtHandle {
+    fn default() -> Self {
+        DtHandle(0)
+    }
+}
+impl DtHandle {
+    pub fn idx(&self) -> usize {
+        self.0
+    }
+}
 
 #[derive(Copy, Clone)]
 pub enum DisplayTargetType {
     WindowBackground { main_window: bool, has_gui: bool, has_menu: bool },
-    EguiWidget,
+    GuiWidget,
+    WgpuTexture,
 }
 
 impl Default for DisplayTargetType {
@@ -68,18 +86,17 @@ impl Default for DisplayTargetType {
 impl Display for DisplayTargetType {
     fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
         match self {
-            DisplayTargetType::WindowBackground { .. } => {
-                write!(f, "Window")
-            }
-            DisplayTargetType::EguiWidget => {
-                write!(f, "EGUI Widget")
-            }
+            DisplayTargetType::WindowBackground { .. } => write!(f, "Window"),
+            DisplayTargetType::GuiWidget => write!(f, "GUI Widget"),
+            DisplayTargetType::WgpuTexture => write!(f, "Wgpu Texture"),
         }
     }
 }
 
+/// Information about a display target.
+/// This can be retrieved from the Display Manager via display_info().
 #[derive(Clone)]
-pub struct DisplayInfo {
+pub struct DisplayTargetInfo {
     pub backend_name: String,
     pub dtype: DisplayTargetType,
     pub vtype: Option<VideoType>,
@@ -87,13 +104,13 @@ pub struct DisplayInfo {
     pub name: String,
     pub renderer: Option<RendererConfigParams>,
     pub render_time: Duration,
-    pub has_gui: bool,
+    pub contains_gui: bool,
     pub gui_render_time: Duration,
     pub scaler_mode: Option<ScalerMode>,
     pub scaler_params: Option<ScalerParams>,
 }
 
-pub struct DisplayManagerGuiOptions {
+pub struct DmGuiOptions {
     pub enabled: bool,
     pub theme: Option<MartyGuiTheme>,
     pub menu_theme: Option<MartyGuiTheme>,
@@ -102,8 +119,10 @@ pub struct DisplayManagerGuiOptions {
     pub debug_drawing: bool,
 }
 
-/// Options for windows targets. All dimensions are specified as inner size (client area)
-pub struct DisplayManagerWindowOptions {
+/// Options for viewport-based display targets.
+/// All dimensions are specified as inner size (sometimes referred to as the client area, for
+/// window-based viewports).
+pub struct DmViewportOptions {
     pub size: DisplayTargetDimensions,
     pub min_size: Option<DisplayTargetDimensions>,
     pub max_size: Option<DisplayTargetDimensions>,
@@ -115,7 +134,7 @@ pub struct DisplayManagerWindowOptions {
     pub card_scale: Option<f32>,
 }
 
-impl Default for DisplayManagerWindowOptions {
+impl Default for DmViewportOptions {
     fn default() -> Self {
         Self {
             size: Default::default(),
@@ -131,89 +150,147 @@ impl Default for DisplayManagerWindowOptions {
     }
 }
 
-/// The DisplayManager trait is implemented by a DisplayManager that combines
-/// the facilities of a windowing system (Such as Winit), graphics backend
-/// (such as Pixels/wgpu), and gui (such as egui)
-/// The generic parameters are:
-/// B: Graphics Backend
-/// G: Gui Context
-/// Wi: Window ID
-/// W: Window context
-pub trait DisplayManager<B, G, Wi, W> {
+/// The [DisplayManager] trait is implemented by a display manager that combines the facilities of
+/// a windowing system (Such as winit/eframe), graphics backend (such as Pixels/wgpu), and a GUI
+/// (such as egui). It is a difficult task to create an interface trait that can handle the
+/// different requirements of each of these systems, so the trait is designed to be as flexible as
+/// possible.
+///
+/// The trait concerns itself with the creation and rendering of `display targets`, which are
+/// indexed by integer handles. A display target is not necessarily a unique native window, but can
+/// be a texture or GUI widget/internal window. A display target is simply anything that can
+/// represent the output of a [VideoRenderer] (which is just a struct now, but will be a trait in
+/// the future).
+///
+/// In some cases, the trait is implemented on top of a pre-initialized backend and gui, such
+/// as when we are running under `eframe`. In this case, the trait is implemented on top of egui's
+/// Viewport system, and no concept of a native window is present. For this reason, we talk about
+/// `viewports` instead of windows. A `Viewport` is a region of the screen that can be rendered to
+/// natively, and is the equivalent of a window in a windowing system such as Windows, macOS, or
+/// Linux. On the web, there is no concept of a window, so how `viewports` are handled is
+/// implementation-dependent.
+///
+/// Being intended for use in PC emulators, [DisplayManager] handles the concept of a `Video Card`.
+/// This is not necessarily a discrete card in an emulated system, but the concept seems to fit
+/// and I couldn't think of a better name. A `Video Card` is a logical representation of an emulated
+/// display device that can be connected to one *or more* display targets. This is a key detail -
+/// we can have multiple viewports displaying the same video card output, with different parameters
+/// and potentially different scaling/shaders applied. When creating a context, a [VideoCardId] can
+/// be optionally supplied.  If no card id is supplied, the display target will simply not have
+/// a video card associated with it - this is fine, a display target can render other things,
+/// such as debug displays or GUI widgets.
+///
+/// [DisplayManager] is extensively generic. The generic parameters are:
+/// * B: Graphics `Backend`
+/// * G: GUI Context
+/// * Vh: Viewport Handle
+/// * V: Viewport Context
+/// * C: Native Context (such as winit's ActiveEventLoop, or egui's Context)
+///
+/// If an implementation doesn't require any of these specific types, they can be set to `()`.
+///
+/// * `Backend`: An implementation of the [DisplayBackend] trait. A graphics backend is reponsible
+///     for initialization of a graphics subsystem (such as opengl or wgpu) if necessary,
+///     and management of the pixel buffer that is used as a target for a [VideoRenderer].
+///     In cases where a backend is already initialized (such as when running under eframe),
+///     the backend is simply a texture manager for viewports and display targets.
+///
+/// * `GUI Context`: A context object that is used to render GUI elements. This is typically used
+///     when the display manager is hosting a GUI instead of running on top of one, such as a
+///     implementation of a wgpu backend rendering egui. When a Display Manager is hosted on top
+///     of a GUI such as eframe, this context is likely minimal or empty.
+///
+/// * `Event loop abstraction`: An abstraction over the event loop of the windowing system. This
+///     is required primarily to support creation of windows under Winit 0.30, which now requires
+///     window creation to be done in the event loop. If no event loop is required for window
+///     creation this type parameter can be ().
+pub trait DisplayManager<B, G, Vh, V, C> {
+    /// The native texture view type for the graphics backend.
     type NativeTextureView;
+    /// The native encoder type for the graphics backend.
     type NativeEncoder;
-
+    /// The native event loop type
+    type NativeEventLoop;
+    /// The implementation type of Scaler
     type ImplScaler;
+    /// The implementation type of DisplayTarget
     type ImplDisplayTarget;
 
-    /// Create a display target with the specified parameters.
-    /// Returns: index of display target or Error.
+    /// Create a new display target
+    /// # Returns:
+    /// A `Result` containing either the new [DtHandle] or `Error`.
     fn create_target(
         &mut self,
         name: String,
-        ttype: DisplayTargetType,
-        wid: Option<Wi>,
-        window: Option<&W>,
-        window_opts: Option<DisplayManagerWindowOptions>,
+        dt_type: DisplayTargetType,
+        native_context: Option<&C>,
+        viewport_opts: Option<DmViewportOptions>,
         card_id: Option<VideoCardId>,
-        w: u32,
-        h: u32,
         scaler_preset: String,
-        gui_options: &DisplayManagerGuiOptions,
-    ) -> Result<usize, Error>;
+        gui_options: &DmGuiOptions,
+    ) -> Result<DtHandle, Error>;
 
-    /// Return a vector of DisplayInfo structs representing all displays in the manager. A reference
-    /// to a Machine must be provided to query video card parameters.
-    fn get_display_info(&self, machine: &Machine) -> Vec<DisplayInfo>;
+    /// Return a vector of [DisplayTargetInfo] representing all displays in the manager. A reference
+    /// to a [Machine] must be provided to query video card parameters.
+    fn display_info(&self, machine: &Machine) -> Vec<DisplayTargetInfo>;
 
-    /// Return the associated Window given a Window id.
-    fn get_window_by_id(&self, wid: Wi) -> Option<&W>;
+    /// Return the associated `Viewport` given a Viewport ID. This is not always possible,
+    /// so the result is an Option.
+    fn viewport_by_id(&self, vid: Vh) -> Option<&V>;
 
-    /// Return the associated Window given a display target index.
-    fn get_window(&self, dt_idx: usize) -> Option<&W>;
+    /// Return the associated [Viewport] given a [DtHandle].
+    fn viewport(&self, dt: DtHandle) -> Option<&V>;
 
-    /// Load and set the specified icon for each window in the DisplayManager.
-    fn set_icon(&mut self, icon_path: PathBuf);
+    /// Load and set the specified icon for the main viewport in the DisplayManager.
+    /// If the viewport does not support icons, this method should do nothing.
+    /// A default implementation is provided that does nothing.
+    fn set_icon(&mut self, _icon_path: PathBuf) {}
 
-    /// Return the main Window. This will be the window where the main gui (if present)
-    /// is rendered.
-    fn get_main_window(&self) -> Option<&W>;
+    /// Load and set the specified icon for the specified viewport in the DisplayManager.
+    /// If the viewport does not support icons, this method should do nothing.
+    /// A default implementation is provided that does nothing.
+    fn set_viewport_icon(&mut self, vid: Vh, icon_path: PathBuf) {}
 
-    /// Returns the associated Backend for the main window.
-    fn get_main_backend(&mut self) -> Option<&B>;
+    /// Return the main `Viewport`.
+    /// This viewport should be where the main interface of the emulator is rendered.
+    /// (For eframe target, this is the ROOT viewport).
+    fn main_viewport(&self) -> Option<&V>;
 
-    /// Returns the associated Gui render context for the main window.
-    fn get_main_gui_mut(&mut self) -> Option<&mut G>;
+    /// Returns a reference to the [Backend] associated with the main window.
+    fn main_backend(&mut self) -> Option<&B>;
 
-    /// Returns the associated Gui render context for the specified Window id.
-    fn get_gui_by_window_id(&mut self, wid: Wi) -> Option<&mut G>;
+    /// Returns a mutable reference to the [Backend] associated with the main window.
+    fn main_backend_mut(&mut self) -> Option<&mut B>;
 
-    /// Returns a mutable reference to the associated Backend for the main window.
-    fn get_main_backend_mut(&mut self) -> Option<&mut B>;
+    /// Returns a mutable reference ot the GUI render context associated to the main window, if
+    /// applicable.
+    fn main_gui_mut(&mut self) -> Option<&mut G>;
 
-    /// Return the associated VideoRenderer, if Some, given a display target index
-    fn get_renderer(&mut self, dt_idx: usize) -> Option<&mut VideoRenderer>;
+    /// Returns the associated GUI render context for the specified Window id, if any.
+    fn gui_by_viewport_id(&mut self, vid: Vh) -> Option<&mut G>;
 
-    /// Return the associated VideoRenderer, if Some, given a card id
-    fn get_renderer_by_card_id(&mut self, id: VideoCardId) -> Option<&mut VideoRenderer>;
+    /// Return the associated [VideoRenderer] for the specified display target handle, if present.
+    fn renderer_mut(&mut self, dt: DtHandle) -> Option<&mut VideoRenderer>;
 
-    /// Returns the associated VideoRenderer for the primary video card. If no primary card
-    /// is present, returns None.
-    fn get_primary_renderer(&mut self) -> Option<&mut VideoRenderer>;
+    /// Return a mutable reference to the [VideoRenderer] for a card id, if present.
+    fn renderer_by_card_id_mut(&mut self, id: VideoCardId) -> Option<&mut VideoRenderer>;
+
+    /// Returns the associated [VideoRenderer] for the primary video card, if such is present.
+    fn primary_renderer_mut(&mut self) -> Option<&mut VideoRenderer>;
 
     /// Reflect a change to a videocard's output resolution, so that associated
     /// resources can be resized as well.
     fn on_card_resized(&mut self, vid: &VideoCardId, extents: &DisplayExtents) -> Result<(), Error>;
 
-    /// Reflect a change in the specified window's dimensions.
+    /// Reflect a change in the specified Viewport's dimensions.
     /// Typically called in response to a resize event from a window manager event queue.
-    /// The window is not actually updated on this call since multiple resize events may be received
-    /// per frame. To actually resize the window we must call resize_windows(), which will apply the
-    /// last received resize dimensions for each window.
-    fn on_window_resized(&mut self, wid: Wi, w: u32, h: u32) -> Result<(), Error>;
+    /// The viewport is not actually updated on this call since multiple resize events may be received
+    /// per frame. To actually resize the window we must call resize_viewports(), which will apply
+    /// the last received resize dimensions for each window.
+    fn on_viewport_resized(&mut self, vh: Vh, w: u32, h: u32) -> Result<(), Error>;
 
-    /// Reflect pending window resize events, resizing associated resources as needed.
-    fn resize_windows(&mut self) -> Result<(), Error>;
+    /// Reflect pending viewport resize events, resizing all associated resources as needed.
+    fn resize_viewports(&mut self) -> Result<(), Error>;
 
     /// Execute a closure that is passed the VideoCardId for each VideoCard registered in the
     /// DisplayManager.
@@ -246,30 +323,35 @@ pub trait DisplayManager<B, G, Wi, W> {
     /// its associated Window.
     fn for_each_gui<F>(&mut self, f: F)
     where
-        F: FnMut(&mut G, &W);
+        F: FnMut(&mut G, &V);
 
-    /// Execute a closure that is passed a reference to each Window in the manager.
-    fn for_each_window<F>(&mut self, f: F)
+    /// Execute a closure that is passed a reference to each Viewport in the manager.
+    fn for_each_viewport<F>(&mut self, f: F)
     where
-        F: FnMut(&W, bool) -> Option<bool>;
+        F: FnMut(&V, bool) -> Option<bool>;
 
-    /// Execute a closure that is passed a reference to the renderer for the specified display target.
-    fn with_renderer<F>(&mut self, dt_idx: usize, f: F)
+    /// Execute a closure that is passed a reference to the [VideoRenderer] for the specified
+    /// display target.
+    fn with_renderer<F>(&mut self, dt: DtHandle, f: F)
     where
         F: FnMut(&mut VideoRenderer);
 
-    /// Conditionally execute the provided closure receiving a DisplayTarget, conditional on
-    /// resolution of a DisplayTarget for the specified Window ID.
-    fn with_target_by_wid<F>(&mut self, wid: Wi, f: F)
+    /// Conditionally execute the provided closure receiving a [DisplayTarget], conditional on
+    /// resolution of a [DisplayTarget] for the specified [Viewport] id.
+    fn with_target_by_vid<F>(&mut self, vh: Vh, f: F)
     where
         F: FnMut(&mut Self::ImplDisplayTarget);
 
-    /// Conditionally execute the provided closure receiving a reference to the Gui context
+    /// Conditionally execute the provided closure receiving a reference to the GUI context
     /// and associated Window, conditional on resolution of a DisplayTarget for the specified
-    /// Window ID.
-    fn with_gui_by_wid<F>(&mut self, wid: Wi, f: F)
+    /// [Viewport] ID.
+    /// A default implementation is provided that does nothing, if your implementation does not
+    /// host GUIs. (Such as when running under eframe).
+    fn with_gui_by_vid<F>(&mut self, vh: Vh, f: F)
     where
-        F: FnMut(&mut G, &W);
+        F: FnMut(&mut G, &V),
+    {
+    }
 
     /// Add the new scaler preset definition. It can then later be referenced by name via
     /// get_scaler_preset().
@@ -279,33 +361,33 @@ pub trait DisplayManager<B, G, Wi, W> {
     fn get_scaler_preset(&mut self, name: String) -> Option<&ScalerPreset>;
 
     /// Apply the named scaler preset to the specified display target.
-    fn apply_scaler_preset(&mut self, dt_idx: usize, name: String) -> Result<(), Error>;
+    fn apply_scaler_preset(&mut self, dt: DtHandle, name: String) -> Result<(), Error>;
 
     /// Apply the specified scaler parameters to the specified display target.
-    fn apply_scaler_params(&mut self, dt_idx: usize, params: &ScalerParams) -> Result<(), Error>;
+    fn apply_scaler_params(&mut self, dt: DtHandle, params: &ScalerParams) -> Result<(), Error>;
 
     /// Get the scaler parameters for the specified display target.
-    fn get_scaler_params(&self, dt_idx: usize) -> Option<ScalerParams>;
+    fn get_scaler_params(&self, dt: DtHandle) -> Option<ScalerParams>;
 
     /// Set the desired Display Aperture for the specified display target.
-    /// Returns the associated VideoCardId, as the card will need to be resized when the aperture
+    /// Returns the associated [VideoCardId], as the card will need to be resized when the aperture
     /// is changed.
     fn set_display_aperture(
         &mut self,
-        dt_idx: usize,
+        dt: DtHandle,
         aperture: DisplayApertureType,
     ) -> Result<Option<VideoCardId>, Error>;
 
     /// Enable or disable aspect correction for the specified display target.
     /// The display manager will perform the required resizing of display target resources
     /// and perform buffer clearing.
-    fn set_aspect_correction(&mut self, dt_idx: usize, state: bool) -> Result<(), Error>;
+    fn set_aspect_correction(&mut self, dt: DtHandle, state: bool) -> Result<(), Error>;
 
     /// Set the ScalerMode for the associated scaler, if present.
-    fn set_scaler_mode(&mut self, dt_idx: usize, mode: ScalerMode) -> Result<(), Error>;
+    fn set_scaler_mode(&mut self, dt: DtHandle, mode: ScalerMode) -> Result<(), Error>;
 
     /// Save a screenshot of the specified display target to the specified path.
     /// A unique filename will be generated assuming the path is a directory.
     /// No operational error is returned as screenshot operation may be deferred.
-    fn save_screenshot(&mut self, dt_idx: usize, path: PathBuf) -> Result<(), Error>;
+    fn save_screenshot(&mut self, dt: DtHandle, path: PathBuf) -> Result<(), Error>;
 }

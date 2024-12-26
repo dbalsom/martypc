@@ -39,3 +39,10 @@ pub use crate::{
     path::find_unique_filename,
     types::{cartridge::CartImage, video_dimensions::VideoDimensions},
 };
+
+/// Use FxHashMap and FxHashSet for faster hashing.
+/// Export these as MartyHashMap and MartyHashSet so that we can easily switch to a different
+/// implementation if needed.
+pub use fxhash::FxBuildHasher;
+pub type MartyHashMap<K, V> = std::collections::HashMap<K, V, FxBuildHasher>;
+pub type MartyHashSet<K> = std::collections::HashMap<K, FxBuildHasher>;

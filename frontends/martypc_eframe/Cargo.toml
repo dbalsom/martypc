@@ -1,0 +1,85 @@
+[package]
+name = "martypc_eframe"
+version.workspace = true
+authors.workspace = true
+edition.workspace = true
+include = ["LICENSE-MIT", "**/*.rs", "Cargo.toml"]
+rust-version = "1.81"
+
+[package.metadata.docs.rs]
+all-features = true
+targets = ["x86_64-unknown-linux-gnu", "wasm32-unknown-unknown"]
+
+[dependencies]
+# Required Dependencies
+# ---------------------------------------------------------------------------------------------------------------------
+# Internal crates
+# --------------
+marty_core = { path = "../../core" }
+config_toml_bpaf = { path = "../../lib/frontend/config_toml_bpaf" }
+display_manager_eframe = { path = "../../lib/frontend/display_manager_eframe" }
+videocard_renderer = { path = "../../lib/frontend/videocard_renderer" }
+marty_egui = { path = "../../lib/frontend/marty_egui" }
+marty_egui_eframe = { path = "../../lib/frontend/marty_egui_eframe" }
+frontend_common = { path = "../../lib/frontend/frontend_common" }
+fluxfox.workspace = true
+
+# External crates
+# ----------------
+winit = { version = "0.30", default-features = false }
+egui = "0.30"
+eframe = { version = "0.30", default-features = false, features = [
+    "default_fonts", # Embed the default egui fonts.
+    "wgpu",          # Use the glow rendering backend. Alternative: "wgpu".
+    "persistence",   # Enable restoring app state when restarting the app.
+] }
+log = "0.4"
+serde = { version = "1", features = ["derive"] }
+crossbeam-channel = "0.5.13"
+anyhow = "1.0"
+strum = "0.26"
+
+# Optional Dependencies
+# ---------------------------------------------------------------------------------------------------------------------
+rodio = {  workspace = true, optional = true }
+
+# native:
+[target.'cfg(not(target_arch = "wasm32"))'.dependencies]
+env_logger = "0.11"
+eframe = { version = "0.30", default-features = false, features = [
+    "accesskit",     # Make egui compatible with screen readers. NOTE: adds a lot of dependencies.
+    "default_fonts", # Embed the default egui fonts.
+    "persistence",   # Enable restoring app state when restarting the app.
+    "wayland",       # Add wayland support for Linux/CI
+]}
+serialport  = { workspace = true }
+
+# Enable DX12 backend on windows
+[target.'cfg(target_os = "windows")'.dependencies]
+wgpu = { version = "23.0", features = ["dx12"] }
+
+# web:
+[target.'cfg(target_arch = "wasm32")'.dependencies]
+wasm-bindgen-futures = "0.4"
+web-sys = "0.3.70"           # to access the DOM (to hide the loading text)
+# No need for accesskit or wayland on web.
+eframe = { version = "0.30", default-features = false, features = [
+    "default_fonts", # Embed the default egui fonts.
+    "persistence",   # Enable restoring app state when restarting the app.
+]}
+
+
+
+[features]
+default = ["ega", "vga", "sound", "opl"]
+sound = ["dep:rodio"]
+# Use the wgpu backend
+wgpu = ["eframe/wgpu", "frontend_common/use_wgpu"]
+# Use the glow backend
+glow = ["eframe/glow"]
+devtools = []
+arduino_validator = ["marty_core/arduino_validator"]
+cpu_validator = ["marty_core/cpu_validator"]
+ega = ["marty_core/ega", "frontend_common/ega", "videocard_renderer/ega"]
+vga = ["marty_core/vga", "frontend_common/vga", "videocard_renderer/vga"]
+opl = ["marty_core/opl"]

@@ -101,7 +101,7 @@ impl From<(u32, u32)> for SurfaceDimensions {
 
 use anyhow::Error;
 
-pub trait DisplayBackend<G> {
+pub trait DisplayBackend<'p, 'win, G> {
     type NativeBackend;
     type NativeBackendAdapterInfo;
     type NativeScaler;

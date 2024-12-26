@@ -99,11 +99,11 @@ pub fn update_egui(emu: &mut Emulator, tm: &TimestepManager, elwt: &EventLoopWin
 
     // Update performance viewer
     if emu.gui.is_window_open(GuiWindow::PerfViewer) {
-        if let Some(renderer) = emu.dm.get_primary_renderer() {
+        if let Some(renderer) = emu.dm.primary_renderer_mut() {
             emu.gui.perf_viewer.update_video_data(renderer.get_params());
         }
 
-        let dti = emu.dm.get_display_info(&emu.machine);
+        let dti = emu.dm.display_info(&emu.machine);
 
         let mut sound_stats = Vec::new();
         if let Some(si) = emu.si.as_ref() {

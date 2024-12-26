@@ -104,7 +104,7 @@ pub fn handle_key_event(emu: &mut Emulator, window_id: WindowId, key_event: &Key
             // Get the window for this event.
             let _event_window = emu
                 .dm
-                .get_window_by_id(window_id)
+                .viewport_by_id(window_id)
                 .expect(&format!("Couldn't resolve window id {:?} to window.", window_id));
 
             match gui_focus {
@@ -174,7 +174,7 @@ pub fn process_hotkeys(emu: &mut Emulator, keycode: KeyCode, pressed: bool, wind
                 // Get the window for this event.
                 let event_window = emu
                     .dm
-                    .get_window_by_id(window_id)
+                    .viewport_by_id(window_id)
                     .expect(&format!("Couldn't resolve window id {:?} to window.", window_id));
 
                 log::debug!("CaptureMouse hotkey triggered. Capturing mouse cursor.");
@@ -226,7 +226,7 @@ pub fn process_hotkeys(emu: &mut Emulator, keycode: KeyCode, pressed: bool, wind
                 // Get the window for this event.
                 let event_window = emu
                     .dm
-                    .get_window_by_id(window_id)
+                    .viewport_by_id(window_id)
                     .expect(&format!("Couldn't resolve window id {:?} to window.", window_id));
 
                 match event_window.fullscreen() {

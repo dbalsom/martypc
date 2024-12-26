@@ -74,7 +74,7 @@ use egui_file::FileDialog;
 use egui_notify::{Anchor, Toasts};
 use fluxfox::{DiskImageFileFormat, StandardFormat};
 use frontend_common::{
-    display_manager::DisplayInfo,
+    display_manager::DisplayTargetInfo,
     display_scaler::{ScalerMode, ScalerPreset},
     resource_manager::PathTreeNode,
     RelativeDirectory,
@@ -292,7 +292,7 @@ pub struct GuiState {
     pub ppi_viewer:    PpiViewerControl,
 
     pub videocard_state: VideoCardState,
-    pub display_info:    Vec<DisplayInfo>,
+    pub display_info:    Vec<DisplayTargetInfo>,
 
     pub disassembly_viewer: DisassemblyControl,
     pub dma_viewer: DmaViewerControl,
@@ -686,7 +686,7 @@ impl GuiState {
     }
 
     /// Initialize GUI Display enum state given a vector of DisplayInfo fields.  
-    pub fn init_display_info(&mut self, vci: Vec<DisplayInfo>) {
+    pub fn init_display_info(&mut self, vci: Vec<DisplayTargetInfo>) {
         self.display_info = vci.clone();
 
         // Build a vector of enums to set to avoid borrowing twice.

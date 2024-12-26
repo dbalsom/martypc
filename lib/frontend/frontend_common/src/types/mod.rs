@@ -37,3 +37,4 @@ pub mod gui;
 pub mod hotkeys;
 pub mod joykeys;
 pub mod sound;
+pub mod window;

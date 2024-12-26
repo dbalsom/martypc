@@ -40,12 +40,13 @@ use std::{
 use frontend_common::{
     display_scaler::ScalerPreset,
     resource_manager::PathConfigItem,
+    types::window::WindowDefinition,
     BenchmarkEndCondition,
     HotkeyConfigEntry,
     JoyKeyEntry,
     MartyGuiTheme,
 };
-use marty_common::VideoDimensions;
+
 use marty_core::{
     cpu_common::{CpuSubType, CpuType, TraceMode},
     cpu_validator::ValidatorType,
@@ -295,21 +296,6 @@ pub struct EmulatorInput {
     pub keyboard_joystick: bool,
     #[serde(default)]
     pub debug_keyboard: bool,
-}
-
-#[derive(Debug, Deserialize)]
-pub struct WindowDefinition {
-    #[serde(default)]
-    pub enabled: bool,
-    pub name: String,
-    pub size: Option<VideoDimensions>,
-    #[serde(default)]
-    pub resizable: bool,
-    pub card_id: Option<usize>,
-    pub card_scale: Option<f32>,
-    #[serde(default)]
-    pub always_on_top: bool,
-    pub scaler_preset: Option<String>,
 }
 
 #[derive(Debug, Deserialize)]

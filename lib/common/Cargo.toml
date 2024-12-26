@@ -13,5 +13,6 @@ crate-type = ["lib"]
 # See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
 
 [dependencies]
+fxhash.workspace = true
 serde.workspace = true
 web-time.workspace = true
