@@ -66,10 +66,10 @@ impl DtHandle {
     }
 }
 
-#[derive(Copy, Clone)]
+#[derive(Copy, Clone, Debug)]
 pub enum DisplayTargetType {
     WindowBackground { main_window: bool, has_gui: bool, has_menu: bool },
-    GuiWidget,
+    GuiWidget { main_window: bool, has_gui: bool, has_menu: bool },
     WgpuTexture,
 }
 
@@ -87,7 +87,7 @@ impl Display for DisplayTargetType {
     fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
         match self {
             DisplayTargetType::WindowBackground { .. } => write!(f, "Window"),
-            DisplayTargetType::GuiWidget => write!(f, "GUI Widget"),
+            DisplayTargetType::GuiWidget { .. } => write!(f, "GUI Widget"),
             DisplayTargetType::WgpuTexture => write!(f, "Wgpu Texture"),
         }
     }
@@ -312,7 +312,7 @@ pub trait DisplayManager<B, G, Vh, V, C> {
     fn for_each_backend<F>(&mut self, f: F)
     //where F: FnMut(&mut B, &mut dyn DisplayScaler<B, NativeTextureView=Self::NativeTextureView, NativeEncoder=Self::NativeEncoder>, Option<&mut G>);
     where
-        F: FnMut(&mut B, &mut Self::ImplScaler, Option<&mut G>);
+        F: FnMut(&mut B, Option<&mut Self::ImplScaler>, Option<&mut G>);
 
     /// Execute a closure that is passed a mutable reference to each RenderTarget in the manager.
     fn for_each_target<F>(&mut self, f: F)

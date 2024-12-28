@@ -77,7 +77,7 @@ pub struct EmuFlags {
 /// All members are public so that a reference to this struct can be passed around as 'god' state.
 pub struct Emulator {
     pub rm: ResourceManager,
-    //pub dm: EFrameDisplayManager,
+    pub dm: EFrameDisplayManager,
     pub romm: RomManager,
     pub romsets: Vec<String>,
     pub config: ConfigFileParams,

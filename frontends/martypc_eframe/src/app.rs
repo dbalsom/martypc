@@ -1,25 +1,39 @@
-use crate::{emulator::Emulator, native::startup};
-use display_manager_eframe::EFrameDisplayManager;
+use crate::{
+    emulator::Emulator,
+    event_loop::thread_events::handle_thread_event,
+    native::startup,
+    timestep_update::process_update,
+};
+use display_manager_eframe::{DisplayBackend, EFrameDisplayManager};
+use frontend_common::{
+    display_manager::{DisplayManager, DmGuiOptions},
+    timestep_manager::TimestepManager,
+};
+use marty_egui_eframe::{context::GuiRenderContext, EGUI_MENU_BAR_HEIGHT};
 
 /// We derive Deserialize/Serialize so we can persist app state on shutdown.
 #[derive(serde::Deserialize, serde::Serialize)]
 #[serde(default)] // if we add new fields, give them default values when deserializing old state
 pub struct MartyApp {
     // Example stuff:
-    label: String,
     #[serde(skip)]
-    emu:   Option<Emulator>,
+    gui: GuiRenderContext,
     #[serde(skip)]
-    dm:    Option<EFrameDisplayManager>,
+    emu: Option<Emulator>,
+    #[serde(skip)]
+    dm:  Option<EFrameDisplayManager>,
+    #[serde(skip)]
+    tm:  TimestepManager,
 }
 
 impl Default for MartyApp {
     fn default() -> Self {
         Self {
             // Example stuff:
-            label: "Hello World!".to_owned(),
-            emu:   None,
-            dm:    None,
+            gui: GuiRenderContext::default(),
+            emu: None,
+            dm:  None,
+            tm:  TimestepManager::default(),
         }
     }
 }
@@ -36,12 +50,42 @@ impl MartyApp {
         //     return eframe::get_value(storage, eframe::APP_KEY).unwrap_or_default();
         // }
 
+        egui_extras::install_image_loaders(&cc.egui_ctx);
+
         let emu = startup(cc.egui_ctx.clone());
 
+        // Create Timestep Manager
+        let mut timestep_manager = TimestepManager::new();
+        timestep_manager.set_cpu_mhz(emu.machine.get_cpu_mhz());
+
+        // Get a list of video devices from machine.
+        let cardlist = emu.machine.bus().enumerate_videocards();
+
+        let mut highest_rate = 50;
+        for card in cardlist.iter() {
+            let rate = emu.machine.bus().video(&card).unwrap().get_refresh_rate();
+            if rate > highest_rate {
+                highest_rate = rate;
+            }
+        }
+
+        timestep_manager.set_emu_update_rate(highest_rate);
+        timestep_manager.set_emu_render_rate(highest_rate);
+
+        let gui_options = DmGuiOptions {
+            enabled: !emu.config.gui.disabled,
+            theme: emu.config.gui.theme,
+            menu_theme: emu.config.gui.menu_theme,
+            menubar_h: EGUI_MENU_BAR_HEIGHT,
+            zoom: 1.0,
+            debug_drawing: false,
+        };
+
         MartyApp {
-            label: "Hello World!".to_owned(),
-            emu:   Some(emu),
-            dm:    None,
+            gui: GuiRenderContext::new(cc.egui_ctx.clone(), 0, 640, 480, 1.0, &gui_options),
+            emu: Some(emu),
+            dm:  None,
+            tm:  timestep_manager,
         }
     }
 }
@@ -49,32 +93,22 @@ impl MartyApp {
 impl eframe::App for MartyApp {
     /// Called each time the UI needs repainting, which may be many times per second.
     fn update(&mut self, ctx: &egui::Context, _frame: &mut eframe::Frame) {
-        // Put your widgets into a `SidePanel`, `TopBottomPanel`, `CentralPanel`, `Window` or `Area`.
-        // For inspiration and more examples, go to https://emilk.github.io/egui
+        if let Some(emu) = &mut self.emu {
+            // Process timestep.
+            process_update(emu, &mut self.tm);
+            handle_thread_event(emu);
 
-        egui::TopBottomPanel::top("top_panel").show(ctx, |ui| {
-            // The top panel is often a good place for a menu bar:
+            // Draw the emulator GUI.
+            self.gui.show(&mut emu.gui);
 
-            egui::menu::bar(ui, |ui| {
-                // NOTE: no File->Quit on web pages!
-                let is_web = cfg!(target_arch = "wasm32");
-                if !is_web {
-                    ui.menu_button("File", |ui| {
-                        if ui.button("Quit").clicked() {
-                            ctx.send_viewport_cmd(egui::ViewportCommand::Close);
-                        }
-                    });
-                    ui.add_space(16.0);
-                }
-
-                egui::widgets::global_theme_preference_buttons(ui);
+            // Present the render targets (this will draw windows for any GuiWidget targets).
+            emu.dm.for_each_backend(|backend, scaler, gui| {
+                _ = backend.present();
             });
-        });
+        }
 
-        egui::CentralPanel::default().show(ctx, |ui| {
-            // The central panel the region left after adding TopPanel's and SidePanel's
-            ui.heading("martypc eframe");
-        });
+        // Pump the event loop by requesting a repaint every time.
+        ctx.request_repaint();
     }
 
     /// Called by the framework to save state before shutdown.

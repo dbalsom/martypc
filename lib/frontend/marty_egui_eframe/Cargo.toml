@@ -13,12 +13,13 @@ crate-type = ["lib"]
 frontend_common = { path = "../frontend_common" }
 marty_common = { path = "../../common" }
 marty_core = { path = "../../../core" }
+marty_egui = { path = "../marty_egui" }
 videocard_renderer = { path = "../videocard_renderer" }
-winit.workspace = true
-wgpu_wrapper = { path = "../../backend/wgpu_wrapper" }
+#winit.workspace = true
+#wgpu_wrapper = { path = "../../backend/wgpu_wrapper" }
 bytemuck = { workspace=true, features = ["derive"] }
-image = { workspace = true, default-features = false, features = ["png"] }
-wgpu = {  workspace = true, optional = true }
+#image = { workspace = true, default-features = false, features = ["png"] }
+#wgpu = {  workspace = true, optional = true }
 serialport = { workspace = true }
 regex = "1.10"
 log = "0.4"
@@ -43,7 +44,6 @@ egui_plot.workspace = true
 #egui-notify = { git = "https://github.com/dbalsom/egui-notify_martypc.git", branch = "egui_0_28_1"}
 egui_file = "0.20.0"
 egui-notify = "0.18"
-
 
 # Debug TUI interface imports
 #ratatui = { version = "0.26.2", default-features = false }

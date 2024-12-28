@@ -115,6 +115,13 @@ pub trait DisplayBackend<'p, 'win, G> {
     fn buf_mut(&mut self) -> &mut [u8];
     fn get_backend_raw(&mut self) -> Option<&mut Self::NativeBackend>;
     fn render(&mut self, scaler: Option<&mut Self::NativeScaler>, gui_renderer: Option<&mut G>) -> Result<(), Error>;
+
+    /// Present the rendered frame to the display.
+    /// This method should be called every host frame to display the rendered frame.
+    /// It may not need to be specifically implemented by all backends, so a default implementation is provided.
+    fn present(&mut self) -> Result<(), Error> {
+        Ok(())
+    }
 }
 
 pub trait DisplayBackendBuilder {

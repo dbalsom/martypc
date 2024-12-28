@@ -70,13 +70,15 @@ pub enum FileSelectionContext {
 }
 
 //noinspection RsBorrowChecker
-pub fn handle_egui_event(emu: &mut Emulator, elwt: &ActiveEventLoop, gui_event: &GuiEvent) {
+pub fn handle_egui_event(emu: &mut Emulator, gui_event: &GuiEvent) {
     match gui_event {
         GuiEvent::Exit => {
             // User chose exit option from menu. Shut down.
             // TODO: Add a timeout from last VHD write for safety?
             println!("Thank you for using MartyPC!");
-            elwt.exit();
+
+            // TODO: how do we quit eframe?
+            //elwt.exit();
         }
         GuiEvent::SetNMI(state) => {
             // User wants to crash the computer. Sure, why not.
@@ -966,6 +968,13 @@ pub fn handle_load_floppy(emu: &mut Emulator, drive_select: usize, context: File
                         .duration(Some(NORMAL_NOTIFICATION_TIME));
                 }
             }
+        }
+        else {
+            log::error!("Failed to load floppy image: No result returned.");
+            emu.gui
+                .toasts()
+                .error("Failed to load floppy image: No result returned.")
+                .duration(Some(NORMAL_NOTIFICATION_TIME));
         }
     }
 }

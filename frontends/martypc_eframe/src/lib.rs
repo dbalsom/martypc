@@ -5,6 +5,7 @@ pub mod counter;
 pub mod emulator;
 pub mod event_loop;
 pub mod input;
+pub mod timestep_update;
 
 #[cfg(feature = "sound")]
 pub mod sound;

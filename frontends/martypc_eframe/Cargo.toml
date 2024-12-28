@@ -33,6 +33,7 @@ eframe = { version = "0.30", default-features = false, features = [
     "wgpu",          # Use the glow rendering backend. Alternative: "wgpu".
     "persistence",   # Enable restoring app state when restarting the app.
 ] }
+egui_extras = { version = "0.30", default-features = false, features = ["file", "image"] }
 log = "0.4"
 serde = { version = "1", features = ["derive"] }
 crossbeam-channel = "0.5.13"

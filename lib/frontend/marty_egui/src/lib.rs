@@ -57,7 +57,7 @@ mod layouts;
 mod menu;
 pub mod modal;
 pub mod state;
-mod themes;
+pub mod themes;
 mod token_listview;
 mod ui;
 mod widgets;

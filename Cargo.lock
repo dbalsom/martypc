@@ -3608,11 +3608,11 @@ dependencies = [
  "egui_plot",
  "fluxfox",
  "frontend_common",
- "image 0.25.5",
  "lazy_static",
  "log 0.4.22",
  "marty_common",
  "marty_core",
+ "marty_egui",
  "regex",
  "serde",
  "serialport 4.3.1-alpha.0",
@@ -3622,9 +3622,6 @@ dependencies = [
  "toml 0.8.19",
  "videocard_renderer",
  "web-time 0.2.4",
- "wgpu 23.0.1",
- "wgpu_wrapper",
- "winit 0.30.5",
 ]
 
 [[package]]
@@ -3782,6 +3779,7 @@ dependencies = [
  "display_manager_eframe",
  "eframe",
  "egui 0.30.0",
+ "egui_extras",
  "env_logger 0.11.5",
  "fluxfox",
  "frontend_common",

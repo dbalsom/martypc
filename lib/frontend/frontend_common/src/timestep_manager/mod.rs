@@ -270,6 +270,7 @@ impl TimestepManager {
         // Ignore deltas that are too big (updates may have stopped due to drawing window, etc.
         // honoring large deltas will lead to audio queue backup
         if elapsed > self.frame_target * 2 {
+            #[cfg(build = "release")]
             log::debug!("Ignoring oversized timestep: {:?}", elapsed);
             self.last_instant = self.current_instant;
             return;

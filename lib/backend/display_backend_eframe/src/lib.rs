@@ -28,7 +28,9 @@
 
     Implements DisplayBackend for the Pixels backend
 */
+mod display_window;
 
+use crate::display_window::DisplayWindow;
 pub use display_backend_trait::{
     BufferDimensions,
     DisplayBackend,
@@ -36,8 +38,6 @@ pub use display_backend_trait::{
     SurfaceDimensions,
     //DisplayBackendError
 };
-
-use winit::window::Window;
 
 //use marty_egui::context::GuiRenderContext;
 use marty_pixels_scaler::DisplayScaler;
@@ -49,18 +49,28 @@ use eframe::{
     wgpu::{CommandEncoder, TextureView},
 };
 
-pub struct EFrameBackend {
-    cpu_buffer:   Vec<u8>, // Virtual pixel buffer
-    buffer_dim:   BufferDimensions,
-    surface_dim:  SurfaceDimensions,
-    adapter_info: Option<eframe::wgpu::AdapterInfo>, // Adapter information
+#[derive(Debug)]
+pub enum EFrameBackendType {
+    RenderPass,
+    EguiWindow,
+}
 
-    buffer_handle:  Option<eframe::egui::TextureHandle>, // Egui texture handle
+pub struct EFrameBackend {
+    be_type: EFrameBackendType,
+    ctx: egui::Context,
+    cpu_buffer: Vec<u8>, // Virtual pixel buffer
+    buffer_dim: BufferDimensions,
+    surface_dim: SurfaceDimensions,
+    adapter_info: Option<eframe::wgpu::AdapterInfo>, // Adapter information
+    buffer_handle: Option<eframe::egui::TextureHandle>, // Egui texture handle
     surface_handle: Option<eframe::egui::TextureHandle>, // Egui texture handle
+    win: DisplayWindow,
 }
 
 impl EFrameBackend {
     pub fn new(
+        be_type: EFrameBackendType,
+        ctx: egui::Context,
         buffer_dim: BufferDimensions,
         surface_dim: SurfaceDimensions,
         //wgpu_render_state: &eframe::RenderState,
@@ -70,13 +80,25 @@ impl EFrameBackend {
 
         let cpu_buffer = vec![0; buffer_dim.w as usize * buffer_dim.h as usize * 4];
 
+        let buffer_image = egui::ColorImage {
+            size:   [buffer_dim.w as usize, buffer_dim.h as usize],
+            pixels: cpu_buffer
+                .chunks_exact(4)
+                .map(|rgba| egui::Color32::from_rgba_premultiplied(rgba[0], rgba[1], rgba[2], rgba[3]))
+                .collect(),
+        };
+        let buffer_handle = ctx.load_texture("marty_buffer_texture", buffer_image, TextureOptions::default());
+
         Ok(EFrameBackend {
+            be_type,
+            ctx,
             cpu_buffer,
             buffer_dim,
             surface_dim,
             adapter_info,
-            buffer_handle: None,
+            buffer_handle: Some(buffer_handle),
             surface_handle: None,
+            win: Default::default(),
         })
     }
 }
@@ -90,7 +112,7 @@ impl DisplayBackendBuilder for EFrameBackend {
     }
 }
 
-impl DisplayBackend<'_, '_, eframe::egui::Context> for EFrameBackend {
+impl DisplayBackend<'_, '_, ()> for EFrameBackend {
     type NativeBackend = ();
     type NativeBackendAdapterInfo = eframe::wgpu::AdapterInfo;
     type NativeScaler = Box<
@@ -137,19 +159,16 @@ impl DisplayBackend<'_, '_, eframe::egui::Context> for EFrameBackend {
 
     fn render(
         &mut self,
-        scaler: Option<
+        _scaler: Option<
             &mut Box<
                 (dyn DisplayScaler<(), NativeTextureView = TextureView, NativeEncoder = CommandEncoder> + 'static),
             >,
         >,
-        gui: Option<&mut eframe::egui::Context>,
+        _gui: Option<&mut ()>,
     ) -> Result<(), Error> {
-        let egui_ctx = match gui {
-            Some(ctx) => ctx,
-            None => return Err(anyhow!("No GUI context provided")),
-        };
+        //log::trace!("Rendering eframe backend: {:?}", self.be_type);
 
-        // Update or create texture handle
+        // Update texture handle
         if let Some(texture_handle) = &mut self.buffer_handle {
             texture_handle.set(
                 egui::ColorImage {
@@ -165,21 +184,20 @@ impl DisplayBackend<'_, '_, eframe::egui::Context> for EFrameBackend {
             Ok(())
         }
         else {
-            self.buffer_handle = Some(
-                egui_ctx.load_texture(
-                    "display_texture",
-                    egui::ColorImage {
-                        size:   [self.buffer_dim.w as usize, self.buffer_dim.h as usize],
-                        pixels: self
-                            .cpu_buffer
-                            .chunks_exact(4)
-                            .map(|rgba| egui::Color32::from_rgba_premultiplied(rgba[0], rgba[1], rgba[2], rgba[3]))
-                            .collect(),
-                    },
-                    Default::default(),
-                ),
-            );
-            Ok(())
+            Err(anyhow!("No buffer handle"))
         }
+    }
+
+    fn present(&mut self) -> Result<(), Error> {
+        match self.be_type {
+            EFrameBackendType::EguiWindow => {
+                self.win
+                    .show(&mut self.ctx, "Display", self.buffer_handle.as_ref().unwrap());
+            }
+            EFrameBackendType::RenderPass => {
+                todo!();
+            }
+        }
+        Ok(())
     }
 }

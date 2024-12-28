@@ -73,12 +73,13 @@ use marty_pixels_scaler::{DisplayScaler, MartyScaler, ScalerMode};
 use videocard_renderer::{AspectCorrectionMode, AspectRatio, VideoRenderer};
 
 use anyhow::{anyhow, Error};
+use display_backend_eframe::EFrameBackendType;
 use eframe::{
     egui::{Context, ViewportId},
     wgpu::{CommandEncoder, TextureView},
 };
 use frontend_common::display_manager::DtHandle;
-use marty_egui_eframe::GuiRenderContext;
+use marty_egui_eframe::context::GuiRenderContext;
 use winit::{
     dpi::{LogicalSize, PhysicalSize},
     event_loop::{ActiveEventLoop, ControlFlow, EventLoop},
@@ -454,13 +455,21 @@ impl EFrameDisplayManagerBuilder {
         // Construct window title.
         let window_title = format!("{}: {}", &window_def.name, card_string).to_string();
 
+        let dt_type = DisplayTargetType::WindowBackground {
+            main_window,
+            has_gui: main_window,
+            has_menu: main_window,
+        };
+
+        let dt_type = DisplayTargetType::GuiWidget {
+            main_window,
+            has_gui: main_window,
+            has_menu: main_window,
+        };
+
         dm.create_target(
             window_title,
-            DisplayTargetType::WindowBackground {
-                main_window,
-                has_gui: main_window,
-                has_menu: main_window,
-            },
+            dt_type,
             Some(&egui_ctx),
             Some(window_opts),
             card_id_opt,
@@ -700,7 +709,12 @@ impl<'p> DisplayManager<EFrameBackend, GuiRenderContext, ViewportId, ViewportId,
     ) -> Result<DtHandle, Error> {
         // For now, we only support creating new WindowBackground targets.
         match dt_type {
-            DisplayTargetType::WindowBackground {
+            DisplayTargetType::GuiWidget {
+                main_window,
+                has_gui: _,
+                has_menu,
+            }
+            | DisplayTargetType::WindowBackground {
                 main_window,
                 has_gui: _,
                 has_menu,
@@ -789,6 +803,8 @@ impl<'p> DisplayManager<EFrameBackend, GuiRenderContext, ViewportId, ViewportId,
 
                 // Create the backend.
                 let mut pb = EFrameBackend::new(
+                    EFrameBackendType::EguiWindow,
+                    native_context.unwrap().clone(),
                     BufferDimensions {
                         w: tw,
                         h: th,
@@ -1363,16 +1379,23 @@ impl<'p> DisplayManager<EFrameBackend, GuiRenderContext, ViewportId, ViewportId,
 
     fn for_each_backend<F>(&mut self, mut f: F)
     where
-        F: FnMut(&mut EFrameBackend, &mut Self::ImplScaler, Option<&mut GuiRenderContext>),
+        F: FnMut(&mut EFrameBackend, Option<&mut Self::ImplScaler>, Option<&mut GuiRenderContext>),
     {
         for dtc in &mut self.targets {
+            //log::debug!("for_each_backend(): dt_type: {:?}", dtc.dt_type);
             match dtc.dt_type {
                 DisplayTargetType::WindowBackground { .. } => {
                     // A WindowBackground target will have a Backend and Scaler.
                     if let Some(backend) = &mut dtc.backend {
                         if let Some(scaler) = &mut dtc.scaler {
-                            f(backend, &mut *scaler, dtc.gui_ctx.as_mut())
+                            f(backend, Some(&mut *scaler), dtc.gui_ctx.as_mut())
                         }
+                    }
+                }
+                DisplayTargetType::GuiWidget { .. } => {
+                    // A GuiWidget target will have a Backend but no Scaler.
+                    if let Some(backend) = &mut dtc.backend {
+                        f(backend, None, dtc.gui_ctx.as_mut())
                     }
                 }
                 _ => {}

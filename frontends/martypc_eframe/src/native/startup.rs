@@ -513,12 +513,6 @@ pub fn startup(ctx: egui::Context) -> Emulator {
         }
     }
 
-    // Create Timestep Manager
-    let mut timestep_manager = TimestepManager::new();
-    timestep_manager.set_cpu_mhz(machine.get_cpu_mhz());
-    timestep_manager.set_emu_update_rate(highest_rate);
-    timestep_manager.set_emu_render_rate(highest_rate);
-
     let gui_options = DmGuiOptions {
         enabled: !config.gui.disabled,
         theme: config.gui.theme,
@@ -560,7 +554,7 @@ pub fn startup(ctx: egui::Context) -> Emulator {
     // Put everything we want to handle in event loop into an Emulator struct
     let mut emu = Emulator {
         rm: resource_manager,
-        //dm: display_manager,
+        dm: display_manager,
         romm: rom_manager,
         romsets: rom_sets_resolved.clone(),
         config,
