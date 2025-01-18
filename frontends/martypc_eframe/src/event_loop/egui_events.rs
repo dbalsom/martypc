@@ -470,10 +470,10 @@ pub fn handle_egui_event(emu: &mut Emulator, gui_event: &GuiEvent) {
             if let Some(fdc) = emu.machine.fdc() {
                 let floppy = fdc.get_image_mut(*drive_select);
                 if let Some(floppy_image) = floppy.0 {
-                    match fluxfox::ImageWriter::new()
+                    match fluxfox::ImageWriter::new(floppy_image)
                         .with_format(*format)
                         .with_path(filepath.clone())
-                        .write(floppy_image)
+                        .write()
                     {
                         Ok(_) => {
                             log::info!("Floppy image successfully saved: {:?}", filepath);
@@ -580,6 +580,7 @@ pub fn handle_egui_event(emu: &mut Emulator, gui_event: &GuiEvent) {
                 fdc.write_protect(*drive_select, *state);
             }
         }
+        #[cfg(feature = "serial")]
         GuiEvent::BridgeSerialPort(guest_port_id, host_port_name, host_port_id) => {
             log::info!("Bridging serial port: {}, id: {}", host_port_name, host_port_id);
             if let Err(err) = emu
@@ -940,12 +941,7 @@ pub fn handle_load_floppy(emu: &mut Emulator, drive_select: usize, context: File
                             _ => {}
                         }));
 
-                        match DiskImage::load(
-                            &mut image_buffer,
-                            Some(floppy_path.clone()),
-                            None,
-                            Some(loading_callback),
-                        ) {
+                        match DiskImage::load(&mut image_buffer, Some(&floppy_path), None, Some(loading_callback)) {
                             Ok(disk_image) => {
                                 _ = sender.send(FrontendThreadEvent::FloppyImageLoadComplete {
                                     drive_select,

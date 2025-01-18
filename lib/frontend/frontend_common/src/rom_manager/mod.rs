@@ -206,7 +206,7 @@ impl RomManager {
             .iter()
             .filter_map(|item| {
                 //log::debug!("item: {:?}", item.full_path);
-                if item.full_path.extension().is_some_and(|ext| ext == "toml") {
+                if item.location.extension().is_some_and(|ext| ext == "toml") {
                     return Some(item);
                 }
                 None
@@ -217,7 +217,7 @@ impl RomManager {
 
         // Attempt to load each toml file as a rom definition file.
         for def in toml_defs {
-            let mut loaded_def = self.load_def(&def.full_path)?;
+            let mut loaded_def = self.load_def(&def.location)?;
             rom_defs.append(&mut loaded_def.romset);
         }
 
@@ -427,10 +427,10 @@ impl RomManager {
 
         for rom_item in roms {
             let mut new_candidate: RomFileCandidate = Default::default();
-            let file_vec = match std::fs::read(rom_item.full_path.clone()) {
+            let file_vec = match std::fs::read(rom_item.location.clone()) {
                 Ok(vec) => vec,
                 Err(e) => {
-                    eprintln!("Error opening filename {:?}: {}", &rom_item.full_path, e);
+                    eprintln!("Error opening filename {:?}: {}", &rom_item.location, e);
                     continue;
                 }
             };
@@ -444,7 +444,7 @@ impl RomManager {
             new_candidate.size = file_vec.len();
 
             // Store the path and filename
-            new_candidate.path = rom_item.full_path.clone();
+            new_candidate.path = rom_item.location.clone();
             new_candidate.filename = rom_item
                 .filename_only
                 .clone()
@@ -453,7 +453,7 @@ impl RomManager {
                 .unwrap_or_default();
 
             if new_candidate.filename.len() == 0 {
-                eprintln!("Error: Non-UTF8 filename for {:?}", &rom_item.full_path);
+                eprintln!("Error: Non-UTF8 filename for {:?}", &rom_item.location);
                 continue;
             }
 

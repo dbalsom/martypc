@@ -12,7 +12,7 @@ crate-type = ["lib"]
 
 [dependencies]
 marty_common = { path = "../../common" }
-marty_core = { path = "../../../core" }
+marty_core = { path = "../../../core", default-features = false }
 marty_egui = { path = "../marty_egui" }
 marty_egui_eframe = { path = "../../frontend/marty_egui_eframe" }
 

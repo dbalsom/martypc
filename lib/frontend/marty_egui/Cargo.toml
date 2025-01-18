@@ -12,7 +12,7 @@ crate-type = ["lib"]
 [dependencies]
 frontend_common = { path = "../frontend_common" }
 marty_common = { path = "../../common" }
-marty_core = { path = "../../../core" }
+marty_core = { path = "../../../core", default-features = false }
 videocard_renderer = { path = "../videocard_renderer" }
 bytemuck = { workspace=true, features = ["derive"] }
 image = { workspace = true, default-features = false, features = ["png"] }
@@ -32,9 +32,7 @@ regex = "1.10"
 log = "0.4"
 tiny-skia = "0.11"
 
-egui = { workspace = true, features = ["serde"] }
-egui-wgpu.workspace = true
-egui-winit.workspace = true
+egui = { workspace = true, default-features = false, features = ["serde"] }
 egui_extras.workspace = true
 egui_plot.workspace = true
 

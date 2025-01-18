@@ -39,8 +39,7 @@ pub use display_backend_trait::{
     //DisplayBackendError
 };
 
-//use marty_egui::context::GuiRenderContext;
-use marty_pixels_scaler::DisplayScaler;
+use null_scaler::DisplayScaler;
 
 use anyhow::{anyhow, Error};
 use eframe::{
@@ -115,6 +114,8 @@ impl DisplayBackendBuilder for EFrameBackend {
 impl DisplayBackend<'_, '_, ()> for EFrameBackend {
     type NativeBackend = ();
     type NativeBackendAdapterInfo = eframe::wgpu::AdapterInfo;
+
+    #[cfg(feature = "use_wgpu")]
     type NativeScaler = Box<
         dyn DisplayScaler<
             (),
@@ -122,6 +123,8 @@ impl DisplayBackend<'_, '_, ()> for EFrameBackend {
             NativeEncoder = eframe::wgpu::CommandEncoder,
         >,
     >;
+    #[cfg(not(feature = "use_wgpu"))]
+    type NativeScaler = Box<dyn DisplayScaler<(), NativeTextureView = (), NativeEncoder = ()>>;
 
     fn get_adapter_info(&self) -> Option<Self::NativeBackendAdapterInfo> {
         Some(self.adapter_info.clone()?)
@@ -159,11 +162,7 @@ impl DisplayBackend<'_, '_, ()> for EFrameBackend {
 
     fn render(
         &mut self,
-        _scaler: Option<
-            &mut Box<
-                (dyn DisplayScaler<(), NativeTextureView = TextureView, NativeEncoder = CommandEncoder> + 'static),
-            >,
-        >,
+        _scaler: Option<&mut Box<(dyn DisplayScaler<(), NativeEncoder = (), NativeTextureView = ()> + 'static)>>,
         _gui: Option<&mut ()>,
     ) -> Result<(), Error> {
         //log::trace!("Rendering eframe backend: {:?}", self.be_type);

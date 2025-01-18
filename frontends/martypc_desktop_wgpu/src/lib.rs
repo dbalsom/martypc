@@ -294,7 +294,7 @@ pub fn run() {
     // First we resolve the emulator configuration by parsing the configuration toml and merging it with
     // command line arguments. For the desktop frontend, this is handled by the config_toml_bpaf front end
     // library.
-    let config = match config_toml_bpaf::get_config("./martypc.toml") {
+    let config = match config_toml_bpaf::get_local_config("./martypc.toml") {
         Ok(config) => config,
         Err(e) => match e.downcast_ref::<std::io::Error>() {
             Some(e) if e.kind() == std::io::ErrorKind::NotFound => {

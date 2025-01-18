@@ -224,7 +224,6 @@ pub type SerialPortDisplayState = BTreeMap<&'static str, SyntaxToken>;
 pub struct SerialPortDescriptor {
     pub id: usize,
     pub name: String,
-    #[cfg(feature = "serial")]
     pub brige_port_id: Option<usize>,
 }
 
@@ -259,7 +258,7 @@ pub struct SerialPort {
     us_per_byte: f64,
 
     // Serial port bridge
-    #[cfg(feature = "serial")]
+    // Allow a None id when serial feature is not enabled
     bridge_port_id: Option<usize>,
     #[cfg(feature = "serial")]
     bridge_port: Option<Box<dyn serialport::SerialPort>>,
@@ -299,7 +298,6 @@ impl Default for SerialPort {
             tx_timer: 0.0,
             us_per_byte: 833.333, // 9600 baud
 
-            #[cfg(feature = "serial")]
             bridge_port_id: None,
             #[cfg(feature = "serial")]
             bridge_port: None,
@@ -890,7 +888,6 @@ impl SerialPortController {
             ports.push(SerialPortDescriptor {
                 id: i,
                 name: port.name.clone(),
-                #[cfg(feature = "serial")]
                 brige_port_id: port.bridge_port_id,
             });
         }

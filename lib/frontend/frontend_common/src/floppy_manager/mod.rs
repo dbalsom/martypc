@@ -137,13 +137,13 @@ impl FloppyManager {
             let idx = self.image_vec.len();
             self.image_vec.push(FloppyImage {
                 idx,
-                name: item.full_path.file_name().unwrap().to_os_string(),
-                path: item.full_path.clone(),
-                size: item.full_path.metadata()?.len(),
+                name: item.location.file_name().unwrap().to_os_string(),
+                path: item.location.clone(),
+                size: item.location.metadata()?.len(),
             });
 
             self.image_map
-                .insert(item.full_path.file_name().unwrap().to_os_string(), idx);
+                .insert(item.location.file_name().unwrap().to_os_string(), idx);
         }
 
         self.files = floppy_items;
@@ -164,7 +164,7 @@ impl FloppyManager {
 
             if matches!(item.rtype, ResourceItemType::Directory) {
                 self.autofloppy_dir_vec.push(RelativeDirectory {
-                    full: item.full_path.clone(),
+                    full: item.location.clone(),
                     relative: item.relative_path.clone().unwrap_or(PathBuf::new()),
                     name: item.filename_only.clone().unwrap_or(OsString::new()),
                 });
@@ -379,25 +379,25 @@ impl FloppyManager {
             let filename = filename_only.to_str().unwrap().clone();
 
             if filename == "IO.SYS" {
-                files_visited.insert(item.full_path.clone());
-                io_sys = Some(item.full_path.clone());
+                files_visited.insert(item.location.clone());
+                io_sys = Some(item.location.clone());
             }
             else if filename == "IBMBIO.COM" {
-                files_visited.insert(item.full_path.clone());
-                io_sys = Some(item.full_path.clone());
+                files_visited.insert(item.location.clone());
+                io_sys = Some(item.location.clone());
             }
             else if filename == "MSDOS.SYS" {
-                files_visited.insert(item.full_path.clone());
-                dos_sys = Some(item.full_path.clone());
+                files_visited.insert(item.location.clone());
+                dos_sys = Some(item.location.clone());
             }
             else if filename == "IBMDOS.COM" {
-                files_visited.insert(item.full_path.clone());
-                dos_sys = Some(item.full_path.clone());
+                files_visited.insert(item.location.clone());
+                dos_sys = Some(item.location.clone());
             }
             else if filename == "KERNEL.SYS" {
                 // FreeDOS only has one file - KERNEL.SYS. If we find it, use it as the IO SYS file.
-                files_visited.insert(item.full_path.clone());
-                io_sys = Some(item.full_path.clone());
+                files_visited.insert(item.location.clone());
+                io_sys = Some(item.location.clone());
             }
         }
 
@@ -533,29 +533,29 @@ impl FloppyManager {
             let filename = filename_only.to_str().unwrap().clone();
 
             if filename == "IO.SYS" {
-                files_visited.insert(item.full_path.clone());
-                io_sys = Some(item.full_path.clone());
+                files_visited.insert(item.location.clone());
+                io_sys = Some(item.location.clone());
             }
             else if filename == "IBMBIO.COM" {
-                files_visited.insert(item.full_path.clone());
-                io_sys = Some(item.full_path.clone());
+                files_visited.insert(item.location.clone());
+                io_sys = Some(item.location.clone());
             }
             else if filename == "MSDOS.SYS" {
-                files_visited.insert(item.full_path.clone());
-                dos_sys = Some(item.full_path.clone());
+                files_visited.insert(item.location.clone());
+                dos_sys = Some(item.location.clone());
             }
             else if filename == "IBMDOS.COM" {
-                files_visited.insert(item.full_path.clone());
-                dos_sys = Some(item.full_path.clone());
+                files_visited.insert(item.location.clone());
+                dos_sys = Some(item.location.clone());
             }
             else if filename == "KERNEL.SYS" {
                 // FreeDOS only has one file - KERNEL.SYS. If we find it, use it as the IO SYS file.
-                files_visited.insert(item.full_path.clone());
-                io_sys = Some(item.full_path.clone());
+                files_visited.insert(item.location.clone());
+                io_sys = Some(item.location.clone());
             }
             else if filename.to_lowercase() == "bootsector.bin" {
-                files_visited.insert(item.full_path.clone());
-                bootsector_opt = Some(item.full_path.clone());
+                files_visited.insert(item.location.clone());
+                bootsector_opt = Some(item.location.clone());
             }
         }
 

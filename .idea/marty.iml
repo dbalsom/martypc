@@ -32,6 +32,8 @@
       <sourceFolder url="file://$MODULE_DIR$/lib/frontend/display_manager_eframe/src" isTestSource="false" />
       <sourceFolder url="file://$MODULE_DIR$/lib/frontend/marty_egui_eframe/src" isTestSource="false" />
       <sourceFolder url="file://$MODULE_DIR$/lib/frontend/marty_egui_wgpu/src" isTestSource="false" />
+      <sourceFolder url="file://$MODULE_DIR$/lib/frontend/marty_web_helpers/src" isTestSource="false" />
+      <sourceFolder url="file://$MODULE_DIR$/lib/frontend/null_scaler/src" isTestSource="false" />
       <excludeFolder url="file://$MODULE_DIR$/target" />
     </content>
     <orderEntry type="inheritedJdk" />

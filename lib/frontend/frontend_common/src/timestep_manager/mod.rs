@@ -248,16 +248,17 @@ impl TimestepManager {
     /// When a second has elapsed, the 'machine_callback' is called to retrieve the current
     /// CPU cycle count, system tick count, instruction count, and optionally the number of
     /// rendered frames from the primary video card (if present).
-    pub fn wm_update<E, F, G, H>(
+    pub fn wm_update<E, D, F, G, H>(
         &mut self,
         emu: &mut E,
+        dm: &mut D,
         second_callback: F,
         mut emu_update_callback: G,
         mut emu_render_callback: H,
     ) where
         F: FnOnce(&mut E) -> MachinePerfStats,
         G: FnMut(&mut E, u32),
-        H: FnMut(&mut E, &TimestepManager, &PerfSnapshot),
+        H: FnMut(&mut E, &mut D, &TimestepManager, &PerfSnapshot),
     {
         if !self.init {
             self.start();
@@ -296,7 +297,7 @@ impl TimestepManager {
         // Handle emu frame render
         if self.emu_render_rate.tick(elapsed) {
             let snapshot = self.perf_stats.snapshot(self.cpu_cycle_update_target);
-            emu_render_callback(emu, &self, &snapshot);
+            emu_render_callback(emu, dm, &self, &snapshot);
             self.perf_stats.wm_fps.tick();
             self.perf_stats.frame_time = self.last_frame_instant.elapsed();
 

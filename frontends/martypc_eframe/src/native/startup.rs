@@ -36,7 +36,7 @@ pub fn startup(ctx: egui::Context) -> Emulator {
     // First we resolve the emulator configuration by parsing the configuration toml and merging it with
     // command line arguments. For the desktop frontend, this is handled by the config_toml_bpaf front end
     // library.
-    let config = match config_toml_bpaf::get_config("./martypc.toml") {
+    let config = match config_toml_bpaf::get_local_config("./martypc.toml") {
         Ok(config) => config,
         Err(e) => match e.downcast_ref::<std::io::Error>() {
             Some(e) if e.kind() == std::io::ErrorKind::NotFound => {
@@ -354,9 +354,9 @@ pub fn startup(ctx: egui::Context) -> Emulator {
         //return run_headless::run_headless(&config, rom_manager, floppy_manager);
     }
 
-    // ----------------------------------------------------------------------------
-    // From this point forward, it is assumed we are staring the full GUI frontend!
-    // ----------------------------------------------------------------------------
+    // -----------------------------------------------------------------------------
+    // From this point forward, it is assumed we are starting the full GUI frontend!
+    // -----------------------------------------------------------------------------
 
     let mut hotkey_manager = HotkeyManager::new();
     hotkey_manager.add_hotkeys(config.emulator.input.hotkeys.clone());
@@ -554,7 +554,6 @@ pub fn startup(ctx: egui::Context) -> Emulator {
     // Put everything we want to handle in event loop into an Emulator struct
     let mut emu = Emulator {
         rm: resource_manager,
-        dm: display_manager,
         romm: rom_manager,
         romsets: rom_sets_resolved.clone(),
         config,

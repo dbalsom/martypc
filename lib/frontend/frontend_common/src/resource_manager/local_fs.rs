@@ -111,7 +111,7 @@ impl ResourceManager {
                             if entry.path().is_dir() {
                                 items.push(ResourceItem {
                                     rtype: ResourceItemType::Directory,
-                                    full_path: entry.path().clone(),
+                                    location: entry.path().clone(),
                                     relative_path: None,
                                     filename_only: Some(entry.path().file_name().unwrap_or_default().to_os_string()),
                                     flags: 0,
@@ -120,7 +120,7 @@ impl ResourceManager {
                             else {
                                 items.push(ResourceItem {
                                     rtype: ResourceItemType::LocalFile,
-                                    full_path: entry.path().clone(),
+                                    location: entry.path().clone(),
                                     relative_path: None,
                                     filename_only: Some(entry.path().file_name().unwrap_or_default().to_os_string()),
                                     flags: 0,
@@ -141,8 +141,8 @@ impl ResourceManager {
             items = items
                 .iter()
                 .filter_map(|item| {
-                    if item.full_path.is_file() {
-                        if let Some(extension) = item.full_path.extension() {
+                    if item.location.is_file() {
+                        if let Some(extension) = item.location.extension() {
                             if extension_filter.contains(&extension.to_ascii_lowercase()) {
                                 return Some(item);
                             }
@@ -214,7 +214,7 @@ impl ResourceManager {
             ResourceManager::visit_dirs(&root, &mut visited, &ignore_dirs, &mut |entry: &fs::DirEntry| {
                 items.push(ResourceItem {
                     rtype: ResourceItemType::LocalFile,
-                    full_path: entry.path(),
+                    location: entry.path(),
                     relative_path: None,
                     filename_only: Some(entry.path().file_name().unwrap_or_default().to_os_string()),
                     flags: 0,
@@ -233,7 +233,7 @@ impl ResourceManager {
         ResourceManager::visit_dirs(&path, &mut visited, &ignore_dirs, &mut |entry: &fs::DirEntry| {
             items.push(ResourceItem {
                 rtype: ResourceItemType::LocalFile,
-                full_path: entry.path(),
+                location: entry.path(),
                 relative_path: None,
                 filename_only: Some(entry.path().file_name().unwrap_or_default().to_os_string()),
                 flags: 0,
@@ -269,7 +269,7 @@ impl ResourceManager {
                     if path.is_dir() {
                         dir_items.push(ResourceItem {
                             rtype: ResourceItemType::Directory,
-                            full_path: path.clone(),
+                            location: path.clone(),
                             relative_path: None,
                             filename_only: Some(path.file_name().unwrap_or_default().to_os_string()),
                             flags: 0,
@@ -333,13 +333,13 @@ impl ResourceManager {
     }
 
     /// Return whether the specified path exists.
-    pub fn path_exists(path: &PathBuf) -> bool {
-        path.exists()
+    pub fn path_exists(path: impl AsRef<Path>) -> bool {
+        path.as_ref().exists()
     }
 
     /// Create the specified path if it does not exist.
-    pub fn create_path(path: &PathBuf) -> Result<(), Error> {
-        if !ResourceManager::path_exists(path) {
+    pub fn create_path<P: AsRef<Path>>(path: P) -> Result<(), Error> {
+        if !ResourceManager::path_exists(&path) {
             fs::create_dir_all(path)?;
         }
         Ok(())

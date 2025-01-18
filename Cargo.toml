@@ -9,6 +9,7 @@ members = [
     "lib/frontend/marty_egui",
     "lib/frontend/marty_egui_wgpu",
     "lib/frontend/config_toml_bpaf",
+    "lib/frontend/marty_web_helpers",
     "frontends/martypc_eframe",
     "frontends/martypc_web_player_wgpu",
     "frontends/martypc_desktop_wgpu"
@@ -57,16 +58,40 @@ enum_dispatch = "0.3.13"
 indexmap = "2.2.6"
 crossbeam-channel = "0.5.13"
 crossbeam-utils = "0.8.5"
-zip = {  version = "2.1.3", default-features = false, features = ["bzip2", "deflate", "deflate64", "lzma", "time", "zstd"] }
+zip = { version = "2.1.3", default-features = false }
 strum = "0.26"
 strum_macros = "0.26"
-egui = "0.30.0"
+egui = { version = "0.30.0", default-features = false }
 egui-wgpu = "0.30.0"
 egui_plot = "0.30.0"
+url = "2.5"
+
+# wasm stuff
+wasm-bindgen = "=0.2.95"
+wasm-bindgen-futures = "0.4"
+wasm-bindgen-rayon = "1.2"
+[workspace.dependencies.web-sys]
+version = "0.3"
+features = [
+    "DedicatedWorkerGlobalScope",
+    "WorkerOptions",
+    "WorkerType",
+    "Url",
+    "Blob",
+    "BlobPropertyBag",
+    "Window",
+    "Document",
+    "HtmlAnchorElement"
+]
 
 [workspace.dependencies.fluxfox]
 git = "https://github.com/dbalsom/fluxfox.git"
 branch = "main"
+default-features = false
+
+[workspace.dependencies.eframe]
+version = "0.30.0"
+default-features = false
 
 [workspace.dependencies.egui-winit]
 version = "0.30.0"
@@ -76,6 +101,7 @@ features = ["clipboard", "wayland", "x11"]
 
 [workspace.dependencies.egui_extras]
 version = "0.30.0"
+default-features = false
 #branch = "0_24_2_winit_0_29_15"
 features = ["image"]
 
@@ -116,6 +142,8 @@ branch = "buffer_size"
 #[workspace.dependencies.egui_plot]
 #git = "https://github.com/dbalsom/egui_martypc.git"
 #branch = "0_24_2_winit_0_29_15"
+
+
 
 [profile.release]
 opt-level = 3

@@ -33,16 +33,22 @@
 
 use crate::{
     bus::{BusInterface, DeviceRunTimeUnit, IoDevice},
-    devices::{dma, floppy_drive::FloppyDiskDrive},
+    device_types::fdc::FloppyImageType,
+    devices::{
+        dma,
+        floppy_drive::{FloppyDiskDrive, FloppyImageState},
+    },
     machine_config::FloppyDriveConfig,
     machine_types::FdcType,
 };
 use anyhow::{anyhow, Error};
-use std::{collections::VecDeque, default::Default, path::PathBuf};
-
-use crate::{device_types::fdc::FloppyImageType, devices::floppy_drive::FloppyImageState};
-use fluxfox::{DiskCh, DiskChs, DiskChsn, DiskImage, StandardFormat};
+use fluxfox::prelude::*;
 use marty_common::types::history_buffer::HistoryBuffer;
+use std::{
+    collections::VecDeque,
+    default::Default,
+    path::{Path, PathBuf},
+};
 
 pub const FDC_LOG_LEN: usize = 1000;
 
@@ -518,7 +524,7 @@ impl FloppyController {
         &mut self,
         drive_select: usize,
         src_vec: Vec<u8>,
-        path: Option<PathBuf>,
+        path: Option<&Path>,
         write_protect: bool,
     ) -> Result<&DiskImage, Error> {
         if drive_select >= self.drive_ct {
@@ -1817,7 +1823,7 @@ impl FloppyController {
             self.send_results_phase(InterruptCode::NormalTermination, self.drive_select, new_chs, n);
 
             // Seek to new CHS
-            self.drives[self.drive_select].chsn.seek(&new_chs);
+            self.drives[self.drive_select].chsn.set_chs(new_chs);
 
             // Finalize operation
             self.operation = Operation::NoOperation;
@@ -1960,7 +1966,7 @@ impl FloppyController {
                     );
 
                     // Set new CHS
-                    self.drives[self.drive_select].chsn.seek(&new_chs);
+                    self.drives[self.drive_select].chsn.set_chs(new_chs);
 
                     // Finalize operation
                     self.operation = Operation::NoOperation;
@@ -2113,7 +2119,7 @@ impl FloppyController {
             self.send_results_phase(InterruptCode::NormalTermination, self.drive_select, new_chs, n);
 
             // Seek to new CHS and finalize operation
-            self.drives[self.drive_select].chsn.seek(&new_chs);
+            self.drives[self.drive_select].chsn.set_chs(new_chs);
             self.operation = Operation::NoOperation;
             self.send_interrupt = true;
         }

@@ -34,6 +34,7 @@ winit = "0.29.4"
 winit_input_helper = "0.14"
 
 [target.'cfg(target_arch = "wasm32")'.dependencies]
+marty_web_helpers = { path = "../../lib/frontend/marty_web_helpers" }
 wgpu = { version = "0.16", features = ["webgl"] }
 error-iter = "0.4"
 console_error_panic_hook = "0.1"

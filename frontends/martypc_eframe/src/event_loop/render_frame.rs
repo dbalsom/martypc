@@ -32,14 +32,14 @@
 use crate::emulator::Emulator;
 
 //use display_backend_eframe::DisplayBackend;
-use display_manager_eframe::{DisplayBackend, DisplayManager};
+use display_manager_eframe::{DisplayBackend, DisplayManager, EFrameDisplayManager};
 use marty_core::{device_traits::videocard::BufferSelect, machine::ExecutionState};
 use marty_egui::GuiBoolean;
 
-pub fn render_frame(emu: &mut Emulator) {
+pub fn render_frame(emu: &mut Emulator, dm: &mut EFrameDisplayManager) {
     // First, run each renderer to resolve all videocard views.
     // Every renderer will have an associated card and backend.
-    emu.dm.for_each_renderer(|renderer, vid, backend_buf| {
+    dm.for_each_renderer(|renderer, vid, backend_buf| {
         if let Some(videocard) = emu.machine.bus_mut().video_mut(&vid) {
             // Check if the emulator is paused - if paused, optionally select the back buffer
             // so we can watch the raster beam draw
@@ -93,7 +93,7 @@ pub fn render_frame(emu: &mut Emulator) {
     // });
 
     // Finally, render each backend
-    emu.dm.for_each_backend(|backend, scaler, gui_opt| {
+    dm.for_each_backend(|backend, scaler, gui_opt| {
         if let Err(e) = backend.render(scaler, None) {
             log::error!("Failed to render backend: {}", e);
         }

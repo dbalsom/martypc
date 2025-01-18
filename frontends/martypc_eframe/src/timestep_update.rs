@@ -33,7 +33,7 @@ use crate::event_loop::egui_update::update_egui;
 use std::time::{Duration, Instant};
 
 use crate::{emulator::Emulator, event_loop::render_frame::render_frame};
-use display_manager_eframe::DisplayManager;
+use display_manager_eframe::{DisplayManager, EFrameDisplayManager};
 use frontend_common::{
     constants::{LONG_NOTIFICATION_TIME, NORMAL_NOTIFICATION_TIME, SHORT_NOTIFICATION_TIME},
     timestep_manager::{MachinePerfStats, TimestepManager},
@@ -45,9 +45,10 @@ use videocard_renderer::RendererEvent;
     Emulator,
 };*/
 
-pub fn process_update(emu: &mut Emulator, tm: &mut TimestepManager) {
+pub fn process_update(emu: &mut Emulator, dm: &mut EFrameDisplayManager, tm: &mut TimestepManager) {
     tm.wm_update(
         emu,
+        dm,
         |emuc| {
             // Per second freq
             MachinePerfStats {
@@ -62,7 +63,7 @@ pub fn process_update(emu: &mut Emulator, tm: &mut TimestepManager) {
             // Per emu update freq
             emuc.machine.run(cycles, &mut emuc.exec_control.borrow_mut());
         },
-        |emuc, tmc, &perf| {
+        |emuc, dmc, tmc, &perf| {
             emuc.perf = perf;
 
             // Per frame freq
@@ -196,7 +197,7 @@ pub fn process_update(emu: &mut Emulator, tm: &mut TimestepManager) {
             }
 
             // Resize windows
-            if let Err(err) = emuc.dm.resize_viewports() {
+            if let Err(err) = dmc.resize_viewports() {
                 log::error!("Error resizing windows: {}", err);
             }
 
@@ -206,14 +207,14 @@ pub fn process_update(emu: &mut Emulator, tm: &mut TimestepManager) {
             emuc.machine.for_each_videocard(|vci| {
                 let extents = vci.card.get_display_extents();
                 // Resize the card.
-                if let Err(_) = emuc.dm.on_card_resized(&vci.id, &extents) {
+                if let Err(_) = dmc.on_card_resized(&vci.id, &extents) {
                     log::error!("Error resizing videocard");
                 }
             });
             emuc.stat_counter.render_time = Instant::now() - render_start;
 
             // Update egui data
-            update_egui(emuc, tmc);
+            update_egui(emuc, dmc, tmc);
 
             // Run sound
             if let Some(sound) = &mut emuc.si {
@@ -221,10 +222,10 @@ pub fn process_update(emu: &mut Emulator, tm: &mut TimestepManager) {
             }
 
             // Render the current frame for all window display targets.
-            render_frame(emuc);
+            render_frame(emuc, dmc);
 
             // Handle renderer events
-            emuc.dm.for_each_renderer(|renderer, _vid, _backend_buf| {
+            dmc.for_each_renderer(|renderer, _vid, _backend_buf| {
                 while let Some(event) = renderer.get_event() {
                     match event {
                         RendererEvent::ScreenshotSaved => {

@@ -33,6 +33,8 @@
 
 */
 
+use std::{collections::HashSet, ffi::OsString, path::PathBuf};
+
 #[cfg(not(target_arch = "wasm32"))]
 mod local_fs;
 mod path_manager;
@@ -46,7 +48,6 @@ pub use tree::TreeNode as PathTreeNode;
 
 use anyhow::Error;
 use regex::Regex;
-use std::{collections::HashSet, ffi::OsString, path::PathBuf};
 
 const BASEDIR_TOKEN: &'static str = "$basedir$";
 
@@ -68,7 +69,7 @@ pub enum ResourceItemType {
 #[derive(Clone, Debug)]
 pub struct ResourceItem {
     pub(crate) rtype: ResourceItemType,
-    pub(crate) full_path: PathBuf,
+    pub(crate) location: PathBuf,
     pub(crate) relative_path: Option<PathBuf>,
     pub(crate) filename_only: Option<OsString>,
     flags: u32,
@@ -80,7 +81,7 @@ impl ResourceItem {
         new_path.push(filename.replace("/", "\\"));
         Self {
             rtype: ResourceItemType::LocalFile,
-            full_path: new_path.clone(),
+            location: new_path.clone(),
             relative_path: None,
             filename_only: new_path.file_name().map(|s| s.to_os_string()),
             flags: 0,
@@ -230,9 +231,9 @@ impl ResourceManager {
         // Strip the base path from all items.
         for item in items.iter_mut() {
             item.relative_path = Some(
-                item.full_path
+                item.location
                     .strip_prefix(&base)
-                    .unwrap_or(&item.full_path)
+                    .unwrap_or(&item.location)
                     .to_path_buf(),
             );
         }

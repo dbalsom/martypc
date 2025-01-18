@@ -135,12 +135,12 @@ impl VhdManager {
             let idx = self.image_vec.len();
             self.image_vec.push(VhdFile {
                 idx,
-                name: item.full_path.file_name().unwrap().to_os_string(),
-                path: item.full_path.clone(),
-                size: item.full_path.metadata().unwrap().len(),
+                name: item.location.file_name().unwrap().to_os_string(),
+                path: item.location.clone(),
+                size: item.location.metadata().unwrap().len(),
             });
 
-            self.image_map.insert(item.full_path.clone(), idx);
+            self.image_map.insert(item.location.clone(), idx);
         }
 
         self.files = floppy_items;

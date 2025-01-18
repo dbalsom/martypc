@@ -1,4 +1,4 @@
-use eframe::{egui, egui::Grid};
+use eframe::egui;
 
 pub struct DisplayWindow {
     pub open: bool,

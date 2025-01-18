@@ -42,13 +42,13 @@ branch = "main"
 optional = true
 
 [target.'cfg(not(target_arch = "wasm32"))'.dependencies]
-fluxfox = { workspace = true }
+fluxfox = { workspace = true, default-features=false, features = ["core", "archives", "mfi", "fat", "flux", "ibm_pc"] }
 
 [target.'cfg(target_arch = "wasm32")'.dependencies]
 getrandom = { version = "0.2", features = ["js"] }
 wasm-bindgen = { version = "0.2", optional = true }
 wasm-bindgen-futures = { version = "0.4", optional = true }
-fluxfox = { workspace = true, default-features=false, features = ["wasm", "zip", "mfi"] }
+fluxfox = { workspace = true, default-features=false, features = ["core", "wasm", "archives", "mfi", "fat", "flux", "ibm_pc"] }
 
 [dev-dependencies]
 criterion = "0.5"
@@ -62,7 +62,7 @@ name = "cpu_bench"
 harness = false
 
 [features]
-default = ["ega", "vga", "sound", "serial", "opl"]
+default = ["ega", "vga"]
 sound = []
 serial = ["serialport"]
 opl = ["dep:opl3-rs"]

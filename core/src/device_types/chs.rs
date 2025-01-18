@@ -56,8 +56,8 @@ impl From<DiskChs> for (u8, u8, u8) {
     }
 }
 
-impl From<fluxfox::DiskChs> for DiskChs {
-    fn from(chs: fluxfox::DiskChs) -> Self {
+impl From<fluxfox::prelude::DiskChs> for DiskChs {
+    fn from(chs: fluxfox::prelude::DiskChs) -> Self {
         Self {
             c: chs.c() as u8,
             h: chs.h(),

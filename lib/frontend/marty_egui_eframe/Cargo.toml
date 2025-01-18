@@ -12,7 +12,7 @@ crate-type = ["lib"]
 [dependencies]
 frontend_common = { path = "../frontend_common" }
 marty_common = { path = "../../common" }
-marty_core = { path = "../../../core" }
+marty_core = { path = "../../../core", default-features = false }
 marty_egui = { path = "../marty_egui" }
 videocard_renderer = { path = "../videocard_renderer" }
 #winit.workspace = true
@@ -33,9 +33,9 @@ fluxfox.workspace = true
 crossbeam-channel.workspace = true
 crossbeam-utils.workspace = true
 
-egui = { workspace = true, features = ["serde"] }
-egui-wgpu.workspace = true
-egui-winit.workspace = true
+# EGUI dependencies
+# ---------------------------------------------------------------------------------------------------------------------
+egui = { workspace = true, default-features = false, features = ["serde"] }
 egui_extras.workspace = true
 egui_plot.workspace = true
 
@@ -45,9 +45,18 @@ egui_plot.workspace = true
 egui_file = "0.20.0"
 egui-notify = "0.18"
 
-# Debug TUI interface imports
+# TUI dependencies (disabled)
+# ---------------------------------------------------------------------------------------------------------------------
 #ratatui = { version = "0.26.2", default-features = false }
 #egui_ratatui = "0.0.10"
 #egui_ratatui = { git = "https://github.com/dbalsom/egui_ratatui_martypc.git", branch = "resize_fix"}
+
 serde = { workspace = true, features = ["derive"] }
 lazy_static = "1.4.0"
+
+# Optional dependencies
+# ---------------------------------------------------------------------------------------------------------------------
+wgpu = { workspace = true, optional = true }
+
+[features]
+use_wgpu = ["wgpu"]

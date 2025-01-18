@@ -163,13 +163,13 @@ impl MachineManager {
             toml_configs.len()
         );
         for item in toml_configs.iter() {
-            log::debug!("  {:?}", item.full_path);
+            log::debug!("  {:?}", item.location);
         }
 
         // Attempt to parse each toml file as a machine configuration or overlay file.
         for config in toml_configs {
-            println!("Reading machine configuration file: {:?}", config.full_path);
-            let mut loaded_config = self.parse_config_file(&config.full_path)?;
+            println!("Reading machine configuration file: {:?}", config.location);
+            let mut loaded_config = self.parse_config_file(&config.location)?;
 
             if let Some(machine_vec) = loaded_config.machine.as_mut() {
                 machine_configs.append(machine_vec);

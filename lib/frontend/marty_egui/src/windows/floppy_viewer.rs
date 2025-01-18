@@ -29,29 +29,28 @@
     Implements a viewer control for a floppy disk image.
 
 */
+
+use std::sync::{Arc, Mutex};
+
 use crate::{
     constants::*,
     layouts::{Layout::KeyValue, MartyLayout},
-    widgets::{sector_status::sector_status, tab_group::MartyTabGroup},
+    widgets::{
+        pixel_canvas::{PixelCanvas, PixelCanvasDepth, PixelCanvasZoom},
+        sector_status::sector_status,
+        tab_group::MartyTabGroup,
+    },
+    windows::data_visualizer::ZOOM_LUT,
     *,
 };
-use crossbeam_channel as channel;
-use crossbeam_utils::thread;
-use std::sync::{Arc, Mutex};
 
-use egui::{Label, Sense};
-use fluxfox::{
-    structure_parsers::DiskStructureGenericElement,
-    visualization::{render_track_metadata_quadrant, RenderTrackMetadataParams, RotationDirection},
-    DiskDataResolution,
-    DiskImage,
-};
+use fluxfox::{prelude::*, track_schema::GenericTrackElement, visualization::prelude::*};
 use marty_core::devices::floppy_drive::FloppyImageState;
 
-use crate::{
-    widgets::pixel_canvas::{PixelCanvas, PixelCanvasDepth, PixelCanvasZoom},
-    windows::data_visualizer::ZOOM_LUT,
-};
+use crossbeam_channel as channel;
+use crossbeam_utils::thread;
+use egui::{Label, Sense};
+use fluxfox::visualization::rasterize_disk::rasterize_track_metadata_quadrant;
 use tiny_skia::{Color, Pixmap, PixmapPaint, Transform};
 
 pub const SECTOR_ROW_SIZE: usize = 9;
@@ -77,7 +76,7 @@ pub struct FloppyViewerControl {
 
     pixmap_pool: Vec<Arc<Mutex<Pixmap>>>,
 
-    palette: HashMap<DiskStructureGenericElement, Color>,
+    palette: HashMap<GenericTrackElement, VizColor>,
     viz_pixmaps: Vec<Pixmap>,
     viz_unsupported: bool,
     viz_write_cts: Vec<u64>,
@@ -94,21 +93,21 @@ impl FloppyViewerControl {
         tab_group.add_tab("Sector Data");
         tab_group.add_tab("Disk View");
 
-        let viz_light_red: Color = Color::from_rgba8(180, 0, 0, 255);
+        let viz_light_red: VizColor = VizColor::from_rgba8(180, 0, 0, 255);
 
-        let viz_orange: Color = Color::from_rgba8(255, 100, 0, 255);
-        let vis_purple: Color = Color::from_rgba8(180, 0, 180, 255);
-        let viz_cyan: Color = Color::from_rgba8(70, 200, 200, 255);
-        let vis_light_purple: Color = Color::from_rgba8(185, 0, 255, 255);
+        let viz_orange: VizColor = VizColor::from_rgba8(255, 100, 0, 255);
+        let vis_purple: VizColor = VizColor::from_rgba8(180, 0, 180, 255);
+        let viz_cyan: VizColor = VizColor::from_rgba8(70, 200, 200, 255);
+        let vis_light_purple: VizColor = VizColor::from_rgba8(185, 0, 255, 255);
 
-        let pal_medium_green = Color::from_rgba8(0x38, 0xb7, 0x64, 0xff);
-        let pal_dark_green = Color::from_rgba8(0x25, 0x71, 0x79, 0xff);
-        let pal_dark_blue = Color::from_rgba8(0x29, 0x36, 0x6f, 0xff);
-        let pal_medium_blue = Color::from_rgba8(0x3b, 0x5d, 0xc9, 0xff);
-        let pal_light_blue = Color::from_rgba8(0x41, 0xa6, 0xf6, 0xff);
-        let pal_dark_purple = Color::from_rgba8(0x5d, 0x27, 0x5d, 0xff);
-        let pal_orange = Color::from_rgba8(0xef, 0x7d, 0x57, 0xff);
-        let pal_dark_red = Color::from_rgba8(0xb1, 0x3e, 0x53, 0xff);
+        let pal_medium_green = VizColor::from_rgba8(0x38, 0xb7, 0x64, 0xff);
+        let pal_dark_green = VizColor::from_rgba8(0x25, 0x71, 0x79, 0xff);
+        let pal_dark_blue = VizColor::from_rgba8(0x29, 0x36, 0x6f, 0xff);
+        let pal_medium_blue = VizColor::from_rgba8(0x3b, 0x5d, 0xc9, 0xff);
+        let pal_light_blue = VizColor::from_rgba8(0x41, 0xa6, 0xf6, 0xff);
+        let pal_dark_purple = VizColor::from_rgba8(0x5d, 0x27, 0x5d, 0xff);
+        let pal_orange = VizColor::from_rgba8(0xef, 0x7d, 0x57, 0xff);
+        let pal_dark_red = VizColor::from_rgba8(0xb1, 0x3e, 0x53, 0xff);
 
         Self {
             drive_idx: 0,
@@ -127,13 +126,13 @@ impl FloppyViewerControl {
             ],
 
             palette: HashMap::from([
-                (DiskStructureGenericElement::SectorData, pal_medium_green),
-                (DiskStructureGenericElement::SectorBadData, pal_orange),
-                (DiskStructureGenericElement::SectorDeletedData, pal_dark_green),
-                (DiskStructureGenericElement::SectorBadDeletedData, viz_light_red),
-                (DiskStructureGenericElement::SectorHeader, pal_light_blue),
-                (DiskStructureGenericElement::SectorBadHeader, pal_medium_blue),
-                (DiskStructureGenericElement::Marker, vis_purple),
+                (GenericTrackElement::SectorData, pal_medium_green),
+                (GenericTrackElement::SectorBadData, pal_orange),
+                (GenericTrackElement::SectorDeletedData, pal_dark_green),
+                (GenericTrackElement::SectorBadDeletedData, viz_light_red),
+                (GenericTrackElement::SectorHeader, pal_light_blue),
+                (GenericTrackElement::SectorBadHeader, pal_medium_blue),
+                (GenericTrackElement::Marker, vis_purple),
             ]),
 
             viz_unsupported: true,
@@ -356,10 +355,9 @@ impl FloppyViewerControl {
     }
 
     pub fn update_visualization(&mut self, drive: usize, image: &DiskImage, write_ct: u64) {
-        self.viz_unsupported = !matches!(
-            image.resolution(),
-            DiskDataResolution::BitStream | DiskDataResolution::FluxStream
-        );
+        let resolutions = image.resolution();
+
+        self.viz_unsupported = resolutions.contains(&TrackDataResolution::MetaSector);
         if self.viz_unsupported || ((write_ct <= self.viz_write_cts[drive]) && (write_ct > 0)) {
             return;
         }
@@ -386,8 +384,8 @@ impl FloppyViewerControl {
             let palette = self.palette.clone();
 
             let direction = match side {
-                0 => RotationDirection::CounterClockwise,
-                1 => RotationDirection::Clockwise,
+                0 => TurningDirection::Clockwise,
+                1 => TurningDirection::CounterClockwise,
                 _ => panic!("Invalid side"),
             };
 
@@ -401,21 +399,47 @@ impl FloppyViewerControl {
                 s.spawn(move |_| {
                     let mut pixmap = pixmap.lock().unwrap();
                     //let l_disk = disk.lock().unwrap();
-                    let track_ct = image.get_track_ct(side.into());
-                    let render_params = RenderTrackMetadataParams {
-                        quadrant,
-                        head: side,
-                        min_radius_fraction,
-                        index_angle: angle,
-                        track_limit: track_ct,
-                        track_gap: render_track_gap,
-                        direction,
-                        palette,
-                        draw_empty_tracks: true,
+                    let track_ct = image.track_ct(side.into());
+
+                    let common_params = CommonVizParams {
+                        radius: Some(VIZ_RESOLUTION as f32 / 2.0),
+                        max_radius_ratio: 1.0,
+                        min_radius_ratio: min_radius_fraction,
+                        pos_offset: None,
+                        index_angle: 0.0,
+                        track_limit: None,
                         pin_last_standard_track: true,
-                        ..Default::default()
+                        track_gap: 0.1,
+                        track_overlap: false,
+                        direction,
                     };
-                    match render_track_metadata_quadrant(image, &mut pixmap, &render_params) {
+
+                    let render_params = RenderTrackMetadataParams {
+                        quadrant: Some(quadrant),
+                        side,
+                        geometry: Default::default(),
+                        winding: Default::default(),
+                        draw_empty_tracks: false,
+                        draw_sector_lookup: false,
+                    };
+
+                    let raster_params = RenderRasterizationParams {
+                        image_size: VizDimensions::new(VIZ_RESOLUTION, VIZ_RESOLUTION),
+                        supersample: 2,
+                        image_bg_color: None,
+                        disk_bg_color: None,
+                        mask_color: None,
+                        palette: Some(palette),
+                        pos_offset: None,
+                    };
+
+                    match rasterize_track_metadata_quadrant(
+                        image,
+                        &mut pixmap,
+                        &common_params,
+                        &render_params,
+                        &raster_params,
+                    ) {
                         Ok(_) => {
                             log::debug!("...Rendered quadrant {}", quadrant);
                         }

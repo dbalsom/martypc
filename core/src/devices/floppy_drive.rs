@@ -28,25 +28,16 @@
 
     Implements a floppy drive
 */
+
 use crate::{
     device_types::fdc::{FloppyImageType, DRIVE_CAPABILITIES},
     machine_types::FloppyDriveType,
 };
 use anyhow::{anyhow, Error};
-use fluxfox::{
-    diskimage::RwSectorScope,
-    DiskCh,
-    DiskChs,
-    DiskChsn,
-    DiskChsnQuery,
-    DiskImage,
-    DiskImageError,
-    DiskSectorMap,
-    StandardFormat,
-};
+use fluxfox::{prelude::*, DiskSectorMap};
 use std::{
     io::{Cursor, Read, Seek},
-    path::PathBuf,
+    path::{Path, PathBuf},
 };
 
 #[derive(Copy, Clone, Debug, Default)]
@@ -230,12 +221,7 @@ impl FloppyDiskDrive {
     }
 
     /// Load a disk into the specified drive
-    pub fn load_image_from(
-        &mut self,
-        src_vec: Vec<u8>,
-        path: Option<PathBuf>,
-        write_protect: bool,
-    ) -> Result<(), Error> {
+    pub fn load_image_from(&mut self, src_vec: Vec<u8>, path: Option<&Path>, write_protect: bool) -> Result<(), Error> {
         let mut image_buffer = Cursor::new(src_vec);
         let image = DiskImage::load(&mut image_buffer, path, None, None)?;
 
@@ -291,15 +277,15 @@ impl FloppyDiskDrive {
     pub fn create_new_image(&mut self, format: StandardFormat, formatted: bool) -> Result<&DiskImage, Error> {
         self.unload_image();
 
-        let builder = fluxfox::ImageBuilder::new()
+        let builder = ImageBuilder::new()
             .with_standard_format(format)
-            .with_resolution(fluxfox::DiskDataResolution::BitStream)
+            .with_resolution(TrackDataResolution::BitStream)
             .with_creator_tag(b"MartyPC")
             .with_formatted(formatted);
 
         let image = builder.build()?;
         self.chsn = Default::default();
-        self.media_geom = format.get_chs();
+        self.media_geom = format.chs();
         self.disk_present = true;
         self.disk_image = Some(image);
 
@@ -332,7 +318,7 @@ impl FloppyDiskDrive {
         }
 
         let image = self.disk_image.as_mut().unwrap();
-        let chsn = fluxfox::DiskChsn::from((id_chs, n));
+        let chsn = DiskChsn::from((id_chs, n));
 
         let sector_data_size = chsn.n_size();
         if sector_data.len() != sector_data_size * ct {
@@ -361,10 +347,10 @@ impl FloppyDiskDrive {
 
             let write_sector_result = image.write_sector(
                 DiskCh::new(self.cylinder, h),
-                fluxfox::DiskChsnQuery::new(chsn.c(), chsn.h(), sid, n),
+                DiskChsnQuery::new(chsn.c(), chsn.h(), sid, n),
                 None,
                 data_slice,
-                RwSectorScope::DataOnly,
+                RwScope::DataOnly,
                 deleted,
                 false,
             )?;
@@ -427,7 +413,7 @@ impl FloppyDiskDrive {
 
         let image = self.disk_image.as_mut().unwrap();
 
-        let sector_size = fluxfox::DiskChsn::n_to_bytes(n);
+        let sector_size = DiskChsn::n_to_bytes(n);
 
         let mut operation_buf = Vec::with_capacity(sector_size * ct);
 
@@ -442,7 +428,7 @@ impl FloppyDiskDrive {
                 DiskChsnQuery::new(id_chs.c(), id_chs.h(), sid, n),
                 None,
                 None,
-                RwSectorScope::DataOnly,
+                RwScope::DataOnly,
                 false,
             ) {
                 Ok(result) => result,
@@ -615,7 +601,7 @@ impl FloppyDiskDrive {
             let s = buf_entry[2];
             let n = buf_entry[3];
 
-            let chsn = fluxfox::DiskChsn::new(c, h, s, n);
+            let chsn = DiskChsn::new(c, h, s, n);
             fox_format_buffer.push(chsn);
         }
 
@@ -746,7 +732,7 @@ impl FloppyDiskDrive {
 
     pub fn image_state(&self) -> Option<FloppyImageState> {
         if let Some(image) = &self.disk_image {
-            let sector_map = image.get_sector_map();
+            let sector_map = image.sector_map();
 
             Some(FloppyImageState {
                 format: None,

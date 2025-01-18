@@ -31,7 +31,7 @@
 
 use crate::{emulator::Emulator, event_loop::egui_events::handle_egui_event};
 
-use display_manager_eframe::DisplayManager;
+use display_manager_eframe::{DisplayManager, EFrameDisplayManager};
 use frontend_common::timestep_manager::TimestepManager;
 use marty_core::{
     bytequeue::ByteQueue,
@@ -44,7 +44,7 @@ use marty_core::{
 };
 use marty_egui::GuiWindow;
 
-pub fn update_egui(emu: &mut Emulator, tm: &TimestepManager) {
+pub fn update_egui(emu: &mut Emulator, dm: &mut EFrameDisplayManager, tm: &TimestepManager) {
     // Is the machine in an error state? If so, display an error dialog.
     if let Some(err) = emu.machine.get_error_str() {
         emu.gui.show_error(err);
@@ -98,11 +98,11 @@ pub fn update_egui(emu: &mut Emulator, tm: &TimestepManager) {
 
     // Update performance viewer
     if emu.gui.is_window_open(GuiWindow::PerfViewer) {
-        if let Some(renderer) = emu.dm.primary_renderer_mut() {
+        if let Some(renderer) = dm.primary_renderer_mut() {
             emu.gui.perf_viewer.update_video_data(renderer.get_params());
         }
 
-        let dti = emu.dm.display_info(&emu.machine);
+        let dti = dm.display_info(&emu.machine);
 
         let mut sound_stats = Vec::new();
         if let Some(si) = emu.si.as_ref() {
@@ -387,7 +387,7 @@ pub fn update_egui(emu: &mut Emulator, tm: &TimestepManager) {
 
     // Update text mode viewer.
     if emu.gui.is_window_open(GuiWindow::TextModeViewer) {
-        emu.dm.for_each_card(|vid| {
+        dm.for_each_card(|vid| {
             emu.gui.text_mode_viewer.set_content(
                 vid.idx,
                 emu.machine

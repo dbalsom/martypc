@@ -476,7 +476,7 @@ impl ConfigFileParams {
     }
 }
 
-pub fn get_config<P>(default_path: P) -> Result<ConfigFileParams, anyhow::Error>
+pub fn get_local_config<P>(default_path: P) -> Result<ConfigFileParams, anyhow::Error>
 where
     P: AsRef<Path>,
 {

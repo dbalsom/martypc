@@ -3,6 +3,7 @@
 pub mod app;
 pub mod counter;
 pub mod emulator;
+pub mod emulator_builder;
 pub mod event_loop;
 pub mod input;
 pub mod timestep_update;

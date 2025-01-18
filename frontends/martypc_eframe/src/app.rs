@@ -1,10 +1,12 @@
 use crate::{
     emulator::Emulator,
+    emulator_builder::EmulatorBuilder,
     event_loop::thread_events::handle_thread_event,
     native::startup,
     timestep_update::process_update,
+    MARTY_ICON,
 };
-use display_manager_eframe::{DisplayBackend, EFrameDisplayManager};
+use display_manager_eframe::{DisplayBackend, EFrameDisplayManager, EFrameDisplayManagerBuilder};
 use frontend_common::{
     display_manager::{DisplayManager, DmGuiOptions},
     timestep_manager::TimestepManager,
@@ -52,7 +54,60 @@ impl MartyApp {
 
         egui_extras::install_image_loaders(&cc.egui_ctx);
 
-        let emu = startup(cc.egui_ctx.clone());
+        // Build the emulator.
+        let mut emu_builder = EmulatorBuilder::default();
+        let mut emu_result;
+
+        #[cfg(not(target_arch = "wasm32"))]
+        {
+            emu_builder = emu_builder.with_toml_config_path("./marty.toml");
+            emu_result = emu_builder.build(&mut std::io::stdout(), &mut std::io::stderr());
+        }
+        #[cfg(target_arch = "wasm32")]
+        {
+            emu_builder = emu_builder.with_toml_config_url("./marty.toml");
+            emu_result = emu_builder.build(&mut ConsoleWriter::default(), &mut ConsoleWriter::default());
+        }
+
+        let emu = match emu_result {
+            Ok(emu) => emu,
+            Err(e) => {
+                log::error!("Failed to build emulator: {}", e);
+                return MartyApp::default();
+            }
+        };
+
+        // Create Display manager
+
+        // Create GUI parameters for the Display Manager.
+        let gui_options = DmGuiOptions {
+            enabled: !emu.config.gui.disabled,
+            theme: emu.config.gui.theme,
+            menu_theme: emu.config.gui.menu_theme,
+            menubar_h: 24, // TODO: Dynamically measure the height of the egui menu bar somehow
+            zoom: emu.config.gui.zoom.unwrap_or(1.0),
+            debug_drawing: false,
+        };
+
+        // Query the machine for video output devices
+        let cardlist = emu.machine.bus().enumerate_videocards();
+
+        // Create display targets.
+        let display_manager = match EFrameDisplayManagerBuilder::build(
+            cc.egui_ctx.clone(),
+            &emu.config.emulator.window,
+            cardlist,
+            &emu.config.emulator.scaler_preset,
+            None,
+            Some(MARTY_ICON),
+            &gui_options,
+        ) {
+            Ok(dm) => dm,
+            Err(e) => {
+                log::error!("Failed to create display manager: {}", e);
+                return MartyApp::default();
+            }
+        };
 
         // Create Timestep Manager
         let mut timestep_manager = TimestepManager::new();
@@ -61,6 +116,7 @@ impl MartyApp {
         // Get a list of video devices from machine.
         let cardlist = emu.machine.bus().enumerate_videocards();
 
+        // Find the maximum refresh rate of all video cards
         let mut highest_rate = 50;
         for card in cardlist.iter() {
             let rate = emu.machine.bus().video(&card).unwrap().get_refresh_rate();
@@ -84,7 +140,7 @@ impl MartyApp {
         MartyApp {
             gui: GuiRenderContext::new(cc.egui_ctx.clone(), 0, 640, 480, 1.0, &gui_options),
             emu: Some(emu),
-            dm:  None,
+            dm:  Some(display_manager),
             tm:  timestep_manager,
         }
     }
@@ -95,14 +151,16 @@ impl eframe::App for MartyApp {
     fn update(&mut self, ctx: &egui::Context, _frame: &mut eframe::Frame) {
         if let Some(emu) = &mut self.emu {
             // Process timestep.
-            process_update(emu, &mut self.tm);
+            process_update(emu, &mut self.dm.as_mut().unwrap(), &mut self.tm);
             handle_thread_event(emu);
 
             // Draw the emulator GUI.
             self.gui.show(&mut emu.gui);
+        }
 
+        if let Some(dm) = &mut self.dm {
             // Present the render targets (this will draw windows for any GuiWidget targets).
-            emu.dm.for_each_backend(|backend, scaler, gui| {
+            dm.for_each_backend(|backend, scaler, gui| {
                 _ = backend.present();
             });
         }

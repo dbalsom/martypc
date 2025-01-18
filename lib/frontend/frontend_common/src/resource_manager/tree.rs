@@ -173,7 +173,7 @@ pub fn build_tree(root_str: String, items: &Vec<ResourceItem>, skip: usize) -> R
         return Err(anyhow!("Items vec is empty"));
     }
     for (idx, item) in items.iter().enumerate() {
-        insert_path(&mut root, idx, &item.full_path, skip);
+        insert_path(&mut root, idx, &item.location, skip);
     }
     Ok(root)
 }

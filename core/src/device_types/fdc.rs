@@ -30,7 +30,7 @@
 */
 
 use crate::machine_types::FloppyDriveType;
-use fluxfox::{DiskChs, StandardFormat};
+use fluxfox::prelude::*;
 use lazy_static::lazy_static;
 use std::collections::HashMap;
 

@@ -36,5 +36,6 @@ pub mod floppy;
 pub mod gui;
 pub mod hotkeys;
 pub mod joykeys;
+pub mod resource_location;
 pub mod sound;
 pub mod window;

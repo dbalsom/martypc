@@ -40,6 +40,7 @@ use std::{
     env::consts::OS,
 };
 use strum::IntoEnumIterator;
+
 use winit::keyboard::KeyCode;
 
 pub enum MouseButton {

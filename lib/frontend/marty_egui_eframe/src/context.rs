@@ -31,7 +31,7 @@
 
 use egui::{ClippedPrimitive, Context, TexturesDelta, ViewportId};
 use egui_extras::install_image_loaders;
-use egui_wgpu::{Renderer, ScreenDescriptor};
+
 use frontend_common::{display_manager::DmGuiOptions, MartyGuiTheme};
 use marty_egui::{
     state::GuiState,
@@ -96,10 +96,10 @@ impl GuiRenderContext {
 
         //egui_state.set_max_texture_side(max_texture_size);
 
-        let screen_descriptor = ScreenDescriptor {
-            size_in_pixels:   [width, height],
-            pixels_per_point: scale_factor as f32,
-        };
+        // let screen_descriptor = ScreenDescriptor {
+        //     size_in_pixels:   [width, height],
+        //     pixels_per_point: scale_factor as f32,
+        // };
 
         //let renderer = Renderer::new(pixels.device(), pixels.render_texture_format(), None, 1);
         //let textures = TexturesDelta::default();

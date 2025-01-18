@@ -221,8 +221,7 @@ pub struct DisplayTargetContext<T> {
     pub(crate) renderer: Option<VideoRenderer>,   // The renderer
     pub(crate) aspect_ratio: AspectRatio,         // Aspect ratio configured for this display
     pub(crate) backend: Option<T>,                // The graphics backend instance
-    pub(crate) scaler:
-        Option<Box<dyn DisplayScaler<(), NativeTextureView = TextureView, NativeEncoder = CommandEncoder>>>, // The scaler pipeline
+    pub(crate) scaler: Option<Box<dyn DisplayScaler<(), NativeTextureView = (), NativeEncoder = ()>>>, // The scaler pipeline
     pub(crate) scaler_params: Option<ScalerParams>,
     pub(crate) card_scale: Option<f32>, // If Some, the card resolution is scaled by this factor
 }
@@ -694,7 +693,7 @@ impl<'p> DisplayManager<EFrameBackend, GuiRenderContext, ViewportId, ViewportId,
     type NativeTextureView = TextureView;
     type NativeEncoder = CommandEncoder;
     type NativeEventLoop = ActiveEventLoop;
-    type ImplScaler = Box<dyn DisplayScaler<(), NativeTextureView = TextureView, NativeEncoder = CommandEncoder>>;
+    type ImplScaler = Box<dyn DisplayScaler<(), NativeTextureView = (), NativeEncoder = ()>>;
     type ImplDisplayTarget = DisplayTargetContext<EFrameBackend>;
 
     fn create_target(

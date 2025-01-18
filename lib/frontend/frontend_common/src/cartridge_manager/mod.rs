@@ -125,13 +125,13 @@ impl CartridgeManager {
             let idx = self.image_vec.len();
             self.image_vec.push(CartImageMeta {
                 idx,
-                name: item.full_path.file_name().unwrap().to_os_string(),
-                path: item.full_path.clone(),
-                size: item.full_path.metadata().unwrap().len(),
+                name: item.location.file_name().unwrap().to_os_string(),
+                path: item.location.clone(),
+                size: item.location.metadata().unwrap().len(),
             });
 
             self.image_map
-                .insert(item.full_path.file_name().unwrap().to_os_string(), idx);
+                .insert(item.location.file_name().unwrap().to_os_string(), idx);
         }
 
         self.files = floppy_items;

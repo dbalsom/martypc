@@ -31,6 +31,10 @@
     implementation-defined types, like egui and wgpu Colors.
 
 */
+
+#[cfg(feature = "use_wgpu")]
+use wgpu;
+
 pub mod cga;
 
 /// Define a universal color type that can be converted to and from implementation-defined types

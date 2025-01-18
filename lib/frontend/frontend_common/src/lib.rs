@@ -23,13 +23,25 @@
     DEALINGS IN THE SOFTWARE.
 
     --------------------------------------------------------------------------
-
-    frontend_common::lib.rs
-
-    This library provides facilities, data types and traits and common to all
-    front ends.
-
 */
+
+//! The Frontend Common library provides facilities, data types and traits common to all front ends.
+//! This avoids duplication of code and type definitions.
+//!
+//! Various Managers are provided here to help with the task of managing resources and state.
+//! - TimeStepManager: Manages the timing of the emulator via callbacks that fire at specified
+//!     intervals, to allow desynchronized guest FPS targeting vs GUI updates.
+//! - ResourceManager: Manages the loading and unloading of resources, such as ROMs, disk images,
+//!     cartridges, etc.
+//! - DisplayManager: Manages the display of the emulator, including window management, scaling,
+//!     aspect ratio, shaders (if applicable to platform), etc.
+//! - MachineManager: Manages the parsing of machine configurations and the creation of machines
+//!     from those configurations.
+//! - RomManager: Manages the loading and resolution of ROMs based on requirements from a machine
+//!     configuration
+//! - FloppyManager: Manages the loading and unloading of floppy disk images
+//! - VhdManager: Manages the loading and unloading of VHD disk images
+//! - CartridgeManager: Manages the loading and unloading of ROM cartridges (PCjr specific)
 
 use serde_derive::Deserialize;
 
