@@ -42,11 +42,7 @@ pub use display_backend_trait::{
 use null_scaler::DisplayScaler;
 
 use anyhow::{anyhow, Error};
-use eframe::{
-    egui,
-    egui::TextureOptions,
-    wgpu::{CommandEncoder, TextureView},
-};
+use eframe::{egui, egui::TextureOptions};
 
 #[derive(Debug)]
 pub enum EFrameBackendType {
@@ -61,8 +57,8 @@ pub struct EFrameBackend {
     buffer_dim: BufferDimensions,
     surface_dim: SurfaceDimensions,
     adapter_info: Option<eframe::wgpu::AdapterInfo>, // Adapter information
-    buffer_handle: Option<eframe::egui::TextureHandle>, // Egui texture handle
-    surface_handle: Option<eframe::egui::TextureHandle>, // Egui texture handle
+    buffer_handle: Option<egui::TextureHandle>,      // Egui texture handle
+    surface_handle: Option<egui::TextureHandle>,     // Egui texture handle
     win: DisplayWindow,
 }
 
