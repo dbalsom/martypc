@@ -32,6 +32,12 @@
 
 */
 
+#[cfg(feature = "use_bpaf")]
+mod bpaf_config;
+mod coreconfig;
+#[cfg(not(feature = "use_bpaf"))]
+mod web_config;
+
 use std::{
     path::{Path, PathBuf},
     str::FromStr,
@@ -53,7 +59,14 @@ use marty_core::{
     machine_types::OnHaltBehavior,
 };
 
+#[cfg(feature = "use_bpaf")]
 use bpaf::Bpaf;
+#[cfg(feature = "use_bpaf")]
+use bpaf_config::{cli_args, CmdLineArgs};
+
+#[cfg(not(feature = "use_bpaf"))]
+use web_config::CmdLineArgs;
+
 use serde_derive::Deserialize;
 
 const fn _default_true() -> bool {
@@ -63,9 +76,8 @@ const fn _default_false() -> bool {
     false
 }
 
-mod coreconfig;
-
-#[derive(Copy, Clone, Debug, Bpaf, Deserialize, PartialEq)]
+#[cfg_attr(feature = "use_bpaf", derive(Bpaf))]
+#[derive(Copy, Clone, Debug, Deserialize, PartialEq)]
 pub enum TestMode {
     None,
     Generate,
@@ -307,95 +319,6 @@ pub struct ConfigFileParams {
     pub tests: Tests,
 }
 
-#[derive(Debug, Bpaf)]
-#[bpaf(options, version, generate(cli_args))]
-pub struct CmdLineArgs {
-    #[bpaf(long)]
-    pub configfile: Option<PathBuf>,
-
-    #[bpaf(long)]
-    pub basedir: Option<PathBuf>,
-
-    #[bpaf(long, switch)]
-    pub benchmark_mode: bool,
-
-    #[bpaf(long, switch)]
-    pub noaudio: bool,
-
-    // Emulator options
-    #[bpaf(long, switch)]
-    pub headless: bool,
-
-    #[bpaf(long, switch)]
-    pub fuzzer: bool,
-
-    // Emulator options
-    #[bpaf(long, switch)]
-    pub romscan: bool,
-
-    #[bpaf(long, switch)]
-    pub machinescan: bool,
-
-    #[bpaf(long, switch)]
-    pub auto_poweron: bool,
-
-    #[bpaf(long, switch)]
-    pub warpspeed: bool,
-
-    #[bpaf(long, switch)]
-    pub title_hacks: bool,
-
-    #[bpaf(long, switch)]
-    pub off_rails_detection: bool,
-
-    //#[bpaf(long, switch)]
-    //pub scaler_aspect_correction: bool,
-    #[bpaf(long, switch)]
-    pub reverse_mouse_buttons: bool,
-
-    #[bpaf(long)]
-    pub machine_config_name: Option<String>,
-    #[bpaf(long)]
-    pub machine_config_overlays: Option<String>,
-
-    #[bpaf(long)]
-    pub turbo: bool,
-
-    #[bpaf(long)]
-    pub validator: Option<ValidatorType>,
-
-    #[bpaf(long, switch)]
-    pub debug_mode: bool,
-
-    #[bpaf(long, switch)]
-    pub debug_keyboard: bool,
-
-    #[bpaf(long, switch)]
-    pub no_roms: bool,
-
-    //#[bpaf(long)]
-    //pub video_type: Option<VideoType>,
-
-    //#[bpaf(long, switch)]
-    //pub video_frame_debug: bool,
-    #[bpaf(long)]
-    pub run_bin: Option<String>,
-    #[bpaf(long)]
-    pub run_bin_seg: Option<u16>,
-    #[bpaf(long)]
-    pub run_bin_ofs: Option<u16>,
-    #[bpaf(long)]
-    pub vreset_bin_seg: Option<u16>,
-    #[bpaf(long)]
-    pub vreset_bin_ofs: Option<u16>,
-
-    // Test stuff
-    #[bpaf(long)]
-    pub test_cpu_type: Option<CpuType>,
-    #[bpaf(long)]
-    pub test_path: Option<PathBuf>,
-}
-
 impl ConfigFileParams {
     pub fn overlay(&mut self, shell_args: CmdLineArgs) {
         if let Some(config_name) = shell_args.machine_config_name {
@@ -476,11 +399,22 @@ impl ConfigFileParams {
     }
 }
 
-pub fn get_local_config<P>(default_path: P) -> Result<ConfigFileParams, anyhow::Error>
+pub fn read_local_config<P>(default_path: P) -> Result<ConfigFileParams, anyhow::Error>
 where
     P: AsRef<Path>,
 {
-    let shell_args: CmdLineArgs = cli_args().run();
+    let shell_args: CmdLineArgs;
+
+    #[cfg(feature = "use_bpaf")]
+    {
+        log::debug!("Reading command line arguments...");
+        shell_args = cli_args().run();
+    }
+    #[cfg(not(feature = "use_bpaf"))]
+    {
+        shell_args = CmdLineArgs::default();
+    }
+
     let mut toml_args: ConfigFileParams;
 
     // Allow configuration file path to be overridden by command line argument 'configfile'
@@ -501,7 +435,7 @@ where
     Ok(toml_args)
 }
 
-pub fn get_config_from_str(toml_text: &str) -> Result<ConfigFileParams, anyhow::Error> {
+pub fn read_config_from_str(toml_text: &str) -> Result<ConfigFileParams, anyhow::Error> {
     let toml_args: ConfigFileParams;
 
     toml_args = toml::from_str(toml_text)?;
