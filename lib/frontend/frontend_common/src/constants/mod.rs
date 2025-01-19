@@ -30,7 +30,7 @@
 
 */
 
-use std::time::Duration;
+use web_time::Duration;
 
 pub const DEFAULT_RESOLUTION_W: u32 = 640;
 pub const DEFAULT_RESOLUTION_H: u32 = 480;
