@@ -23,38 +23,14 @@
     DEALINGS IN THE SOFTWARE.
 
     --------------------------------------------------------------------------
-
-    devices::mod.rs
-
-    Module to organize all device implementations
-
 */
 
-pub mod a0;
-#[cfg(feature = "opl")]
-pub mod adlib;
-pub mod cartridge_slots;
-pub mod cga;
-pub mod dipswitch;
-pub mod dma;
-#[cfg(feature = "ega")]
-pub mod ega;
-pub mod fdc;
-pub mod floppy_drive;
-pub mod game_port;
-pub mod hdc;
-pub mod keyboard;
-pub mod lotech_ems;
-pub mod lpt_card;
-pub mod lpt_port;
-pub mod mc6845;
-pub mod mda;
-pub mod mouse;
-pub mod null_sound;
-pub mod pic;
-pub mod pit;
-pub mod ppi;
-pub mod serial;
-pub mod tga;
-#[cfg(feature = "vga")]
-pub mod vga;
+//! Implement a null sound device.
+
+use crate::device_traits::sounddevice::SoundDevice;
+
+pub struct NullSoundDevice {}
+
+impl SoundDevice for NullSoundDevice {
+    fn run(&mut self, _usec: f64) {}
+}

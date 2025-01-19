@@ -30,6 +30,5 @@
 
 */
 
-#[cfg(feature = "sound")]
 pub mod sounddevice;
 pub mod videocard;

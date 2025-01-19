@@ -608,7 +608,7 @@ impl Default for BusInterface {
             ems: None,
             cart_slot: None,
             game_port: None,
-            #[cfg(feature = "sound")]
+            #[cfg(feature = "opl")]
             adlib: None,
             videocards: FxHashMap::default(),
             videocard_ids: Vec::new(),
@@ -1802,6 +1802,7 @@ impl BusInterface {
         #[cfg(feature = "sound")] sound_config: &SoundOutputConfig,
         terminal_port: Option<u16>,
     ) -> Result<InstalledDevicesResult, Error> {
+        #[allow(unused_mut)]
         let mut installed_devices = InstalledDevicesResult::new();
         let video_frame_debug = false;
         let clock_mode = ClockingMode::Default;
@@ -2040,23 +2041,24 @@ impl BusInterface {
         // Create sound cards
         #[cfg(feature = "sound")]
         for (_i, card) in machine_config.sound.iter().enumerate() {
-            #[allow(irrefutable_let_patterns)]
-            if let SoundType::AdLib = card.sound_type {
-                // Create an AdLib card.
+            #[cfg(feature = "opl")]
+            {
+                #[allow(irrefutable_let_patterns)]
+                if let SoundType::AdLib = card.sound_type {
+                    // Create an AdLib card.
 
-                let (s, r) = unbounded();
-                installed_devices.sound_sources.push(SoundSourceDescriptor::new(
-                    "AdLib Music Synthesizer",
-                    sound_config.sample_rate,
-                    2,
-                    r,
-                ));
-
-                let adlib = AdLibCard::new(card.io_base, 48000, s);
-                println!(">>> TESTING ADLIB <<<");
-
-                add_io_device!(self, adlib, IoDeviceType::Sound);
-                self.adlib = Some(adlib);
+                    let (s, r) = unbounded();
+                    installed_devices.sound_sources.push(SoundSourceDescriptor::new(
+                        "AdLib Music Synthesizer",
+                        sound_config.sample_rate,
+                        2,
+                        r,
+                    ));
+                    let adlib = AdLibCard::new(card.io_base, 48000, s);
+                    println!(">>> TESTING ADLIB <<<");
+                    add_io_device!(self, adlib, IoDeviceType::Sound);
+                    self.adlib = Some(adlib);
+                }
             }
         }
 
