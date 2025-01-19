@@ -83,7 +83,7 @@ impl MemoryMappedDevice for CartridgeSlot {
             if let Some(cart) = cart {
                 let cart_address = (cart.address_seg as usize) << 4;
 
-                let masked_address = address & !(cart.address_mask as usize);
+                let _masked_address = address & !(cart.address_mask as usize);
                 if (address >= cart_address) && (address < (cart_address + cart.image.len())) {
                     //log::debug!("Cartridge read at {:X}", address);
                     return (cart.image[address - cart_address], 0);
@@ -109,15 +109,15 @@ impl MemoryMappedDevice for CartridgeSlot {
         0xFF
     }
 
-    fn mmio_peek_u16(&self, address: usize, _cpumem: Option<&[u8]>) -> u16 {
+    fn mmio_peek_u16(&self, _address: usize, _cpumem: Option<&[u8]>) -> u16 {
         0xFFFF
     }
 
-    fn get_write_wait(&mut self, _address: usize, cycles: u32) -> u32 {
+    fn get_write_wait(&mut self, _address: usize, _cycles: u32) -> u32 {
         0
     }
 
-    fn mmio_write_u8(&mut self, address: usize, byte: u8, _cycles: u32, _cpumem: Option<&mut [u8]>) -> u32 {
+    fn mmio_write_u8(&mut self, _address: usize, _byte: u8, _cycles: u32, _cpumem: Option<&mut [u8]>) -> u32 {
         0
     }
 
