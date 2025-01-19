@@ -29,6 +29,15 @@
     EGUI State management
 */
 
+use std::{
+    cell::RefCell,
+    collections::{BTreeMap, HashMap},
+    ffi::OsString,
+    mem::discriminant,
+    path::PathBuf,
+    rc::Rc,
+};
+
 use crate::{
     modal::ModalState,
     widgets::file_tree_menu::FileTreeMenu,
@@ -86,15 +95,8 @@ use marty_core::{
     machine_types::FloppyDriveType,
 };
 use serde::{Deserialize, Serialize};
+#[cfg(feature = "use_serialport")]
 use serialport::SerialPortInfo;
-use std::{
-    cell::RefCell,
-    collections::{BTreeMap, HashMap},
-    ffi::OsString,
-    mem::discriminant,
-    path::PathBuf,
-    rc::Rc,
-};
 use strum::IntoEnumIterator;
 
 pub enum FloppyDriveSelection {
@@ -268,6 +270,7 @@ pub struct GuiState {
 
     // Serial ports
     pub(crate) serial_ports: Vec<SerialPortDescriptor>,
+    #[cfg(feature = "use_serialport")]
     pub(crate) host_serial_ports: Vec<SerialPortInfo>,
     pub(crate) serial_port_name: String,
 
@@ -377,6 +380,7 @@ impl GuiState {
             autofloppy_paths: Vec::new(),
 
             serial_ports: Vec::new(),
+            #[cfg(feature = "use_serialport")]
             host_serial_ports: Vec::new(),
             serial_port_name: String::new(),
 
@@ -677,6 +681,7 @@ impl GuiState {
         self.serial_ports = ports;
     }
 
+    #[cfg(feature = "use_serialport")]
     pub fn set_host_serial_ports(&mut self, ports: Vec<SerialPortInfo>) {
         self.host_serial_ports = ports;
     }

@@ -16,8 +16,6 @@ marty_core = { path = "../../../core", default-features = false }
 videocard_renderer = { path = "../videocard_renderer" }
 bytemuck = { workspace=true, features = ["derive"] }
 image = { workspace = true, default-features = false, features = ["png"] }
-wgpu = {  workspace = true, optional = true }
-serialport = { workspace = true }
 web-time.workspace = true
 serde = { workspace = true, features = ["derive"] }
 strum.workspace = true
@@ -41,3 +39,11 @@ egui_plot.workspace = true
 #egui-notify = { git = "https://github.com/dbalsom/egui-notify_martypc.git", branch = "egui_0_28_1"}
 egui_file = "0.20.0"
 egui-notify = "0.18"
+
+# Optional dependencies
+# ---------------------------------------------------------------------------------------------------------------------
+wgpu = {  workspace = true, optional = true }
+serialport = { workspace = true, optional = true }
+
+[features]
+use_serialport = ["serialport"]

@@ -20,7 +20,6 @@ videocard_renderer = { path = "../videocard_renderer" }
 bytemuck = { workspace=true, features = ["derive"] }
 #image = { workspace = true, default-features = false, features = ["png"] }
 #wgpu = {  workspace = true, optional = true }
-serialport = { workspace = true }
 regex = "1.10"
 log = "0.4"
 web-time.workspace = true
@@ -32,6 +31,10 @@ anyhow.workspace = true
 fluxfox.workspace = true
 crossbeam-channel.workspace = true
 crossbeam-utils.workspace = true
+
+# Optional dependencies
+# ---------------------------------------------------------------------------------------------------------------------
+serialport = { workspace = true, optional = true }
 
 # EGUI dependencies
 # ---------------------------------------------------------------------------------------------------------------------
@@ -60,3 +63,4 @@ wgpu = { workspace = true, optional = true }
 
 [features]
 use_wgpu = ["wgpu"]
+use_serialport = ["dep:serialport"]
