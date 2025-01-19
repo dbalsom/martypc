@@ -34,16 +34,13 @@
 */
 #![allow(dead_code)]
 
-use modular_bitfield::{
-    bitfield,
-    BitfieldSpecifier,
-};
+use modular_bitfield::{bitfield, BitfieldSpecifier};
 use std::{cell::Cell, collections::BTreeMap};
 
 use crate::{
     bus::{BusInterface, DeviceRunTimeUnit, IoDevice, NO_IO_BYTE},
     device_traits::videocard::VideoType,
-    devices::{pic},
+    devices::pic,
     machine_types::MachineType,
     syntax_token::SyntaxToken,
     updatable::Updatable,
@@ -443,10 +440,13 @@ impl Ppi {
     pub fn new(
         machine_type: MachineType,
         conventional_mem: u32,
-        mut have_expansion: bool,
+        have_expansion: bool,
         video_types: Vec<VideoType>,
         num_floppies: u32,
     ) -> Self {
+        #[allow(unused_mut)]
+        let mut have_expansion = have_expansion;
+
         // Creation of the PPI is primarily concerned with setting up the DIP switches.
         let (sw2_ram_dip_bits, sw1_bank_bits) = Ppi::get_ram_dip(machine_type, conventional_mem);
         log::debug!(
