@@ -528,25 +528,18 @@ impl FloppyDiskDrive {
         id_ch: DiskCh,
         n: u8,
         eot: u8,
-        xfer_size: Option<usize>,
+        _xfer_size: Option<usize>,
     ) -> Result<DriveReadResult, Error> {
         if self.disk_image.is_none() {
             return Err(anyhow!("No media in drive"));
         }
 
         let image = self.disk_image.as_mut().unwrap();
-        let sector_size = DiskChsn::n_to_bytes(n);
-        let capacity = match xfer_size {
-            Some(size) => size,
-            None => sector_size * 9,
-        };
 
         self.operation_status.sector_not_found = false;
         self.operation_status.address_crc_error = false;
         self.operation_status.data_crc_error = false;
         self.operation_status.deleted_mark = false;
-
-        let mut sectors_read = 0;
 
         let phys_ch = DiskCh::new(self.cylinder, h);
         let read_track_result = image.read_all_sectors(phys_ch, id_ch, n, eot)?;
