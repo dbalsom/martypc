@@ -283,7 +283,7 @@ pub struct MachinePatch {
     pub installed: bool,
 }
 
-#[derive(Default, Debug)]
+#[derive(Clone, Default, Debug)]
 pub struct MachineRomManifest {
     pub checkpoints: Vec<MachineCheckpoint>,
     pub patches: Vec<MachinePatch>,
@@ -357,7 +357,7 @@ pub struct MachineBuilder<'a> {
     sound_config: SoundOutputConfig,
     #[cfg(feature = "sound")]
     sound_override: Option<bool>,
-    keyboard_layout_file: Option<PathBuf>,
+    keyboard_layout: Option<String>,
 }
 
 impl<'a> MachineBuilder<'a> {
@@ -418,8 +418,8 @@ impl<'a> MachineBuilder<'a> {
         self
     }
 
-    pub fn with_keyboard_layout(mut self, layout_file: Option<PathBuf>) -> Self {
-        self.keyboard_layout_file = layout_file;
+    pub fn with_keyboard_layout(mut self, layout_file: Option<String>) -> Self {
+        self.keyboard_layout = layout_file;
         self
     }
 
@@ -428,6 +428,7 @@ impl<'a> MachineBuilder<'a> {
         self
     }
 
+    #[allow(unused_mut)]
     pub fn build(mut self) -> Result<Machine, Error> {
         let core_config = self.core_config.ok_or(anyhow!("No core configuration specified"))?;
         let machine_config = self
@@ -446,7 +447,7 @@ impl<'a> MachineBuilder<'a> {
             }
         }
 
-        Ok(Machine::new(
+        Machine::new(
             *core_config,
             machine_config,
             machine_type,
@@ -456,9 +457,9 @@ impl<'a> MachineBuilder<'a> {
             #[cfg(feature = "sound")]
             self.sound_config,
             rom_manifest,
-            self.keyboard_layout_file,
+            self.keyboard_layout,
             self.listing_file,
-        ))
+        )
     }
 }
 
@@ -509,13 +510,10 @@ impl Machine {
         #[cfg(feature = "sound")]
         sound_config: SoundOutputConfig,
         rom_manifest: MachineRomManifest,
-        keyboard_layout_file: Option<PathBuf>,
+        keyboard_layout: Option<String>,
         disassembly_listing_file: Option<PathBuf>,
         //rom_manager: RomManager,
-    ) -> Machine {
-
-        // TODO: Many of the operations in this constructor can fail. 
-        //       We should probably move much of this to an initialize() method that can return a Result<Machine, Error>
+    ) -> Result<Machine, Error> {
 
         // Create PIT output log file if specified
         //let pit_output_file_option = None;
@@ -575,8 +573,7 @@ impl Machine {
                 .build() {
                 Ok(cpu) => cpu,
                 Err(e) => {
-                    log::error!("Failed to build CPU: {}", e);
-                    std::process::exit(1);
+                    return Err(anyhow!("Failed to build CPU: {}", e));
                 }
             }
         };
@@ -589,8 +586,7 @@ impl Machine {
                 .build() {
                 Ok(cpu) => cpu,
                 Err(e) => {
-                    log::error!("Failed to build CPU: {}", e);
-                    std::process::exit(1);
+                    return Err(anyhow!("Failed to build CPU: {}", e));
                 }
             }
         };
@@ -668,26 +664,25 @@ impl Machine {
                     log::debug!("Installed devices.");
                 }
             }
-            Err(err) => {
-                log::error!("Failed to install devices: {}", err);
-                // TODO: Handle this
+            Err(e) => {
+                log::error!("Failed to install devices: {}", e);
+                return Err(anyhow!("Failed to install devices: {}", e));
             }
         }
 
-        // Load keyboard translation file if specified.
-        if let Some(kb_translation_path) = keyboard_layout_file {
+        // Load keyboard translation config if specified.
+        if let Some(kb_translation) = keyboard_layout {
             if let Some(keyboard) = cpu.bus_mut().keyboard_mut() {
-                match keyboard.load_mapping(&kb_translation_path) {
+                match keyboard.load_mapping(&kb_translation) {
                     Ok(_) => {
-                        println!("Loaded keyboard mapping file: {}", kb_translation_path.display());
+                        log::debug!("Loaded keyboard mapping!");
                     }
                     Err(e) => {
-                        eprintln!(
-                            "Failed to load keyboard mapping file: {} Err: {}",
-                            kb_translation_path.display(),
+                        log::error!(
+                            "Failed to load keyboard mapping: Err: {}",
                             e
                         );
-                        std::process::exit(1);
+                        return Err(anyhow!("Failed to load keyboard mapping file: Err: {}", e));
                     }
                 }
                 keyboard.set_debug(core_config.get_keyboard_debug());
@@ -728,7 +723,7 @@ impl Machine {
             patch_map = rom_manifest.patch_map();
         }
 
-        Machine {
+        Ok(Machine {
             machine_type,
             machine_desc,
             machine_config,
@@ -761,7 +756,7 @@ impl Machine {
             disassembly: Disassembly::default(),
             disassembly_listing: BTreeMap::new(),
             disassembly_listing_file,
-        }
+        })
     }
 
     #[cfg(feature = "sound")]

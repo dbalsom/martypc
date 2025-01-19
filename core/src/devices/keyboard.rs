@@ -33,8 +33,6 @@
 use anyhow::{bail, Result};
 use std::{
     collections::{HashMap, VecDeque},
-    fs::read_to_string,
-    path::Path,
     str::FromStr,
     vec::Vec,
 };
@@ -242,9 +240,8 @@ impl Keyboard {
         );
     }
 
-    pub fn load_mapping(&mut self, map_file: &Path) -> Result<()> {
-        let toml_mapping_str = read_to_string(map_file)?;
-        let toml_mapping: KeyboardMappingFile = toml::from_str(&toml_mapping_str)?;
+    pub fn load_mapping(&mut self, map: &str) -> Result<()> {
+        let toml_mapping: KeyboardMappingFile = toml::from_str(map)?;
 
         match self.kb_type {
             KeyboardType::ModelF => {
