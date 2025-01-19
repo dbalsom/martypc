@@ -68,8 +68,13 @@ use frontend_common::{
     display_scaler::{PhosphorType, ScalerFilter, ScalerOption, ScalerParams, ScalerPreset},
     types::{display_target_margins::DisplayTargetMargins, window::WindowDefinition},
 };
-//use marty_egui::context::GuiRenderContext;
+
+#[cfg(feature = "use_wgpu")]
 use marty_pixels_scaler::{DisplayScaler, MartyScaler, ScalerMode};
+
+#[cfg(not(feature = "use_wgpu"))]
+use null_scaler::{DisplayScaler, ScalerMode};
+
 use videocard_renderer::{AspectCorrectionMode, AspectRatio, VideoRenderer};
 
 use anyhow::{anyhow, Error};

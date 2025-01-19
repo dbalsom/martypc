@@ -29,8 +29,17 @@
 //!
 //! - `fetch_file`: Fetch a file from a `Url`, blocking (with timeout).
 
+#[cfg(target_arch = "wasm32")]
 pub mod console_writer;
+#[cfg(target_arch = "wasm32")]
 pub mod fetch_file;
 
+#[cfg(target_arch = "wasm32")]
 pub use console_writer::ConsoleWriter;
-pub use fetch_file::fetch_file;
+#[cfg(target_arch = "wasm32")]
+pub use fetch_file::{fetch_file, fetch_file_blocking, fetch_url};
+
+pub enum FetchResult {
+    Ok(Vec<u8>),
+    Err(String),
+}

@@ -51,7 +51,7 @@ log = "0.4.20"
 serde = { version = "1.0", features = ["derive"] }
 serde_derive = "1.0"
 serialport = { git = "https://github.com/dbalsom/serialport-rs", branch = "arduino-fix" }
-web-time = "0.2.4"
+web-time = "1.1.0"
 toml = "0.8"
 fxhash = "0.2.1"
 enum_dispatch = "0.3.13"
@@ -66,8 +66,11 @@ egui-wgpu = "0.30.0"
 egui_plot = "0.30.0"
 url = "2.5"
 
-# wasm stuff
-wasm-bindgen = "=0.2.95"
+# wasm workspace dependencies
+# ---------------------------------------------------------------------------------------------------------------------
+
+# Match the exact version of wasm-bindgen bundled with Trunk. This changes from time to time
+wasm-bindgen = "=0.2.99"
 wasm-bindgen-futures = "0.4"
 wasm-bindgen-rayon = "1.2"
 [workspace.dependencies.web-sys]

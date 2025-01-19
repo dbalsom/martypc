@@ -232,14 +232,14 @@ impl CartridgeManager {
         Some(self.image_vec[idx].name.clone())
     }
 
-    pub fn load_cart_data(&self, idx: usize, rm: &ResourceManager) -> Result<CartImage, Error> {
+    pub async fn load_cart_data(&self, idx: usize, rm: &ResourceManager) -> Result<CartImage, Error> {
         let cart_vec;
 
         if idx >= self.image_vec.len() {
             return Err(anyhow!(CartridgeError::ImageNotFound));
         }
         let floppy_path = self.image_vec[idx].path.clone();
-        cart_vec = match rm.read_resource_from_path(&floppy_path) {
+        cart_vec = match rm.read_resource_from_path(&floppy_path).await {
             Ok(vec) => vec,
             Err(_e) => {
                 return Err(anyhow!(CartridgeError::FileReadError));

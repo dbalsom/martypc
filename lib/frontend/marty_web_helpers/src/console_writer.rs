@@ -30,7 +30,8 @@ use std::io::{self, Write};
 use wasm_bindgen::prelude::*;
 use web_sys::console;
 
-pub struct ConsoleWriter;
+#[derive(Default)]
+pub struct ConsoleWriter {}
 
 impl Write for ConsoleWriter {
     fn write(&mut self, buf: &[u8]) -> io::Result<usize> {

@@ -28,9 +28,9 @@
 
     Process received egui events.
 */
-use std::{ffi::OsString, io::Cursor, mem::discriminant, path::PathBuf, sync::Arc, time::Duration};
-
 use crate::{emulator, emulator::Emulator, event_loop::thread_events::FrontendThreadEvent};
+use anyhow::Error;
+use std::{ffi::OsString, io::Cursor, mem::discriminant, path::PathBuf, sync::Arc, time::Duration};
 //use display_manager_wgpu::DisplayManager;
 
 use frontend_common::{
@@ -61,6 +61,7 @@ use marty_egui::{
 use videocard_renderer::AspectCorrectionMode;
 
 use fluxfox::{DiskImage, LoadingStatus};
+use frontend_common::floppy_manager::FloppyError;
 use winit::event_loop::ActiveEventLoop;
 
 #[derive(Clone)]
@@ -284,42 +285,53 @@ pub fn handle_egui_event(emu: &mut Emulator, gui_event: &GuiEvent) {
 
             let mut reboot = false;
             if let Some(cart_slot) = emu.machine.cart_slot() {
-                emu.cart_manager.get_cart_name(*item_idx).map(|name| {
-                    log::info!("Loading cart image: {:?} into slot: {}", name, slot_select);
+                match emu.cart_manager.get_cart_name(*item_idx) {
+                    Some(name) => {
+                        log::info!("Loading cart image: {:?} into slot: {}", name, slot_select);
 
-                    match emu.cart_manager.load_cart_data(*item_idx, &emu.rm) {
-                        Ok(cart_image) => match cart_slot.insert_cart(*slot_select, cart_image) {
-                            Ok(()) => {
-                                log::info!("Cart image successfully loaded into slot: {}", slot_select);
-
-                                emu.gui
-                                    .set_cart_selection(*slot_select, Some(*item_idx), Some(name.clone().into()));
-
-                                emu.gui
-                                    .toasts()
-                                    .info(format!("Cartridge inserted: {:?}", name.clone()))
-                                    .duration(Some(NORMAL_NOTIFICATION_TIME));
-
-                                // Inserting a cartridge reboots the machine due to a switch in the cartridge slot.
-                                reboot = true;
-                            }
-                            Err(err) => {
-                                log::error!("Cart image failed to load into slot {}: {}", slot_select, err);
-                                emu.gui
-                                    .toasts()
-                                    .error(format!("Cartridge load failed: {}", err))
-                                    .duration(Some(NORMAL_NOTIFICATION_TIME));
-                            }
-                        },
-                        Err(err) => {
-                            log::error!("Failed to load cart image: {:?} Error: {}", item_idx, err);
-                            emu.gui
-                                .toasts()
-                                .error(format!("Cartridge load failed: {}", err))
-                                .duration(Some(NORMAL_NOTIFICATION_TIME));
-                        }
+                        // match emu.cart_manager.load_cart_data(*item_idx, &emu.rm).await {
+                        //     Ok(cart_image) => match cart_slot.insert_cart(*slot_select, cart_image) {
+                        //         Ok(()) => {
+                        //             log::info!("Cart image successfully loaded into slot: {}", slot_select);
+                        //
+                        //             emu.gui.set_cart_selection(
+                        //                 *slot_select,
+                        //                 Some(*item_idx),
+                        //                 Some(name.clone().into()),
+                        //             );
+                        //
+                        //             emu.gui
+                        //                 .toasts()
+                        //                 .info(format!("Cartridge inserted: {:?}", name.clone()))
+                        //                 .duration(Some(NORMAL_NOTIFICATION_TIME));
+                        //
+                        //             // Inserting a cartridge reboots the machine due to a switch in the cartridge slot.
+                        //             reboot = true;
+                        //         }
+                        //         Err(err) => {
+                        //             log::error!("Cart image failed to load into slot {}: {}", slot_select, err);
+                        //             emu.gui
+                        //                 .toasts()
+                        //                 .error(format!("Cartridge load failed: {}", err))
+                        //                 .duration(Some(NORMAL_NOTIFICATION_TIME));
+                        //         }
+                        //     },
+                        //     Err(err) => {
+                        //         log::error!("Failed to load cart image: {:?} Error: {}", item_idx, err);
+                        //         emu.gui
+                        //             .toasts()
+                        //             .error(format!("Cartridge load failed: {}", err))
+                        //             .duration(Some(NORMAL_NOTIFICATION_TIME));
+                        //     }
+                        // }
                     }
-                });
+                    None => {
+                        emu.gui
+                            .toasts()
+                            .error("Cartridge load failed: Invalid name!".to_string())
+                            .duration(Some(NORMAL_NOTIFICATION_TIME));
+                    }
+                }
             }
 
             if reboot {
@@ -362,7 +374,7 @@ pub fn handle_egui_event(emu: &mut Emulator, gui_event: &GuiEvent) {
                 path.to_string_lossy(),
                 drive_select
             );
-
+            /*
             // Query the indicated floppy drive for the largest supported image format.
             // An autofloppy will always be built to the largest supported capacity.
             let mut image_type = None;
@@ -373,6 +385,7 @@ pub fn handle_egui_event(emu: &mut Emulator, gui_event: &GuiEvent) {
             match emu
                 .floppy_manager
                 .build_autofloppy_image_from_dir(path, image_type, &emu.rm)
+                .await
             {
                 Ok(vec) => {
                     if let Some(fdc) = emu.machine.fdc() {
@@ -431,7 +444,7 @@ pub fn handle_egui_event(emu: &mut Emulator, gui_event: &GuiEvent) {
                         .error(format!("Directory mount failed: {}", err))
                         .duration(Some(NORMAL_NOTIFICATION_TIME));
                 }
-            }
+            }*/
         }
         GuiEvent::SaveFloppy(drive_select, image_idx) => {
             log::debug!(
@@ -849,7 +862,7 @@ pub fn handle_egui_event(emu: &mut Emulator, gui_event: &GuiEvent) {
 /// handle_load_floppy(emu, *drive_select, path);
 pub fn handle_load_floppy(emu: &mut Emulator, drive_select: usize, context: FileSelectionContext) {
     if let Some(fdc) = emu.machine.fdc() {
-        let mut floppy_result = None;
+        let mut floppy_result: Option<Result<FloppyImageSource, FloppyError>> = None;
         let mut floppy_name = None;
         match context.clone() {
             FileSelectionContext::Index(item_idx) => {
@@ -858,7 +871,7 @@ pub fn handle_load_floppy(emu: &mut Emulator, drive_select: usize, context: File
                 if let Some(name) = name {
                     floppy_name = Some(name.clone());
                     log::info!("Loading floppy image: {:?} into drive: {}", name, drive_select);
-                    floppy_result = Some(emu.floppy_manager.load_floppy_by_idx(item_idx, &emu.rm));
+                    //floppy_result = Some(emu.floppy_manager.load_floppy_by_idx(item_idx, &emu.rm).await);
                 };
             }
             FileSelectionContext::Path(path) => {
@@ -867,7 +880,7 @@ pub fn handle_load_floppy(emu: &mut Emulator, drive_select: usize, context: File
                 }
 
                 log::info!("Loading floppy image: {:?} into drive: {}", path, drive_select);
-                floppy_result = Some(emu.floppy_manager.load_floppy_by_path(path, &emu.rm));
+                //floppy_result = Some(emu.floppy_manager.load_floppy_by_path(path, &emu.rm).await);
             }
         }
 

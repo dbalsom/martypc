@@ -46,7 +46,7 @@ use crate::{
     emulator::{joystick_state::JoystickData, keyboard_state::KeyboardData, mouse_state::MouseData},
     event_loop::thread_events::FrontendThreadEvent,
     input::HotkeyManager,
-    sound::sound_player::SoundInterface,
+    sound::SoundInterface,
 };
 use frontend_common::{
     cartridge_manager::CartridgeManager,

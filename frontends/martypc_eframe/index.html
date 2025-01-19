@@ -1,6 +1,6 @@
 <!DOCTYPE html>
 <html>
-<meta http-equiv="Content-Type" content="text/html; charset=utf-8" />
+<meta http-equiv="Content-Type" content="text/html; charset=utf-8"/>
 
 <!-- Disable zooming: -->
 <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no">
@@ -10,20 +10,43 @@
     <title>eframe template</title>
 
     <!-- config for our rust wasm binary. go to https://trunkrs.dev/assets/#rust for more customization -->
-    <link data-trunk rel="rust" data-wasm-opt="2" />
+    <link data-trunk rel="rust" data-wasm-opt="2"/>
     <!-- this is the base url relative to which other urls will be constructed. trunk will insert this from the public-url option -->
-    <base data-trunk-public-url />
+    <base data-trunk-public-url/>
 
     <link data-trunk rel="icon" href="assets/favicon.ico">
 
-
+    <link data-trunk rel="copy-file" href="assets/coi-serviceworker.js"/>
     <link data-trunk rel="copy-file" href="assets/sw.js"/>
     <link data-trunk rel="copy-file" href="assets/manifest.json"/>
     <link data-trunk rel="copy-file" href="assets/icon-1024.png" data-target-path="assets"/>
     <link data-trunk rel="copy-file" href="assets/icon-256.png" data-target-path="assets"/>
     <link data-trunk rel="copy-file" href="assets/icon_ios_touch_192.png" data-target-path="assets"/>
     <link data-trunk rel="copy-file" href="assets/maskable_icon_x512.png" data-target-path="assets"/>
-
+    <link data-trunk rel="copy-file" href="assets/configs/martypc.toml" data-target-path="configs"/>
+    <link data-trunk rel="copy-file" href="assets/configs/file_manifest.toml" data-target-path="configs"/>
+    <link data-trunk rel="copy-file" href="assets/configs/machines/ibm5160.toml" data-target-path="configs/machines"/>
+    <link data-trunk rel="copy-file" href="assets/configs/machines/config_overlays.toml"
+          data-target-path="configs/machines"/>
+    <link data-trunk rel="copy-file" href="assets/media/roms/romdef_glabios.toml" data-target-path="media/roms">
+    <link data-trunk rel="copy-file" href="assets/configs/keyboard_layouts/keyboard_US.toml"
+          data-target-path="configs/keyboard_layouts">
+    <link data-trunk rel="copy-file" href="assets/configs/keyboard_layouts/keyboard_UK.toml"
+          data-target-path="configs/keyboard_layouts">
+    <link data-trunk rel="copy-file" href="assets/configs/keyboard_layouts/keyboard_IT.toml"
+          data-target-path="configs/keyboard_layouts">
+    <link data-trunk rel="copy-file" href="assets/media/roms/GlaBIOS/GLABIOS_0.2.6_8P.ROM"
+          data-target-path="media/roms/GlaBIOS">
+    <link data-trunk rel="copy-file" href="assets/media/roms/GlaBIOS/GLABIOS_0.2.6_8PC.ROM"
+          data-target-path="media/roms/GlaBIOS">
+    <link data-trunk rel="copy-file" href="assets/media/roms/GlaBIOS/GLABIOS_0.2.6_8T.ROM"
+          data-target-path="media/roms/GlaBIOS">
+    <link data-trunk rel="copy-file" href="assets/media/roms/GlaBIOS/GLABIOS_0.2.6_8TC.ROM"
+          data-target-path="media/roms/GlaBIOS">
+    <link data-trunk rel="copy-file" href="assets/media/roms/GlaBIOS/GLABIOS_0.2.6_8X.ROM"
+          data-target-path="media/roms/GlaBIOS">
+    <link data-trunk rel="copy-file" href="assets/media/roms/GlaBIOS/GLABIOS_0.2.6_8XC.ROM"
+          data-target-path="media/roms/GlaBIOS">
 
     <link rel="manifest" href="manifest.json">
     <link rel="apple-touch-icon" href="assets/icon_ios_touch_192.png">
@@ -119,28 +142,31 @@
 </head>
 
 <body>
-    <!-- The WASM code will resize the canvas dynamically -->
-    <!-- the id is hardcoded in main.rs . so, make sure both match. -->
-    <canvas id="the_canvas_id"></canvas>
+<!-- The WASM code will resize the canvas dynamically -->
+<!-- the id is hardcoded in main.rs . so, make sure both match. -->
+<canvas id="the_canvas_id"></canvas>
 
-    <!-- the loading spinner will be removed in main.rs -->
-    <div class="centered" id="loading_text">
-        <p style="font-size:16px">
-            Loading…
-        </p>
-        <div class="lds-dual-ring"></div>
-    </div>
+<!-- the loading spinner will be removed in main.rs -->
+<div class="centered" id="loading_text">
+    <p style="font-size:16px">
+        Loading…
+    </p>
+    <div class="lds-dual-ring"></div>
+</div>
 
-    <!--Register Service Worker. this will cache the wasm / js scripts for offline use (for PWA functionality). -->
-    <!-- Force refresh (Ctrl + F5) to load the latest files instead of cached files  -->
-    <script>
-        // We disable caching during development so that we always view the latest version.
-        if ('serviceWorker' in navigator && window.location.hash !== "#dev") {
-            window.addEventListener('load', function () {
-                navigator.serviceWorker.register('sw.js');
-            });
-        }
-    </script>
+<!--COI Service Worker. this will reload the page and set the appropriate COI headers -->
+<script src="coi-serviceworker.js"></script>
+
+<!--Register Service Worker. this will cache the wasm / js scripts for offline use (for PWA functionality). -->
+<!-- Force refresh (Ctrl + F5) to load the latest files instead of cached files  -->
+<script>
+    // We disable caching during development so that we always view the latest version.
+    if ('serviceWorker' in navigator && window.location.hash !== "#dev") {
+        window.addEventListener('load', function () {
+            navigator.serviceWorker.register('sw.js');
+        });
+    }
+</script>
 </body>
 
 </html>

@@ -1,4 +1,4 @@
-use std::time::{Duration, Instant};
+use web_time::{Duration, Instant};
 
 // Rendering Stats
 pub struct Counter {

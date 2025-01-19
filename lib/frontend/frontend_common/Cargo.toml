@@ -12,6 +12,7 @@ crate-type = ["lib"]
 
 [dependencies]
 marty_common = { path = "../../common" }
+marty_web_helpers = { path = "../marty_web_helpers" }
 #display_manager_wgpu = { path = "../../frontend/display_manager_wgpu", optional = true }
 display_backend_trait = { path = "../../backend/display_backend_trait" }
 videocard_renderer = { path = "../videocard_renderer" }
@@ -22,11 +23,12 @@ serde_derive.workspace = true
 regex = "1.10"
 md5 = "0.7.0"
 log = "0.4.20"
-toml = "0.5.11"
+toml = "0.8"
 web-time.workspace = true
 strum = "0.26"
 strum_macros = "0.26"
 ringbuf = "0.3.3"
+
 
 # Optional feature dependencies
 wgpu = { workspace = true, optional = true }
@@ -38,8 +40,6 @@ zip = { workspace = true, default-features = false, features = ["bzip2", "deflat
 [target.'cfg(target_arch = "wasm32")'.dependencies]
 # wasm32 doesn't support bzip2 or zstd which are FFI bindings
 zip = { workspace = true, default-features = false, features = ["deflate", "deflate64", "lzma"] }
-
-
 
 [dependencies.fatfs]
 git = "https://github.com/dbalsom/fatfs_martypc.git"

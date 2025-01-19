@@ -30,17 +30,31 @@
 //! that need flexibility in how they configure and build their emulator
 //! instances.
 
-use crate::emulator::{EmuFlags, Emulator};
-use anyhow::{anyhow, Error};
-use config_toml_bpaf::ConfigFileParams;
-use std::{cell::RefCell, io::Write};
+use std::{
+    cell::RefCell,
+    io::{Stderr, Write},
+    path::{Path, PathBuf},
+    rc::Rc,
+};
 
 use crate::{
     counter::Counter,
-    emulator::{joystick_state::JoystickData, keyboard_state::KeyboardData, mouse_state::MouseData},
+    emulator::{
+        joystick_state::JoystickData,
+        keyboard_state::KeyboardData,
+        mouse_state::MouseData,
+        EmuFlags,
+        Emulator,
+    },
     input::HotkeyManager,
-    sound::sound_player::SoundInterface,
 };
+
+use anyhow::{anyhow, Error};
+use config_toml_bpaf::ConfigFileParams;
+
+// This module will export either a rodio or null sound interface depending on the `sound` feature.
+use crate::sound::{SoundInterface, SoundSourceDescriptor};
+
 use display_manager_eframe::EFrameDisplayManagerBuilder;
 use frontend_common::{
     cartridge_manager::CartridgeManager,
@@ -57,11 +71,8 @@ use marty_core::{
     supported_floppy_extensions,
 };
 use marty_egui::state::GuiState;
-use std::{
-    io::Stderr,
-    path::{Path, PathBuf},
-    rc::Rc,
-};
+
+use crossbeam_channel::Sender;
 use url::Url;
 
 #[derive(Default, Debug)]
@@ -76,6 +87,8 @@ pub struct EmulatorBuilder {
     platform: BuildPlatform,
     toml_config_path: Option<PathBuf>,
     toml_config_url: Option<Url>,
+    toml_manifest_url: Option<Url>,
+    base_url: Option<Url>,
     #[cfg(feature = "cpu_validator")]
     validator: Option<ValidatorType>,
 
@@ -90,8 +103,17 @@ pub struct EmulatorBuilder {
 }
 
 impl EmulatorBuilder {
+    pub fn new() -> Self {
+        Self::default()
+    }
+
     pub fn with_platform(mut self, platform: BuildPlatform) -> Self {
         self.platform = platform;
+        self
+    }
+
+    pub fn with_base_url(mut self, url: &Url) -> Self {
+        self.base_url = Some(url.clone());
         self
     }
 
@@ -102,6 +124,11 @@ impl EmulatorBuilder {
 
     pub fn with_toml_config_url(mut self, url: &Url) -> Self {
         self.toml_config_url = Some(url.to_owned());
+        self
+    }
+
+    pub fn with_toml_manifest_url(mut self, url: &Url) -> Self {
+        self.toml_manifest_url = Some(url.to_owned());
         self
     }
 
@@ -151,7 +178,7 @@ impl EmulatorBuilder {
         self
     }
 
-    pub fn resolve_config(&self) -> Result<ConfigFileParams, Error> {
+    async fn resolve_config(&self) -> Result<ConfigFileParams, Error> {
         // One of toml_config_path or toml_config_url must be set, but not both.
         if self.toml_config_path.is_none() && self.toml_config_url.is_none() {
             return Err(anyhow::anyhow!("No configuration file specified"));
@@ -168,19 +195,40 @@ impl EmulatorBuilder {
             ResourceLocation::Url(self.toml_config_url.as_ref().unwrap().clone())
         };
 
-        match config_toml_bpaf::get_local_config("./martypc.toml") {
-            Ok(config) => Ok(config),
-            Err(e) => match e.downcast_ref::<std::io::Error>() {
-                Some(e) if e.kind() == std::io::ErrorKind::NotFound => Err(anyhow!(
-                    "Configuration file not found! Please create martypc.toml in the emulator directory \
+        match config_location {
+            ResourceLocation::FilePath(path) => match config_toml_bpaf::read_local_config(&path) {
+                Ok(config) => Ok(config),
+                Err(e) => match e.downcast_ref::<std::io::Error>() {
+                    Some(e) if e.kind() == std::io::ErrorKind::NotFound => Err(anyhow!(
+                        "Configuration file not found! Please create martypc.toml in the emulator directory \
                                or provide the path to configuration file with --configfile."
-                )),
-                Some(e) => Err(anyhow!("Unknown IO error reading configuration file:\n{}", e)),
-                None => Err(anyhow!(
-                    "Failed to parse configuration file. There may be a typo or otherwise invalid toml:\n{}",
-                    e
-                )),
+                    )),
+                    Some(e) => Err(anyhow!("Unknown IO error reading configuration file:\n{}", e)),
+                    None => Err(anyhow!(
+                        "Failed to parse configuration file. There may be a typo or otherwise invalid toml:\n{}",
+                        e
+                    )),
+                },
             },
+            ResourceLocation::Url(url) => {
+                #[cfg(target_arch = "wasm32")]
+                {
+                    let config = marty_web_helpers::fetch_file(url.as_str())
+                        .await
+                        .map_err(|e| anyhow!(e))?;
+
+                    match config_toml_bpaf::read_config_from_str(
+                        &std::str::from_utf8(&config).expect("TOML contained invalid UTF-8"),
+                    ) {
+                        Ok(config) => return Ok(config),
+                        Err(e) => return Err(anyhow!("Failed to parse configuration file from URL: {}", e)),
+                    }
+                }
+                #[cfg(not(target_arch = "wasm32"))]
+                {
+                    return Err(anyhow!("URL configuration not supported in native builds"));
+                }
+            }
         }
     }
 
@@ -193,12 +241,13 @@ impl EmulatorBuilder {
     ///     normal startup messages. This is typically a file or stdout.
     /// - `stderr` - A mutable reference to an implementation of `Write` that will be used to log
     ///     error messages. This is typically a file or stderr.
-    pub fn build<W>(self, stdout: &mut W, stderr: &mut Stderr) -> Result<Emulator, Error>
+    pub async fn build<W, WE>(self, stdout: &mut W, stderr: &mut WE) -> Result<Emulator, Error>
     where
-        W: std::io::Write,
+        W: Write,
+        WE: Write,
     {
         // First we need to resolve a configuration. On native this typically comes from a TOML file.
-        let config = self.resolve_config()?;
+        let config = self.resolve_config().await?;
 
         // First we can check that we have a validator type, if the validation feature is enabled.
         #[cfg(feature = "cpu_validator")]
@@ -209,13 +258,34 @@ impl EmulatorBuilder {
             _ => {}
         }
 
+        log::debug!("Creating ResourceManager...");
         // Now that we have our configuration, we can instantiate a ResourceManager.
         let mut resource_manager =
             ResourceManager::from_config(config.emulator.basedir.clone(), &config.emulator.paths)?;
 
+        // Set the base url for resources loaded by the resource manager
+        if let Some(base_url) = self.base_url {
+            resource_manager.set_base_url(&base_url);
+        }
+
+        // Load the file manifest if specified.
+        // The file manifest provides the wasm build with information about what files it can
+        // fetch, creating a sort of virtual filesystem.
+        if let Some(manifest_url) = &self.toml_manifest_url {
+            log::debug!("Loading file manifest from {:?}...", manifest_url.as_str());
+            resource_manager
+                .load_manifest(ResourceLocation::Url(manifest_url.clone()))
+                .await?;
+        }
+
         let resolved_paths = resource_manager.pm.dump_paths();
+        if resolved_paths.is_empty() {
+            return Err(anyhow!("No resource paths found!"));
+        }
         for path in &resolved_paths {
+            log::debug!("Resolved resource path: {:?}", path);
             stdout.write_fmt(format_args!("Resolved resource path: {:?}", path))?;
+            stdout.flush()?;
         }
 
         // Tell the resource manager to ignore specified dirs
@@ -224,8 +294,9 @@ impl EmulatorBuilder {
         }
 
         // Instantiate the new machine manager to load Machine configurations.
+        log::debug!("Creating MachineManager...");
         let mut machine_manager = frontend_common::machine_manager::MachineManager::new();
-        if let Err(err) = machine_manager.load_configs(&resource_manager) {
+        if let Err(err) = machine_manager.load_configs(&resource_manager).await {
             let err_str = format!("Error loading Machine configuration files: {}", err);
             stderr.write(err_str.as_bytes())?;
             return Err(anyhow!(err_str));
@@ -292,9 +363,10 @@ impl EmulatorBuilder {
         }
 
         // Instantiate the ROM Manager
+        log::debug!("Creating RomManager...");
         let mut rom_manager = frontend_common::rom_manager::RomManager::new(init_prefer_oem);
         // Load ROM definitions
-        rom_manager.load_defs(&resource_manager)?;
+        rom_manager.load_defs(&resource_manager).await?;
 
         // Get the ROM requirements for the requested machine type
         let machine_config_file = {
@@ -310,7 +382,7 @@ impl EmulatorBuilder {
         let (required_features, optional_features) = machine_config_file.get_rom_requirements()?;
 
         // Scan the rom resource director(ies)
-        rom_manager.scan(&resource_manager)?;
+        rom_manager.scan(&resource_manager).await?;
         // Determine what complete ROM sets we have
         rom_manager.resolve_rom_sets()?;
 
@@ -354,7 +426,9 @@ impl EmulatorBuilder {
         }
 
         // Create the ROM manifest to pass to the emulator core
-        let rom_manifest = rom_manager.create_manifest(rom_sets_resolved.clone(), &resource_manager)?;
+        let rom_manifest = rom_manager
+            .create_manifest_async(rom_sets_resolved.clone(), &resource_manager)
+            .await?;
 
         log::debug!("Created manifest!");
         for (i, rom) in rom_manifest.roms.iter().enumerate() {
@@ -512,6 +586,13 @@ impl EmulatorBuilder {
             kb_layout_file_path = Some(kb_layout_resource_path);
         }
 
+        // Load the keyboard layout file
+        let mut kb_layout = None;
+        if let Some(path) = kb_layout_file_path {
+            let kb_str = resource_manager.read_string_from_path(&path).await?;
+            kb_layout = Some(kb_str);
+        }
+
         // Get the file path to use for the disassembly log
         let mut disassembly_file_path = None;
         if let Some(disassembly_file) = config.machine.disassembly_file.as_ref() {
@@ -523,34 +604,46 @@ impl EmulatorBuilder {
         }
 
         // Construct the core Machine instance
-        let machine_builder = MachineBuilder::new()
+        log::debug!("Creating MachineBuilder...");
+        let mut machine_builder = MachineBuilder::new()
             .with_core_config(Box::new(&config))
             .with_machine_config(&machine_config)
             .with_roms(rom_manifest)
             .with_trace_mode(config.machine.cpu.trace_mode.unwrap_or_default())
             .with_trace_log(trace_file_path)
-            .with_sound_config(sound_config)
-            .with_keyboard_layout(kb_layout_file_path)
+            .with_keyboard_layout(kb_layout)
             .with_listing_file(disassembly_file_path);
 
+        #[cfg(feature = "sound")]
+        {
+            machine_builder = machine_builder.with_sound_config(sound_config);
+        }
+
+        // Build the Machine instance
+        log::debug!("Building Machine...");
         let machine = machine_builder.build()?;
 
-        // Query the machine for sound sources (devices that produce sound)
-        let sound_sources = machine.get_sound_sources();
+        // Now that we have a Machine, we can query it for sound sources (devices that produce sound)
+        // For each sound source we will create a source in the SoundInterface, to give it
+        // volume/mute controls.
+        #[cfg(feature = "sound")]
+        {
+            let sound_sources = machine.get_sound_sources();
 
-        // If we have a SoundInterface, create player resources for each machine source
-        if let Some(si) = sound_player.as_mut() {
-            log::debug!("Machine configuration reported {} sound sources", sound_sources.len());
-            for source in sound_sources.iter() {
-                log::debug!("Adding sound source: {}", source.name);
-                if let Err(e) = si.add_source(source) {
-                    log::error!("Failed to add sound source: {:?}", e);
-                    std::process::exit(1);
+            // If we have a SoundInterface, create player resources for each machine source
+            if let Some(si) = sound_player.as_mut() {
+                log::debug!("Machine configuration reported {} sound sources", sound_sources.len());
+                for source in sound_sources.iter() {
+                    log::debug!("Adding sound source: {}", source.name);
+                    if let Err(e) = si.add_source(source) {
+                        log::error!("Failed to add sound source: {:?}", e);
+                        std::process::exit(1);
+                    }
                 }
-            }
 
-            // PC Speaker is always first sound source. Set its volume to 25%.
-            si.set_volume(0, 0.25);
+                // PC Speaker is always first sound source. Set its volume to 25%.
+                si.set_volume(0, 0.25);
+            }
         }
 
         // A DisplayManager is front-end specific, so we'll expect the front-end to create one

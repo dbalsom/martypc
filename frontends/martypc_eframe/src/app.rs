@@ -1,8 +1,34 @@
+/*
+    MartyPC
+    https://github.com/dbalsom/martypc
+
+    Copyright 2022-2024 Daniel Balsom
+
+    Permission is hereby granted, free of charge, to any person obtaining a
+    copy of this software and associated documentation files (the “Software”),
+    to deal in the Software without restriction, including without limitation
+    the rights to use, copy, modify, merge, publish, distribute, sublicense,
+    and/or sell copies of the Software, and to permit persons to whom the
+    Software is furnished to do so, subject to the following conditions:
+
+    The above copyright notice and this permission notice shall be included in
+    all copies or substantial portions of the Software.
+
+    THE SOFTWARE IS PROVIDED “AS IS”, WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
+    IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
+    FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
+    AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
+    LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING
+    FROM, OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER
+    DEALINGS IN THE SOFTWARE.
+
+    --------------------------------------------------------------------------
+*/
+
 use crate::{
     emulator::Emulator,
     emulator_builder::EmulatorBuilder,
     event_loop::thread_events::handle_thread_event,
-    native::startup,
     timestep_update::process_update,
     MARTY_ICON,
 };
@@ -12,6 +38,17 @@ use frontend_common::{
     timestep_manager::TimestepManager,
 };
 use marty_egui_eframe::{context::GuiRenderContext, EGUI_MENU_BAR_HEIGHT};
+use marty_web_helpers::FetchResult;
+use std::{env, pin::Pin, task::Poll};
+
+use crossbeam_channel::{Receiver, Sender};
+
+#[cfg(target_arch = "wasm32")]
+use crate::wasm::*;
+#[cfg(target_arch = "wasm32")]
+use marty_web_helpers::console_writer::ConsoleWriter;
+#[cfg(target_arch = "wasm32")]
+use url::Url;
 
 /// We derive Deserialize/Serialize so we can persist app state on shutdown.
 #[derive(serde::Deserialize, serde::Serialize)]
@@ -21,28 +58,92 @@ pub struct MartyApp {
     #[serde(skip)]
     gui: GuiRenderContext,
     #[serde(skip)]
-    emu: Option<Emulator>,
+    emu_loading: bool,
     #[serde(skip)]
-    dm:  Option<EFrameDisplayManager>,
+    emu_receiver: Receiver<FetchResult>,
     #[serde(skip)]
-    tm:  TimestepManager,
+    emu_sender: Sender<FetchResult>,
+    #[serde(skip)]
+    pub emu: Option<Emulator>,
+    #[serde(skip)]
+    dm: Option<EFrameDisplayManager>,
+    #[serde(skip)]
+    tm: TimestepManager,
 }
 
 impl Default for MartyApp {
     fn default() -> Self {
+        let (sender, receiver) = crossbeam_channel::bounded(1);
+
         Self {
             // Example stuff:
             gui: GuiRenderContext::default(),
+            emu_loading: false,
+            emu_receiver: receiver,
+            emu_sender: sender,
             emu: None,
-            dm:  None,
-            tm:  TimestepManager::default(),
+            dm: None,
+            tm: TimestepManager::default(),
         }
     }
 }
 
 impl MartyApp {
+    /// We split app initialization into two parts, since we can't make the callback eframe passes
+    /// the creation context to async.  So we first create the app, then let eframe call `init` with
+    /// the partially initialized app - it should have the emulator built by then.
+    pub async fn new() -> Self {
+        // Build the emulator.
+        let mut emu_builder = EmulatorBuilder::default();
+        let mut emu_result;
+
+        // Create the emulator immediately on native as we don't need to await anything
+        #[cfg(not(target_arch = "wasm32"))]
+        {
+            emu_builder = emu_builder.with_toml_config_path("./martypc.toml");
+            emu_result = emu_builder.build(&mut std::io::stdout(), &mut std::io::stderr()).await;
+        }
+        #[cfg(target_arch = "wasm32")]
+        {
+            let base_url = get_base_url();
+            let relative_config_url = base_url
+                .join("/configs/martypc.toml")
+                .expect("Failed to create relative config URL");
+
+            let relative_manifest_url = base_url
+                .join("/configs/file_manifest.toml")
+                .expect("Failed to create relative manifest URL");
+
+            log::debug!("Attemping to build emulator with config and manifest urls...");
+            emu_builder = emu_builder
+                .with_toml_config_url(&relative_config_url)
+                .with_toml_manifest_url(&relative_manifest_url)
+                .with_base_url(&base_url);
+
+            emu_result = emu_builder.build(&mut std::io::stdout(), &mut std::io::stderr()).await;
+        }
+
+        let emu = match emu_result {
+            Ok(emu) => emu,
+            Err(e) => {
+                log::error!("Failed to build emulator: {}", e);
+                return MartyApp::default();
+            }
+        };
+
+        // Create Timestep Manager
+        let mut timestep_manager = TimestepManager::new();
+        timestep_manager.set_cpu_mhz(emu.machine.get_cpu_mhz());
+
+        MartyApp {
+            emu: Some(emu),
+            tm: timestep_manager,
+            ..Default::default()
+        }
+    }
+
     /// Called once before the first frame.
-    pub fn new(cc: &eframe::CreationContext<'_>) -> Self {
+    pub fn init(mut self, cc: &eframe::CreationContext<'_>) -> Self {
         // This is also where you can customize the look and feel of egui using
         // `cc.egui_ctx.set_visuals` and `cc.egui_ctx.set_fonts`.
 
@@ -54,30 +155,22 @@ impl MartyApp {
 
         egui_extras::install_image_loaders(&cc.egui_ctx);
 
-        // Build the emulator.
-        let mut emu_builder = EmulatorBuilder::default();
-        let mut emu_result;
+        let emu = self.emu.take().expect("Emulator should have been Some, but was None");
 
-        #[cfg(not(target_arch = "wasm32"))]
-        {
-            emu_builder = emu_builder.with_toml_config_path("./marty.toml");
-            emu_result = emu_builder.build(&mut std::io::stdout(), &mut std::io::stderr());
-        }
-        #[cfg(target_arch = "wasm32")]
-        {
-            emu_builder = emu_builder.with_toml_config_url("./marty.toml");
-            emu_result = emu_builder.build(&mut ConsoleWriter::default(), &mut ConsoleWriter::default());
-        }
+        // Get a list of video devices from machine.
+        let cardlist = emu.machine.bus().enumerate_videocards();
 
-        let emu = match emu_result {
-            Ok(emu) => emu,
-            Err(e) => {
-                log::error!("Failed to build emulator: {}", e);
-                return MartyApp::default();
+        // Find the maximum refresh rate of all video cards
+        let mut highest_rate = 50;
+        for card in cardlist.iter() {
+            let rate = emu.machine.bus().video(&card).unwrap().get_refresh_rate();
+            if rate > highest_rate {
+                highest_rate = rate;
             }
-        };
+        }
 
-        // Create Display manager
+        self.tm.set_emu_update_rate(highest_rate);
+        self.tm.set_emu_render_rate(highest_rate);
 
         // Create GUI parameters for the Display Manager.
         let gui_options = DmGuiOptions {
@@ -88,9 +181,6 @@ impl MartyApp {
             zoom: emu.config.gui.zoom.unwrap_or(1.0),
             debug_drawing: false,
         };
-
-        // Query the machine for video output devices
-        let cardlist = emu.machine.bus().enumerate_videocards();
 
         // Create display targets.
         let display_manager = match EFrameDisplayManagerBuilder::build(
@@ -109,25 +199,6 @@ impl MartyApp {
             }
         };
 
-        // Create Timestep Manager
-        let mut timestep_manager = TimestepManager::new();
-        timestep_manager.set_cpu_mhz(emu.machine.get_cpu_mhz());
-
-        // Get a list of video devices from machine.
-        let cardlist = emu.machine.bus().enumerate_videocards();
-
-        // Find the maximum refresh rate of all video cards
-        let mut highest_rate = 50;
-        for card in cardlist.iter() {
-            let rate = emu.machine.bus().video(&card).unwrap().get_refresh_rate();
-            if rate > highest_rate {
-                highest_rate = rate;
-            }
-        }
-
-        timestep_manager.set_emu_update_rate(highest_rate);
-        timestep_manager.set_emu_render_rate(highest_rate);
-
         let gui_options = DmGuiOptions {
             enabled: !emu.config.gui.disabled,
             theme: emu.config.gui.theme,
@@ -137,11 +208,11 @@ impl MartyApp {
             debug_drawing: false,
         };
 
-        MartyApp {
+        Self {
             gui: GuiRenderContext::new(cc.egui_ctx.clone(), 0, 640, 480, 1.0, &gui_options),
+            dm: Some(display_manager),
             emu: Some(emu),
-            dm:  Some(display_manager),
-            tm:  timestep_manager,
+            ..self
         }
     }
 }

@@ -28,10 +28,7 @@
 
     Handle events received from background threads spawned by the frontend.
 */
-use crate::{
-    emulator::Emulator,
-    event_loop::{egui_events::FileSelectionContext, thread_events::FrontendThreadEvent::FloppyImageLoadProgress},
-};
+use crate::{emulator::Emulator, event_loop::egui_events::FileSelectionContext};
 use fluxfox::DiskImage;
 use frontend_common::constants::NORMAL_NOTIFICATION_TIME;
 use marty_egui::{modal::ModalContext, state::FloppyDriveSelection};

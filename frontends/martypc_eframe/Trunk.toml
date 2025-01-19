@@ -1,2 +1,9 @@
 [build]
+release = true
 filehash = false
+no_sri = true
+
+[serve]
+addresses = ["127.0.0.1"]
+open = true
+headers = { "Cross-Origin-Embedder-Policy" = "require-corp", "Cross-Origin-Opener-Policy" = "same-origin", "Cross-Origin-Resource-Policy" = "same-origin" }

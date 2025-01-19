@@ -1,0 +1,266 @@
+# keyboard_US.toml
+# Keyboard translation file for US keyboard layouts for the MartyPC emulator
+#
+# US layouts do not require translation, so this file is empty by design.
+
+# Why a translation file?
+# ----------------------------------------------------------------------------
+# Certain scancodes have changed since the 1980's, as the meaning of certain
+# keys was changed, keys were split out to new keys, or  moved around on the
+# keyboard. This translation file will attempt to remap the modern scancodes
+# to compatible ones for the given emulated keyboard type. In some cases, 
+# equivalents to modern keys may not exist, but you can map them by scancode
+# to a key of your choice.
+
+# Keycodes are logical names for keys on the keyboard.
+# Keycodes use the W3C naming convention. 
+#
+# See https://w3c.github.io/uievents-code/#code-value-tables for descriptions
+# of these keys.
+
+#    Backquote,
+#    Backslash,
+#    BracketLeft,
+#    BracketRight,
+#    Comma,
+#    Digit0,
+#    Digit1,
+#    Digit2,
+#    Digit3,
+#    Digit4,
+#    Digit5,
+#    Digit6,
+#    Digit7,
+#    Digit8,
+#    Digit9,
+#    Equal,
+#    IntlBackslash,
+#    IntlRo,
+#    IntlYen,
+#    KeyA,
+#    KeyB,
+#    KeyC,
+#    KeyD,
+#    KeyE,
+#    KeyF,
+#    KeyG,
+#    KeyH,
+#    KeyI,
+#    KeyJ,
+#    KeyK,
+#    KeyL,
+#    KeyM,
+#    KeyN,
+#    KeyO,
+#    KeyP,
+#    KeyQ,
+#    KeyR,
+#    KeyS,
+#    KeyT,
+#    KeyU,
+#    KeyV,
+#    KeyW,
+#    KeyX,
+#    KeyY,
+#    KeyZ,
+#    Minus,
+#    Period,
+#    Quote,
+#    Semicolon,
+#    Slash,
+#    AltLeft,
+#    AltRight,
+#    Backspace,
+#    CapsLock,
+#    ContextMenu,
+#    ControlLeft,
+#    ControlRight,
+#    Enter,
+#    MetaLeft,
+#    MetaRight,
+#    ShiftLeft,
+#    ShiftRight,
+#    Space,
+#    Tab,
+#    Convert,
+#    KanaMode,
+#    Lang1,
+#    Lang2,
+#    Lang3,
+#    Lang4,
+#    Lang5,
+#    NonConvert,
+#    Delete,
+#    End,
+#    Help,
+#    Home,
+#    Insert,
+#    PageDown,
+#    PageUp,
+#    ArrowDown,
+#    ArrowLeft,
+#    ArrowRight,
+#    ArrowUp,
+#    NumLock,
+#    Numpad0,
+#    Numpad1,
+#    Numpad2,
+#    Numpad3,
+#    Numpad4,
+#    Numpad5,
+#    Numpad6,
+#    Numpad7,
+#    Numpad8,
+#    Numpad9,
+#    NumpadAdd,
+#    NumpadBackspace,
+#    NumpadClear,
+#    NumpadClearEntry,
+#    NumpadComma,
+#    NumpadDecimal,
+#    NumpadDivide,
+#    NumpadEnter,
+#    NumpadEqual,
+#    NumpadHash,
+#    NumpadMemoryAdd,
+#    NumpadMemoryClear,
+#    NumpadMemoryRecall,
+#    NumpadMemoryStore,
+#    NumpadMemorySubtract,
+#    NumpadMultiply,
+#    NumpadParenLeft,
+#    NumpadParenRight,
+#    NumpadStar,
+#    NumpadSubtract,
+#    Escape,
+#    Fn,
+#    FnLock,
+#    PrintScreen,
+#    ScrollLock,
+#    Pause,
+#    BrowserBack,
+#    BrowserFavorites,
+#    BrowserForward,
+#    BrowserHome,
+#    BrowserRefresh,
+#    BrowserSearch,
+#    BrowserStop,
+#    Eject,
+#    LaunchApp1,
+#    LaunchApp2,
+#    LaunchMail,
+#    MediaPlayPause,
+#    MediaSelect,
+#    MediaStop,
+#    MediaTrackNext,
+#    MediaTrackPrevious,
+#    Power,
+#    Sleep,
+#    AudioVolumeDown,
+#    AudioVolumeMute,
+#    AudioVolumeUp,
+#    WakeUp,
+#    Meta,
+#    Hyper,
+#    Turbo,
+#    Abort,
+#    Resume,
+#    Suspend,
+#    Again,
+#    Copy,
+#    Cut,
+#    Find,
+#    Open,
+#    Paste,
+#    Props,
+#    Select,
+#    Undo,
+#    Hiragana,
+#    Katakana,
+#    F1,
+#    F2,
+#    F3,
+#    F4,
+#    F5,
+#    F6,
+#    F7,
+#    F8,
+#    F9,
+#    F10,
+#    F11,
+#    F12,
+#    F13,
+#    F14,
+#    F15,
+#    F16,
+#    F17,
+#    F18,
+#    F19,
+#    F20,
+#    F21,
+#    F22,
+#    F23,
+#    F24,
+#    F25,
+#    F26,
+#    F27,
+#    F28,
+#    F29,
+#    F30,
+#    F31,
+#    F32,
+#    F33,
+#    F34,
+#    F35
+
+# You can override the mapping of KeyCodes to scancodes with 'keycode_mappings'
+# The format of keyboard_mappings is an array of mapping entries.
+#
+# Each mapping entry is an a dictionary with the following properties:
+#
+#    keycode   = The keycode name from the list given above.
+#
+#    modifiers = A list of modifier keys to match. Valid values for modifiers 
+#                include "control", "alt", "shift" and "super"
+#                On Mac, the command key is equivalent to "control."
+#
+#                If a key is to be always translated, this value should be 
+#                "any".
+#
+#                If a key is to be translated when no modifiers are pressed, 
+#                this value should be "none"
+#
+#                Alternately, provide a list of modifiers. All modifiers in 
+#                the list must be present for translation.
+#
+#   key_macro =  Convert this keycode into a sequence of multiple keycodes.
+#                Each keycode will be delivered after a specific delay 
+#                (typically one frame)
+#
+#   scancodes  = The resulting scancodes to translate the specified key + 
+#                matching modifiers into. A single keycode can map to 
+#                multiple scancodes, which will be sent in order.
+#
+#   'key_macro' and 'scancodes' are mutually exclusive. Use one and leave the
+#    other empty.
+#
+# Different keyboard models can produce multi-byte scancodes, therefore, each
+# keycode should be mapped to an array.
+
+
+
+
+# Model F - the Original 83-key keyboard shipped with the IBM PC and XT.
+# -----------------------------------------------------------------------------
+# The model F keyboard has single-byte scancodes, so scancodes defined here 
+# should only have one element.
+[keyboard.modelf]
+keycode_mappings = []
+
+# -----------------------------------------------------------------------------
+# Tandy 1000 - the Original 95-key keyboard shipped with the Tandy 1000
+# -----------------------------------------------------------------------------
+# The Tandy 1000 keyboard has single-byte scancodes, so scancodes defined here 
+# should only have one element.
+[keyboard.tandy1000]
+keycode_mappings = []

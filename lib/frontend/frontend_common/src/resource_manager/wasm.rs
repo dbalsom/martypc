@@ -32,26 +32,74 @@
 
 use crate::resource_manager::{tree::TreeNode, ResourceItem, ResourceItemType, ResourceManager};
 
+use anyhow::Error;
 use std::{
     ffi::{OsStr, OsString},
     fs,
-    path::Path,
+    path::{Path, PathBuf},
 };
-
-use anyhow::Error;
+use url::Url;
 
 impl ResourceManager {
-    /// On wasm targets, we can't get a directory listing, so return an empty vector.
-    /// TODO: Eventually we might load a manifest file that can provide a virtual directory listing.
+    /// On wasm targets we return the list of items read from a file manifest
     pub fn enumerate_items(
         &self,
         resource: &str,
-        _subdir: Option<&OsStr>,
-        _multipath: bool,
+        subdir: Option<&OsStr>,
+        multipath: bool,
         _resursive: bool,
         _extension_filter: Option<Vec<OsString>>,
     ) -> Result<Vec<ResourceItem>, Error> {
         let mut items: Vec<ResourceItem> = Vec::new();
+
+        log::debug!("Enumerating items for resource: {}", resource);
+        let mut paths = self
+            .pm
+            .get_resource_paths(resource)
+            .ok_or(anyhow::anyhow!("Resource path not found: {}", resource))?;
+
+        log::debug!("Got {} items for resource: {}", paths.len(), resource);
+
+        if !multipath {
+            // If multipath is false, only use the first path
+            paths.truncate(1);
+        }
+
+        if paths.is_empty() {
+            return Err(anyhow::anyhow!("No paths defined for resource: {}", resource));
+        }
+
+        for path in paths.iter() {
+            let mut path = PathBuf::from(&path);
+            //let mut path = path.clone().canonicalize()?;
+
+            if let Some(subdir) = subdir.clone() {
+                path.push(subdir);
+            }
+
+            log::debug!("Descending into directory: {}", path.display());
+            for entry in self.read_manifest_dir(&String::from(path.clone().to_string_lossy())) {
+                log::debug!("Reading entry {:?}", entry);
+                if entry.path().is_dir() {
+                    items.push(ResourceItem {
+                        rtype: ResourceItemType::Directory,
+                        location: entry.path().clone(),
+                        relative_path: None,
+                        filename_only: Some(entry.path().file_name().unwrap_or_default().to_os_string()),
+                        flags: 0,
+                    });
+                } else {
+                    items.push(ResourceItem {
+                        rtype: ResourceItemType::LocalFile,
+                        location: entry.path().clone(),
+                        relative_path: None,
+                        filename_only: Some(entry.path().file_name().unwrap_or_default().to_os_string()),
+                        flags: 0,
+                    });
+                }
+            }
+        }
+
         Ok(items)
     }
 
@@ -81,7 +129,36 @@ impl ResourceManager {
     }
 
     /// Reads the contents of a resource from a specified file system path into a byte vector, or returns an error.
-    pub fn read_resource_from_path(&self, _path: &Path) -> Result<Vec<u8>, Error> {
-        Ok(Vec::new())
+    pub fn read_resource_from_path_blocking(&self, path: impl AsRef<Path>) -> Result<Vec<u8>, Error> {
+        Err(anyhow::anyhow!("Not implemented for wasm target"))
+    }
+
+    /// Reads the contents of a resource from a specified file system path into a byte vector, or returns an error.
+    pub async fn read_resource_from_path(&self, path: impl AsRef<Path>) -> Result<Vec<u8>, Error> {
+        if self.base_url.is_none() {
+            return Err(anyhow::anyhow!("Base URL not set"));
+        }
+
+        let path_str = path.as_ref().to_string_lossy().to_string();
+
+        let entry = self
+            .manifest
+            .map
+            .get(&path_str)
+            .map_or(Err(anyhow::anyhow!("Path not found: {}", path_str)), |v| Ok(v.clone()))?;
+
+        let url = self.base_url.clone().unwrap().join(&entry.path)?;
+        let file = marty_web_helpers::fetch_url(&url)
+            .await
+            .map_err(|e| anyhow::anyhow!("Failed to fetch file: {}", e))?;
+
+        Ok(file)
+    }
+
+    pub async fn read_string_from_path(&self, path: impl AsRef<Path>) -> Result<String, Error> {
+        let file = self.read_resource_from_path(path).await?;
+        let file_str =
+            String::from_utf8(file).map_err(|e| anyhow::anyhow!("Failed to convert file to string: {}", e))?;
+        Ok(file_str)
     }
 }

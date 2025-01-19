@@ -1,0 +1,625 @@
+# martypc.toml
+# Main configuration file for the MartyPC emulator
+#
+[meta]
+file_type = "main_config"
+config_version = "0.2"
+
+# ----------------------------------------------------------------------------
+# Machine Options
+#
+# Items specific to machine configuration are listed here first for 
+# convenience, as they are usually the first thing people want to change.
+#
+# General emulator options are given in [emulator] below.
+# ----------------------------------------------------------------------------
+[machine]
+# Specify the name of a machine configuration to load. Valid config_names
+# are defined via machine configuration profiles in the /configs/machines
+# directory.
+config_name = "ibm5160"
+#config_name = "ibm5160_hdd"
+
+# Specify configuration overlays to load on top of machine configuration.
+# Config overlays are a convenient way to swap or add to a base config. 
+# The 'ega' overlay will add an EGA card to a system that defaults to 
+# MDA or CGA, for example.
+#
+# - See 'machine_config_overlays.toml' for more examples, or define your own.
+#config_overlays = ["ega"]
+
+# Prefer OEM ROMs over other compatible ROMs, if present. Default: true.
+prefer_oem = true
+
+# Reload ROMs from disk when system is hard-rebooted (not ctrl-alt-del)
+reload_roms = true
+
+# Apply ROM patches defined in ROM sets. Disable this for authenticity
+# as some patches may speed up boot time.
+patch_roms = true
+
+# Don't load any ROMs if true. Default: false
+#no_roms = true
+
+# Enable disassembly recording. This is similar to CPU instruction history,
+# but records the disassembly of each instruction executed, sorted by
+# address. This builds a disassembly listing of the program as it runs.
+disassembly_recording = false
+
+# Filename to save diassembly recording to.
+# This will be saved in the 'traces' directory
+disassembly_file = "disassembly.lst"
+
+# Enable a console debugging port. Writes to this port will be printed to the
+# host terminal. ESC bytes (0x1B) will be filtered to avoid terminal abuse.
+#terminal_port = 0xE9
+
+# Turbo Button
+# ----------------------------------------------------------------------------
+# Change the clock divisor/multiplier for the CPU to run the CPU faster than 
+# normal. Other devices like the timer will continue to run at the same rate.
+#
+# On IBM PC/XT, turbo increases CPU clock from 4.77Mhz to 7.16Mhz.
+turbo = false
+
+# Emulate phase offset of PIT vs CPU. Don't change this if you don't know why 
+# you would want to do that.
+pit_phase = 0
+
+# ----------------------------------------------------------------------------
+# Input options
+# ----------------------------------------------------------------------------
+[machine.input]
+# Keyboard layouts are normally specified in machine configurations. You can
+# override the keyboard layout here. Easier than editing all your machines.
+# A keyboard mapping file compatible with the specified layout and keyboard
+# type must be present.
+
+#keyboard_layout = "US"
+
+# ----------------------------------------------------------------------------
+# CPU Options
+# ----------------------------------------------------------------------------
+[machine.cpu]
+
+# Enable CPU wait states. This includes wait states from DMA, memory access
+# and device IO. Setting this to false may speed up the CPU, but reduce 
+# accuracy (Area 5150 will break)
+wait_states = true
+
+# Attempt to detect when the CPU is executing invalid instructions and halt.
+# May need to disable for certain test programs like acid88
+off_rails_detection = false
+
+# What to do when the CPU has entered an unrecoverable halt condition. 
+# Valid options are:
+#  Continue - Do nothing; just keep running
+#  Warn     - Keep running, but display a warning notification
+#  Stop     - Stop the system and display a warning notification
+on_halt = "Warn"
+
+# Enable instruction history. This slows down the emulator a modest amount 
+# when enabled. Only enable if debugging.
+instruction_history = false
+
+# Enable MartyPC's internal emulator serivce interrupt at 0xFC. You may need
+# to disable this if conflicts arise. 'mdebug.com' requires this to be set 
+# true.
+service_interrupt = true
+
+# CPU Tracing Options
+# ----------------------------------------------------------------------------
+# CPU tracing may be enabled by specifying trace_mode
+# Tracing does not begin unless trace_on == true or set in GUI
+#
+# Valid values for trace_mode:
+#  Instruction  - Output per-instruction traces (slow, big)
+#  CycleText    - Output per-cycle traces, text format (very slow, huge)
+#  CycleCsv     - Output per-cycle traces, text/csv format (recommended)
+#  CycleSigrok  - Output per-cycle traces, sigrok csv format (very slow, huge)
+#                 Designed for import into sigrok PulseView for debugging.
+#                 Use an import string of t,x20,l,l,x2,x3,l,l,l,l,l,l
+
+# >>> WARNING: Any of these options will quickly make multi-gigabyte files <<<
+#
+# Additionally, a valid value for trace_file must be supplied.
+#
+trace_on = false
+#trace_mode = "Instruction"
+trace_mode = "CycleSigrok"
+trace_file = "cycle_trace.log"
+
+# ----------------------------------------------------------------------------
+# Emulator paths
+#
+# By default, emulator paths are defined as relative to the base_dir path.
+# If $base_dir$ is omitted from a path specifier, then that patch becomes
+# an absolute path.
+# Each path entry must be defined on a single line due to TOML grammar.
+# 
+# Multiple entries for the same resource string can be defined for the
+# following resources:
+#
+# hdd    - MartyPC will search all defined paths for valid VHD images.
+# rom    - MartyPC will search all defined paths for valid ROMs. 
+# floppy - MartyPC will search all defined paths for valid floppy images.
+# ----------------------------------------------------------------------------
+[emulator]
+# basedir: Base emulator data directory. 
+#          Other emulator paths can be set as absolute paths, or relative to 
+#          basedir with $basedir$
+#          The default is ".", effecting a portable installation with all
+#          directories relative to the current working directory.
+basedir = ""
+paths = [
+    { resource = "machine", path = "$basedir$configs/machines", recurse = true },
+    { resource = "keyboard_layout", path = "$basedir$configs/keyboard_layouts", recurse = false },
+    { resource = "rom", path = "$basedir$media/roms", recurse = true },
+    { resource = "hdd", path = "$basedir$media/hdds", recurse = true },
+    { resource = "autofloppy", path = "$basedir$mount/floppy", create = true, recurse = false },
+    { resource = "floppy", path = "$basedir$media/floppies", recurse = true, create = true },
+    { resource = "cartridge", path = "$basedir$media/cartridges", recurse = true, create = true },
+    { resource = "cassette", path = "$basedir$media/cassettes", recurse = true, create = true },
+    { resource = "dump", path = "$basedir$output/dumps", create = true },
+    { resource = "trace", path = "$basedir$output/traces", create = true },
+    { resource = "screenshot", path = "$basedir$output/screenshots", create = true },
+]
+
+# Exclude any matching directories from recursion. Useful for temporarily
+# hiding files, or moving files in and out of a "library" subdir.
+ignore_dirs = ["parking"]
+
+# -------------------------------------------------------------------------------------
+# General emulator options
+# -------------------------------------------------------------------------------------
+
+# Power on the emulated machine on startup (only applicable in gui mode)
+auto_poweron = true
+
+# cpu_autostart: Run the CPU on startup - if false CPU will start paused
+# (only applicable in gui mode)
+cpu_autostart = true
+
+# benchmark_mode: Run MartyPC in benchmark mode (cmdline: --benchmark-mode)
+benchmark_mode = false
+
+# headless: Run MartyPC without any windows
+headless = false
+
+# fuzzer: Run the instruction fuzzer (requires validator feature)
+fuzzer = false
+
+# title_hacks: Enable compatibility tweaks for specific software titles
+title_hacks = true
+
+# Debug mode does a few miscellaneous things. 
+# - CPU Autostart is disabled
+# - Several debug panels are opened automatically
+# - CPU Instruction history is turned on (overrides setting)
+debug_mode = false
+
+# Warn if MartyPC was compiled in debug mode. Disable this if you intend to
+# do so and don't want the nag.
+debug_warn = true
+
+# Run the specified program instead of booting BIOS.
+#run_bin = "./program/a_effect.bin"
+run_bin_seg = 0x1000
+run_bin_ofs = 0x0000
+# The CPU reset vector will be set to 'vreset_bin_seg:vreset_bin_ofs'.
+vreset_bin_seg = 0x1000
+vreset_bin_ofs = 0x0000
+
+[emulator.backend]
+# Enable vsync. For wgpu frontend, I would recommend leaving this off. FIFO
+# presentation mode increase latency and causes window resizing issues.
+vsync = false
+
+# There appears to be a bug in the wgpu backend that causes vertical stripes when
+# running fullscreen under Intel graphics. This is a workaround for that issue, setting
+# the surface size to one pixel less than fullscreen.
+macos_stripe_fix = false
+
+[emulator.audio]
+# Set this to false to disable sound system initialization.
+enabled = true
+
+[emulator.media]
+
+# A list of file extensions to interpret as floppy raw sector images.
+# Files with these extensions will always be shown in the floppy image browser, regardless
+# of whether they can be mounted as a raw sector image.
+raw_sector_image_extensions = ["img", "ima", "dsk", "mnx"]
+
+# Default state of write protection for newly loaded floppy images.
+write_protect_default = false
+
+#[[emulator.media.vhd]]
+# VHD to mount into drive 0 (Typically C:)
+#drive = 0
+#filename = "dos330.vhd"
+
+#[[emulator.media.vhd]]
+# VHD to mount into drive 1 (Typically D:)
+#drive = 1
+#filename = "hdd1.vhd"
+
+# ----------------------------------------------------------------------------
+# Debugger Options
+# ----------------------------------------------------------------------------
+[emulator.debugger]
+# Create toast notifications for ROM checkpoints at this level.
+checkpoint_notify_level = 0
+# Create a toast notification when breakpoint hit
+breakpoint_notify = true
+
+# ----------------------------------------------------------------------------
+# Emulator Window Options
+#
+# MartyPC will always have a main window, unless run headless. The main
+# window can be set to display a video adapter, or not. Additional windows
+# can be defined in [[emulator.window]] sections. Multiple windows can 
+# reference the same video card - aperture and scaling options are set 
+# per-window, so you can visualize an adapter's output multiple ways.
+# Of course, every window you create has a cost in memory throughput and
+# rendering time.
+#
+# At least one [[emulator.window]] section must be present. The first 
+# [[emulator.window]] defines the main window.
+#
+# A note about sizes - the real minimum size of a window is the unscaled size
+# of the card's selected video aperture, which may be larger than expected
+# due to overscan. If this is larger than the requested min_size, min_size
+# will be ignored, the scaler will not resample downwards.
+# Therefore, if you specifically want a 640x480 window, you should
+# select the "Cropped" aperture.
+# ----------------------------------------------------------------------------
+[[emulator.window]]
+# Provide a name for this window. (Required)
+name = "Main GUI"
+
+# If this parameter is provided, the window will be created at *at least* 
+# this size, or the video aperture resolution, whichever is higher.
+# It is useful to use this value for the main window, but for secondary
+# display windows, you may wish to use card_scale instead.
+size = { w = 1024, h = 768 }
+
+# If this window has a GUI menu, add the vertical height of the menu to the
+# window height, and adjust the scaler to display the emulated display 
+# beneath it.  Otherwise, if you create a 640x480 Cropped main window, 
+# the menu bar will overlap the top of image unless the GUI is hidden.
+menu_adjust = true
+
+# If set to false, the window cannot be resized by the user. It may still
+# resize if the associated video card changes resolutions or the display
+# aperture is changed.
+resizable = true
+
+# If this field is present, the window will display the specified card in its
+# client area. If you do not want the window to display a card, comment this
+# out.
+# card_id is the numeric index of cards defined in a Machine configuration.
+card_id = 0
+
+# Size the initial window dimensions to the specified card's aperture size
+# times this number.
+# Setting this value overrides 'size' and 'resizable'.
+#card_scale = 1
+
+# Specify the scaler preset to use for this window. See the 
+# [[emulator.scaler_preset]] definitions defined below for reference.
+scaler_preset = "default"
+
+# Request that this window remain on top. Not recommended for main window.
+always_on_top = false
+
+# Second window, optional. Set 'enabled' to true to activate.
+[[emulator.window]]
+enabled = false
+name = "Secondary Window"
+size = { w = 800, h = 600 }
+resizable = false
+card_id = 0
+card_scale = 1
+scaler_preset = "Green CRT"
+always_on_top = false
+
+# Third window, optional
+[[emulator.window]]
+enabled = false
+name = "Tertiary Window"
+size = { w = 640, h = 480 }
+resizable = false
+card_id = 0
+card_scale = 1
+scaler_preset = "default"
+always_on_top = false
+
+# ----------------------------------------------------------------------------
+# Emulator Scaler Presets
+# 
+# Rather than define scaler settings for each possible window/display target,
+# targets can reference a scaler preset defined here. Any number of 
+# [[emulator.scaler_preset]] sections can be defined, as long as the 'name'
+# field is unique. 
+#
+# At least one preset named "default" must be present. 
+# 
+# MartyPC's display pipeline for a video card has two stages - rendering
+# and shading. Renderer options are listed under 
+# [emulator.scaler_preset.renderer] blocks. These must appear at the end
+# of a scaler_preset definition.
+# ----------------------------------------------------------------------------
+[[emulator.scaler_preset]]
+# Provide a unique name for this preset. Reference this name in window 
+# definitions. A name is required.
+name = "default" # Default preset must exist! Do not rename.
+
+# Specify the scaler mode to use for this window when displaying a video card.
+# The default value is "Integer". This has no effect if no card_id is provided.
+#
+# Valid options for Scaler mode are
+# Fixed   - Video and shader output will be displayed at native base resolution
+# Integer - Video and shader output will be scaled to the largest integer
+#           multiple that will fit in the window. This generally produces the
+#           clearest results, but can leave large black borders.
+# Fit     - Video will be scaled proportionally to fit the window.
+# Stretch - Video will be scaled to fit the window.
+mode = "Integer"
+
+# Valid options for filter are:
+# Linear  - Bilinear filtering. Best results but may introduce blur. 
+# Nearest - Nearest neighbor filtering. Crisp, but may introduce scanline 
+#           artifacts at non-integer scale sizes. Looks terrible with crt 
+#           effects.
+filter = "Linear"
+
+# RGBA color to use for the 'border' area around scaler output.
+# This is also used for the background color of a window with no card 
+# attachment.
+border_color = 0x323338 # Medium gray.
+
+# Enable or disable CRT shader effects
+crt_effect = false
+
+# Degree to which the corners of the display should be rounded, from
+# 0.0 (sharp corners) to 1.0 (maximum rounding)
+crt_corner_radius = 0.0
+
+# Amount of barrel distortion from 0 (no distortion) to 1.0
+crt_barrel_distortion = 0.0
+
+# Emulated phosphor type
+# Valid values are:
+# Color - (default) Normal color CRT
+# White - White CRT phosphors
+# Green - Green CRT phosphors
+# Amber - Amber CRT phosphors
+crt_phosphor_type = "Color"
+
+# Emulate scanlines?
+crt_scanlines = false
+
+# Gamma correction value (only used when crt_phosphor_type != Color)
+gamma = 1.0
+
+# Renderer options. In MartyPC a renderer is responsible for presenting data 
+# to the scaler for display. These options are not technically part of the 
+# scaler, but included in scaler presets for convenience.
+[emulator.scaler_preset.renderer]
+#
+# display_aperture: Valid options are:
+# Cropped  - Display the card in the "traditional" resolution for each graphics
+#            mode, with no overscan. Ie, 320x200 for low resolution CGA, 
+#            640x350 for high resolution EGA, 640x480 for high resolution VGA
+# Accurate - Display the card with overscan extents as they would appear on a 
+#            typical CRT monitor
+# Full     - Display the entire overscan area
+# Debug    - Display the entire video field, including horizontal and vertical
+#            blanking periods. Helpful for debugging video code.
+#display_aperture = "Cropped"
+
+# Aspect-correct scaler output to 4:3. This will make the video output more
+# visually accurate to what you would see on a real monitor, but will introduce
+# vertical blur if using Integer or Fixed scaling modes. This can be toggled in
+# the GUI.
+aspect_correction = true
+
+# Aspect ratio to use, representing a w:h ratio. Both fields should be 
+# integers.
+aspect_ratio = { h = 4, v = 3 }
+
+# Emulate a composite color signal (and produce artifact color)
+# Has no effect unless card type is CGA.
+composite = false
+
+# Define additional scaler presets below...
+[[emulator.scaler_preset]]
+name = "IBM 5153"
+filter = "Linear"
+border_color = 0x323338 # Medium gray.
+crt_effect = true
+crt_barrel_distortion = 0.2
+crt_corner_radius = 0.2
+crt_phosphor_type = "Color"
+crt_scanlines = true
+gamma = 1.0
+[emulator.scaler_preset.renderer]
+display_aperture = "Accurate"
+aspect_correction = true
+aspect_ratio = { h = 4, v = 3 }
+composite = false
+
+[[emulator.scaler_preset]]
+name = "Green CRT"
+filter = "Linear"
+border_color = 0x323338 # Medium gray.
+crt_effect = true
+crt_barrel_distortion = 0.2
+crt_corner_radius = 0.2
+crt_phosphor_type = "Green"
+crt_scanlines = true
+gamma = 1.0
+[emulator.scaler_preset.renderer]
+display_aperture = "Accurate"
+aspect_correction = true
+aspect_ratio = { h = 4, v = 3 }
+composite = false
+
+[[emulator.scaler_preset]]
+name = "Amber CRT"
+filter = "Linear"
+border_color = 0x323338 # Medium gray.
+crt_effect = true
+crt_barrel_distortion = 0.2
+crt_corner_radius = 0.2
+crt_phosphor_type = "Amber"
+crt_scanlines = true
+gamma = 1.0
+[emulator.scaler_preset.renderer]
+display_aperture = "Accurate"
+aspect_correction = true
+composite = false
+aspect_ratio = { h = 4, v = 3 }
+
+# ----------------------------------------------------------------------------
+# General Input Options
+# ----------------------------------------------------------------------------
+[emulator.input]
+# Some platforms reverse the left and right mouse button id #'s. 
+# We try to detect this, but it can be overridden here.
+reverse_mouse_buttons = false
+
+# Define hotkeys. 
+# Each hotkey definition specifies an event enum and a list of keycodes. See 
+# one of the keyboard mapping files in /config/keyboards for a list of valid 
+# keycode names.
+#
+# scope: When is the hotkey recognized?
+#  "Any" - Hotkey triggers in any context
+#  "Gui" - Hotkey only triggers when GUI has focus
+#  "Machine" - Hotkey only triggers when emulated machine has focus 
+#  "Captured" - Hotkey only triggers when emulated machine has captured input
+#
+# capture_disable: Disable this hotkey when input is captured. Setting this and
+#                  the "Captured" scope will disable the hotkey
+#
+# Multiple events can be mapped to the same input sequence. They will all fire 
+# when that key sequence is pressed.
+#
+# Events are a bit limited at first. More hotkey events are coming in the future.
+hotkeys = [
+    { event = "CaptureMouse", keys = ["ControlLeft", "F10"], scope = "Any", capture_disable = false },
+    { event = "CtrlAltDel", keys = ["ControlLeft", "F11"], scope = "Any", capture_disable = false },
+    { event = "Reboot", keys = ["ControlLeft", "F12"], scope = "Any", capture_disable = false },
+    { event = "Screenshot", keys = ["ControlLeft", "F5"], scope = "Any", capture_disable = false },
+    { event = "ToggleGui", keys = ["ControlLeft", "F1"], scope = "Any", capture_disable = false },
+    { event = "ToggleFullscreen", keys = ["ControlLeft", "Enter"], scope = "Any", capture_disable = false },
+    { event = "DebugStepOver", keys = ["F10"], scope="Gui", capture_disable = false },
+    { event = "DebugStep", keys = ["F11"], scope="Gui", capture_disable = false },
+    # Joystick hotkeys. Only enabled when joystick keyboard emulation is enabled.
+    { event = "JoyToggle", keys = ["ControlLeft", "F9"], scope="Any", capture_disable = false },
+]
+
+# Enable keyboard -> joystick emulation. This can be toggled via the JoyToggle hotkey
+# above, so it isn't necessary to set this to true unless you want it enabled by default.
+keyboard_joystick = false
+
+joystick_keys = [
+    { input = "JoyButton1", key = "AltRight" },
+    { input = "JoyButton2", key = "ControlRight" },
+    { input = "JoyUp", key = "ArrowUp" },
+    { input = "JoyLeft", key = "ArrowLeft"},
+    { input = "JoyRight", key = "ArrowRight"},
+    { input = "JoyDown", key = "ArrowDown" }
+]
+
+# Help the developer debug any keyboard issues you may be having. With this
+# feature set to true, MartyPC will print information about every keystroke
+# to the terminal.
+debug_keyboard = false
+
+# ----------------------------------------------------------------------------
+# Benchmarking (not yet implemented - configs are placeholder)
+# ----------------------------------------------------------------------------
+[emulator.benchmark]
+# Machine configuration to benchmark
+config_name = "ibm5160"
+config_overlays = []
+prefer_oem = true
+
+# Valid options for benchmark_end_condition are:
+# "Timeout" - Benchmark for 'timeout' seconds and exit
+# "Trigger" - Terminate benchmark on signal from internal service interrupt
+# "Cycles"  - Terminate benchmark after 'cycles' CPU cycles
+end_condition = "Timeout"
+timeout = 60
+cycles = 572400000 # 2 minutes
+
+# ----------------------------------------------------------------------------
+# GUI options
+# ----------------------------------------------------------------------------
+[gui]
+
+# Select the color theme for the GUI.
+# Valid values are:
+#  - DefaultLight : default EGUI Light theme
+#  - Lilac        : light theme variant
+#  - Hal          : light theme variant
+#  - DefaultDark  : default EGUI Dark theme (recommended)
+#  - Purple       : dark theme variant
+#  - Cobalt       : dark theme variant
+theme = "Purple"
+
+# Theme for the top menu can be defined independently
+menu_theme = "DefaultLight"
+
+# Global zoom level for GUI. Smaller numbers will make all the GUI elements 
+# smaller. Default: 1.0 Max: 1.0 Min: 0.1
+zoom = 1.0
+
+# ----------------------------------------------------------------------------
+# Options for the CPU Validator module.
+# ----------------------------------------------------------------------------
+# You must have an Arduino8088 connected via USB to utilize
+# the validator. For more information, see 
+# https://github.com/dbalsom/arduino_8088
+[validator]
+type = "Arduino8088"
+trigger_address = 0xFFFF0
+trace_file = "./traces/validator_trace.log"
+
+# ----------------------------------------------------------------------------
+# Options for JSON test facilities
+# MartyPC can create JSON tests or validate them.
+# ----------------------------------------------------------------------------
+# Test generation requires a functioning CPU Validator module, see above
+[tests]
+
+# Valid values for test_mode are:
+# None - Do not generate or validate tests (default - run emulator normally)
+# Generate - generate tests based on supplied parameters
+# Valdidate - validate tests 
+test_mode = "None"
+
+# Random seed for testing. The same random seed should produce the same
+# set of tests. If you want a different set of tests, change this to any 
+# other number.
+test_seed = 1234
+
+# Directory to look for / place tests
+test_dir = "tests/v1"
+
+# Opcode range to generate or validate. Provide start and end opcodes.
+# If start == end, that single opcode will be generated or validated.
+test_opcode_range = [0, 0]
+
+# List of opcodes to exclude in generation or validation. 
+test_opcode_exclude_list = [0xF1]
+
+# Number of tests to generate per opcode.
+test_opcode_gen_count = 5000
+
+# If true, append to existing test JSON if < test_opcode_gen_count.
+# If false, generation will replace any existing JSON file.
+test_opcode_gen_append = true

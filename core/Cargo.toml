@@ -35,6 +35,7 @@ serialport = { workspace = true, optional = true }
 fxhash.workspace = true
 enum_dispatch.workspace = true
 crossbeam-channel.workspace = true
+web-time.workspace = true
 
 [dependencies.opl3-rs]
 git = "https://github.com/dbalsom/opl3-rs.git"
@@ -48,7 +49,7 @@ fluxfox = { workspace = true, default-features=false, features = ["core", "archi
 getrandom = { version = "0.2", features = ["js"] }
 wasm-bindgen = { version = "0.2", optional = true }
 wasm-bindgen-futures = { version = "0.4", optional = true }
-fluxfox = { workspace = true, default-features=false, features = ["core", "wasm", "archives", "mfi", "fat", "flux", "ibm_pc"] }
+fluxfox = { workspace = true, default-features=false, features = ["core", "wasm", "zip", "gzip", "tar", "mfi", "fat", "flux", "ibm_pc"] }
 
 [dev-dependencies]
 criterion = "0.5"

@@ -66,6 +66,9 @@ impl PathManager {
     pub fn add_path(&mut self, resource_name: &str, path_str: &str, create: bool) -> Result<(), Error> {
         let resolved_path = self.resolve_path_internal(path_str)?;
 
+        // Attempt to create directories if they don't exist and their `create` flag is set.
+        // Inapplicable on web builds.
+        #[cfg(not(target_arch = "wasm32"))]
         if !ResourceManager::path_is_dir(&resolved_path) {
             if create {
                 ResourceManager::create_path(&resolved_path)?;

@@ -356,8 +356,21 @@ impl ResourceManager {
     }
 
     /// Reads the contents of a resource from a specified file system path into a byte vector, or returns an error.
-    pub fn read_resource_from_path(&self, path: &Path) -> Result<Vec<u8>, Error> {
+    pub fn read_resource_from_path_blocking(&self, path: impl AsRef<Path>) -> Result<Vec<u8>, Error> {
         let buffer = std::fs::read(path)?;
         Ok(buffer)
+    }
+
+    /// Reads the contents of a resource from a specified file system path into a byte vector, or returns an error.
+    pub async fn read_resource_from_path(&self, path: impl AsRef<Path>) -> Result<Vec<u8>, Error> {
+        let buffer = std::fs::read(path)?;
+        Ok(buffer)
+    }
+
+    pub async fn read_string_from_path(&self, path: impl AsRef<Path>) -> Result<String, Error> {
+        let file = self.read_resource_from_path(path).await?;
+        let file_str =
+            String::from_utf8(file).map_err(|e| anyhow::anyhow!("Failed to convert file to string: {}", e))?;
+        Ok(file_str)
     }
 }

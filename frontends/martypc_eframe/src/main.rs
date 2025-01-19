@@ -1,20 +1,41 @@
+/*
+    MartyPC
+    https://github.com/dbalsom/martypc
+
+    Copyright 2022-2024 Daniel Balsom
+
+    Permission is hereby granted, free of charge, to any person obtaining a
+    copy of this software and associated documentation files (the “Software”),
+    to deal in the Software without restriction, including without limitation
+    the rights to use, copy, modify, merge, publish, distribute, sublicense,
+    and/or sell copies of the Software, and to permit persons to whom the
+    Software is furnished to do so, subject to the following conditions:
+
+    The above copyright notice and this permission notice shall be included in
+    all copies or substantial portions of the Software.
+
+    THE SOFTWARE IS PROVIDED “AS IS”, WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
+    IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
+    FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
+    AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
+    LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING
+    FROM, OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER
+    DEALINGS IN THE SOFTWARE.
+
+    --------------------------------------------------------------------------
+*/
 #![warn(clippy::all, rust_2018_idioms)]
 #![cfg_attr(not(debug_assertions), windows_subsystem = "windows")] // hide console window on Windows in release
 
-use eframe::{AppCreator, NativeOptions, Renderer};
 #[cfg(not(target_arch = "wasm32"))]
-use martypc_eframe::native::startup;
+use async_std::prelude::*;
+
 use martypc_eframe::{app::MartyApp, MARTY_ICON};
-use winit::{
-    event::{ElementState, Event, WindowEvent},
-    event_loop::ControlFlow,
-    keyboard::KeyCode,
-    platform::windows::EventLoopBuilderExtWindows,
-};
 
 // When compiling natively:
 #[cfg(not(target_arch = "wasm32"))]
-fn main() -> eframe::Result {
+#[async_std::main]
+async fn main() -> eframe::Result {
     env_logger::init(); // Log to stderr (if you run with `RUST_LOG=debug`).
 
     // Set up the default window size and icon
@@ -34,11 +55,9 @@ fn main() -> eframe::Result {
         ..Default::default()
     };
 
-    eframe::run_native(
-        "MartyPC",
-        native_options,
-        Box::new(|cc| Ok(Box::new(MartyApp::new(cc)))),
-    )
+    let app = MartyApp::new().await;
+
+    eframe::run_native("MartyPC", native_options, Box::new(|cc| Ok(Box::new(app.init(cc)))))
 }
 
 // #[cfg(not(target_arch = "wasm32"))]
@@ -105,8 +124,21 @@ fn main() {
             .dyn_into::<web_sys::HtmlCanvasElement>()
             .expect("the_canvas_id was not a HtmlCanvasElement");
 
+        let app = MartyApp::new().await;
+        log::debug!("App created, emu is Some?: {}", app.emu.is_some());
+
+        if app.emu.is_none() {
+            log::error!("Failed to create emulator, exiting.");
+            if let Some(loading_text) = document.get_element_by_id("loading_text") {
+                loading_text.set_inner_html(
+                    "<p> MartyPC failed to initialize. See the developer console for details (Hit f12). </p>",
+                );
+            }
+            panic!("Failed to create emulator");
+        }
+
         let start_result = eframe::WebRunner::new()
-            .start(canvas, web_options, Box::new(|cc| Ok(Box::new(MartyApp::new(cc)))))
+            .start(canvas, web_options, Box::new(move |cc| Ok(Box::new(app.init(cc)))))
             .await;
 
         // Remove the loading text and spinner:

@@ -151,9 +151,11 @@ impl MachineManager {
         slf
     }
 
-    pub fn load_configs(&mut self, rm: &ResourceManager) -> Result<(), Error> {
+    pub async fn load_configs(&mut self, rm: &ResourceManager) -> Result<(), Error> {
         let mut machine_configs: Vec<MachineConfigFileEntry> = Vec::new();
         let mut overlay_configs: Vec<MachineConfigFileOverlayEntry> = Vec::new();
+
+        log::debug!("load_configs(): Loading machine configurations...");
 
         // Get a file listing of 'toml' files in the machine configuration directory.
         let toml_configs = rm.enumerate_items("machine", None, false, true, Some(vec![OsString::from("toml")]))?;
@@ -169,7 +171,9 @@ impl MachineManager {
         // Attempt to parse each toml file as a machine configuration or overlay file.
         for config in toml_configs {
             println!("Reading machine configuration file: {:?}", config.location);
-            let mut loaded_config = self.parse_config_file(&config.location)?;
+
+            let toml_str = rm.read_string_from_path(&config.location).await?;
+            let mut loaded_config = self.parse_config_file(&toml_str)?;
 
             if let Some(machine_vec) = loaded_config.machine.as_mut() {
                 machine_configs.append(machine_vec);
@@ -197,10 +201,8 @@ impl MachineManager {
         Ok(())
     }
 
-    /// Parse the given toml file as a MachineConfigFile.
-    fn parse_config_file(&mut self, toml_path: &PathBuf) -> Result<MachineConfigFile, Error> {
-        let toml_str = std::fs::read_to_string(toml_path)?;
-        let config = toml::from_str::<MachineConfigFile>(&toml_str)?;
+    fn parse_config_file(&mut self, toml_str: &str) -> Result<MachineConfigFile, Error> {
+        let config = toml::from_str::<MachineConfigFile>(toml_str)?;
 
         //log::debug!("Machine definition file loaded: {:?}", toml_path);
         Ok(config)

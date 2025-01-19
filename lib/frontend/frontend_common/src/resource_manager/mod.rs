@@ -33,8 +33,6 @@
 
 */
 
-use std::{collections::HashSet, ffi::OsString, path::PathBuf};
-
 #[cfg(not(target_arch = "wasm32"))]
 mod local_fs;
 mod path_manager;
@@ -42,17 +40,44 @@ pub mod tree;
 #[cfg(target_arch = "wasm32")]
 mod wasm;
 
+use crate::types::resource_location::ResourceLocation;
+use anyhow::Error;
+use marty_common::MartyHashMap;
+#[cfg(target_arch = "wasm32")]
+use marty_web_helpers::fetch_file;
 pub use path_manager::PathConfigItem;
 use path_manager::PathManager;
-pub use tree::TreeNode as PathTreeNode;
-
-use anyhow::Error;
 use regex::Regex;
+use serde_derive::Deserialize;
+use std::{collections::HashSet, ffi::OsString, future::Future, path::PathBuf};
+pub use tree::TreeNode as PathTreeNode;
+use url::Url;
+
+pub type AsyncResourceReadResult = dyn Future<Output = Result<Vec<u8>, anyhow::Error>> + Send;
 
 const BASEDIR_TOKEN: &'static str = "$basedir$";
 
 // Resource flags
 const RESOURCE_READONLY: u32 = 0x00000001;
+
+#[derive(Copy, Clone, Debug, Deserialize)]
+pub enum ManifestFileType {
+    Directory,
+    File,
+}
+
+#[derive(Clone, Debug, Deserialize)]
+struct ManifestEntry {
+    path: String,
+    #[serde(rename = "type")]
+    kind: ManifestFileType,
+}
+
+#[derive(Clone, Debug, Deserialize)]
+struct ManifestFile {
+    version: String,
+    entries: Vec<ManifestEntry>,
+}
 
 #[derive(Copy, Clone, Debug)]
 pub enum ResourceItemType {
@@ -89,17 +114,113 @@ impl ResourceItem {
     }
 }
 
+#[derive(Default)]
+pub struct ResourceManifest {
+    entries: Vec<ManifestEntry>,
+    map: MartyHashMap<String, ManifestEntry>,
+}
+
+impl ResourceManifest {
+    pub fn new(entries: &[ManifestEntry]) -> Self {
+        let mut manifest = Self::default();
+        for entry in entries.iter() {
+            manifest.map.insert(entry.path.clone(), entry.clone());
+        }
+        manifest.entries = entries.to_vec();
+        manifest
+    }
+
+    pub fn entry(&self, key: &str) -> Option<&ManifestEntry> {
+        self.map.get(key)
+    }
+
+    pub fn debug(&self) {
+        for entry in self.entries.iter() {
+            log::debug!("Manifest entry: {:?}", entry);
+        }
+    }
+}
+
+#[derive(Clone, Debug)]
+pub struct ManifestDirEntry {
+    path:   String,
+    is_dir: bool,
+}
+
+impl ManifestDirEntry {
+    pub fn path(&self) -> PathBuf {
+        PathBuf::from(&self.path)
+    }
+
+    pub fn is_dir(&self) -> bool {
+        self.is_dir
+    }
+}
+
 pub struct ResourceManager {
     pub pm: PathManager,
+    pub base_url: Option<Url>,
     pub ignore_dirs: Vec<String>,
+    manifest: ResourceManifest,
 }
 
 impl ResourceManager {
     pub fn new(base_path: PathBuf) -> Self {
         Self {
             pm: PathManager::new(base_path),
+            base_url: None,
             ignore_dirs: Vec::new(),
+            manifest: ResourceManifest::default(),
         }
+    }
+
+    pub fn set_base_url(&mut self, base_url: &Url) {
+        self.base_url = Some(base_url.clone());
+    }
+
+    #[cfg(target_arch = "wasm32")]
+    pub async fn load_manifest(&mut self, manifest: ResourceLocation) -> Result<(), Error> {
+        match manifest {
+            ResourceLocation::Url(url) => {
+                // Load the manifest from the URL
+                let manifest_data = marty_web_helpers::fetch_url(&url)
+                    .await
+                    .map_err(|e| anyhow::anyhow!("Failed to fetch manifest from URL '{}': {}", url, e))?;
+
+                // Parse the manifest
+                let manifest_str = String::from_utf8(manifest_data)?;
+
+                // Deserialize the manifest FROM TOML
+                let manifest_file: ManifestFile = toml::from_str(&manifest_str)?;
+
+                self.manifest = ResourceManifest::new(&manifest_file.entries);
+                self.manifest.debug();
+            }
+            ResourceLocation::FilePath(_) => {
+                panic!("Don't use FilePath for wasm32 targets!");
+            }
+        }
+        Ok(())
+    }
+
+    #[cfg(not(target_arch = "wasm32"))]
+    pub async fn load_manifest(&mut self, _manifest: ResourceLocation) -> Result<(), Error> {
+        log::debug!("load_manifest(): Not implemented for native build");
+        Ok(())
+    }
+
+    fn read_manifest_dir(&self, dir: &String) -> Vec<ManifestDirEntry> {
+        let mut entries = Vec::new();
+        for file in &self.manifest.entries {
+            log::debug!("Checking dir: {} against manifest entry {:?}", dir, file.path);
+            if file.path.starts_with(dir) && matches!(file.kind, ManifestFileType::File) {
+                entries.push(ManifestDirEntry {
+                    path:   file.path.clone(),
+                    is_dir: false,
+                });
+            }
+        }
+        entries
     }
 
     pub fn from_config(base_path: PathBuf, config: &[PathConfigItem]) -> Result<Self, Error> {
@@ -133,7 +254,7 @@ impl ResourceManager {
             .ok_or(anyhow::anyhow!("Resource path not found: {}", resource))?;
 
         // Generate a regex to extract a sequence of digits from a filename
-        let re = Regex::new(r"(\d+)").unwrap();
+        let re = Regex::new(r"(\d+)")?;
         let mut largest_num = 0;
 
         log::debug!("Finding unique filename in: {:?}", path);

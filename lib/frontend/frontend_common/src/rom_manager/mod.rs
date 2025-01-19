@@ -159,6 +159,8 @@ pub struct RomManager {
 
     checkpoints_active: HashMap<u32, RomCheckpoint>,
     patches_active: HashMap<u32, RomPatch>,
+
+    manifest: Option<MachineRomManifest>,
 }
 
 impl Default for RomManager {
@@ -183,6 +185,8 @@ impl Default for RomManager {
 
             checkpoints_active: HashMap::new(),
             patches_active: HashMap::new(),
+
+            manifest: None,
         }
     }
 }
@@ -195,7 +199,7 @@ impl RomManager {
         }
     }
 
-    pub fn load_defs(&mut self, rm: &ResourceManager) -> Result<(), Error> {
+    pub async fn load_defs(&mut self, rm: &ResourceManager) -> Result<(), Error> {
         let mut rom_defs: Vec<RomSetDefinition> = Vec::new();
 
         // Get a file listing of the rom directory.
@@ -217,7 +221,7 @@ impl RomManager {
 
         // Attempt to load each toml file as a rom definition file.
         for def in toml_defs {
-            let mut loaded_def = self.load_def(&def.location)?;
+            let mut loaded_def = self.load_def(&def.location, rm).await?;
             rom_defs.append(&mut loaded_def.romset);
         }
 
@@ -233,8 +237,9 @@ impl RomManager {
         Ok(())
     }
 
-    fn load_def(&mut self, toml_path: &PathBuf) -> Result<RomDefinitionFile, Error> {
-        let toml_str = std::fs::read_to_string(toml_path)?;
+    async fn load_def(&mut self, toml_path: &PathBuf, rm: &ResourceManager) -> Result<RomDefinitionFile, Error> {
+        let toml_str = rm.read_string_from_path(toml_path).await?;
+        //let toml_str = std::fs::read_to_string(toml_path)?;
         let romdef = toml::from_str::<RomDefinitionFile>(&toml_str)?;
 
         log::debug!(
@@ -342,7 +347,7 @@ impl RomManager {
         }
     }
 
-    /// Return the the best, complete ROM set for the specified feature. If no complete ROM set
+    /// Return the best, complete ROM set for the specified feature. If no complete ROM set
     /// can be found for the feature, return None.
     fn find_best_set_for_feature(&self, feature: &str) -> Option<String> {
         if let Some(rom_set_vec) = self.rom_sets_by_feature.get(feature) {
@@ -419,17 +424,23 @@ impl RomManager {
         Ok(())
     }
 
-    pub fn scan(&mut self, rm: &ResourceManager) -> Result<(), Error> {
+    pub async fn scan(&mut self, rm: &ResourceManager) -> Result<(), Error> {
         let roms = rm.enumerate_items("rom", None, true, true, None)?;
+
+        if roms.is_empty() {
+            return Err(anyhow::anyhow!("No ROMs found in ROM directory."));
+        }
 
         // Clear the list of ROM candidates so we can rebuild it
         self.rom_candidates.clear();
 
         for rom_item in roms {
+            log::debug!("Scanning ROM: {:?}", rom_item.location);
             let mut new_candidate: RomFileCandidate = Default::default();
-            let file_vec = match std::fs::read(rom_item.location.clone()) {
+            let file_vec = match rm.read_resource_from_path(rom_item.location.clone()).await {
                 Ok(vec) => vec,
                 Err(e) => {
+                    log::error!("Error opening filename {:?}: {}", &rom_item.location, e);
                     eprintln!("Error opening filename {:?}: {}", &rom_item.location, e);
                     continue;
                 }
@@ -774,6 +785,31 @@ impl RomManager {
         Ok(romset_vec)
     }
 
+    /// On wasm32, we can't reload the roms - well, we can, but it's pointless as the user can't
+    /// change them. So we will return the saved manifest.
+    #[cfg(target_arch = "wasm32")]
+    pub fn reload_manifest(
+        &mut self,
+        _rom_set_list: Vec<String>,
+        _rm: &ResourceManager,
+    ) -> Result<MachineRomManifest, Error> {
+        if let Some(manifest) = self.manifest.clone() {
+            Ok(manifest)
+        }
+        else {
+            Err(anyhow::anyhow!("No saved manifest found."))
+        }
+    }
+
+    #[cfg(not(target_arch = "wasm32"))]
+    pub fn reload_manifest(
+        &mut self,
+        rom_set_list: Vec<String>,
+        rm: &ResourceManager,
+    ) -> Result<MachineRomManifest, Error> {
+        self.create_manifest(rom_set_list, rm)
+    }
+
     /// Create a MachineRomManifest struct given the list of ROM set names. This Manifest can be given to the
     /// emulator core to initialize a Machine.
     pub fn create_manifest(
@@ -802,7 +838,7 @@ impl RomManager {
                     anyhow::anyhow!("Rom {} not found in candidate list.", rom_desc.md5.as_ref().unwrap())
                 })?;
 
-                let mut rom_vec = rm.read_resource_from_path(&rom_file.path)?;
+                let mut rom_vec = rm.read_resource_from_path_blocking(&rom_file.path)?;
 
                 // Handle rom organization
                 // TODO: Interleaved organizations... double rom size and then interleave?
@@ -901,6 +937,140 @@ impl RomManager {
             }
         }
 
+        // Save a copy of the manifest for reloading
+        self.manifest = Some(new_manifest.clone());
+        Ok(new_manifest)
+    }
+
+    /// Create a MachineRomManifest struct given the list of ROM set names. This Manifest can be given to the
+    /// emulator core to initialize a Machine.
+    pub async fn create_manifest_async(
+        &mut self,
+        rom_set_list: Vec<String>,
+        rm: &ResourceManager,
+    ) -> Result<MachineRomManifest, Error> {
+        let mut new_manifest = MachineRomManifest::new();
+
+        for rom_set in rom_set_list.iter() {
+            // Retrieve the rom set definition for this rom set name
+            let rom_set_idx = self
+                .rom_def_map
+                .get(rom_set)
+                .ok_or(anyhow::anyhow!("Rom set {} not found in rom set map.", rom_set))?;
+
+            let rom_set_def = &self.rom_defs[*rom_set_idx];
+            if rom_set_def.rom.is_empty() {
+                return Err(anyhow::anyhow!("Rom set {} has no roms.", rom_set));
+            }
+
+            // Iterate over the roms in the rom set definition, load them from disk and add them to the manifest.
+            for rom_desc in rom_set_def.rom.iter() {
+                let rom_md5 = rom_desc.md5.clone().unwrap();
+                let rom_file = self.rom_candidates.get(&rom_md5).ok_or_else(|| {
+                    anyhow::anyhow!("Rom {} not found in candidate list.", rom_desc.md5.as_ref().unwrap())
+                })?;
+
+                let mut rom_vec = rm.read_resource_from_path(&rom_file.path).await?;
+
+                // Handle rom organization
+                // TODO: Interleaved organizations... double rom size and then interleave?
+                //log::trace!("create_manifest(): ROM organization is {:?}", rom_desc.org);
+                match rom_desc.org {
+                    None | Some(RomOrganization::Normal) => {
+                        let mut offset_len = 0;
+                        // Shorten ROM by dropping the first 'offset' bytes
+                        if let Some(offset) = rom_desc.offset {
+                            rom_vec = rom_vec[offset as usize..].to_vec();
+                            offset_len = offset as usize;
+                        }
+
+                        // Truncate to 'size' if specified
+                        if let Some(size) = rom_desc.size {
+                            rom_vec.truncate(size as usize - offset_len);
+                        }
+
+                        if !new_manifest.check_load(rom_desc.addr as usize, rom_vec.len()) {
+                            return Err(anyhow::anyhow!(
+                                "ROM {} overlaps with existing ROM in manifest.",
+                                rom_desc.md5.as_ref().unwrap()
+                            ));
+                        }
+
+                        new_manifest.roms.push(MachineRomEntry {
+                            md5:  rom_desc.md5.clone().unwrap(),
+                            addr: rom_desc.addr,
+                            data: rom_vec,
+                        });
+                        new_manifest.rom_paths.push(rom_file.path.clone());
+                    }
+                    Some(RomOrganization::Reversed) => {
+                        rom_vec.reverse();
+
+                        let mut offset_len = 0;
+                        // Shorten ROM by dropping the first 'offset' bytes
+                        if let Some(offset) = rom_desc.offset {
+                            rom_vec = rom_vec[offset as usize..].to_vec();
+                            offset_len = offset as usize;
+                        }
+
+                        // Truncate to 'size' if specified
+                        if let Some(size) = rom_desc.size {
+                            rom_vec.truncate(size as usize - offset_len);
+                        }
+
+                        if !new_manifest.check_load(rom_desc.addr as usize, rom_vec.len()) {
+                            return Err(anyhow::anyhow!(
+                                "ROM {} overlaps with existing ROM in manifest.",
+                                rom_desc.md5.as_ref().unwrap()
+                            ));
+                        }
+
+                        new_manifest.roms.push(MachineRomEntry {
+                            md5:  rom_desc.md5.clone().unwrap(),
+                            addr: rom_desc.addr,
+                            data: rom_vec,
+                        });
+                        new_manifest.rom_paths.push(rom_file.path.clone());
+                    }
+                    _ => {
+                        return Err(anyhow::anyhow!(
+                            "ROM organization '{:?}' not implemented for ROM {}.",
+                            rom_desc.org,
+                            rom_desc.md5.as_ref().unwrap()
+                        ))
+                    }
+                }
+            }
+
+            // Add checkpoints to manifest
+            if let Some(checkpoints) = &rom_set_def.checkpoint {
+                for checkpoint in checkpoints.iter() {
+                    let new_checkpoint = MachineCheckpoint {
+                        addr: checkpoint.addr,
+                        lvl:  checkpoint.lvl,
+                        desc: checkpoint.desc.clone(),
+                    };
+                    new_manifest.checkpoints.push(new_checkpoint);
+                }
+            }
+
+            // Add patches to manifest
+            if let Some(patches) = &rom_set_def.patch {
+                for patch in patches.iter() {
+                    let new_patch = MachinePatch {
+                        desc: patch.desc.clone(),
+                        trigger: patch.trigger,
+                        addr: patch.addr,
+                        bytes: patch.bytes.clone(),
+                        installed: false,
+                    };
+                    new_manifest.patches.push(new_patch);
+                }
+            }
+        }
+
+        // Save a copy of the manifest for reloading
+        self.manifest = Some(new_manifest.clone());
         Ok(new_manifest)
     }
 }

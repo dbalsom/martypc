@@ -69,6 +69,9 @@ icon.png
 !/install/media/roms/*.toml
 !/install/martypc.toml
 
+# Files to include as wasm assets
+!/frontends/martypc_eframe/assets/martypc.toml
+
 /install/media/roms/romdef_s100.toml
 /install/media/roms/romdef_ast.toml
 /install/media/roms/GLaBIOS/parking

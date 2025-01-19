@@ -30,7 +30,7 @@
 */
 
 use crate::event_loop::egui_update::update_egui;
-use std::time::{Duration, Instant};
+use web_time::{Duration, Instant};
 
 use crate::{emulator::Emulator, event_loop::render_frame::render_frame};
 use display_manager_eframe::{DisplayManager, EFrameDisplayManager};
@@ -50,6 +50,18 @@ pub fn process_update(emu: &mut Emulator, dm: &mut EFrameDisplayManager, tm: &mu
         emu,
         dm,
         |emuc| {
+            log::debug!(
+                "Second update: Running at {} Mhz, {} cycles, {} instructions, {} ticks, {} frames",
+                emuc.machine.get_cpu_mhz(),
+                emuc.machine.cpu_cycles(),
+                emuc.machine.cpu_instructions(),
+                emuc.machine.system_ticks(),
+                emuc.machine
+                    .primary_videocard()
+                    .map(|vc| vc.get_frame_count())
+                    .unwrap_or(0)
+            );
+
             // Per second freq
             MachinePerfStats {
                 cpu_mhz: emuc.machine.get_cpu_mhz(),

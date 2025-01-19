@@ -30,10 +30,12 @@
     for enumerating and loading them.
 
 */
+#![feature(async_closure)]
 
 use crate::{
     resource_manager::{
         tree::{NodeType, TreeNode},
+        AsyncResourceReadResult,
         PathTreeNode,
         ResourceItem,
         ResourceItemType,
@@ -51,6 +53,7 @@ use std::{
     fmt::{write, Display},
     fs,
     fs::File,
+    future::Future,
     io::{Cursor, Read, Write},
     path::{Path, PathBuf},
     rc::Rc,
@@ -278,29 +281,29 @@ impl FloppyManager {
         Some(self.image_vec[idx].path.clone())
     }
 
-    pub fn load_floppy_by_idx(&self, idx: usize, rm: &ResourceManager) -> Result<FloppyImageSource, FloppyError> {
+    pub async fn load_floppy_by_idx(&self, idx: usize, rm: &ResourceManager) -> Result<FloppyImageSource, FloppyError> {
         let floppy_vec;
 
         if idx >= self.image_vec.len() {
             return Err(FloppyError::ImageNotFound);
         }
         let floppy_path = self.image_vec[idx].path.clone();
-        floppy_vec = match rm.read_resource_from_path(&floppy_path) {
+        floppy_vec = match rm.read_resource_from_path(&floppy_path).await {
             Ok(vec) => vec,
             Err(_e) => {
                 return Err(FloppyError::FileReadError);
             }
         };
 
-        self.load_floppy_by_path(floppy_path, rm)
+        self.load_floppy_by_path(floppy_path, rm).await
     }
 
-    pub fn load_floppy_by_path(
+    pub async fn load_floppy_by_path(
         &self,
         floppy_path: PathBuf,
         rm: &ResourceManager,
     ) -> Result<FloppyImageSource, FloppyError> {
-        let floppy_vec = match rm.read_resource_from_path(&floppy_path) {
+        let floppy_vec = match rm.read_resource_from_path(&floppy_path).await {
             Ok(vec) => vec,
             Err(_e) => {
                 return Err(FloppyError::FileReadError);
@@ -496,7 +499,7 @@ impl FloppyManager {
         Ok(buf.clone())
     }
 
-    pub fn build_autofloppy_image_from_dir(
+    pub async fn build_autofloppy_image_from_dir(
         &self,
         path: &PathBuf,
         format: Option<FloppyImageType>,
@@ -561,7 +564,7 @@ impl FloppyManager {
 
         // If we found IO.SYS, write it first.
         if let Some(io_sys_path) = io_sys {
-            let io_sys_vec = rm.read_resource_from_path(&io_sys_path)?;
+            let io_sys_vec = rm.read_resource_from_path(&io_sys_path).await?;
             let filename_only = io_sys_path.file_name().unwrap().to_str().unwrap();
             let mut io_sys_file = vfat12.root_dir().create_file(filename_only)?;
             log::debug!("Installing IO SYS: {}", filename_only);
@@ -571,7 +574,7 @@ impl FloppyManager {
 
         // If we found MSDOS.SYS, write it second.
         if let Some(dos_sys_path) = dos_sys {
-            let dos_sys_vec = rm.read_resource_from_path(&dos_sys_path)?;
+            let dos_sys_vec = rm.read_resource_from_path(&dos_sys_path).await?;
             let filename_only = dos_sys_path.file_name().unwrap().to_str().unwrap();
             let mut dos_sys_file = vfat12.root_dir().create_file(filename_only)?;
             log::debug!("Installing DOS SYS: {}", filename_only);
@@ -592,7 +595,7 @@ impl FloppyManager {
                 if let Err(err) =
                     build_autofloppy_dir(&src_root_node, dst_root_dir, rm, &files_visited, &mut |path: &Path| {
                         log::trace!("Building FAT image with path: {}", path.display());
-                        rm.read_resource_from_path(path)
+                        rm.read_resource_from_path_blocking(path)
                     })
                 {
                     log::error!("Error building autofloppy directory: {:?}", err);
@@ -606,7 +609,7 @@ impl FloppyManager {
 
         // Did we find a boot sector file? if so, load it now
         if let Some(bootsector_path) = bootsector_opt {
-            let mut bootsector_vec = rm.read_resource_from_path(&bootsector_path)?;
+            let mut bootsector_vec = rm.read_resource_from_path(&bootsector_path).await?;
 
             if bootsector_vec.len() > 0 {
                 if bootsector_vec.len() < 512 {
@@ -774,7 +777,7 @@ fn create_drive_label(input: &str) -> [u8; 11] {
 
 pub fn build_autofloppy_dir<IO: fatfs::Read + fatfs::Write + fatfs::Seek, TP, OCC>(
     dir_node: &TreeNode,
-    fs: Dir<IO, TP, OCC>,
+    fs: Dir<'_, IO, TP, OCC>,
     rm: &ResourceManager,
     visited: &HashSet<PathBuf>,
     file_callback: &mut dyn FnMut(&Path) -> Result<Vec<u8>, Error>,
@@ -794,12 +797,12 @@ where
         match entry.node_type() {
             NodeType::File(path) => {
                 if visited.contains(path) {
-                    log::debug!("Skipping previously installed file: {:?}", path);
+                    log::debug!("Skipping previou)sly in)stalled file: {:?}", path);
                     continue;
                 }
                 log::debug!("build_autofloppy_dir: file_name: {}", path.display());
 
-                let file_vec = file_callback(Path::new(path))?;
+                let file_vec = file_callback(path)?;
                 let mut file = fs
                     .create_file(&filename)
                     .map_err(|_| anyhow::anyhow!("Failed to create file: {}", filename))?;
