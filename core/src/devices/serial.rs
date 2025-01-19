@@ -36,10 +36,12 @@
     "IBM Asynchronous Communications Adapter"
 */
 
-use std::{
-    collections::{BTreeMap, VecDeque},
-    io::Read,
-};
+use std::collections::{BTreeMap, VecDeque};
+
+#[cfg(feature = "serial")]
+use std::io::Read;
+#[cfg(feature = "serial")]
+use web_time::Duration;
 
 use crate::{
     bus::{BusInterface, DeviceRunTimeUnit, IoDevice},
@@ -769,7 +771,7 @@ impl SerialPort {
     #[cfg(feature = "serial")]
     fn bridge_port(&mut self, port_name: String, port_id: usize) -> anyhow::Result<bool> {
         let port_result = serialport::new(port_name.clone(), 9600)
-            .timeout(std::time::Duration::from_millis(5))
+            .timeout(Duration::from_millis(5))
             .stop_bits(serialport::StopBits::One)
             .parity(serialport::Parity::None)
             .open();
