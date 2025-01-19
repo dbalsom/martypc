@@ -100,10 +100,6 @@ impl Intel808x {
             self.instr_elapsed += 1;
         }
 
-        if self.cycle_num == 3480541 {
-            log::debug!("Cycle 352483");
-        }
-
         // Operate current t-state
         match self.bus_status_latch {
             BusStatus::Passive => {

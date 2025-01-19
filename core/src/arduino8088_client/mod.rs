@@ -33,6 +33,7 @@
 
 use log;
 use serialport::ClearBuffer;
+use web_time::Duration;
 
 pub const ARD8088_BAUD: u32 = 0; // Baud is inapplicable for SerialUSB
 
@@ -240,7 +241,7 @@ impl CpuClient {
     pub fn try_port(port_info: serialport::SerialPortInfo, baud_rate: u32) -> Option<Box<dyn serialport::SerialPort>> {
         let port_result = serialport::new(port_info.port_name.clone(), baud_rate)
             .baud_rate(baud_rate)
-            .timeout(std::time::Duration::from_millis(100))
+            .timeout(Duration::from_millis(100))
             .stop_bits(serialport::StopBits::One)
             .data_bits(serialport::DataBits::Eight)
             .parity(serialport::Parity::None)
