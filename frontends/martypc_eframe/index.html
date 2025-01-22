@@ -18,7 +18,10 @@
 
     <link data-trunk rel="copy-file" href="assets/coi-serviceworker.js"/>
     <link data-trunk rel="copy-file" href="assets/sw.js"/>
+    <link data-trunk rel="copy-file" href="assets/worker.js"/>
     <link data-trunk rel="copy-file" href="assets/manifest.json"/>
+    <link data-trunk rel="copy-file" href="assets/martypc_logo_small.png" data-target-path="assets"/>
+    <link data-trunk rel="copy-file" href="assets/martypc_logo_off_small.png" data-target-path="assets"/>
     <link data-trunk rel="copy-file" href="assets/icon-1024.png" data-target-path="assets"/>
     <link data-trunk rel="copy-file" href="assets/icon-256.png" data-target-path="assets"/>
     <link data-trunk rel="copy-file" href="assets/icon_ios_touch_192.png" data-target-path="assets"/>
@@ -138,6 +141,53 @@
                 transform: rotate(360deg);
             }
         }
+
+        /* Start overlay styling */
+        .start-overlay {
+            position: fixed;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            background-color: rgba(100, 100, 100, 1.0); /* Solid gray with slight transparency */
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            z-index: 1000;
+        }
+
+        .start-logo-wrapper {
+            display: inline-block; /* Ensure the wrapper only wraps around the image */
+            transform-origin: bottom center; /* Anchor transformations to the bottom edge */
+        }
+
+        .start-logo {
+            display: block; /* Ensure the image doesn't have extra margins */
+            cursor: pointer; /* Indicate it's clickable */
+            filter: drop-shadow(0px 4px 8px rgba(0, 0, 0, 0.6)); /* Drop shadow respects transparency */
+            content: url("assets/martypc_logo_off_small.png"); /* Default PNG */
+        }
+
+        .start-logo-wrapper:hover {
+            animation: bounce-stretch 0.8s infinite; /* Apply the bounce animation */
+            content: url("assets/martypc_logo_small.png"); /* Default PNG */
+        }
+
+        /* Keyframes for bounce with stretch and squash */
+        @keyframes bounce-stretch {
+            0%, 100% {
+                transform: translateY(0) scale(1, 1); /* Original size at rest */
+            }
+            20% {
+                transform: translateY(0) scale(0.90, 1.05); /* Stretch upward */
+            }
+            50% {
+                transform: translateY(-2px) scale(1.2, 0.75); /* Squash on landing */
+            }
+            80% {
+                transform: translateY(0) scale(0.98, 1.02); /* Smaller stretch before settling */
+            }
+        }
     </style>
 </head>
 
@@ -145,6 +195,13 @@
 <!-- The WASM code will resize the canvas dynamically -->
 <!-- the id is hardcoded in main.rs . so, make sure both match. -->
 <canvas id="the_canvas_id"></canvas>
+
+<!-- Initial screen with "Click to start" -->
+<div class="start-overlay" id="start_screen">
+    <div class="start-logo-wrapper">
+        <img src="assets/martypc_logo_off_small.png" alt="Start MartyPC" class="start-logo" id="start_logo">
+    </div>
+</div>
 
 <!-- the loading spinner will be removed in main.rs -->
 <div class="centered" id="loading_text">

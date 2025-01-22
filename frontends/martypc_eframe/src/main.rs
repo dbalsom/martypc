@@ -105,53 +105,86 @@ async fn main() -> eframe::Result {
 //     }
 // }
 
-// When compiling to web using trunk:
 #[cfg(target_arch = "wasm32")]
 fn main() {
     use eframe::wasm_bindgen::JsCast as _;
+    use wasm_bindgen_futures::spawn_local;
 
-    // Redirect `log` message to `console.log` and friends:
+    // Redirect `log` messages to `console.log` and friends:
     eframe::WebLogger::init(log::LevelFilter::Debug).ok();
 
-    let web_options = eframe::WebOptions::default();
+    // Closure to start the application after user interaction
+    let start_application = || {
+        spawn_local(async {
+            let document = web_sys::window().expect("No window").document().expect("No document");
 
-    wasm_bindgen_futures::spawn_local(async {
-        let document = web_sys::window().expect("No window").document().expect("No document");
+            // Hide the "Click to start" screen
+            if let Some(start_screen) = document.get_element_by_id("start_screen") {
+                start_screen.set_attribute("style", "display:none;").unwrap();
+            }
 
-        let canvas = document
-            .get_element_by_id("the_canvas_id")
-            .expect("Failed to find the_canvas_id")
-            .dyn_into::<web_sys::HtmlCanvasElement>()
-            .expect("the_canvas_id was not a HtmlCanvasElement");
-
-        let app = MartyApp::new().await;
-        log::debug!("App created, emu is Some?: {}", app.emu.is_some());
-
-        if app.emu.is_none() {
-            log::error!("Failed to create emulator, exiting.");
+            // Show the loading spinner
             if let Some(loading_text) = document.get_element_by_id("loading_text") {
-                loading_text.set_inner_html(
-                    "<p> MartyPC failed to initialize. See the developer console for details (Hit f12). </p>",
-                );
+                loading_text.set_attribute("style", "display:block;").unwrap();
             }
-            panic!("Failed to create emulator");
-        }
 
-        let start_result = eframe::WebRunner::new()
-            .start(canvas, web_options, Box::new(move |cc| Ok(Box::new(app.init(cc)))))
-            .await;
+            // Locate and show the canvas
+            let canvas = document
+                .get_element_by_id("the_canvas_id")
+                .expect("Failed to find the_canvas_id")
+                .dyn_into::<web_sys::HtmlCanvasElement>()
+                .expect("the_canvas_id was not a HtmlCanvasElement");
 
-        // Remove the loading text and spinner:
-        if let Some(loading_text) = document.get_element_by_id("loading_text") {
-            match start_result {
-                Ok(_) => {
-                    loading_text.remove();
+            canvas.set_attribute("style", "display:block;").unwrap();
+
+            // Initialize the app
+            let web_options = eframe::WebOptions::default();
+            let app = MartyApp::new().await;
+            log::debug!("App created, emu is Some?: {}", app.emu.is_some());
+
+            if app.emu.is_none() {
+                log::error!("Failed to create emulator, exiting.");
+                if let Some(loading_text) = document.get_element_by_id("loading_text") {
+                    loading_text.set_inner_html(
+                        "<p> MartyPC failed to initialize. See the developer console for details (Hit f12). </p>",
+                    );
                 }
-                Err(e) => {
-                    loading_text.set_inner_html("<p> The app has crashed. See the developer console for details. </p>");
-                    panic!("Failed to start eframe: {e:?}");
+                panic!("Failed to create emulator");
+            }
+
+            let start_result = eframe::WebRunner::new()
+                .start(canvas, web_options, Box::new(move |cc| Ok(Box::new(app.init(cc)))))
+                .await;
+
+            // Remove the loading text and spinner
+            if let Some(loading_text) = document.get_element_by_id("loading_text") {
+                match start_result {
+                    Ok(_) => {
+                        loading_text.remove();
+                    }
+                    Err(e) => {
+                        loading_text
+                            .set_inner_html("<p> The app has crashed. See the developer console for details. </p>");
+                        panic!("Failed to start eframe: {e:?}");
+                    }
                 }
             }
-        }
-    });
+        });
+    };
+
+    // Wait for user interaction
+    let document = web_sys::window().expect("No window").document().expect("No document");
+
+    let start_logo = document
+        .get_element_by_id("start_logo")
+        .expect("Failed to find start_logo");
+
+    let closure = wasm_bindgen::closure::Closure::wrap(Box::new(move |_: web_sys::Event| {
+        start_application(); // Start the application after user interaction
+    }) as Box<dyn FnMut(_)>);
+
+    start_logo
+        .add_event_listener_with_callback("click", closure.as_ref().unchecked_ref())
+        .expect("Failed to add event listener");
+    closure.forget(); // Prevent the closure from being dropped
 }
