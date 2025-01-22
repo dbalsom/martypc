@@ -30,7 +30,7 @@
 
 */
 
-use std::sync::{Arc, Mutex};
+use std::sync::{Arc, Mutex, RwLock};
 
 use crate::{
     constants::*,
@@ -45,6 +45,8 @@ use crate::{
 };
 
 use fluxfox::{prelude::*, track_schema::GenericTrackElement, visualization::prelude::*};
+use fluxfox_egui::controls::disk_visualization::{DiskVisualization, VizEvent};
+
 use marty_core::devices::floppy_drive::FloppyImageState;
 
 use crossbeam_channel as channel;
@@ -66,24 +68,24 @@ pub enum FloppyViewerResolution {
 }
 
 pub struct FloppyViewerControl {
-    drive_idx:   usize,
-    head_idx:    usize,
-    track_idx:   usize,
-    sector_idx:  usize,
+    init: bool,
+    drive_idx: usize,
+    head_idx: usize,
+    track_idx: usize,
+    sector_idx: usize,
     image_state: Vec<Option<FloppyImageState>>,
-    tab_group:   MartyTabGroup,
-    resolution:  FloppyViewerResolution,
+    tab_group: MartyTabGroup,
+    resolution: FloppyViewerResolution,
 
-    pixmap_pool: Vec<Arc<Mutex<Pixmap>>>,
+    viz: [DiskVisualization; 4],
 
     palette: HashMap<GenericTrackElement, VizColor>,
-    viz_pixmaps: Vec<Pixmap>,
     viz_unsupported: bool,
     viz_write_cts: Vec<u64>,
-    canvas: Option<PixelCanvas>,
+
     rendered_disk: usize,
     draw_deferred: bool,
-    deferred_ct: u32,
+    deferred_ct:   u32,
 }
 
 impl FloppyViewerControl {
@@ -94,22 +96,15 @@ impl FloppyViewerControl {
         tab_group.add_tab("Disk View");
 
         let viz_light_red: VizColor = VizColor::from_rgba8(180, 0, 0, 255);
-
-        let viz_orange: VizColor = VizColor::from_rgba8(255, 100, 0, 255);
         let vis_purple: VizColor = VizColor::from_rgba8(180, 0, 180, 255);
-        let viz_cyan: VizColor = VizColor::from_rgba8(70, 200, 200, 255);
-        let vis_light_purple: VizColor = VizColor::from_rgba8(185, 0, 255, 255);
-
         let pal_medium_green = VizColor::from_rgba8(0x38, 0xb7, 0x64, 0xff);
         let pal_dark_green = VizColor::from_rgba8(0x25, 0x71, 0x79, 0xff);
-        let pal_dark_blue = VizColor::from_rgba8(0x29, 0x36, 0x6f, 0xff);
         let pal_medium_blue = VizColor::from_rgba8(0x3b, 0x5d, 0xc9, 0xff);
         let pal_light_blue = VizColor::from_rgba8(0x41, 0xa6, 0xf6, 0xff);
-        let pal_dark_purple = VizColor::from_rgba8(0x5d, 0x27, 0x5d, 0xff);
         let pal_orange = VizColor::from_rgba8(0xef, 0x7d, 0x57, 0xff);
-        let pal_dark_red = VizColor::from_rgba8(0xb1, 0x3e, 0x53, 0xff);
 
         Self {
+            init: false,
             drive_idx: 0,
             head_idx: 0,
             track_idx: 0,
@@ -118,11 +113,11 @@ impl FloppyViewerControl {
             tab_group,
             resolution: FloppyViewerResolution::Track,
 
-            pixmap_pool: vec![
-                Arc::new(Mutex::new(Pixmap::new(VIZ_RESOLUTION / 2, VIZ_RESOLUTION / 2).unwrap())),
-                Arc::new(Mutex::new(Pixmap::new(VIZ_RESOLUTION / 2, VIZ_RESOLUTION / 2).unwrap())),
-                Arc::new(Mutex::new(Pixmap::new(VIZ_RESOLUTION / 2, VIZ_RESOLUTION / 2).unwrap())),
-                Arc::new(Mutex::new(Pixmap::new(VIZ_RESOLUTION / 2, VIZ_RESOLUTION / 2).unwrap())),
+            viz: [
+                DiskVisualization::default(),
+                DiskVisualization::default(),
+                DiskVisualization::default(),
+                DiskVisualization::default(),
             ],
 
             palette: HashMap::from([
@@ -136,10 +131,8 @@ impl FloppyViewerControl {
             ]),
 
             viz_unsupported: true,
-            viz_pixmaps: vec![Pixmap::new(VIZ_RESOLUTION, VIZ_RESOLUTION).unwrap(); 4],
             viz_write_cts: vec![0; 4],
 
-            canvas: None,
             rendered_disk: 0,
             draw_deferred: false,
             deferred_ct: 0,
@@ -147,10 +140,14 @@ impl FloppyViewerControl {
     }
 
     pub fn init(&mut self, ctx: egui::Context) {
-        if self.canvas.is_none() {
-            let mut canvas = PixelCanvas::new((VIZ_RESOLUTION, VIZ_RESOLUTION), ctx);
-            canvas.set_bpp(PixelCanvasDepth::Rgba);
-            self.canvas = Some(canvas);
+        if !self.init {
+            self.viz = [
+                DiskVisualization::new(ctx.clone(), VIZ_RESOLUTION),
+                DiskVisualization::new(ctx.clone(), VIZ_RESOLUTION),
+                DiskVisualization::new(ctx.clone(), VIZ_RESOLUTION),
+                DiskVisualization::new(ctx.clone(), VIZ_RESOLUTION),
+            ];
+            self.init = true;
         }
     }
 
@@ -171,7 +168,7 @@ impl FloppyViewerControl {
         self.resolution = match tab {
             0 => FloppyViewerResolution::Track,
             1 => FloppyViewerResolution::Sector,
-            _ => FloppyViewerResolution::Head,
+            _ => FloppyViewerResolution::Disk,
         };
 
         ui.separator();
@@ -195,7 +192,7 @@ impl FloppyViewerControl {
     ) {
         MartyLayout::new(KeyValue, "floppy-image-drive-select-grid").show(ui, |ui| {
             MartyLayout::kv_row(ui, "Drive:", None, |ui| {
-                egui::ComboBox::from_id_source("floppy-drive-select")
+                egui::ComboBox::from_id_salt("floppy-drive-select")
                     .selected_text(format!(
                         "{}/{}",
                         self.drive_idx,
@@ -215,7 +212,7 @@ impl FloppyViewerControl {
             if let Some(state) = &self.image_state[self.drive_idx] {
                 if resolution > FloppyViewerResolution::Disk {
                     MartyLayout::kv_row(ui, "Head:", None, |ui| {
-                        let _response = egui::ComboBox::from_id_source("head-idx-select")
+                        let _response = egui::ComboBox::from_id_salt("head-idx-select")
                             .selected_text(format!("{}/{}", self.head_idx, state.heads.saturating_sub(1)))
                             .show_ui(ui, |ui| {
                                 for i in 0..state.heads as usize {
@@ -231,7 +228,7 @@ impl FloppyViewerControl {
                 }
                 if resolution > FloppyViewerResolution::Head {
                     MartyLayout::kv_row(ui, "Track:", None, |ui| {
-                        let _response = egui::ComboBox::from_id_source("track-idx-select")
+                        let _response = egui::ComboBox::from_id_salt("track-idx-select")
                             .selected_text(format!(
                                 "{}/{}",
                                 self.track_idx,
@@ -248,7 +245,7 @@ impl FloppyViewerControl {
                 if resolution > FloppyViewerResolution::Track {
                     MartyLayout::kv_row(ui, "Sector:", None, |ui| {
                         // Sectors are 1-indexed
-                        egui::ComboBox::from_id_source("sector-idx-select")
+                        egui::ComboBox::from_id_salt("sector-idx-select")
                             .selected_text(format!(
                                 "{}/{}",
                                 self.sector_idx,
@@ -271,6 +268,7 @@ impl FloppyViewerControl {
                 .sector_map
                 .get(self.head_idx)
                 .and_then(|map| map.get(self.track_idx));
+
             if let Some(track) = track_opt {
                 ui.group(|ui| {
                     if track.len() == 0 {
@@ -312,38 +310,24 @@ impl FloppyViewerControl {
         }
     }
 
-    pub fn draw_sector_data(&mut self, ui: &mut egui::Ui, _events: &mut GuiEventQueue) {}
+    fn draw_sector_data(&mut self, ui: &mut egui::Ui, _events: &mut GuiEventQueue) {}
 
-    pub fn draw_disk_data(&mut self, ui: &mut egui::Ui, _events: &mut GuiEventQueue) {
-        if let Some(canvas) = &mut self.canvas {
-            if self.viz_unsupported {
-                ui.horizontal(|ui| {
-                    ui.label("Visualization not supported for this image.");
-                });
-                return;
-            }
+    fn draw_disk_data(&mut self, ui: &mut egui::Ui, _events: &mut GuiEventQueue) {
+        if self.viz[self.drive_idx].compatible {
+            if let Some(new_event) = self.viz[self.drive_idx].show(ui) {
+                match new_event {
+                    VizEvent::NewSectorSelected { c, h, s_idx } => {
+                        log::debug!("New sector selected: c:{} h:{}, s:{}", c, h, s_idx);
 
-            if self.rendered_disk != self.drive_idx {
-                ui.horizontal(|ui| {
-                    ui.label("No disk image.");
-                });
-                return;
-            }
-            ui.set_width(canvas.get_width());
-            canvas.draw(ui);
-
-            if self.draw_deferred {
-                if self.deferred_ct > 3 && canvas.has_texture() {
-                    log::debug!("draw_disk_data(): Deferred updates ending.");
-                    canvas.update_data(self.viz_pixmaps[self.drive_idx].data(), None);
-                    self.draw_deferred = false;
-                    self.deferred_ct = 0;
-                }
-                else {
-                    canvas.update_data(self.viz_pixmaps[self.drive_idx].data(), None);
-                    self.deferred_ct += 1;
+                        self.viz[self.drive_idx].update_selection(c, h, s_idx);
+                    }
+                    _ => {}
                 }
             }
+        }
+        else {
+            ui.label("Current disk image not compatible with visualization.");
+            log::error!("Visualization not compatible with current disk image.");
         }
     }
 
@@ -351,164 +335,32 @@ impl FloppyViewerControl {
         self.viz_unsupported = true;
         self.rendered_disk = 0xFF;
         self.viz_write_cts[drive] = 0;
-        self.viz_pixmaps[drive].fill(Color::TRANSPARENT);
     }
 
-    pub fn update_visualization(&mut self, drive: usize, image: &DiskImage, write_ct: u64) {
-        let resolutions = image.resolution();
+    pub fn set_disk(&mut self, drive: usize, disk_lock: Arc<RwLock<DiskImage>>) {
+        self.viz[drive % 4].update_disk(disk_lock);
+        self.render(drive);
+    }
 
-        self.viz_unsupported = resolutions.contains(&TrackDataResolution::MetaSector);
-        if self.viz_unsupported || ((write_ct <= self.viz_write_cts[drive]) && (write_ct > 0)) {
-            return;
-        }
+    fn render(&mut self, drive: usize) {
+        _ = self.viz[drive % 4].render_visualization(0);
+        _ = self.viz[drive % 4].render_visualization(1);
+    }
 
-        log::debug!(
-            "Updating visualization for drive {} (write_ct: {}, viz_write_ct:{})",
-            drive,
-            write_ct,
-            self.viz_write_cts[drive]
-        );
-        self.viz_write_cts[drive] = write_ct;
-
-        // Clear pixmap
-        self.viz_pixmaps[drive].fill(Color::TRANSPARENT);
-
-        let (sender, receiver) = channel::unbounded::<u8>();
-
-        let side = self.head_idx as u8;
-
-        for quadrant in 0..4 {
-            //let disk = Arc::clone(&image);
-            let pixmap = Arc::clone(&self.pixmap_pool[quadrant as usize]);
-            let sender = sender.clone();
-            let palette = self.palette.clone();
-
-            let direction = match side {
-                0 => TurningDirection::Clockwise,
-                1 => TurningDirection::CounterClockwise,
-                _ => panic!("Invalid side"),
-            };
-
-            let angle = 0.0;
-
-            let min_radius_fraction = 0.333;
-            let render_track_gap = 0.10;
-
-            log::debug!("dispatching thread for quadrant {}", quadrant);
-            thread::scope(|s| {
-                s.spawn(move |_| {
-                    let mut pixmap = pixmap.lock().unwrap();
-                    //let l_disk = disk.lock().unwrap();
-                    let track_ct = image.track_ct(side.into());
-
-                    let common_params = CommonVizParams {
-                        radius: Some(VIZ_RESOLUTION as f32 / 2.0),
-                        max_radius_ratio: 1.0,
-                        min_radius_ratio: min_radius_fraction,
-                        pos_offset: None,
-                        index_angle: 0.0,
-                        track_limit: None,
-                        pin_last_standard_track: true,
-                        track_gap: 0.1,
-                        track_overlap: false,
-                        direction,
-                    };
-
-                    let render_params = RenderTrackMetadataParams {
-                        quadrant: Some(quadrant),
-                        side,
-                        geometry: Default::default(),
-                        winding: Default::default(),
-                        draw_empty_tracks: false,
-                        draw_sector_lookup: false,
-                    };
-
-                    let raster_params = RenderRasterizationParams {
-                        image_size: VizDimensions::new(VIZ_RESOLUTION, VIZ_RESOLUTION),
-                        supersample: 2,
-                        image_bg_color: None,
-                        disk_bg_color: None,
-                        mask_color: None,
-                        palette: Some(palette),
-                        pos_offset: None,
-                    };
-
-                    match rasterize_track_metadata_quadrant(
-                        image,
-                        &mut pixmap,
-                        &common_params,
-                        &render_params,
-                        &raster_params,
-                    ) {
-                        Ok(_) => {
-                            log::debug!("...Rendered quadrant {}", quadrant);
-                        }
-                        Err(e) => {
-                            log::error!("Error rendering quadrant: {}", e);
-                        }
-                    }
-
-                    //println!("Sending quadrant over channel...");
-                    match sender.send(quadrant) {
-                        Ok(_) => {
-                            log::debug!("...Sent!");
-                        }
-                        Err(e) => {
-                            log::error!("Error sending quadrant: {}", e);
-                        }
-                    }
-                });
-            })
-            .unwrap();
-        }
-
-        for (q, quadrant) in receiver.iter().enumerate() {
-            log::debug!("Received quadrant {}, compositing...", quadrant);
-            let (x, y) = match quadrant {
-                0 => (0, 0),
-                1 => (VIZ_RESOLUTION / 2, 0),
-                2 => (0, VIZ_RESOLUTION / 2),
-                3 => (VIZ_RESOLUTION / 2, VIZ_RESOLUTION / 2),
-                _ => panic!("Invalid quadrant"),
-            };
-
-            let paint = PixmapPaint::default();
-
-            self.viz_pixmaps[drive].draw_pixmap(
-                x as i32,
-                y as i32,
-                self.pixmap_pool[quadrant as usize].lock().unwrap().as_ref(),
-                &paint,
-                Transform::identity(),
-                None,
+    pub fn update_visualization(&mut self, drive: usize, write_ct: u64) {
+        if self.viz_write_cts[drive] < write_ct {
+            log::debug!(
+                "Updating visualization for drive {} (write_ct: {}, viz_write_ct:{})",
+                drive,
+                write_ct,
+                self.viz_write_cts[drive]
             );
+            self.viz_write_cts[drive] = write_ct;
 
-            // Clear pixmap after compositing
-            self.pixmap_pool[quadrant as usize]
-                .lock()
-                .unwrap()
-                .as_mut()
-                .fill(Color::TRANSPARENT);
+            // Render here
 
-            if q == 3 {
-                break;
-            }
+            self.rendered_disk = drive;
         }
-
-        log::debug!("Done compositing quadrants.");
-
-        if let Some(canvas) = &mut self.canvas {
-            if canvas.has_texture() {
-                log::debug!("Updating canvas...");
-                canvas.update_data(self.viz_pixmaps[drive].data(), None);
-            }
-            else {
-                log::debug!("Canvas not initialized, deferring update...");
-                self.draw_deferred = true;
-            }
-        }
-
-        self.rendered_disk = drive;
     }
 
     pub fn set_drive_idx(&mut self, idx: usize) {

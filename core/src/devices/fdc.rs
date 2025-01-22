@@ -48,6 +48,7 @@ use std::{
     collections::VecDeque,
     default::Default,
     path::{Path, PathBuf},
+    sync::{Arc, RwLock},
 };
 
 pub const FDC_LOG_LEN: usize = 1000;
@@ -526,13 +527,12 @@ impl FloppyController {
         src_vec: Vec<u8>,
         path: Option<&Path>,
         write_protect: bool,
-    ) -> Result<&DiskImage, Error> {
+    ) -> Result<Arc<RwLock<DiskImage>>, Error> {
         if drive_select >= self.drive_ct {
             return Err(anyhow!("Invalid drive selection"));
         }
 
-        self.drives[drive_select].load_image_from(src_vec, path, write_protect)?;
-        Ok(self.drives[drive_select].get_image().0.unwrap())
+        self.drives[drive_select].load_image_from(src_vec, path, write_protect)
     }
 
     pub fn attach_image(
@@ -541,21 +541,16 @@ impl FloppyController {
         image: DiskImage,
         path: Option<PathBuf>,
         write_protect: bool,
-    ) -> Result<&DiskImage, Error> {
+    ) -> Result<Arc<RwLock<DiskImage>>, Error> {
         if drive_select >= self.drive_ct {
             return Err(anyhow!("Invalid drive selection"));
         }
         let drive = &mut self.drives[drive_select];
-        drive.attach_image(image, path, write_protect);
-        Ok(self.drives[drive_select].get_image().0.unwrap())
+        drive.attach_image(image, path, write_protect)
     }
 
-    pub fn get_image(&mut self, drive_select: usize) -> (Option<&DiskImage>, u64) {
+    pub fn get_image(&mut self, drive_select: usize) -> (Option<Arc<RwLock<DiskImage>>>, u64) {
         self.drives[drive_select].get_image()
-    }
-
-    pub fn get_image_mut(&mut self, drive_select: usize) -> (Option<&mut DiskImage>, u64) {
-        self.drives[drive_select].get_image_mut()
     }
 
     /// Unload (eject) the disk in the specified drive
@@ -570,7 +565,7 @@ impl FloppyController {
         drive_select: usize,
         format: StandardFormat,
         formatted: bool,
-    ) -> Result<&DiskImage, Error> {
+    ) -> Result<Arc<RwLock<DiskImage>>, Error> {
         let drive = &mut self.drives[drive_select];
 
         drive.create_new_image(format, formatted)

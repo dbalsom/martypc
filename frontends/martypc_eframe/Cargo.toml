@@ -42,8 +42,6 @@ strum = "0.26"
 # url is used for the wasm build to be configured via url and fetch resources.
 # it is not optional as we may want to fetch things from the web from native, in the future.
 url = "2.5"
-# futures is used for async stuff
-futures = "0.3"
 
 # Optional Dependencies
 # ---------------------------------------------------------------------------------------------------------------------
@@ -76,7 +74,9 @@ wgpu = { version = "23.0", features = ["dx12"], optional = true }
 [target.'cfg(target_arch = "wasm32")'.dependencies]
 wasm-bindgen.workspace = true
 wasm-bindgen-futures.workspace = true
+#fwasm-bindgen-rayon = "1.3"
 web-sys.workspace = true
+
 # No need for accesskit or wayland on web.
 eframe = { version = "0.30", default-features = false, features = [
     "default_fonts", # Embed the default egui fonts.

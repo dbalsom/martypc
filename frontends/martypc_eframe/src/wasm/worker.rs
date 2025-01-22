@@ -25,16 +25,29 @@
     --------------------------------------------------------------------------
 */
 
-// Worker code adapted from
-// https://www.tweag.io/blog/2022-11-24-wasm-threads-and-messages/
+//! Spawn a Rust closure in a web worker.
+//! This is really a ridiculous, unsafe hack, but it works.
+//! Code adapted from:
+//! https://www.tweag.io/blog/2022-11-24-wasm-threads-and-messages/
 
 use eframe::{
     wasm_bindgen,
     wasm_bindgen::{closure::Closure, prelude::wasm_bindgen, JsCast, JsValue},
 };
 
+pub fn spawn(f: impl FnOnce() + Send + 'static) {
+    match spawn_closure_worker(f) {
+        Ok(worker) => {
+            log::debug!("spawn(): worker spawned successfully");
+        }
+        Err(e) => {
+            log::error!("spawn(): failed to spawn worker: {:?}", e);
+        }
+    }
+}
+
 // Spawn a worker and communicate with it.
-pub(crate) fn spawn_closure_worker(f: impl FnOnce() + Send + 'static) -> Result<web_sys::Worker, JsValue> {
+pub fn spawn_closure_worker(f: impl FnOnce() + Send + 'static) -> Result<web_sys::Worker, JsValue> {
     let worker_opts = web_sys::WorkerOptions::new();
     worker_opts.set_type(web_sys::WorkerType::Module);
     let worker = web_sys::Worker::new_with_options("./worker.js", &worker_opts)?;
@@ -62,7 +75,6 @@ pub(crate) fn spawn_closure_worker(f: impl FnOnce() + Send + 'static) -> Result<
 #[wasm_bindgen]
 pub fn closure_worker_entry_point(ptr: u32) {
     // Interpret the address we were given as a pointer to a closure to call.
-    log::debug!("In closure worker!");
     let closure = unsafe { Box::from_raw(ptr as *mut Box<dyn FnOnce()>) };
     (*closure)();
 }

@@ -25,7 +25,9 @@
     --------------------------------------------------------------------------
 */
 
+pub mod file_open;
 pub mod util;
 pub mod worker;
 
 pub use util::get_base_url;
+pub use worker::spawn;

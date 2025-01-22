@@ -41,7 +41,7 @@ use std::{
     io::{BufWriter, Write},
     path::PathBuf,
 };
-
+use std::sync::{Arc, RwLock};
 use log;
 use anyhow::{anyhow, Error};
 use fluxfox::DiskImage;
@@ -1083,7 +1083,7 @@ impl Machine {
         self.cpu.bus_mut().fdc_mut().as_mut().and_then(|fdc| Some(fdc.get_image_state()))
     }
 
-    pub fn floppy_image(&mut self, drive_idx: usize) -> (Option<&DiskImage>, u64) {
+    pub fn floppy_image(&mut self, drive_idx: usize) -> (Option<Arc<RwLock<DiskImage>>>, u64) {
         if let Some(fdc) = self.cpu.bus_mut().fdc_mut().as_mut() {
             fdc.get_image(drive_idx)
         } else {

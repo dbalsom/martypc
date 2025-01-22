@@ -23,6 +23,7 @@ strum_macros.workspace = true
 toml.workspace = true
 anyhow.workspace = true
 fluxfox.workspace = true
+fluxfox_egui.workspace = true
 crossbeam-channel.workspace = true
 crossbeam-utils.workspace = true
 lazy_static = "1.4"

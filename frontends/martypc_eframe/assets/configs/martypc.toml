@@ -569,7 +569,7 @@ cycles = 572400000 # 2 minutes
 #  - DefaultDark  : default EGUI Dark theme (recommended)
 #  - Purple       : dark theme variant
 #  - Cobalt       : dark theme variant
-theme = "Purple"
+theme = "DefaultDark"
 
 # Theme for the top menu can be defined independently
 menu_theme = "DefaultLight"

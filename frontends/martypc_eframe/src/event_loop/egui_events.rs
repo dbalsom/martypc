@@ -30,7 +30,14 @@
 */
 use crate::{emulator, emulator::Emulator, event_loop::thread_events::FrontendThreadEvent};
 use anyhow::Error;
-use std::{ffi::OsString, io::Cursor, mem::discriminant, path::PathBuf, sync::Arc, time::Duration};
+use std::{
+    ffi::OsString,
+    io::Cursor,
+    mem::discriminant,
+    path::{Path, PathBuf},
+    sync::Arc,
+    time::Duration,
+};
 //use display_manager_wgpu::DisplayManager;
 
 use frontend_common::{
@@ -64,7 +71,17 @@ use fluxfox::{DiskImage, LoadingStatus};
 use frontend_common::floppy_manager::FloppyError;
 use winit::event_loop::ActiveEventLoop;
 
-#[derive(Clone)]
+use crate::{app::FileOpenContext, floppy::load_floppy::handle_load_floppy};
+#[cfg(not(target_arch = "wasm32"))]
+use std::thread::spawn;
+
+#[cfg(target_arch = "wasm32")]
+use crate::wasm::file_open;
+
+#[cfg(target_arch = "wasm32")]
+use crate::wasm::worker::spawn_closure_worker as spawn;
+
+#[derive(Clone, Debug)]
 pub enum FileSelectionContext {
     Index(usize),
     Path(PathBuf),
@@ -356,6 +373,17 @@ pub fn handle_egui_event(emu: &mut Emulator, gui_event: &GuiEvent) {
                 emu.machine.change_state(MachineState::Rebooting);
             }
         }
+        GuiEvent::RequestLoadFloppyDialog(drive_select) => {
+            log::debug!("Requesting floppy load dialog for drive: {}", drive_select);
+            #[cfg(target_arch = "wasm32")]
+            {
+                let context = FileOpenContext::FloppyDiskImage {
+                    drive_select: *drive_select,
+                    fsc: FileSelectionContext::Path(PathBuf::new()),
+                };
+                file_open::open_file_dialog(context, emu.sender.clone());
+            }
+        }
         GuiEvent::LoadQuickFloppy(drive_select, item_idx) => {
             log::debug!("Load floppy quick image: {:?} into drive: {}", item_idx, drive_select);
             handle_load_floppy(emu, *drive_select, FileSelectionContext::Index(*item_idx));
@@ -481,9 +509,10 @@ pub fn handle_egui_event(emu: &mut Emulator, gui_event: &GuiEvent) {
             );
 
             if let Some(fdc) = emu.machine.fdc() {
-                let floppy = fdc.get_image_mut(*drive_select);
-                if let Some(floppy_image) = floppy.0 {
-                    match fluxfox::ImageWriter::new(floppy_image)
+                let (disk_image_opt, _) = fdc.get_image(*drive_select);
+                if let Some(floppy_image) = disk_image_opt {
+                    let mut image = floppy_image.write().unwrap();
+                    match fluxfox::ImageWriter::new(&mut image)
                         .with_format(*format)
                         .with_path(filepath.clone())
                         .write()
@@ -496,7 +525,7 @@ pub fn handle_egui_event(emu: &mut Emulator, gui_event: &GuiEvent) {
                                 None,
                                 FloppyDriveSelection::Image(filepath.clone()),
                                 Some(*format),
-                                floppy_image.compatible_formats(true),
+                                image.compatible_formats(true),
                                 None,
                             );
 
@@ -554,7 +583,8 @@ pub fn handle_egui_event(emu: &mut Emulator, gui_event: &GuiEvent) {
                 );
 
                 match fdc.create_new_image(*drive_select, *format, *formatted) {
-                    Ok(image) => {
+                    Ok(image_lock) => {
+                        let image = image_lock.read().unwrap();
                         emu.gui.set_floppy_selection(
                             *drive_select,
                             None,
@@ -581,7 +611,8 @@ pub fn handle_egui_event(emu: &mut Emulator, gui_event: &GuiEvent) {
         }
         GuiEvent::QueryCompatibleFloppyFormats(drive_select) => {
             if let Some(fdc) = emu.machine.fdc() {
-                if let Some(image) = fdc.get_image(*drive_select).0 {
+                if let Some(image_lock) = fdc.get_image(*drive_select).0 {
+                    let image = image_lock.read().unwrap();
                     let compat_formats = image.compatible_formats(true);
                     emu.gui.set_floppy_supported_formats(*drive_select, 0, compat_formats);
                 }
@@ -855,135 +886,6 @@ pub fn handle_egui_event(emu: &mut Emulator, gui_event: &GuiEvent) {
         }
         _ => {
             log::warn!("Unhandled GUI event: {:?}", discriminant(gui_event));
-        }
-    }
-}
-
-/// handle_load_floppy(emu, *drive_select, path);
-pub fn handle_load_floppy(emu: &mut Emulator, drive_select: usize, context: FileSelectionContext) {
-    if let Some(fdc) = emu.machine.fdc() {
-        let mut floppy_result: Option<Result<FloppyImageSource, FloppyError>> = None;
-        let mut floppy_name = None;
-        match context.clone() {
-            FileSelectionContext::Index(item_idx) => {
-                let name = emu.floppy_manager.get_floppy_name(item_idx);
-
-                if let Some(name) = name {
-                    floppy_name = Some(name.clone());
-                    log::info!("Loading floppy image: {:?} into drive: {}", name, drive_select);
-                    //floppy_result = Some(emu.floppy_manager.load_floppy_by_idx(item_idx, &emu.rm).await);
-                };
-            }
-            FileSelectionContext::Path(path) => {
-                if let Some(file_name) = path.file_name() {
-                    floppy_name = Some(file_name.to_os_string());
-                }
-
-                log::info!("Loading floppy image: {:?} into drive: {}", path, drive_select);
-                //floppy_result = Some(emu.floppy_manager.load_floppy_by_path(path, &emu.rm).await);
-            }
-        }
-
-        if let Some(floppy_result) = floppy_result {
-            match floppy_result {
-                Ok(FloppyImageSource::ZipArchive(zip_vec, path)) => {
-                    let mut image_type = None;
-                    image_type = Some(fdc.drive(drive_select).get_largest_supported_image_format());
-                    match emu.floppy_manager.build_autofloppy_image_from_zip(
-                        zip_vec,
-                        Some(FloppyImageType::Image360K),
-                        &emu.rm,
-                    ) {
-                        Ok(vec) => {
-                            if let Some(fdc) = emu.machine.fdc() {
-                                match fdc.load_image_from(drive_select, vec, None, true) {
-                                    Ok(image) => {
-                                        log::info!("Floppy image successfully loaded into virtual drive.");
-
-                                        let compat_formats = image.compatible_formats(true);
-
-                                        let name = floppy_name.unwrap_or_else(|| OsString::from("Unknown"));
-
-                                        emu.gui.set_floppy_selection(
-                                            drive_select,
-                                            None,
-                                            FloppyDriveSelection::ZipArchive(name.into()),
-                                            image.source_format(),
-                                            compat_formats,
-                                            None,
-                                        );
-
-                                        emu.gui.set_floppy_write_protected(drive_select, true);
-
-                                        emu.gui
-                                            .toasts()
-                                            .info("Directory successfully mounted!".to_string())
-                                            .duration(Some(NORMAL_NOTIFICATION_TIME));
-                                    }
-                                    Err(err) => {
-                                        log::warn!("Floppy image failed to load: {}", err);
-                                    }
-                                }
-                            }
-                        }
-                        Err(err) => {
-                            log::error!("Failed to build autofloppy image. Error: {}", err);
-                            emu.gui
-                                .toasts()
-                                .error(format!("Directory mount failed: {}", err))
-                                .duration(Some(NORMAL_NOTIFICATION_TIME));
-                        }
-                    }
-                }
-                Ok(FloppyImageSource::KryoFluxSet(floppy_image, floppy_path))
-                | Ok(FloppyImageSource::DiskImage(floppy_image, floppy_path)) => {
-                    let sender = emu.sender.clone();
-                    std::thread::spawn(move || {
-                        let mut image_buffer = Cursor::new(floppy_image);
-                        let inner_sender = sender.clone();
-                        let loading_callback = Arc::new(Box::new(move |status| match status {
-                            LoadingStatus::Progress(progress) => {
-                                _ = inner_sender.send(FrontendThreadEvent::FloppyImageLoadProgress(
-                                    "Loading floppy image...".to_string(),
-                                    progress,
-                                ));
-                            }
-                            LoadingStatus::ProgressSupport => {
-                                _ = inner_sender.send(FrontendThreadEvent::FloppyImageBeginLongLoad);
-                            }
-                            _ => {}
-                        }));
-
-                        match DiskImage::load(&mut image_buffer, Some(&floppy_path), None, Some(loading_callback)) {
-                            Ok(disk_image) => {
-                                _ = sender.send(FrontendThreadEvent::FloppyImageLoadComplete {
-                                    drive_select,
-                                    image: disk_image,
-                                    item: context,
-                                    path: Some(floppy_path),
-                                });
-                            }
-                            Err(err) => {
-                                _ = sender.send(FrontendThreadEvent::FloppyImageLoadError(err.to_string()));
-                            }
-                        }
-                    });
-                }
-                Err(e) => {
-                    log::error!("Failed to load floppy image: {}", e);
-                    emu.gui
-                        .toasts()
-                        .error(format!("Failed to load floppy image: {}", e))
-                        .duration(Some(NORMAL_NOTIFICATION_TIME));
-                }
-            }
-        }
-        else {
-            log::error!("Failed to load floppy image: No result returned.");
-            emu.gui
-                .toasts()
-                .error("Failed to load floppy image: No result returned.")
-                .duration(Some(NORMAL_NOTIFICATION_TIME));
         }
     }
 }

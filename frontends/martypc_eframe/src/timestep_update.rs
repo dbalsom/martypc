@@ -50,17 +50,17 @@ pub fn process_update(emu: &mut Emulator, dm: &mut EFrameDisplayManager, tm: &mu
         emu,
         dm,
         |emuc| {
-            log::debug!(
-                "Second update: Running at {} Mhz, {} cycles, {} instructions, {} ticks, {} frames",
-                emuc.machine.get_cpu_mhz(),
-                emuc.machine.cpu_cycles(),
-                emuc.machine.cpu_instructions(),
-                emuc.machine.system_ticks(),
-                emuc.machine
-                    .primary_videocard()
-                    .map(|vc| vc.get_frame_count())
-                    .unwrap_or(0)
-            );
+            // log::debug!(
+            //     "Second update: Running at {} Mhz, {} cycles, {} instructions, {} ticks, {} frames",
+            //     emuc.machine.get_cpu_mhz(),
+            //     emuc.machine.cpu_cycles(),
+            //     emuc.machine.cpu_instructions(),
+            //     emuc.machine.system_ticks(),
+            //     emuc.machine
+            //         .primary_videocard()
+            //         .map(|vc| vc.get_frame_count())
+            //         .unwrap_or(0)
+            // );
 
             // Per second freq
             MachinePerfStats {

@@ -173,6 +173,7 @@ pub enum GuiEvent {
     DetachVHD(usize),
     CreateVHD(OsString, HardDiskFormat),
     LoadQuickFloppy(usize, usize),
+    RequestLoadFloppyDialog(usize),
     LoadFloppyAs(usize, PathBuf),
     LoadAutoFloppy(usize, PathBuf),
     SaveFloppy(usize, usize),                          // Drive index, disk index
@@ -522,7 +523,7 @@ lazy_static! {
             WorkspaceWindowDef {
                 id: GuiWindow::FloppyViewer,
                 title: "Floppy Viewer",
-                menu: "Media Viewer",
+                menu: "Floppy Viewer",
                 width: 700.0,
                 resizable: false,
             },

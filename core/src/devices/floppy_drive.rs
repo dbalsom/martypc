@@ -38,6 +38,7 @@ use fluxfox::{prelude::*, DiskSectorMap};
 use std::{
     io::{Cursor, Read, Seek},
     path::{Path, PathBuf},
+    sync::{Arc, RwLock},
 };
 
 #[derive(Copy, Clone, Debug, Default)]
@@ -131,7 +132,7 @@ pub struct FloppyDiskDrive {
     pub(crate) positioning: bool,
     pub(crate) disk_present: bool,
     pub(crate) write_protected: bool,
-    pub(crate) disk_image: Option<DiskImage>,
+    pub(crate) disk_image: Option<Arc<RwLock<DiskImage>>>,
 
     operation_status: OperationStatus,
     operation_buf: Cursor<Vec<u8>>,
@@ -221,7 +222,12 @@ impl FloppyDiskDrive {
     }
 
     /// Load a disk into the specified drive
-    pub fn load_image_from(&mut self, src_vec: Vec<u8>, path: Option<&Path>, write_protect: bool) -> Result<(), Error> {
+    pub fn load_image_from(
+        &mut self,
+        src_vec: Vec<u8>,
+        path: Option<&Path>,
+        write_protect: bool,
+    ) -> Result<Arc<RwLock<DiskImage>>, Error> {
         let mut image_buffer = Cursor::new(src_vec);
         let image = DiskImage::load(&mut image_buffer, path, None, None)?;
 
@@ -231,39 +237,45 @@ impl FloppyDiskDrive {
             0u8,
         ));
 
-        self.disk_present = true;
-        self.disk_image = Some(image);
-        self.write_protected = write_protect;
-
         log::debug!("Loaded floppy image, CHS: {}", self.media_geom,);
+        self.disk_present = true;
+        self.write_protected = write_protect;
+        let image_arc = image.into_arc();
+        let image_clone = image_arc.clone();
+        self.disk_image = Some(image_arc);
 
-        Ok(())
+        Ok(image_clone)
     }
 
-    pub fn attach_image(&mut self, image: DiskImage, _path: Option<PathBuf>, write_protect: bool) {
+    pub fn attach_image(
+        &mut self,
+        image: DiskImage,
+        _path: Option<PathBuf>,
+        write_protect: bool,
+    ) -> Result<Arc<RwLock<DiskImage>>, Error> {
         self.media_geom = DiskChs::from((
             image.image_format().geometry.c(),
             image.image_format().geometry.h(),
             0u8,
         ));
 
-        self.disk_present = true;
-        self.disk_image = Some(image);
-        self.write_protected = write_protect;
-
         log::debug!("Attached floppy image, CHS: {}", self.media_geom);
+        self.disk_present = true;
+        self.write_protected = write_protect;
+        let image_arc = image.into_arc();
+        let image_clone = image_arc.clone();
+        self.disk_image = Some(image_arc);
+
+        Ok(image_clone)
     }
 
-    pub fn get_image(&mut self) -> (Option<&DiskImage>, u64) {
-        self.ref_write = self.disk_image.as_mut().map_or(0, |image| image.write_ct());
+    pub fn get_image(&mut self) -> (Option<Arc<RwLock<DiskImage>>>, u64) {
+        self.ref_write = self
+            .disk_image
+            .as_mut()
+            .map_or(0, |image| image.read().unwrap().write_ct());
         //log::trace!("get_image(): ref_write: {}", self.ref_write);
-        (self.disk_image.as_ref(), self.ref_write)
-    }
-
-    pub fn get_image_mut(&mut self) -> (Option<&mut DiskImage>, u64) {
-        self.ref_write = self.disk_image.as_mut().map_or(0, |image| image.write_ct());
-        //log::trace!("get_image(): ref_write: {}", self.ref_write);
-        (self.disk_image.as_mut(), self.ref_write)
+        (self.disk_image.clone(), self.ref_write)
     }
 
     /// Unload (eject) the disk in the specified drive
@@ -274,7 +286,11 @@ impl FloppyDiskDrive {
         self.disk_image = None;
     }
 
-    pub fn create_new_image(&mut self, format: StandardFormat, formatted: bool) -> Result<&DiskImage, Error> {
+    pub fn create_new_image(
+        &mut self,
+        format: StandardFormat,
+        formatted: bool,
+    ) -> Result<Arc<RwLock<DiskImage>>, Error> {
         self.unload_image();
 
         let builder = ImageBuilder::new()
@@ -287,9 +303,12 @@ impl FloppyDiskDrive {
         self.chsn = Default::default();
         self.media_geom = format.chs();
         self.disk_present = true;
-        self.disk_image = Some(image);
 
-        Ok(&self.disk_image.as_ref().unwrap())
+        let image_arc = image.into_arc();
+        let image_clone = image_arc.clone();
+        self.disk_image = Some(image_arc);
+
+        Ok(image_clone)
     }
 
     pub fn patch_image_bpb(&mut self, standard_format: StandardFormat) -> Result<(), Error> {
@@ -297,10 +316,22 @@ impl FloppyDiskDrive {
             return Err(anyhow!("No media in drive"));
         }
 
-        let image = self.disk_image.as_mut().unwrap();
-        image.update_standard_boot_sector(standard_format)?;
-
-        Ok(())
+        if let Some(image_lock) = &self.disk_image {
+            match image_lock.try_write() {
+                Ok(mut image) => {
+                    image.update_standard_boot_sector(standard_format)?;
+                    Ok(())
+                }
+                Err(_) => {
+                    log::error!("patch_image_bpb(): failed to acquire write lock");
+                    Err(anyhow!("Failed to acquire write lock"))
+                }
+            }
+        }
+        else {
+            log::error!("patch_image_bpb(): no disk image");
+            Err(anyhow!("No media in drive"))
+        }
     }
 
     pub fn command_write_data(
@@ -317,7 +348,8 @@ impl FloppyDiskDrive {
             return Err(anyhow!("No media in drive"));
         }
 
-        let image = self.disk_image.as_mut().unwrap();
+        let image_lock = self.disk_image.as_ref().unwrap();
+        let mut image = image_lock.write().unwrap();
         let chsn = DiskChsn::from((id_chs, n));
 
         let sector_data_size = chsn.n_size();
@@ -411,7 +443,8 @@ impl FloppyDiskDrive {
             id_chs
         );
 
-        let image = self.disk_image.as_mut().unwrap();
+        let image_lock = self.disk_image.as_ref().unwrap();
+        let mut image = image_lock.write().unwrap();
 
         let sector_size = DiskChsn::n_to_bytes(n);
 
@@ -457,7 +490,7 @@ impl FloppyDiskDrive {
 
             log::debug!(
                 "command_read_sector(): read {} bytes, address_crc_error: {}, data_crc_error: {}, deleted_mark: {} no_dam: {}",
-                read_sector_result.read_buf.len(),
+                read_sector_result.data_range.len(),
                 read_sector_result.address_crc_error,
                 read_sector_result.data_crc_error,
                 read_sector_result.deleted_mark,
@@ -476,9 +509,9 @@ impl FloppyDiskDrive {
                     }
                     log::trace!(
                         "Extending operation buffer by {} bytes",
-                        read_sector_result.read_buf.len()
+                        read_sector_result.data_range.len()
                     );
-                    operation_buf.extend(read_sector_result.read_buf);
+                    operation_buf.extend(&read_sector_result.read_buf[read_sector_result.data_range]);
                     sid = sid.wrapping_add(1);
                     sectors_read += 1;
                     continue;
@@ -492,7 +525,7 @@ impl FloppyDiskDrive {
                         self.operation_status.address_crc_error = true;
                         break;
                     }
-                    operation_buf.extend(read_sector_result.read_buf);
+                    operation_buf.extend(&read_sector_result.read_buf[read_sector_result.data_range]);
                     sid = sid.wrapping_add(1);
                     sectors_read += 1;
                     self.operation_status.data_crc_error |= read_sector_result.data_crc_error;
@@ -534,7 +567,8 @@ impl FloppyDiskDrive {
             return Err(anyhow!("No media in drive"));
         }
 
-        let image = self.disk_image.as_mut().unwrap();
+        let image_lock = self.disk_image.as_ref().unwrap();
+        let mut image = image_lock.write().unwrap();
 
         self.operation_status.sector_not_found = false;
         self.operation_status.address_crc_error = false;
@@ -585,7 +619,8 @@ impl FloppyDiskDrive {
             return Err(anyhow!("No media in drive"));
         }
 
-        let image = self.disk_image.as_mut().unwrap();
+        let image_lock = self.disk_image.as_ref().unwrap();
+        let mut image = image_lock.write().unwrap();
 
         let mut fox_format_buffer = Vec::new();
         for buf_entry in format_buffer.chunks_exact(4) {
@@ -694,8 +729,8 @@ impl FloppyDiskDrive {
     }
 
     pub fn get_next_sector(&self, chs: DiskChs) -> Option<DiskChsn> {
-        if let Some(image) = &self.disk_image {
-            if let Some(chsn) = image.get_next_id(chs) {
+        if let Some(image_lock) = &self.disk_image {
+            if let Some(chsn) = image_lock.read().unwrap().get_next_id(chs) {
                 return Some(chsn);
             }
             else {
@@ -724,7 +759,8 @@ impl FloppyDiskDrive {
     }
 
     pub fn image_state(&self) -> Option<FloppyImageState> {
-        if let Some(image) = &self.disk_image {
+        if let Some(image_lock) = &self.disk_image {
+            let image = image_lock.read().unwrap();
             let sector_map = image.sector_map();
 
             Some(FloppyImageState {

@@ -197,6 +197,7 @@ impl GuiState {
                     self.event_queue.send(GuiEvent::RescanMediaFolders);
                 }
 
+                self.workspace_window_open_button(ui, GuiWindow::FloppyViewer, true, true);
                 for i in 0..self.floppy_drives.len() {
                     self.draw_floppy_menu(ui, i);
                 }
@@ -432,11 +433,18 @@ impl GuiState {
                 });
 
                 if ui.button("🗁 Browse for Image/Zip file...").clicked() {
-                    // Do something
-                    self.modal.open(
-                        ModalContext::OpenFloppyImage(drive_idx, Vec::new()),
-                        self.default_floppy_path.clone(),
-                    );
+                    #[cfg(target_arch = "wasm32")]
+                    {
+                        self.event_queue.send(GuiEvent::RequestLoadFloppyDialog(drive_idx));
+                    }
+                    #[cfg(not(target_arch = "wasm32"))]
+                    {
+                        self.modal.open(
+                            ModalContext::OpenFloppyImage(drive_idx, Vec::new()),
+                            self.default_floppy_path.clone(),
+                        );
+                    }
+                    ui.close_menu();
                 };
 
                 if !self.autofloppy_paths.is_empty() {
@@ -468,6 +476,7 @@ impl GuiState {
 
                 let floppy_viewer_enabled = self.floppy_drives[drive_idx].filename().is_some()
                     || self.floppy_drives[drive_idx].is_new().is_some();
+
                 if self.workspace_window_open_button(ui, GuiWindow::FloppyViewer, true, floppy_viewer_enabled) {
                     self.floppy_viewer.set_drive_idx(drive_idx);
                 }

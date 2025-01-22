@@ -249,8 +249,8 @@ pub fn update_egui(emu: &mut Emulator, dm: &mut EFrameDisplayManager, tm: &Times
 
         let di = emu.gui.floppy_viewer.get_drive_idx();
 
-        if let (Some(disk_image), viz_write) = emu.machine.floppy_image(di) {
-            emu.gui.floppy_viewer.update_visualization(di, &disk_image, viz_write);
+        if let (Some(image_lock), viz_writes) = emu.machine.floppy_image(di) {
+            emu.gui.floppy_viewer.update_visualization(di, viz_writes);
         }
     }
 

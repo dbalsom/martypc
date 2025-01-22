@@ -70,11 +70,11 @@ url = "2.5"
 # ---------------------------------------------------------------------------------------------------------------------
 
 # Match the exact version of wasm-bindgen bundled with Trunk. This changes from time to time
-wasm-bindgen = "=0.2.99"
+wasm-bindgen = "=0.2.100"
 wasm-bindgen-futures = "0.4"
-wasm-bindgen-rayon = "1.2"
+wasm-bindgen-rayon = "1.3"
 [workspace.dependencies.web-sys]
-version = "0.3"
+version = "=0.3.72"
 features = [
     "DedicatedWorkerGlobalScope",
     "WorkerOptions",
@@ -84,13 +84,20 @@ features = [
     "BlobPropertyBag",
     "Window",
     "Document",
-    "HtmlAnchorElement"
+    "HtmlAnchorElement",
+    "Event",
+    "FileReader",
+    "HtmlInputElement"
 ]
 
 [workspace.dependencies.fluxfox]
 git = "https://github.com/dbalsom/fluxfox.git"
-branch = "main"
+branch = "martypc_consumer"
 default-features = false
+
+[workspace.dependencies.fluxfox_egui]
+git = "https://github.com/dbalsom/fluxfox.git"
+branch = "martypc_consumer"
 
 [workspace.dependencies.eframe]
 version = "0.30.0"
