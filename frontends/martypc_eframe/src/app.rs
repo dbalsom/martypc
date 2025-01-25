@@ -42,14 +42,23 @@ use marty_egui_eframe::{context::GuiRenderContext, EGUI_MENU_BAR_HEIGHT};
 use marty_web_helpers::FetchResult;
 use std::{env, pin::Pin, task::Poll};
 
-use crossbeam_channel::{Receiver, Sender};
+#[cfg(feature = "use_winit")]
+use crate::event_loop::winit_events::handle_window_event;
 
+#[cfg(not(feature = "use_winit"))]
+use crate::event_loop::web_keyboard::handle_web_key_event;
+
+use crossbeam_channel::{Receiver, Sender};
+use egui::{Context, RawInput};
+
+use crate::input::TranslateKey;
 #[cfg(target_arch = "wasm32")]
 use crate::wasm::*;
 #[cfg(target_arch = "wasm32")]
 use marty_web_helpers::console_writer::ConsoleWriter;
 #[cfg(target_arch = "wasm32")]
 use url::Url;
+use winit::event::ElementState;
 
 #[derive(Clone, Debug)]
 pub enum FileOpenContext {
@@ -70,6 +79,12 @@ pub struct MartyApp {
     emu_receiver: Receiver<FetchResult>,
     #[serde(skip)]
     emu_sender: Sender<FetchResult>,
+    #[cfg(feature = "use_winit")]
+    #[serde(skip)]
+    winit_receiver: Option<Receiver<(winit::window::WindowId, winit::event::WindowEvent)>>,
+    #[cfg(not(feature = "use_winit"))]
+    #[serde(skip)]
+    web_receiver: Option<Receiver<eframe::WebKeyboardEvent>>,
     #[serde(skip)]
     pub emu: Option<Emulator>,
     #[serde(skip)]
@@ -88,6 +103,10 @@ impl Default for MartyApp {
             emu_loading: false,
             emu_receiver: receiver,
             emu_sender: sender,
+            #[cfg(feature = "use_winit")]
+            winit_receiver: None,
+            #[cfg(not(feature = "use_winit"))]
+            web_receiver: None,
             emu: None,
             dm: None,
             tm: TimestepManager::default(),
@@ -215,10 +234,28 @@ impl MartyApp {
             debug_drawing: false,
         };
 
+        #[cfg(feature = "use_winit")]
+        let winit_receiver = {
+            let (winit_sender, winit_receiver) = crossbeam_channel::unbounded();
+            egui_winit::events::install_window_event_hook(winit_sender);
+            winit_receiver
+        };
+        #[cfg(not(feature = "use_winit"))]
+        let web_receiver = {
+            let (web_sender, web_receiver) = crossbeam_channel::unbounded();
+            eframe::install_keyboard_event_hook(web_sender);
+            web_receiver
+        };
+
         Self {
             gui: GuiRenderContext::new(cc.egui_ctx.clone(), 0, 640, 480, 1.0, &gui_options),
             dm: Some(display_manager),
             emu: Some(emu),
+
+            #[cfg(feature = "use_winit")]
+            winit_receiver: Some(winit_receiver),
+            #[cfg(not(feature = "use_winit"))]
+            web_receiver: Some(web_receiver),
             ..self
         }
     }
@@ -226,8 +263,39 @@ impl MartyApp {
 
 impl eframe::App for MartyApp {
     /// Called each time the UI needs repainting, which may be many times per second.
-    fn update(&mut self, ctx: &egui::Context, _frame: &mut eframe::Frame) {
+    fn update(&mut self, ctx: &Context, _frame: &mut eframe::Frame) {
         if let Some(emu) = &mut self.emu {
+            // Receive hooked Winit events.
+            #[cfg(feature = "use_winit")]
+            if let Some(receiver) = &self.winit_receiver {
+                for event in receiver.try_iter() {
+                    log::debug!("Received winit event: {:?} from window id: {:?}", event.1, event.0);
+                    handle_window_event(
+                        emu,
+                        self.dm.as_mut().unwrap(),
+                        &mut self.tm,
+                        event.0,
+                        event.1,
+                        ctx.memory(|mem| mem.focused()).is_some(),
+                    );
+                }
+            }
+
+            // Receive hooked web_sys::KeyboardEvent events.
+            #[cfg(not(feature = "use_winit"))]
+            if let Some(receiver) = &self.web_receiver {
+                for event in receiver.try_iter() {
+                    log::debug!("Received web_sys event: {:?}", event);
+
+                    handle_web_key_event(
+                        emu,
+                        self.dm.as_mut().unwrap(),
+                        event,
+                        ctx.memory(|mem| mem.focused()).is_some(),
+                    );
+                }
+            }
+
             // Process timestep.
             process_update(emu, &mut self.dm.as_mut().unwrap(), &mut self.tm);
             handle_thread_event(emu);
@@ -250,5 +318,19 @@ impl eframe::App for MartyApp {
     /// Called by the framework to save state before shutdown.
     fn save(&mut self, storage: &mut dyn eframe::Storage) {
         eframe::set_value(storage, eframe::APP_KEY, self);
+    }
+
+    fn raw_input_hook(&mut self, ctx: &Context, raw_input: &mut RawInput) {
+        let gui_has_focus = ctx.wants_keyboard_input();
+
+        //let gui_has_focus = ctx.memory(|mem| mem.focused()).is_some();
+
+        // Suppress key events if the GUI doesn't explicitly have focus.
+        if !gui_has_focus {
+            raw_input.events.retain(|event| match event {
+                egui::Event::Key { .. } => false,
+                _ => true,
+            });
+        }
     }
 }

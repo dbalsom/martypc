@@ -2,3 +2,9 @@ pub mod egui_events;
 pub mod egui_update;
 pub mod render_frame;
 pub mod thread_events;
+#[cfg(not(feature = "use_winit"))]
+pub mod web_keyboard;
+#[cfg(feature = "use_winit")]
+pub mod winit_events;
+#[cfg(feature = "use_winit")]
+pub mod winit_keyboard;

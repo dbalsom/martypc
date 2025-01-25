@@ -6,6 +6,6 @@ create_nonce = false
 
 [serve]
 addresses = ["127.0.0.1"]
-open = true
+open = false
 headers = { "Cross-Origin-Embedder-Policy" = "require-corp", "Cross-Origin-Opener-Policy" = "same-origin", "Cross-Origin-Resource-Policy" = "same-origin" }
 disable_csp = true

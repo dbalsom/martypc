@@ -42,7 +42,10 @@ pub use display_backend_trait::{
 use null_scaler::DisplayScaler;
 
 use anyhow::{anyhow, Error};
-use eframe::{egui, egui::TextureOptions};
+use egui;
+
+#[cfg(feature = "use_wgpu")]
+use egui_wgpu::wgpu;
 
 #[derive(Debug)]
 pub enum EFrameBackendType {
@@ -56,9 +59,10 @@ pub struct EFrameBackend {
     cpu_buffer: Vec<u8>, // Virtual pixel buffer
     buffer_dim: BufferDimensions,
     surface_dim: SurfaceDimensions,
-    adapter_info: Option<eframe::wgpu::AdapterInfo>, // Adapter information
-    buffer_handle: Option<egui::TextureHandle>,      // Egui texture handle
-    surface_handle: Option<egui::TextureHandle>,     // Egui texture handle
+    #[cfg(feature = "use_wgpu")]
+    adapter_info: Option<wgpu::AdapterInfo>, // Adapter information
+    buffer_handle: Option<egui::TextureHandle>,  // Egui texture handle
+    surface_handle: Option<egui::TextureHandle>, // Egui texture handle
     win: DisplayWindow,
 }
 
@@ -69,7 +73,8 @@ impl EFrameBackend {
         buffer_dim: BufferDimensions,
         surface_dim: SurfaceDimensions,
         //wgpu_render_state: &eframe::RenderState,
-        adapter_info: Option<eframe::wgpu::AdapterInfo>,
+        #[cfg(feature = "use_wgpu")] adapter_info: Option<wgpu::AdapterInfo>,
+        #[cfg(not(feature = "use_wgpu"))] _adapter_info: Option<()>,
     ) -> Result<EFrameBackend, Error> {
         //let adapter_info = wgpu_render_state.adapter_info.clone();
 
@@ -82,7 +87,7 @@ impl EFrameBackend {
                 .map(|rgba| egui::Color32::from_rgba_premultiplied(rgba[0], rgba[1], rgba[2], rgba[3]))
                 .collect(),
         };
-        let buffer_handle = ctx.load_texture("marty_buffer_texture", buffer_image, TextureOptions::default());
+        let buffer_handle = ctx.load_texture("marty_buffer_texture", buffer_image, egui::TextureOptions::default());
 
         Ok(EFrameBackend {
             be_type,
@@ -90,6 +95,7 @@ impl EFrameBackend {
             cpu_buffer,
             buffer_dim,
             surface_dim,
+            #[cfg(feature = "use_wgpu")]
             adapter_info,
             buffer_handle: Some(buffer_handle),
             surface_handle: None,
@@ -109,21 +115,24 @@ impl DisplayBackendBuilder for EFrameBackend {
 
 impl DisplayBackend<'_, '_, ()> for EFrameBackend {
     type NativeBackend = ();
-    type NativeBackendAdapterInfo = eframe::wgpu::AdapterInfo;
+    #[cfg(feature = "use_wgpu")]
+    type NativeBackendAdapterInfo = wgpu::AdapterInfo;
+    #[cfg(not(feature = "use_wgpu"))]
+    type NativeBackendAdapterInfo = ();
 
     #[cfg(feature = "use_wgpu")]
-    type NativeScaler = Box<
-        dyn DisplayScaler<
-            (),
-            NativeTextureView = eframe::wgpu::TextureView,
-            NativeEncoder = eframe::wgpu::CommandEncoder,
-        >,
-    >;
+    type NativeScaler =
+        Box<dyn DisplayScaler<(), NativeTextureView = wgpu::TextureView, NativeEncoder = wgpu::CommandEncoder>>;
     #[cfg(not(feature = "use_wgpu"))]
     type NativeScaler = Box<dyn DisplayScaler<(), NativeTextureView = (), NativeEncoder = ()>>;
 
+    #[cfg(feature = "use_wgpu")]
     fn get_adapter_info(&self) -> Option<Self::NativeBackendAdapterInfo> {
         Some(self.adapter_info.clone()?)
+    }
+    #[cfg(not(feature = "use_wgpu"))]
+    fn get_adapter_info(&self) -> Option<Self::NativeBackendAdapterInfo> {
+        None
     }
 
     fn resize_buf(&mut self, new: BufferDimensions) -> Result<(), Error> {
@@ -174,7 +183,7 @@ impl DisplayBackend<'_, '_, ()> for EFrameBackend {
                         .map(|rgba| egui::Color32::from_rgba_premultiplied(rgba[0], rgba[1], rgba[2], rgba[3]))
                         .collect(),
                 },
-                TextureOptions::default(),
+                egui::TextureOptions::default(),
             );
             Ok(())
         }

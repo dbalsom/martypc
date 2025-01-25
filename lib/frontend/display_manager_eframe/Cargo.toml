@@ -19,7 +19,8 @@ marty_egui_eframe = { path = "../../frontend/marty_egui_eframe" }
 frontend_common = { path = "../frontend_common", features = ["use_wgpu"] }
 display_backend_eframe = { path = "../../backend/display_backend_eframe" }
 videocard_renderer = { path = "../videocard_renderer" }
-eframe = { version = "0.30", default-features = false, features = ["default_fonts"] }
+egui.workspace = true
+egui-wgpu = { workspace = true, optional = true }
 winit.workspace = true
 anyhow.workspace = true
 image.workspace = true
@@ -32,5 +33,6 @@ null_scaler = { path = "../null_scaler" }
 marty_pixels_scaler = { path = "../marty_scaler_wgpu", optional = true }
 
 [features]
-use_wgpu = ["eframe/wgpu", "marty_pixels_scaler"]
+default = []
+use_wgpu = ["dep:egui-wgpu", "marty_pixels_scaler"]
 use_glow = []

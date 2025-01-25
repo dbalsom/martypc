@@ -11,26 +11,9 @@ crate-type = ["lib"]
 
 [dependencies]
 frontend_common = { path = "../frontend_common" }
-marty_common = { path = "../../common" }
-marty_core = { path = "../../../core", default-features = false }
 marty_egui = { path = "../marty_egui" }
-videocard_renderer = { path = "../videocard_renderer" }
-#winit.workspace = true
-#wgpu_wrapper = { path = "../../backend/wgpu_wrapper" }
-bytemuck = { workspace=true, features = ["derive"] }
-#image = { workspace = true, default-features = false, features = ["png"] }
-#wgpu = {  workspace = true, optional = true }
-regex = "1.10"
 log = "0.4"
 web-time.workspace = true
-strum.workspace = true
-strum_macros.workspace = true
-tiny-skia = "0.11"
-toml.workspace = true
-anyhow.workspace = true
-fluxfox.workspace = true
-crossbeam-channel.workspace = true
-crossbeam-utils.workspace = true
 
 # Optional dependencies
 # ---------------------------------------------------------------------------------------------------------------------
@@ -40,22 +23,6 @@ serialport = { workspace = true, optional = true }
 # ---------------------------------------------------------------------------------------------------------------------
 egui = { workspace = true, default-features = false, features = ["serde"] }
 egui_extras.workspace = true
-egui_plot.workspace = true
-
-#egui-file-dialog = "0.6.1"
-#egui_file = {  git = "https://github.com/Barugon/egui_file", rev="f08fe3f9ea22de0312d062384544c5d2af5b76a1" }
-#egui-notify = { git = "https://github.com/dbalsom/egui-notify_martypc.git", branch = "egui_0_28_1"}
-egui_file = "0.20.0"
-egui-notify = "0.18"
-
-# TUI dependencies (disabled)
-# ---------------------------------------------------------------------------------------------------------------------
-#ratatui = { version = "0.26.2", default-features = false }
-#egui_ratatui = "0.0.10"
-#egui_ratatui = { git = "https://github.com/dbalsom/egui_ratatui_martypc.git", branch = "resize_fix"}
-
-serde = { workspace = true, features = ["derive"] }
-lazy_static = "1.4.0"
 
 # Optional dependencies
 # ---------------------------------------------------------------------------------------------------------------------

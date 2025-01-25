@@ -61,9 +61,6 @@ crossbeam-utils = "0.8.5"
 zip = { version = "2.1.3", default-features = false }
 strum = "0.26"
 strum_macros = "0.26"
-egui = { version = "0.30.0", default-features = false }
-egui-wgpu = "0.30.0"
-egui_plot = "0.30.0"
 url = "2.5"
 
 # wasm workspace dependencies
@@ -99,21 +96,41 @@ default-features = false
 git = "https://github.com/dbalsom/fluxfox.git"
 branch = "martypc_consumer"
 
-[workspace.dependencies.eframe]
+[workspace.dependencies.egui]
+#git = "https://github.com/dbalsom/egui_martypc.git"
+#branch = "0.30.0_raw_winit_hook"
 version = "0.30.0"
+default-features = false
+
+[workspace.dependencies.eframe]
+git = "https://github.com/dbalsom/egui_martypc.git"
+branch = "0.30.0_raw_winit_hook"
+#version = "0.30.0"
 default-features = false
 
 [workspace.dependencies.egui-winit]
-version = "0.30.0"
-#branch = "0_24_2_winit_0_29_15"
+git = "https://github.com/dbalsom/egui_martypc.git"
+branch = "0.30.0_raw_winit_hook"
 default-features = false
-features = ["clipboard", "wayland", "x11"]
+#version = "0.30.0"
+#branch = "0_24_2_winit_0_29_15"
+#features = ["clipboard", "wayland", "x11"]
+
+[workspace.dependencies.egui-wgpu]
+#git = "https://github.com/dbalsom/egui_martypc.git"
+#branch = "0.30.0_raw_winit_hook"
+version = "0.30.0"
 
 [workspace.dependencies.egui_extras]
-version = "0.30.0"
+git = "https://github.com/dbalsom/egui_martypc.git"
+branch = "0.30.0_raw_winit_hook"
 default-features = false
 #branch = "0_24_2_winit_0_29_15"
 features = ["image"]
+
+[workspace.dependencies.egui_plot]
+version = "0.30.0"
+#default-features = false
 
 [workspace.dependencies.image]
 version = "0.25"

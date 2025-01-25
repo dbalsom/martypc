@@ -79,10 +79,11 @@ use videocard_renderer::{AspectCorrectionMode, AspectRatio, VideoRenderer};
 
 use anyhow::{anyhow, Error};
 use display_backend_eframe::EFrameBackendType;
-use eframe::{
-    egui::{Context, ViewportId},
-    wgpu::{CommandEncoder, TextureView},
-};
+use egui::{Context, ViewportId};
+
+#[cfg(feature = "use_wgpu")]
+use egui_wgpu::wgpu;
+
 use frontend_common::display_manager::DtHandle;
 use marty_egui_eframe::context::GuiRenderContext;
 use winit::{
@@ -695,8 +696,16 @@ impl DisplayTargetContext<EFrameBackend> {
 }
 
 impl<'p> DisplayManager<EFrameBackend, GuiRenderContext, ViewportId, ViewportId, Context> for EFrameDisplayManager {
-    type NativeTextureView = TextureView;
-    type NativeEncoder = CommandEncoder;
+    #[cfg(feature = "use_wgpu")]
+    type NativeTextureView = wgpu::TextureView;
+    #[cfg(not(feature = "use_wgpu"))]
+    type NativeTextureView = ();
+
+    #[cfg(feature = "use_wgpu")]
+    type NativeEncoder = wgpu::CommandEncoder;
+    #[cfg(not(feature = "use_wgpu"))]
+    type NativeEncoder = ();
+
     type NativeEventLoop = ActiveEventLoop;
     type ImplScaler = Box<dyn DisplayScaler<(), NativeTextureView = (), NativeEncoder = ()>>;
     type ImplDisplayTarget = DisplayTargetContext<EFrameBackend>;
@@ -705,7 +714,7 @@ impl<'p> DisplayManager<EFrameBackend, GuiRenderContext, ViewportId, ViewportId,
         &mut self,
         name: String,
         dt_type: DisplayTargetType,
-        native_context: Option<&eframe::egui::Context>,
+        native_context: Option<&egui::Context>,
         window_opts: Option<DmViewportOptions>,
         card_id: Option<VideoCardId>,
         scaler_preset: String,
@@ -906,7 +915,7 @@ impl<'p> DisplayManager<EFrameBackend, GuiRenderContext, ViewportId, ViewportId,
 
                 self.targets.push(dtc);
 
-                self.viewport_id_map.insert(eframe::egui::ViewportId::ROOT, dt_idx);
+                self.viewport_id_map.insert(ViewportId::ROOT, dt_idx);
 
                 if let Some(vid) = card_id {
                     if let Some(card_vec) = self.card_id_map.get_mut(&vid) {
@@ -958,6 +967,7 @@ impl<'p> DisplayManager<EFrameBackend, GuiRenderContext, ViewportId, ViewportId,
             // }
 
             let mut backend_name = String::new();
+            #[cfg(feature = "use_wgpu")]
             if let Some(backend) = &vt.backend {
                 backend_name = backend
                     .get_adapter_info()

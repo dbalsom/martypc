@@ -1465,9 +1465,9 @@ dependencies = [
 
 [[package]]
 name = "cpufeatures"
-version = "0.2.16"
+version = "0.2.17"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "16b80225097f2e5ae4e7179dd2266824648f3e2f49d9134d584b76389d31c4c3"
+checksum = "59ed5838eebb26a2bb2e58f6d5b5316989ae9d08bab10e0e6d103e656d1b0280"
 dependencies = [
  "libc",
 ]
@@ -1568,9 +1568,9 @@ checksum = "d0a5c400df2834b80a4c3327b3aad3a4c4cd4de0629063962b03235697506a28"
 
 [[package]]
 name = "crunchy"
-version = "0.2.2"
+version = "0.2.3"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "7a81dae078cea95a014a339291cec439d2f232ebe854a9d672b796c6afafa9b7"
+checksum = "43da5946c66ffcc7745f48db692ffbb10a83bfe0afd96235c5c2a4fb23994929"
 
 [[package]]
 name = "crypto-common"
@@ -1724,13 +1724,9 @@ version = "0.3.0"
 dependencies = [
  "anyhow",
  "display_backend_trait",
- "eframe",
- "log",
- "marty_egui",
+ "egui 0.30.0",
+ "egui-wgpu 0.30.0",
  "null_scaler",
- "thiserror 2.0.11",
- "videocard_renderer",
- "winit 0.30.8",
 ]
 
 [[package]]
@@ -1762,7 +1758,8 @@ version = "0.3.0"
 dependencies = [
  "anyhow",
  "display_backend_eframe",
- "eframe",
+ "egui 0.30.0",
+ "egui-wgpu 0.30.0",
  "frontend_common",
  "image 0.25.5",
  "log",
@@ -1863,11 +1860,11 @@ dependencies = [
 [[package]]
 name = "eframe"
 version = "0.30.0"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "b2f2d9e7ea2d11ec9e98a8683b6eb99f9d7d0448394ef6e0d6d91bd4eb817220"
+source = "git+https://github.com/dbalsom/egui_martypc.git?branch=0.30.0_raw_winit_hook#d4a942a3534668b218105fc2aac13417897bc8cd"
 dependencies = [
  "ahash",
  "bytemuck",
+ "crossbeam-channel",
  "document-features",
  "egui 0.30.0",
  "egui-wgpu 0.30.0",
@@ -1879,6 +1876,7 @@ dependencies = [
  "home",
  "image 0.25.5",
  "js-sys",
+ "lazy_static",
  "log",
  "objc2 0.5.2",
  "objc2-app-kit",
@@ -1990,13 +1988,14 @@ dependencies = [
 [[package]]
 name = "egui-winit"
 version = "0.30.0"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "1e84c2919cd9f3a38a91e8f84ac6a245c19251fd95226ed9fae61d5ea564fce3"
+source = "git+https://github.com/dbalsom/egui_martypc.git?branch=0.30.0_raw_winit_hook#d4a942a3534668b218105fc2aac13417897bc8cd"
 dependencies = [
  "accesskit_winit",
  "ahash",
  "arboard",
+ "crossbeam-channel",
  "egui 0.30.0",
+ "lazy_static",
  "log",
  "profiling",
  "raw-window-handle 0.6.2",
@@ -2019,6 +2018,19 @@ dependencies = [
  "image 0.25.5",
  "log",
  "mime_guess2",
+ "profiling",
+]
+
+[[package]]
+name = "egui_extras"
+version = "0.30.0"
+source = "git+https://github.com/dbalsom/egui_martypc.git?branch=0.30.0_raw_winit_hook#d4a942a3534668b218105fc2aac13417897bc8cd"
+dependencies = [
+ "ahash",
+ "egui 0.30.0",
+ "enum-map",
+ "image 0.25.5",
+ "log",
  "profiling",
 ]
 
@@ -2411,7 +2423,7 @@ dependencies = [
  "regex",
  "serde",
  "sha1_smol",
- "strum 0.26.3",
+ "strum",
  "tar",
  "thiserror 2.0.11",
  "tiny-skia",
@@ -2427,7 +2439,7 @@ version = "0.3.3"
 source = "git+https://github.com/dbalsom/fluxfox.git?branch=martypc_consumer#9b81e07b4490b200a51200302d9dfa949f982eda"
 dependencies = [
  "egui 0.30.0",
- "egui_extras",
+ "egui_extras 0.30.0 (registry+https://github.com/rust-lang/crates.io-index)",
  "egui_plot",
  "fluxfox",
  "fluxfox_tiny_skia",
@@ -2435,8 +2447,8 @@ dependencies = [
  "log",
  "rayon",
  "serde",
- "strum 0.26.3",
- "strum_macros 0.26.4",
+ "strum",
+ "strum_macros",
  "thiserror 2.0.11",
  "wasm-bindgen",
  "wasm-bindgen-futures",
@@ -2534,8 +2546,8 @@ dependencies = [
  "ringbuf 0.3.3",
  "serde",
  "serde_derive",
- "strum 0.26.3",
- "strum_macros 0.26.4",
+ "strum",
+ "strum_macros",
  "toml 0.8.19",
  "url",
  "videocard_renderer",
@@ -2955,12 +2967,6 @@ dependencies = [
 
 [[package]]
 name = "heck"
-version = "0.4.1"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "95505c38b4572b2d910cecb0281560f54b440a19336cbbcb27bf6ce6adc6f5a8"
-
-[[package]]
-name = "heck"
 version = "0.5.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "2304e00983f87ffb38b55b444b5e3b60a884b5d30c0fca7d82fe33449bbe55ea"
@@ -3280,13 +3286,13 @@ dependencies = [
 
 [[package]]
 name = "is-terminal"
-version = "0.4.13"
+version = "0.4.15"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "261f68e344040fbd0edea105bef17c66edf46f984ddb1115b775ce31be948f4b"
+checksum = "e19b23d53f35ce9f56aebc7d1bb4e6ac1e9c0db7ac85c8d1760c04379edced37"
 dependencies = [
  "hermit-abi",
  "libc",
- "windows-sys 0.52.0",
+ "windows-sys 0.59.0",
 ]
 
 [[package]]
@@ -3616,8 +3622,8 @@ dependencies = [
  "serde_derive",
  "serde_with",
  "serialport 4.3.1-alpha.0",
- "strum 0.26.3",
- "strum_macros 0.26.4",
+ "strum",
+ "strum_macros",
  "toml 0.5.11",
  "uuid",
  "wasm-bindgen",
@@ -3635,7 +3641,7 @@ dependencies = [
  "crossbeam-utils",
  "egui 0.30.0",
  "egui-notify",
- "egui_extras",
+ "egui_extras 0.30.0 (git+https://github.com/dbalsom/egui_martypc.git?branch=0.30.0_raw_winit_hook)",
  "egui_file",
  "egui_plot",
  "fluxfox",
@@ -3649,8 +3655,8 @@ dependencies = [
  "regex",
  "serde",
  "serialport 4.3.1-alpha.0",
- "strum 0.26.3",
- "strum_macros 0.26.4",
+ "strum",
+ "strum_macros",
  "tiny-skia",
  "toml 0.8.19",
  "videocard_renderer",
@@ -3662,30 +3668,12 @@ dependencies = [
 name = "marty_egui_eframe"
 version = "0.3.0"
 dependencies = [
- "anyhow",
- "bytemuck",
- "crossbeam-channel",
- "crossbeam-utils",
  "egui 0.30.0",
- "egui-notify",
- "egui_extras",
- "egui_file",
- "egui_plot",
- "fluxfox",
+ "egui_extras 0.30.0 (git+https://github.com/dbalsom/egui_martypc.git?branch=0.30.0_raw_winit_hook)",
  "frontend_common",
- "lazy_static",
  "log",
- "marty_common",
- "marty_core",
  "marty_egui",
- "regex",
- "serde",
  "serialport 4.3.1-alpha.0",
- "strum 0.26.3",
- "strum_macros 0.26.4",
- "tiny-skia",
- "toml 0.8.19",
- "videocard_renderer",
  "web-time 1.1.0",
  "wgpu 23.0.1",
 ]
@@ -3694,35 +3682,15 @@ dependencies = [
 name = "marty_egui_wgpu"
 version = "0.3.0"
 dependencies = [
- "anyhow",
- "bytemuck",
- "crossbeam-channel",
- "crossbeam-utils",
  "egui 0.30.0",
- "egui-notify",
  "egui-wgpu 0.30.0",
  "egui-winit 0.30.0",
- "egui_extras",
- "egui_file",
- "egui_plot",
- "fluxfox",
+ "egui_extras 0.30.0 (git+https://github.com/dbalsom/egui_martypc.git?branch=0.30.0_raw_winit_hook)",
  "frontend_common",
- "image 0.25.5",
- "lazy_static",
  "log",
- "marty_common",
- "marty_core",
- "regex",
- "serde",
  "serialport 4.3.1-alpha.0",
- "strum 0.25.0",
- "strum_macros 0.25.3",
- "tiny-skia",
- "toml 0.8.19",
- "videocard_renderer",
  "web-time 1.1.0",
  "wgpu 23.0.1",
- "wgpu_wrapper",
  "winit 0.30.8",
 ]
 
@@ -3841,8 +3809,8 @@ dependencies = [
  "serde_derive",
  "serde_json",
  "serialport 4.3.1-alpha.0",
- "strum 0.26.3",
- "strum_macros 0.26.4",
+ "strum",
+ "strum_macros",
  "videocard_renderer",
  "wasm-bindgen",
  "wasm-bindgen-futures",
@@ -3862,7 +3830,8 @@ dependencies = [
  "display_manager_eframe",
  "eframe",
  "egui 0.30.0",
- "egui_extras",
+ "egui-winit 0.30.0",
+ "egui_extras 0.30.0 (registry+https://github.com/rust-lang/crates.io-index)",
  "env_logger 0.11.6",
  "fluxfox",
  "frontend_common",
@@ -3874,7 +3843,7 @@ dependencies = [
  "rodio",
  "serde",
  "serialport 4.3.1-alpha.0",
- "strum 0.26.3",
+ "strum",
  "url",
  "videocard_renderer",
  "wasm-bindgen",
@@ -4384,7 +4353,7 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "46a785d4eeff09c14c487497c162e92766fbb3e4059a71840cecc03d9a50b804"
 dependencies = [
  "objc-sys 0.3.5",
- "objc2-encode 4.0.3",
+ "objc2-encode 4.1.0",
 ]
 
 [[package]]
@@ -4480,9 +4449,9 @@ checksum = "d079845b37af429bfe5dfa76e6d087d788031045b25cfc6fd898486fd9847666"
 
 [[package]]
 name = "objc2-encode"
-version = "4.0.3"
+version = "4.1.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "7891e71393cd1f227313c9379a26a584ff3d7e6e7159e988851f0934c993f0f8"
+checksum = "ef25abbcd74fb2609453eb695bd2f860d389e457f67dc17cafc8b8cbc89d0c33"
 
 [[package]]
 name = "objc2-foundation"
@@ -4681,7 +4650,7 @@ source = "git+https://github.com/dbalsom/opl3-rs.git?branch=main#f7536ef8e71cf4d
 dependencies = [
  "bindgen 0.69.5",
  "cc",
- "heck 0.5.0",
+ "heck",
  "thiserror 1.0.69",
 ]
 
@@ -5226,9 +5195,9 @@ checksum = "08d43f7aa6b08d49f382cde6a7982047c3426db949b1424bc4b7ec9ae12c6ce2"
 
 [[package]]
 name = "rustix"
-version = "0.38.43"
+version = "0.38.44"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "a78891ee6bf2340288408954ac787aa063d8e8817e9f53abb37c695c6d834ef6"
+checksum = "fdb5bc1ae2baa591800df16c9ca78619bf65c0488b41b96ccec5d11220d8c154"
 dependencies = [
  "bitflags 2.8.0",
  "errno",
@@ -5611,30 +5580,11 @@ checksum = "7da8b5736845d9f2fcb837ea5d9e2628564b3b043a70948a3f0b778838c5fb4f"
 
 [[package]]
 name = "strum"
-version = "0.25.0"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "290d54ea6f91c969195bdbcd7442c8c2a2ba87da8bf60a7ee86a235d4bc1e125"
-
-[[package]]
-name = "strum"
 version = "0.26.3"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "8fec0f0aef304996cf250b31b5a10dee7980c85da9d759361292b8bca5a18f06"
 dependencies = [
- "strum_macros 0.26.4",
-]
-
-[[package]]
-name = "strum_macros"
-version = "0.25.3"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "23dc1fa9ac9c169a78ba62f0b841814b7abae11bdd047b9c58f893439e309ea0"
-dependencies = [
- "heck 0.4.1",
- "proc-macro2",
- "quote",
- "rustversion",
- "syn 2.0.96",
+ "strum_macros",
 ]
 
 [[package]]
@@ -5643,7 +5593,7 @@ version = "0.26.4"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "4c6bee85a5a24955dc440386795aa378cd9cf82acd5f764469152d2270e581be"
 dependencies = [
- "heck 0.5.0",
+ "heck",
  "proc-macro2",
  "quote",
  "rustversion",
@@ -6071,9 +6021,9 @@ checksum = "75b844d17643ee918803943289730bec8aac480150456169e647ed0b576ba539"
 
 [[package]]
 name = "unicode-ident"
-version = "1.0.14"
+version = "1.0.15"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "adb9e6ca4f869e1180728b7950e35922a7fc6397f7b641499e8f3ef06e50dc83"
+checksum = "11cd88e12b17c6494200a9c1b683a04fcac9573ed74cd1b62aeb2727c5592243"
 
 [[package]]
 name = "unicode-segmentation"
@@ -6124,9 +6074,9 @@ checksum = "06abde3611657adf66d383f00b093d7faecc7fa57071cce2578660c9f1010821"
 
 [[package]]
 name = "uuid"
-version = "1.12.0"
+version = "1.12.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "744018581f9a3454a9e15beb8a33b017183f1e7c0cd170232a2d1453b23a51c4"
+checksum = "b3758f5e68192bb96cc8f9b7e2c2cfdabb435499a28499a42f8f984092adad4b"
 dependencies = [
  "getrandom",
 ]

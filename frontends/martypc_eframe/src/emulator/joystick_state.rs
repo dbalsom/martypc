@@ -23,7 +23,7 @@ impl JoystickData {
         jd
     }
 
-    fn get_xy(&self) -> (f64, f64) {
+    pub(crate) fn get_xy(&self) -> (f64, f64) {
         let x = if *self.joy_state.get(&JoyKeyInput::JoyLeft).unwrap() {
             -1.0
         }

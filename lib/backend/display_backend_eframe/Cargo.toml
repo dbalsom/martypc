@@ -11,15 +11,9 @@ crate-type = ["lib"]
 
 [dependencies]
 display_backend_trait = { path = "../display_backend_trait" }
-videocard_renderer = { path = "../../frontend/videocard_renderer" }
-#display_scaler_trait = { path = "../../frontend/display_scaler_trait" }
-marty_egui = { path = "../../frontend/marty_egui" }
-eframe = { version = "0.30", default-features = false, features = ["default_fonts", "wgpu", "persistence"] }
-
-winit.workspace = true
-thiserror.workspace = true
+egui.workspace = true
+egui-wgpu.workspace = true
 anyhow.workspace = true
-log.workspace = true
 
 null_scaler = { path = "../../frontend/null_scaler" }
 

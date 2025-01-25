@@ -249,6 +249,37 @@ impl EmulatorBuilder {
         // First we need to resolve a configuration. On native this typically comes from a TOML file.
         let config = self.resolve_config().await?;
 
+        // Initialize sound early as we have limited time after a user click event to start audio
+        // on web.
+        let mut sound_config = Default::default();
+        let mut sound_player = if self.enable_sound | config.emulator.audio.enabled {
+            let mut sound_player = SoundInterface::new(config.emulator.audio.enabled);
+
+            match sound_player.open_device() {
+                Ok(_) => {
+                    stdout.write_fmt(format_args!("Opened audio device: {}", sound_player.device_name()))?;
+                }
+                Err(e) => {
+                    return Err(anyhow!("Failed to open audio device: {:?}", e));
+                }
+            }
+
+            match sound_player.open_stream() {
+                Ok(_) => {
+                    stdout.write_fmt(format_args!("Opened audio stream."))?;
+                }
+                Err(e) => {
+                    return Err(anyhow!("Failed to open audio stream: {:?}", e));
+                }
+            }
+
+            sound_config = sound_player.config();
+            Some(sound_player)
+        }
+        else {
+            None
+        };
+
         // First we can check that we have a validator type, if the validation feature is enabled.
         #[cfg(feature = "cpu_validator")]
         match config.validator.vtype {
@@ -526,36 +557,6 @@ impl EmulatorBuilder {
 
         // Make a statistics counter
         let stat_counter = Counter::new();
-
-        // Optionally initialize sound
-        let mut sound_config = Default::default();
-        let mut sound_player = if self.enable_sound | config.emulator.audio.enabled {
-            let mut sound_player = SoundInterface::new(config.emulator.audio.enabled);
-
-            match sound_player.open_device() {
-                Ok(_) => {
-                    stdout.write_fmt(format_args!("Opened audio device: {}", sound_player.device_name()))?;
-                }
-                Err(e) => {
-                    return Err(anyhow!("Failed to open audio device: {:?}", e));
-                }
-            }
-
-            match sound_player.open_stream() {
-                Ok(_) => {
-                    stdout.write_fmt(format_args!("Opened audio stream."))?;
-                }
-                Err(e) => {
-                    return Err(anyhow!("Failed to open audio stream: {:?}", e));
-                }
-            }
-
-            sound_config = sound_player.config();
-            Some(sound_player)
-        }
-        else {
-            None
-        };
 
         // Create a MachineConfiguration for core initialization
         let machine_config = machine_config_file.to_machine_config();
