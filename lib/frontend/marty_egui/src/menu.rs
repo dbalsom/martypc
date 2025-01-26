@@ -193,6 +193,9 @@ impl GuiState {
                 //ui.style_mut().spacing.item_spacing = egui::Vec2{ x: 6.0, y:6.0 };
                 ui.set_width_range(egui::Rangef { min: 100.0, max: 240.0 });
 
+                // Display option to rescan media folders if native.
+                // We can't rescan anything in the browser - what we've got is what we've got.
+                #[cfg(not(target_arch = "wasm32"))]
                 if ui.button("⟲ Rescan Media Folders").clicked() {
                     self.event_queue.send(GuiEvent::RescanMediaFolders);
                 }
