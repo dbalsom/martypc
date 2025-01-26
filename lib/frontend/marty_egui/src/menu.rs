@@ -44,7 +44,7 @@ impl GuiState {
     pub fn draw_menu(&mut self, ui: &mut egui::Ui) {
         egui::menu::bar(ui, |ui| {
             ui.menu_button("Emulator", |ui| {
-                ui.set_width_range(egui::Rangef { min: 80.0, max: 100.0 });
+                ui.set_min_width(120.0);
 
                 if !self.modal.is_open() {
                     if ui.button("⏱ Performance...").clicked() {
@@ -642,6 +642,7 @@ impl GuiState {
             }
         });
 
+        #[cfg(not(target_arch = "wasm32"))]
         ui.menu_button("Scaler Presets", |ui| {
             for (_preset_idx, preset) in self.scaler_presets.clone().iter().enumerate() {
                 if ui.button(preset).clicked() {
@@ -655,6 +656,7 @@ impl GuiState {
             }
         });
 
+        #[cfg(not(target_arch = "wasm32"))]
         if ui.button("Scaler Adjustments...").clicked() {
             *self.window_flag(GuiWindow::ScalerAdjust) = true;
             self.scaler_adjust.select_card(display.into());

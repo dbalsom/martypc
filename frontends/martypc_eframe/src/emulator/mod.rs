@@ -215,16 +215,6 @@ impl Emulator {
 
         self.gui.set_scaler_presets(&self.config.emulator.scaler_preset);
 
-        // // Populate the list of display targets for each display.
-        // self.dm.for_each_target(|dtc, dt_idx| {
-        //     if let Some(card_id) = &dtc.get_card_id() {
-        //         if let Some(video_card) = self.machine.bus().video(card_id) {
-        //             self.gui
-        //                 .set_display_apertures(dt_idx, video_card.list_display_apertures());
-        //         }
-        //     }
-        // });
-
         // Populate the list of scaler modes, defined by display_scaler trait module
         self.gui.set_scaler_modes(SCALER_MODES.to_vec());
 

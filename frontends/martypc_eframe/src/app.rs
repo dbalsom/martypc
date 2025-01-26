@@ -275,6 +275,16 @@ impl MartyApp {
         emu.gui.set_card_list(card_strs);
         emu.gui.init_display_info(dti);
 
+        // Populate the list of display apertures for each display.
+        display_manager.for_each_target(|dtc, dt_idx| {
+            if let Some(card_id) = &dtc.get_card_id() {
+                if let Some(video_card) = emu.machine.bus().video(card_id) {
+                    emu.gui
+                        .set_display_apertures(dt_idx, video_card.list_display_apertures());
+                }
+            }
+        });
+
         // Create event receivers - for winit, we have a hook in egui_winit to receive raw
         // WindowEvents. For web we have a hook in eframe to receive custom WebKeyboardEvents,
         // which are Send + Sync copies of the raw web_sys::KeyboardEvent.

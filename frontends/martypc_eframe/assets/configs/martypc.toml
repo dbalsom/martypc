@@ -418,7 +418,7 @@ gamma = 1.0
 # Full     - Display the entire overscan area
 # Debug    - Display the entire video field, including horizontal and vertical
 #            blanking periods. Helpful for debugging video code.
-#display_aperture = "Cropped"
+display_aperture = "Accurate"
 
 # Aspect-correct scaler output to 4:3. This will make the video output more
 # visually accurate to what you would see on a real monitor, but will introduce
