@@ -71,6 +71,7 @@ use marty_core::{
     machine::MachineState,
 };
 
+use frontend_common::display_manager::DtHandle;
 use serde::{Deserialize, Serialize};
 use strum_macros::EnumIter;
 use videocard_renderer::CompositeParams;
@@ -135,7 +136,7 @@ pub enum GuiBoolean {
 #[derive(Copy, Clone, Debug, Hash, PartialEq, Eq)]
 pub enum GuiVariableContext {
     Global,
-    Display(usize),
+    Display(DtHandle),
     SerialPort(usize),
 }
 impl Default for GuiVariableContext {
@@ -190,7 +191,7 @@ pub enum GuiEvent {
     MemoryUpdate,
     TokenHover(usize),
     VariableChanged(GuiVariableContext, GuiVariable),
-    CompositeAdjust(usize, CompositeParams),
+    CompositeAdjust(DtHandle, CompositeParams),
     ScalerAdjust(usize, ScalerParams),
     FlushLogs,
     DelayAdjust,

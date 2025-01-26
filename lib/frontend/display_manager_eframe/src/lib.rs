@@ -939,7 +939,7 @@ impl<'p> DisplayManager<EFrameBackend, GuiRenderContext, ViewportId, ViewportId,
     fn display_info(&self, machine: &Machine) -> Vec<DisplayTargetInfo> {
         let mut info_vec = Vec::new();
 
-        for vt in self.targets.iter() {
+        for (i, vt) in self.targets.iter().enumerate() {
             let mut vtype = None;
             if let Some(vid) = vt.card_id {
                 vtype = machine.bus().video(&vid).and_then(|card| Some(card.get_video_type()));
@@ -967,6 +967,7 @@ impl<'p> DisplayManager<EFrameBackend, GuiRenderContext, ViewportId, ViewportId,
             // }
 
             let mut backend_name = String::new();
+
             #[cfg(feature = "use_wgpu")]
             if let Some(backend) = &vt.backend {
                 backend_name = backend
@@ -976,6 +977,7 @@ impl<'p> DisplayManager<EFrameBackend, GuiRenderContext, ViewportId, ViewportId,
             }
 
             info_vec.push(DisplayTargetInfo {
+                handle: DtHandle(i),
                 backend_name,
                 dtype: vt.dt_type,
                 vtype,

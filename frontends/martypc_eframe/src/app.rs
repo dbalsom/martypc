@@ -58,6 +58,7 @@ use crate::wasm::*;
 use marty_web_helpers::console_writer::ConsoleWriter;
 #[cfg(target_arch = "wasm32")]
 use url::Url;
+use videocard_renderer::AspectCorrectionMode;
 use winit::event::ElementState;
 
 #[derive(Clone, Debug)]
@@ -116,7 +117,7 @@ impl Default for MartyApp {
 
 impl MartyApp {
     /// We split app initialization into two parts, since we can't make the callback eframe passes
-    /// the creation context to async.  So we first create the app, then let eframe call `init` with
+    /// the creation context to async. So we first create the app, then let eframe call `init` with
     /// the partially initialized app - it should have the emulator built by then.
     pub async fn new() -> Self {
         // Build the emulator.
@@ -149,13 +150,23 @@ impl MartyApp {
             emu_result = emu_builder.build(&mut std::io::stdout(), &mut std::io::stderr()).await;
         }
 
-        let emu = match emu_result {
+        let mut emu = match emu_result {
             Ok(emu) => emu,
             Err(e) => {
                 log::error!("Failed to build emulator: {}", e);
                 return MartyApp::default();
             }
         };
+
+        // Apply configuration to emulator.
+        match emu.apply_config() {
+            Ok(_) => {
+                log::debug!("Successfully applied configuration to Emulator state");
+            }
+            Err(e) => {
+                log::error!("Failed to apply configuration to Emulator state: {}", e);
+            }
+        }
 
         // Create Timestep Manager
         let mut timestep_manager = TimestepManager::new();
@@ -181,7 +192,7 @@ impl MartyApp {
 
         egui_extras::install_image_loaders(&cc.egui_ctx);
 
-        let emu = self.emu.take().expect("Emulator should have been Some, but was None");
+        let mut emu = self.emu.take().expect("Emulator should have been Some, but was None");
 
         // Get a list of video devices from machine.
         let cardlist = emu.machine.bus().enumerate_videocards();
@@ -203,13 +214,14 @@ impl MartyApp {
             enabled: !emu.config.gui.disabled,
             theme: emu.config.gui.theme,
             menu_theme: emu.config.gui.menu_theme,
-            menubar_h: 24, // TODO: Dynamically measure the height of the egui menu bar somehow
+            menubar_h: EGUI_MENU_BAR_HEIGHT, // TODO: Dynamically measure the height of the egui menu bar somehow
             zoom: emu.config.gui.zoom.unwrap_or(1.0),
             debug_drawing: false,
         };
 
-        // Create display targets.
-        let display_manager = match EFrameDisplayManagerBuilder::build(
+        // Create DisplayManager.
+        log::debug!("Creating DisplayManager...");
+        let mut display_manager = match EFrameDisplayManagerBuilder::build(
             cc.egui_ctx.clone(),
             &emu.config.emulator.window,
             cardlist,
@@ -225,15 +237,47 @@ impl MartyApp {
             }
         };
 
-        let gui_options = DmGuiOptions {
-            enabled: !emu.config.gui.disabled,
-            theme: emu.config.gui.theme,
-            menu_theme: emu.config.gui.menu_theme,
-            menubar_h: EGUI_MENU_BAR_HEIGHT,
-            zoom: 1.0,
-            debug_drawing: false,
-        };
+        // Set all DisplayTargets to hardware aspect correction
+        display_manager.for_each_target(|dtc, _idx| {
+            dtc.set_aspect_mode(AspectCorrectionMode::Hardware);
+        });
 
+        // Get a list of all cards
+        let mut vid_list = Vec::new();
+        display_manager.for_each_card(|vid| {
+            vid_list.push(vid.clone());
+        });
+
+        // Resize each video card to match the starting display extents.
+        for vid in vid_list.iter() {
+            if let Some(card) = emu.machine.bus().video(vid) {
+                let extents = card.get_display_extents();
+
+                //assert_eq!(extents.double_scan, true);
+                if let Err(_e) = display_manager.on_card_resized(vid, extents) {
+                    log::error!("Failed to resize videocard!");
+                }
+            }
+        }
+
+        // Sort vid_list by index
+        vid_list.sort_by(|a, b| a.idx.cmp(&b.idx));
+
+        // Build list of cards to set in UI.
+        let mut card_strs = Vec::new();
+        for vid in vid_list.iter() {
+            let card_str = format!("Card: {} ({:?})", vid.idx, vid.vtype);
+            card_strs.push(card_str);
+        }
+
+        // -- Update GUI state with display info
+        let dti = display_manager.display_info(&emu.machine);
+        emu.gui.set_card_list(card_strs);
+        emu.gui.init_display_info(dti);
+
+        // Create event receivers - for winit, we have a hook in egui_winit to receive raw
+        // WindowEvents. For web we have a hook in eframe to receive custom WebKeyboardEvents,
+        // which are Send + Sync copies of the raw web_sys::KeyboardEvent.
         #[cfg(feature = "use_winit")]
         let winit_receiver = {
             let (winit_sender, winit_receiver) = crossbeam_channel::unbounded();
@@ -247,8 +291,11 @@ impl MartyApp {
             web_receiver
         };
 
+        // Create our GUI rendering context.
+        let mut gui = GuiRenderContext::new(cc.egui_ctx.clone(), 0, 640, 480, 1.0, &gui_options);
+
         Self {
-            gui: GuiRenderContext::new(cc.egui_ctx.clone(), 0, 640, 480, 1.0, &gui_options),
+            gui,
             dm: Some(display_manager),
             emu: Some(emu),
 

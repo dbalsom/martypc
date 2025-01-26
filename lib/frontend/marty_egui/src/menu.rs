@@ -32,6 +32,7 @@
 
 use crate::{state::GuiState, GuiBoolean, GuiEnum, GuiEvent, GuiVariable, GuiVariableContext, GuiWindow};
 use egui_file::FileDialog;
+use frontend_common::display_manager::DtHandle;
 //use egui_file_dialog::FileDialog;
 
 use marty_core::{device_traits::videocard::VideoType, devices::serial::SerialPortDescriptor};
@@ -225,12 +226,13 @@ impl GuiState {
                 // If there is only one display, emit the display menu directly.
                 // Otherwise, emit named menus for each display.
                 if self.display_info.len() == 1 {
-                    self.draw_display_menu(ui, 0);
+                    self.draw_display_menu(ui, DtHandle::default());
                 }
                 else if self.display_info.len() > 1 {
+                    // Use index here to avoid borrowing issues.
                     for i in 0..self.display_info.len() {
                         ui.menu_button(format!("Display {}: {}", i, &self.display_info[i].name), |ui| {
-                            self.draw_display_menu(ui, i);
+                            self.draw_display_menu(ui, self.display_info[i].handle);
                         });
                     }
                 }
@@ -616,20 +618,23 @@ impl GuiState {
         });
     }
 
-    pub fn draw_display_menu(&mut self, ui: &mut egui::Ui, display_idx: usize) {
-        let ctx = GuiVariableContext::Display(display_idx);
+    pub fn draw_display_menu(&mut self, ui: &mut egui::Ui, display: DtHandle) {
+        // TODO: Refactor all uses of display.into(), to use a hash map of DtHandle instead.
+        //       Currently DtHandle is a wrapper around a usize index, but we should make it value
+        //       agnostic.
+        let vctx = GuiVariableContext::Display(display);
 
         ui.menu_button("Scaler Mode", |ui| {
             for (_scaler_idx, mode) in self.scaler_modes.clone().iter().enumerate() {
                 if let Some(enum_mut) =
-                    self.get_option_enum_mut(GuiEnum::DisplayScalerMode(Default::default()), Some(ctx))
+                    self.get_option_enum_mut(GuiEnum::DisplayScalerMode(Default::default()), Some(vctx))
                 {
                     let checked = *enum_mut == GuiEnum::DisplayScalerMode(*mode);
 
                     if ui.add(egui::RadioButton::new(checked, format!("{:?}", mode))).clicked() {
                         *enum_mut = GuiEnum::DisplayScalerMode(*mode);
                         self.event_queue.send(GuiEvent::VariableChanged(
-                            GuiVariableContext::Display(display_idx),
+                            GuiVariableContext::Display(display),
                             GuiVariable::Enum(GuiEnum::DisplayScalerMode(*mode)),
                         ));
                     }
@@ -640,9 +645,9 @@ impl GuiState {
         ui.menu_button("Scaler Presets", |ui| {
             for (_preset_idx, preset) in self.scaler_presets.clone().iter().enumerate() {
                 if ui.button(preset).clicked() {
-                    self.set_option_enum(GuiEnum::DisplayScalerPreset(preset.clone()), Some(ctx));
+                    self.set_option_enum(GuiEnum::DisplayScalerPreset(preset.clone()), Some(vctx));
                     self.event_queue.send(GuiEvent::VariableChanged(
-                        GuiVariableContext::Display(display_idx),
+                        GuiVariableContext::Display(display),
                         GuiVariable::Enum(GuiEnum::DisplayScalerPreset(preset.clone())),
                     ));
                     ui.close_menu();
@@ -652,26 +657,26 @@ impl GuiState {
 
         if ui.button("Scaler Adjustments...").clicked() {
             *self.window_flag(GuiWindow::ScalerAdjust) = true;
-            self.scaler_adjust.select_card(display_idx);
+            self.scaler_adjust.select_card(display.into());
             ui.close_menu();
         }
 
         ui.menu_button("Display Aperture", |ui| {
             let mut aperture_vec = Vec::new();
-            if let Some(aperture_vec_ref) = self.display_apertures.get(&display_idx) {
+            if let Some(aperture_vec_ref) = self.display_apertures.get(&display.into()) {
                 aperture_vec = aperture_vec_ref.clone()
             };
 
             for aperture in aperture_vec.iter() {
                 if let Some(enum_mut) =
-                    self.get_option_enum_mut(GuiEnum::DisplayAperture(Default::default()), Some(ctx))
+                    self.get_option_enum_mut(GuiEnum::DisplayAperture(Default::default()), Some(vctx))
                 {
                     let checked = *enum_mut == GuiEnum::DisplayAperture(aperture.aper_enum);
 
                     if ui.add(egui::RadioButton::new(checked, aperture.name)).clicked() {
                         *enum_mut = GuiEnum::DisplayAperture(aperture.aper_enum);
                         self.event_queue.send(GuiEvent::VariableChanged(
-                            GuiVariableContext::Display(display_idx),
+                            GuiVariableContext::Display(display),
                             GuiVariable::Enum(GuiEnum::DisplayAperture(aperture.aper_enum)),
                         ));
                     }
@@ -682,7 +687,7 @@ impl GuiState {
         let mut state_changed = false;
         let mut new_state = false;
         if let Some(GuiEnum::DisplayAspectCorrect(state)) =
-            &mut self.get_option_enum_mut(GuiEnum::DisplayAspectCorrect(false), Some(ctx))
+            &mut self.get_option_enum_mut(GuiEnum::DisplayAspectCorrect(false), Some(vctx))
         {
             if ui.checkbox(state, "Correct Aspect Ratio").clicked() {
                 //let new_opt = self.get_option_enum_mut()
@@ -693,18 +698,18 @@ impl GuiState {
         }
         if state_changed {
             self.event_queue.send(GuiEvent::VariableChanged(
-                GuiVariableContext::Display(display_idx),
+                GuiVariableContext::Display(display),
                 GuiVariable::Enum(GuiEnum::DisplayAspectCorrect(new_state)),
             ));
         }
 
         // CGA-specific options.
-        if matches!(self.display_info[display_idx].vtype, Some(VideoType::CGA)) {
+        if matches!(self.display_info[usize::from(display)].vtype, Some(VideoType::CGA)) {
             let mut state_changed = false;
             let mut new_state = false;
 
             if let Some(GuiEnum::DisplayComposite(state)) =
-                self.get_option_enum_mut(GuiEnum::DisplayComposite(Default::default()), Some(ctx))
+                self.get_option_enum_mut(GuiEnum::DisplayComposite(Default::default()), Some(vctx))
             {
                 if ui.checkbox(state, "Composite Monitor").clicked() {
                     state_changed = true;
@@ -714,7 +719,7 @@ impl GuiState {
             }
             if state_changed {
                 self.event_queue.send(GuiEvent::VariableChanged(
-                    GuiVariableContext::Display(display_idx),
+                    GuiVariableContext::Display(display),
                     GuiVariable::Enum(GuiEnum::DisplayComposite(new_state)),
                 ));
             }
@@ -737,24 +742,27 @@ impl GuiState {
 
             if ui.button("Composite Adjustments...").clicked() {
                 *self.window_flag(GuiWindow::CompositeAdjust) = true;
-                self.composite_adjust.select_card(display_idx);
+                self.composite_adjust.select_card(display.into());
                 ui.close_menu();
             }
         }
 
         self.workspace_window_open_button_with(ui, GuiWindow::TextModeViewer, true, |state| {
-            state.text_mode_viewer.select_card(display_idx);
+            state.text_mode_viewer.select_card(display.into());
         });
 
+        // On the web, fullscreen is basically free when the user hits f11 to go fullscreen.
+        // We can't programmatically request fullscreen. So, we don't show the option.
+        #[cfg(not(target_arch = "wasm32"))]
         if ui.button("🖵 Toggle Fullscreen").clicked() {
-            self.event_queue.send(GuiEvent::ToggleFullscreen(display_idx));
+            self.event_queue.send(GuiEvent::ToggleFullscreen(display.into()));
             ui.close_menu();
         };
 
         ui.separator();
 
         if ui.button("🖼 Take Screenshot").clicked() {
-            self.event_queue.send(GuiEvent::TakeScreenshot(display_idx));
+            self.event_queue.send(GuiEvent::TakeScreenshot(display.into()));
             ui.close_menu();
         };
     }

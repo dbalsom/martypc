@@ -28,8 +28,7 @@
 
     Process received egui events.
 */
-use crate::{emulator, emulator::Emulator, event_loop::thread_events::FrontendThreadEvent};
-use anyhow::Error;
+
 use std::{
     ffi::OsString,
     io::Cursor,
@@ -38,12 +37,22 @@ use std::{
     sync::Arc,
     time::Duration,
 };
-//use display_manager_wgpu::DisplayManager;
+
+use crate::{
+    app::FileOpenContext,
+    emulator,
+    emulator::Emulator,
+    event_loop::thread_events::FrontendThreadEvent,
+    floppy::load_floppy::handle_load_floppy,
+};
+use display_manager_eframe::EFrameDisplayManager;
 
 use frontend_common::{
     constants::{LONG_NOTIFICATION_TIME, NORMAL_NOTIFICATION_TIME, SHORT_NOTIFICATION_TIME},
+    floppy_manager::FloppyError,
     types::floppy::FloppyImageSource,
 };
+
 use marty_core::{
     breakpoints::BreakPointType,
     cpu_common,
@@ -68,15 +77,15 @@ use marty_egui::{
 use videocard_renderer::AspectCorrectionMode;
 
 use fluxfox::{DiskImage, LoadingStatus};
-use frontend_common::floppy_manager::FloppyError;
-use winit::event_loop::ActiveEventLoop;
 
-use crate::{app::FileOpenContext, floppy::load_floppy::handle_load_floppy};
-#[cfg(not(target_arch = "wasm32"))]
-use std::thread::spawn;
+use anyhow::Error;
+use winit::event_loop::ActiveEventLoop;
 
 #[cfg(target_arch = "wasm32")]
 use crate::wasm::file_open;
+use frontend_common::display_manager::DisplayManager;
+#[cfg(not(target_arch = "wasm32"))]
+use std::thread::spawn;
 
 #[cfg(target_arch = "wasm32")]
 use crate::wasm::worker::spawn_closure_worker as spawn;
@@ -88,7 +97,7 @@ pub enum FileSelectionContext {
 }
 
 //noinspection RsBorrowChecker
-pub fn handle_egui_event(emu: &mut Emulator, gui_event: &GuiEvent) {
+pub fn handle_egui_event(emu: &mut Emulator, dm: &mut EFrameDisplayManager, gui_event: &GuiEvent) {
     match gui_event {
         GuiEvent::Exit => {
             // User chose exit option from menu. Shut down.
@@ -122,70 +131,86 @@ pub fn handle_egui_event(emu: &mut Emulator, gui_event: &GuiEvent) {
                 _ => {}
             },
             GuiVariable::Enum(op) => match ctx {
-                GuiVariableContext::Display(d_idx) => {
-                    //match op {
-                    // GuiEnum::DisplayAperture(aperture) => {
-                    //     if let Some(vid) = emu.dm.set_display_aperture(*d_idx, *aperture).ok().flatten() {
-                    //         if let Some(video_card) = emu.machine.bus().video(&vid) {
-                    //             if let Err(e) = emu.dm.on_card_resized(&vid, video_card.get_display_extents()) {
-                    //                 log::error!("Failed to set display aperture for display target: {:?}", e);
-                    //             }
-                    //         }
-                    //     }
-                    // }
-                    // GuiEnum::DisplayScalerMode(new_mode) => {
-                    //     log::debug!("Got scaler mode update event: {:?}", new_mode);
-                    //     if let Err(_e) = emu.dm.set_scaler_mode(*d_idx, *new_mode) {
-                    //         log::error!("Failed to set scaler mode for display target!");
-                    //     }
-                    // }
-                    // GuiEnum::DisplayScalerPreset(new_preset) => {
-                    //     log::debug!("Got scaler preset update event: {:?}", new_preset);
-                    //     if let Err(_e) = emu.dm.apply_scaler_preset(*d_idx, new_preset.clone()) {
-                    //         log::error!("Failed to set scaler preset for display target!");
-                    //     }
-                    //
-                    //     // Update dependent GUI items
-                    //     if let Some(_scaler_params) = emu.dm.get_scaler_params(*d_idx) {
-                    //         //emu.gui.set_option_enum(GuiEnum::DisplayComposite(scaler_params), GuiVariableContext::Display(*d_idx));
-                    //     }
-                    //     if let Some(renderer) = emu.dm.get_renderer(*d_idx) {
-                    //         // Update composite checkbox state
-                    //         let composite_enable = renderer.get_composite();
-                    //         emu.gui.set_option_enum(
-                    //             GuiEnum::DisplayComposite(composite_enable),
-                    //             Some(GuiVariableContext::Display(*d_idx)),
-                    //         );
-                    //
-                    //         // Update aspect correction checkbox state
-                    //         let aspect_correct = renderer.get_params().aspect_correction;
-                    //         let aspect_correct_on = !matches!(aspect_correct, AspectCorrectionMode::None);
-                    //         emu.gui.set_option_enum(
-                    //             GuiEnum::DisplayAspectCorrect(aspect_correct_on),
-                    //             Some(GuiVariableContext::Display(*d_idx)),
-                    //         );
-                    //     }
-                    // }
-                    // GuiEnum::DisplayComposite(state) => {
-                    //     log::debug!("Got composite state update event: {}", state);
-                    //     if let Some(renderer) = emu.dm.get_renderer(*d_idx) {
-                    //         renderer.set_composite(*state);
-                    //     }
-                    // }
-                    // GuiEnum::DisplayAspectCorrect(state) => {
-                    //     if let Err(_e) = emu.dm.set_aspect_correction(*d_idx, *state) {
-                    //         log::error!("Failed to set aspect correction state for display target!");
-                    //     }
-                    // }
-                    // _ => {}
-                }
-                GuiVariableContext::SerialPort(_serial_id) => match op {
-                    GuiEnum::SerialPortBridge(_host_id) => {
-                        //emu.machine.bridge_serial_port(*serial_id, host_id.clone());
+                GuiVariableContext::Display(d_idx) => match op {
+                    GuiEnum::DisplayAperture(aperture) => {
+                        if let Some(vid) = dm.set_display_aperture(*d_idx, *aperture).ok().flatten() {
+                            if let Some(video_card) = emu.machine.bus().video(&vid) {
+                                if let Err(e) = dm.on_card_resized(&vid, video_card.get_display_extents()) {
+                                    log::error!("Failed to set display aperture for display target: {:?}", e);
+                                }
+                            }
+                        }
+                    }
+                    GuiEnum::DisplayScalerMode(new_mode) => {
+                        log::debug!("Got scaler mode update event: {:?}", new_mode);
+                        if let Err(_e) = dm.set_scaler_mode(*d_idx, *new_mode) {
+                            log::error!("Failed to set scaler mode for display target!");
+                        }
+                    }
+                    GuiEnum::DisplayScalerPreset(new_preset) => {
+                        log::debug!("Got scaler preset update event: {:?}", new_preset);
+                        if let Err(_e) = dm.apply_scaler_preset(*d_idx, new_preset.clone()) {
+                            log::error!("Failed to set scaler preset for display target!");
+                        }
+
+                        // Update dependent GUI items
+                        if let Some(_scaler_params) = dm.get_scaler_params(*d_idx) {
+                            //emu.gui.set_option_enum(GuiEnum::DisplayComposite(scaler_params), GuiVariableContext::Display(*d_idx));
+                        }
+                        if let Some(renderer) = dm.renderer_mut(*d_idx) {
+                            // Update composite checkbox state
+                            let composite_enable = renderer.get_composite();
+                            emu.gui.set_option_enum(
+                                GuiEnum::DisplayComposite(composite_enable),
+                                Some(GuiVariableContext::Display(*d_idx)),
+                            );
+
+                            // Update aspect correction checkbox state
+                            let aspect_correct = renderer.get_params().aspect_correction;
+                            let aspect_correct_on = !matches!(aspect_correct, AspectCorrectionMode::None);
+                            emu.gui.set_option_enum(
+                                GuiEnum::DisplayAspectCorrect(aspect_correct_on),
+                                Some(GuiVariableContext::Display(*d_idx)),
+                            );
+                        }
+                    }
+                    GuiEnum::DisplayComposite(state) => {
+                        log::debug!("Got composite state update event: {}", state);
+                        if let Some(renderer) = dm.renderer_mut(*d_idx) {
+                            renderer.set_composite(*state);
+                        }
+                    }
+                    GuiEnum::DisplayAspectCorrect(state) => {
+                        if let Err(_e) = dm.set_aspect_correction(*d_idx, *state) {
+                            log::error!("Failed to set aspect correction state for display target!");
+                        }
+                    }
+                    _ => {}
+                },
+                #[cfg(feature = "serial")]
+                GuiVariableContext::SerialPort(serial_id) => match op {
+                    GuiEnum::SerialPortBridge(host_id) => {
+                        match emu.machine.bridge_serial_port(*serial_id, host_id.clone()) {
+                            Ok(_) => {
+                                emu.gui
+                                    .toasts()
+                                    .info(format!("Serial port bridged to: {}", host_id))
+                                    .duration(Some(NORMAL_NOTIFICATION_TIME));
+                            }
+                            Err(e) => {
+                                emu.gui
+                                    .toasts()
+                                    .error(format!("Failed to bridge serial port: {}", e))
+                                    .duration(Some(NORMAL_NOTIFICATION_TIME));
+                            }
+                        }
                     }
                     _ => {}
                 },
                 GuiVariableContext::Global => {}
+                _ => {
+                    log::warn!("Unhandled enum context: {:?}", ctx);
+                }
             },
         },
         GuiEvent::LoadVHD(drive_idx, image_idx) => {
@@ -868,11 +893,11 @@ pub fn handle_egui_event(emu: &mut Emulator, gui_event: &GuiEvent) {
         GuiEvent::CtrlAltDel => {
             emu.machine.emit_ctrl_alt_del();
         }
-        GuiEvent::CompositeAdjust(dt_idx, params) => {
-            // //log::warn!("got composite params: {:?}", params);
-            // emu.dm.with_renderer(*dt_idx, |renderer| {
-            //     renderer.cga_direct_param_update(params);
-            // });
+        GuiEvent::CompositeAdjust(dt, params) => {
+            //log::warn!("got composite params: {:?}", params);
+            dm.with_renderer(*dt, |renderer| {
+                renderer.cga_direct_param_update(params);
+            });
         }
         GuiEvent::ScalerAdjust(dt_idx, params) => {
             // //log::warn!("Received ScalerAdjust event: {:?}", params);

@@ -53,6 +53,7 @@ use videocard_renderer::{RendererConfigParams, VideoRenderer};
 use anyhow::Error;
 use web_time::Duration;
 
+#[derive(Copy, Clone, Debug, Hash, PartialEq, Eq)]
 pub struct DtHandle(pub usize);
 
 impl Default for DtHandle {
@@ -63,6 +64,18 @@ impl Default for DtHandle {
 impl DtHandle {
     pub fn idx(&self) -> usize {
         self.0
+    }
+}
+
+impl From<usize> for DtHandle {
+    fn from(idx: usize) -> Self {
+        DtHandle(idx)
+    }
+}
+
+impl From<DtHandle> for usize {
+    fn from(handle: DtHandle) -> usize {
+        handle.0
     }
 }
 
@@ -97,6 +110,7 @@ impl Display for DisplayTargetType {
 /// This can be retrieved from the Display Manager via display_info().
 #[derive(Clone)]
 pub struct DisplayTargetInfo {
+    pub handle: DtHandle,
     pub backend_name: String,
     pub dtype: DisplayTargetType,
     pub vtype: Option<VideoType>,

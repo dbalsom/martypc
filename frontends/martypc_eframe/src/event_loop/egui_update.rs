@@ -59,7 +59,7 @@ pub fn update_egui(emu: &mut Emulator, dm: &mut EFrameDisplayManager, tm: &Times
     loop {
         if let Some(gui_event) = emu.gui.get_event() {
             //log::warn!("Handling GUI event!");
-            handle_egui_event(emu, &gui_event);
+            handle_egui_event(emu, dm, &gui_event);
         }
         else {
             break;
@@ -254,7 +254,7 @@ pub fn update_egui(emu: &mut Emulator, dm: &mut EFrameDisplayManager, tm: &Times
         }
     }
 
-    // -- Update VideoCard Viewer (Replace CRTC Viewer)
+    // -- Update VideoCard Viewer window
     if emu.gui.is_window_open(GuiWindow::VideoCardViewer) {
         // Only have an update if we have a videocard to update.
         if let Some(videocard_state) = emu.machine.videocard_state() {

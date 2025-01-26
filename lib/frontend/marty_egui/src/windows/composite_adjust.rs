@@ -126,7 +126,10 @@ impl CompositeAdjustControl {
 
                 if update {
                     self.params[self.dt_idx].phase = (self.temp_phase[self.dt_idx] / 90.0).round() as usize;
-                    events.send(GuiEvent::CompositeAdjust(self.dt_idx, self.params[self.dt_idx]));
+                    events.send(GuiEvent::CompositeAdjust(
+                        DtHandle::from(self.dt_idx),
+                        self.params[self.dt_idx],
+                    ));
                 }
             });
     }

@@ -651,6 +651,7 @@ impl GuiState {
 
     /// Set list of available scaler modes
     pub fn set_scaler_modes(&mut self, modes: Vec<ScalerMode>) {
+        log::debug!("set_scaler_modes(): Installed {} scaler modes", modes.len());
         self.scaler_modes = modes;
     }
 
@@ -710,27 +711,31 @@ impl GuiState {
         self.composite_adjust.set_dt_list(dt_descs.clone());
 
         for (idx, display) in self.display_info.iter().enumerate() {
+            log::debug!("init_display_info(): Initializing Display {:?}", display.handle);
+
             if let Some(renderer) = &display.renderer {
+                log::debug!("init_display_info(): Initializing Renderer...");
                 enum_vec.push((
                     GuiEnum::DisplayAspectCorrect(renderer.aspect_correction),
-                    Some(GuiVariableContext::Display(idx)),
+                    Some(GuiVariableContext::Display(display.handle)),
                 ));
                 enum_vec.push((
                     // Fairly certain that if we have a renderer, we have an aperture...
                     GuiEnum::DisplayAperture(renderer.display_aperture.unwrap()),
-                    Some(GuiVariableContext::Display(idx)),
+                    Some(GuiVariableContext::Display(display.handle)),
                 ));
                 enum_vec.push((
                     GuiEnum::DisplayComposite(renderer.composite),
-                    Some(GuiVariableContext::Display(idx)),
+                    Some(GuiVariableContext::Display(display.handle)),
                 ));
             }
 
             // Create GuiEnums for each display scaler mode.
             if let Some(scaler_mode) = &display.scaler_mode {
+                log::debug!("init_display_info(): Creating scaler mode enum {:?}", scaler_mode);
                 enum_vec.push((
                     GuiEnum::DisplayScalerMode(*scaler_mode),
-                    Some(GuiVariableContext::Display(idx)),
+                    Some(GuiVariableContext::Display(display.handle)),
                 ));
             }
 
