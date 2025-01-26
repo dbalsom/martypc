@@ -467,6 +467,7 @@ impl EmulatorBuilder {
         }
 
         // Instantiate the floppy manager
+        log::debug!("Creating FloppyManager...");
         let mut floppy_manager = FloppyManager::new();
 
         // Get a combined list of the floppy extensions we should recognize from the config,
@@ -491,15 +492,18 @@ impl EmulatorBuilder {
         floppy_manager.set_extensions(Some(floppy_extensions));
         // Scan the "floppy" resource
         floppy_manager.scan_resource(&resource_manager)?;
+        log::debug!("Floppy resource scan complete!");
         // Scan the "autofloppy" resource
         floppy_manager.scan_autofloppy(&resource_manager)?;
 
         // Instantiate the VHD manager
+        log::debug!("Creating VhdManager...");
         let mut vhd_manager = VhdManager::new();
         // Scan the 'hdd' resource
         vhd_manager.scan_resource(&resource_manager)?;
 
         // Instantiate the cartridge manager
+        log::debug!("Creating CartridgeManager...");
         let mut cart_manager = CartridgeManager::new();
         // Scan the 'cartridge' resource
         cart_manager.scan_resource(&resource_manager)?;

@@ -26,13 +26,14 @@ config_name = "ibm5160"
 # MDA or CGA, for example.
 #
 # - See 'machine_config_overlays.toml' for more examples, or define your own.
-#config_overlays = ["ega"]
+config_overlays = ["lotech_ems"]
 
 # Prefer OEM ROMs over other compatible ROMs, if present. Default: true.
 prefer_oem = true
 
 # Reload ROMs from disk when system is hard-rebooted (not ctrl-alt-del)
-reload_roms = true
+# Do not enable this on web! It will cause the emulator to hang.
+reload_roms = false
 
 # Apply ROM patches defined in ROM sets. Disable this for authenticity
 # as some patches may speed up boot time.

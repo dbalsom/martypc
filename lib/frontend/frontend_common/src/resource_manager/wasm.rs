@@ -32,6 +32,7 @@
 
 use crate::resource_manager::{tree::TreeNode, ResourceItem, ResourceItemType, ResourceManager};
 
+use crate::resource_manager::tree::build_tree;
 use anyhow::Error;
 use std::{
     ffi::{OsStr, OsString},
@@ -58,8 +59,6 @@ impl ResourceManager {
             .get_resource_paths(resource)
             .ok_or(anyhow::anyhow!("Resource path not found: {}", resource))?;
 
-        log::debug!("Got {} items for resource: {}", paths.len(), resource);
-
         if !multipath {
             // If multipath is false, only use the first path
             paths.truncate(1);
@@ -69,6 +68,7 @@ impl ResourceManager {
             return Err(anyhow::anyhow!("No paths defined for resource: {}", resource));
         }
 
+        log::debug!("Got {} path(s) for resource: {}", paths.len(), resource);
         for path in paths.iter() {
             let mut path = PathBuf::from(&path);
             //let mut path = path.clone().canonicalize()?;
@@ -79,52 +79,74 @@ impl ResourceManager {
 
             log::debug!("Descending into directory: {}", path.display());
             for entry in self.read_manifest_dir(&String::from(path.clone().to_string_lossy())) {
-                log::debug!("Reading entry {:?}", entry);
                 if entry.path().is_dir() {
+                    log::debug!("Enumerating Directory entry {:?}", entry);
                     items.push(ResourceItem {
                         rtype: ResourceItemType::Directory,
                         location: entry.path().clone(),
                         relative_path: None,
                         filename_only: Some(entry.path().file_name().unwrap_or_default().to_os_string()),
                         flags: 0,
+                        size: entry.size(),
                     });
-                } else {
+                }
+                else {
+                    let foo = entry.path().file_name().unwrap_or_default().to_os_string();
                     items.push(ResourceItem {
                         rtype: ResourceItemType::LocalFile,
                         location: entry.path().clone(),
                         relative_path: None,
                         filename_only: Some(entry.path().file_name().unwrap_or_default().to_os_string()),
                         flags: 0,
+                        size: entry.size(),
                     });
                 }
             }
         }
-
         Ok(items)
     }
 
-    pub fn items_to_tree(&self, _resource: &str, _items: &Vec<ResourceItem>) -> Result<TreeNode, Error> {
-        Ok(TreeNode::default())
+    pub fn items_to_tree(&self, resource: &str, items: &Vec<ResourceItem>) -> Result<TreeNode, Error> {
+        // TODO: support multipath
+        let root_path = self
+            .pm
+            .get_resource_path(resource)
+            .ok_or(anyhow::anyhow!("Resource path not found: {}", resource))?;
+
+        log::debug!(
+            "wasm::items_to_tree(): building tree for resource: {} over {} items: root_path: {}",
+            resource,
+            items.len(),
+            root_path.display()
+        );
+
+        let skip_size = root_path.components().count();
+
+        build_tree(String::from(root_path.to_string_lossy()), items, skip_size)
     }
 
     pub fn items_to_tree_raw(&self, _items: &Vec<ResourceItem>) -> Result<TreeNode, Error> {
+        log::warn!("items_to_tree_raw() not implemented for wasm target");
         Ok(TreeNode::default())
     }
 
     /// Stub implementation for wasm targets. We cannot create urls.
     pub fn create_path(path: &Path) -> Result<(), Error> {
+        log::warn!("create_path() not implemented for wasm target");
         Ok(())
     }
 
     /// On wasm targets, we don't have access to the filesystem to overwrite anything,
     /// so we just return false
     pub fn path_exists(_path: &Path) -> bool {
+        log::warn!("path_exists() not implemented for wasm target");
         false
     }
 
     /// On wasm targets, we don't have access to the filesystem. We can probably detect what is
     /// a directory based on the path string, but for now we just return false.
     pub fn path_is_dir(_path: &Path) -> bool {
+        log::warn!("path_is_dir() not implemented for wasm target");
         false
     }
 

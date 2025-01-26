@@ -36,9 +36,10 @@ use std::{
 use std::thread::spawn;
 
 #[cfg(target_arch = "wasm32")]
-use crate::wasm::worker::spawn;
+use crate::wasm::{file_open::open_file, worker::spawn};
 
 use crate::{
+    app::FileOpenContext,
     emulator::Emulator,
     event_loop::{egui_events::FileSelectionContext, thread_events::FrontendThreadEvent},
 };
@@ -64,7 +65,35 @@ pub fn handle_load_floppy(emu: &mut Emulator, drive_select: usize, context: File
                 if let Some(name) = name {
                     floppy_name = Some(name.clone());
                     log::info!("Loading floppy image: {:?} into drive: {}", name, drive_select);
-                    //floppy_result = Some(emu.floppy_manager.load_floppy_by_idx(item_idx, &emu.rm).await);
+
+                    let floppy_path = match emu.floppy_manager.get_floppy_path(item_idx) {
+                        Some(path) => path,
+                        None => {
+                            log::error!("Failed to resolve index to floppy path");
+                            emu.gui
+                                .toasts()
+                                .error(format!("Failed to resolve index to floppy path"))
+                                .duration(Some(NORMAL_NOTIFICATION_TIME));
+                            return;
+                        }
+                    };
+
+                    let new_fsc_context = FileSelectionContext::Path(floppy_path.clone());
+                    let new_context = FileOpenContext::FloppyDiskImage {
+                        drive_select,
+                        fsc: new_fsc_context,
+                    };
+
+                    #[cfg(not(target_arch = "wasm32"))]
+                    {
+                        //floppy_result = Some(emu.floppy_manager.load_floppy_by_path(path, &emu.rm).await);
+                    }
+                    #[cfg(target_arch = "wasm32")]
+                    {
+                        open_file(new_context, emu.sender.clone());
+                    }
+
+                    return;
                 };
             }
             FileSelectionContext::Path(path) => {

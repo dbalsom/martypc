@@ -284,9 +284,19 @@ pub fn handle_egui_event(emu: &mut Emulator, gui_event: &GuiEvent) {
                 log::error!("Error scanning cartridge directory: {}", e);
             }
             // Update Floppy Disk Image tree
-            if let Ok(floppy_tree) = emu.floppy_manager.make_tree(&emu.rm) {
-                emu.gui.set_floppy_tree(floppy_tree);
+            match emu.floppy_manager.make_tree(&emu.rm) {
+                Ok(floppy_tree) => {
+                    log::debug!("Built tree {:?}, setting tree in GUI...", floppy_tree);
+                    emu.gui.set_floppy_tree(floppy_tree)
+                }
+                Err(e) => {
+                    emu.gui
+                        .toasts()
+                        .error(format!("Failed to build floppy tree: {}", e))
+                        .duration(Some(SHORT_NOTIFICATION_TIME));
+                }
             }
+
             emu.gui.set_autofloppy_paths(emu.floppy_manager.get_autofloppy_paths());
             // Update VHD Image tree
             if let Ok(hdd_tree) = emu.vhd_manager.make_tree(&emu.rm) {

@@ -97,6 +97,7 @@ impl ResourceManager {
                 return Err(anyhow::anyhow!("No paths defined for resource: {}", resource));
             }
 
+            log::debug!("Got {} path(s) for resource: {}", paths.len(), resource);
             for path in paths.iter() {
                 let mut path = path.clone().canonicalize()?;
 
@@ -115,6 +116,7 @@ impl ResourceManager {
                                     relative_path: None,
                                     filename_only: Some(entry.path().file_name().unwrap_or_default().to_os_string()),
                                     flags: 0,
+                                    size: None,
                                 });
                             }
                             else {
@@ -124,6 +126,7 @@ impl ResourceManager {
                                     relative_path: None,
                                     filename_only: Some(entry.path().file_name().unwrap_or_default().to_os_string()),
                                     flags: 0,
+                                    size: Some(entry.path().metadata()?.len() as usize),
                                 });
                             }
                         }
@@ -322,6 +325,13 @@ impl ResourceManager {
             .pm
             .get_resource_path(resource)
             .ok_or(anyhow::anyhow!("Resource path not found: {}", resource))?;
+
+        log::debug!(
+            "items_to_tree(): building tree for resource: {} over {} items: root_path: {}",
+            resource,
+            items.len(),
+            root_path.display()
+        );
 
         let skip_size = root_path.components().count();
 

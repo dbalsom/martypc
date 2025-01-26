@@ -7,17 +7,35 @@
 
 <head>
     <!-- change this to your project name -->
-    <title>eframe template</title>
+    <title>MartyPC Web Edition 0.3.0</title>
+
+    <meta property="og:title" content="MartyPC Web Edition">
+    <meta property="og:description" content="An IBM PC/XT emulator written in Rust - Now compiled for the web!">
+    <meta property="og:url" content="https://martypc.net">
+    <meta property="og:image" content="https://martypc.net/assets/marty_logo_about.png">
+    <meta property="og:type" content="website">
+    <meta property="og:site_name" content="MartyPC">
+    <meta property="og:image:width" content="755">
+    <meta property="og:image:height" content="270">
+    <meta property="og:locale" content="en_US">
+
+    <meta name="twitter:card" content="summary_large_image">
+    <meta name="twitter:title" content="MartyPC Web Edition">
+    <meta name="twitter:description" content="An IBM PC/XT emulator written in Rust - Now compiled for the web!">
+    <meta name="twitter:image" content="https://martypc.net/assets/marty_logo_about.png">
 
     <!-- config for our rust wasm binary. go to https://trunkrs.dev/assets/#rust for more customization -->
     <link data-trunk rel="rust" data-wasm-opt="2"/>
     <!-- this is the base url relative to which other urls will be constructed. trunk will insert this from the public-url option -->
     <base data-trunk-public-url/>
 
-    <link data-trunk rel="icon" href="assets/favicon.ico">
+    <link data-trunk rel="icon" href="../../assets/favicon.ico">
+    <link data-trunk rel="copy-file" href="../../assets/marty_logo_about.png"
+          data-target-path="assets"/>
 
-    <link data-trunk rel="copy-file" href="assets/coi-serviceworker.js"/>
-    <link data-trunk rel="copy-file" href="assets/sw.js"/>
+    <link data-trunk rel="copy-file" href="../../install/media/floppies/MartyPC Boot Disk v1.0.img"
+          data-target-path="media/floppies"/>
+    <link data-trunk rel="copy-file" href="assets/_headers"/>
     <link data-trunk rel="copy-file" href="assets/worker.js"/>
     <link data-trunk rel="copy-file" href="assets/manifest.json"/>
     <link data-trunk rel="copy-file" href="assets/martypc_logo_small.png" data-target-path="assets"/>
@@ -192,6 +210,7 @@
 </head>
 
 <body>
+
 <!-- The WASM code will resize the canvas dynamically -->
 <!-- the id is hardcoded in main.rs . so, make sure both match. -->
 <canvas id="the_canvas_id"></canvas>
@@ -199,6 +218,7 @@
 <!-- Initial screen with "Click to start" -->
 <div class="start-overlay" id="start_screen">
     <div class="start-logo-wrapper" id="start_logo">
+        <link rel="prefetch" href="assets/martypc_logo_small.png"/>
         <img src="assets/martypc_logo_off_small.png" alt="Start MartyPC" class="start-logo">
     </div>
 </div>
@@ -210,22 +230,5 @@
     </p>
     <div class="lds-dual-ring"></div>
 </div>
-
-<!--COI Service Worker. this will reload the page and set the appropriate COI headers -->
-<script src="coi-serviceworker.js"></script>
-
-<!--Register Service Worker. this will cache the wasm / js scripts for offline use (for PWA functionality). -->
-<!-- Force refresh (Ctrl + F5) to load the latest files instead of cached files  -->
-<script>
-    // We disable caching during development so that we always view the latest version.
-    if ('serviceWorker' in navigator && window.location.hash !== "#dev") {
-        window.addEventListener('load', function () {
-            navigator.serviceWorker.register('sw.js');
-        });
-    }
-</script>
 </body>
-
 </html>
-
-<!-- Powered by egui: https://github.com/emilk/egui/ -->

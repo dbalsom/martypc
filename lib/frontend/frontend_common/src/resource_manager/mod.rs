@@ -71,6 +71,7 @@ struct ManifestEntry {
     path: String,
     #[serde(rename = "type")]
     kind: ManifestFileType,
+    size: Option<u64>,
 }
 
 #[derive(Clone, Debug, Deserialize)]
@@ -97,6 +98,7 @@ pub struct ResourceItem {
     pub(crate) location: PathBuf,
     pub(crate) relative_path: Option<PathBuf>,
     pub(crate) filename_only: Option<OsString>,
+    pub(crate) size: Option<u64>,
     flags: u32,
 }
 
@@ -109,6 +111,7 @@ impl ResourceItem {
             location: new_path.clone(),
             relative_path: None,
             filename_only: new_path.file_name().map(|s| s.to_os_string()),
+            size: None,
             flags: 0,
         }
     }
@@ -145,6 +148,7 @@ impl ResourceManifest {
 pub struct ManifestDirEntry {
     path:   String,
     is_dir: bool,
+    size:   Option<u64>,
 }
 
 impl ManifestDirEntry {
@@ -154,6 +158,10 @@ impl ManifestDirEntry {
 
     pub fn is_dir(&self) -> bool {
         self.is_dir
+    }
+
+    pub fn size(&self) -> Option<u64> {
+        self.size
     }
 }
 
@@ -217,6 +225,7 @@ impl ResourceManager {
                 entries.push(ManifestDirEntry {
                     path:   file.path.clone(),
                     is_dir: false,
+                    size:   file.size,
                 });
             }
         }

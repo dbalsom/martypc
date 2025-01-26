@@ -26,7 +26,73 @@
 */
 use crate::{app::FileOpenContext, event_loop::thread_events::FrontendThreadEvent};
 
-use web_sys::{Event, FileReader, HtmlInputElement};
+use crate::event_loop::egui_events::FileSelectionContext;
+use anyhow::{anyhow, Error};
+use wasm_bindgen::JsCast;
+use wasm_bindgen_futures::{spawn_local, JsFuture};
+use web_sys::{js_sys::Uint8Array, window, Event, FileReader, HtmlInputElement};
+
+pub fn open_file(
+    context: FileOpenContext,
+    sender: crossbeam_channel::Sender<FrontendThreadEvent>,
+) -> Result<(), Error> {
+    let path = match context {
+        FileOpenContext::FloppyDiskImage { drive_select, ref fsc } => match fsc {
+            FileSelectionContext::Path(path) => path,
+            FileSelectionContext::Index(index) => return Err(anyhow!("Index context not supported on wasm")),
+        },
+        FileOpenContext::CartridgeImage { slot_select, fsc } => {
+            return Err(anyhow!("Cartridge image not supported on wasm"));
+        }
+    };
+
+    // Convert path to a URL
+    let url = path.to_string_lossy().to_string();
+
+    let inner_path = path.clone();
+    let inner_context = context.clone();
+
+    // Fetch the file using web_sys
+    spawn_local(async move {
+        let window = window().expect("No global `window` exists");
+        let fetch_promise = window.fetch_with_str(&url);
+        let response = match JsFuture::from(fetch_promise).await {
+            Ok(resp) => resp.dyn_into::<web_sys::Response>().unwrap(),
+            Err(err) => {
+                log::error!("Failed to fetch file: {:?}", err);
+                return;
+            }
+        };
+
+        if !response.ok() {
+            log::error!("Failed to fetch file: HTTP status {}", response.status());
+            return;
+        }
+
+        let array_buffer_promise = response.array_buffer().unwrap();
+        let array_buffer = match JsFuture::from(array_buffer_promise).await {
+            Ok(buffer) => buffer,
+            Err(err) => {
+                log::error!("Failed to read file as ArrayBuffer: {:?}", err);
+                return;
+            }
+        };
+
+        let data = Uint8Array::new(&array_buffer);
+        let bytes = data.to_vec();
+
+        // Send the data through the channel
+        if let Err(err) = sender.send(FrontendThreadEvent::FileOpenDialogComplete {
+            context: inner_context,
+            path: Some(inner_path),
+            contents: bytes,
+        }) {
+            log::error!("Failed to send file data to channel: {:?}", err);
+        }
+    });
+
+    Ok(())
+}
 
 /// For WebAssembly, this function opens the browser file dialog by:
 /// 1. Creating an <input type="file"> element.

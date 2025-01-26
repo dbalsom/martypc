@@ -128,6 +128,7 @@ impl FloppyManager {
     }
 
     pub fn scan_resource(&mut self, rm: &ResourceManager) -> Result<bool, Error> {
+        log::debug!("Scanning floppy resource...");
         // Clear and rebuild image lists.
         self.image_vec.clear();
         self.image_map.clear();
@@ -142,7 +143,7 @@ impl FloppyManager {
                 idx,
                 name: item.location.file_name().unwrap().to_os_string(),
                 path: item.location.clone(),
-                size: item.location.metadata()?.len(),
+                size: item.size.unwrap_or(0),
             });
 
             self.image_map
@@ -187,34 +188,51 @@ impl FloppyManager {
     }
 
     pub fn scan_paths(&mut self, paths: Vec<PathBuf>) -> Result<bool, Error> {
+        log::debug!("scan_paths(): Scanning list of {} paths...", paths.len());
         // Clear and rebuild image lists.
         self.image_vec.clear();
         self.image_map.clear();
 
         // Scan through all entries in the directory and find all files with matching extension
         for path in paths {
+            #[cfg(not(target_arch = "wasm32"))]
             if path.is_file() {
-                if let Some(extension) = path.extension() {
-                    if self.extensions.contains(&extension.to_ascii_lowercase()) {
-                        println!("Found floppy image: {:?} size: {}", path, path.metadata()?.len());
-
-                        let idx = self.image_vec.len();
-                        self.image_vec.push(FloppyImage {
-                            idx,
-                            name: path.file_name().unwrap().to_os_string(),
-                            path: path.clone(),
-                            size: path.metadata()?.len(),
-                        });
-
-                        self.image_map.insert(path.file_name().unwrap().to_os_string(), idx);
-                    }
-                }
+                self.process_path(&path)?;
+            }
+            // Skip 'is_file' check on web.
+            #[cfg(target_arch = "wasm32")]
+            {
+                self.process_path(&path)?;
             }
         }
         Ok(true)
     }
 
+    fn process_path(&mut self, path: &Path) -> Result<(), Error> {
+        if let Some(extension) = path.extension() {
+            if self.extensions.contains(&extension.to_ascii_lowercase()) {
+                log::debug!(
+                    "process_path(): Found floppy image: {:?} size: {}",
+                    path,
+                    path.metadata()?.len()
+                );
+
+                let idx = self.image_vec.len();
+                self.image_vec.push(FloppyImage {
+                    idx,
+                    name: path.file_name().unwrap().to_os_string(),
+                    path: path.to_path_buf(),
+                    size: path.metadata()?.len(),
+                });
+
+                self.image_map.insert(path.file_name().unwrap().to_os_string(), idx);
+            }
+        }
+        Ok(())
+    }
+
     pub fn scan_dir(&mut self, path: &Path) -> Result<bool, FloppyError> {
+        log::debug!("scan_dir(): Scanning directory: {:?}", path);
         // Read in directory entries within the provided path
         let dir = match fs::read_dir(path) {
             Ok(dir) => dir,
