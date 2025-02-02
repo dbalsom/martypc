@@ -53,7 +53,7 @@ pub enum CursorStatus {
     SlowBlink,
 }
 
-#[derive(Copy, Clone, Debug)]
+#[derive(Copy, Clone, Debug, PartialEq)]
 pub enum CrtcRegister {
     HorizontalTotal,
     HorizontalDisplayed,
@@ -161,7 +161,7 @@ pub struct Crtc6845 {
 }
 
 impl Crtc6845 {
-    pub(crate) fn new(trace_logger: TraceLogger) -> Self {
+    pub fn new(trace_logger: TraceLogger) -> Self {
         Self {
             reg: [0; 18],
             reg_select: HorizontalTotal,
@@ -227,7 +227,7 @@ impl Crtc6845 {
         }
     }
 
-    fn select_register(&mut self, idx: usize) {
+    pub fn select_register(&mut self, idx: usize) {
         if idx > REGISTER_MAX {
             return;
         }
@@ -255,7 +255,12 @@ impl Crtc6845 {
         //log::trace!("CRTC register selected: {:?}", self.reg_select);
     }
 
-    fn write_register(&mut self, byte: u8) {
+    pub fn write_register_direct(&mut self, reg: CrtcRegister, byte: u8) {
+        self.reg_select = reg;
+        self.write_register(byte);
+    }
+
+    pub fn write_register(&mut self, byte: u8) {
         //log::trace!("crtc write register: {:02X}", byte);
         match self.reg_select {
             HorizontalTotal => {
@@ -714,5 +719,149 @@ impl Crtc6845 {
         counter_vec.push(("vtac_c5:".to_string(), VideoCardStateEntry::String(format!("{}", self.vtac_c5))));
 
         counter_vec
+    }
+
+    pub fn debug_string(&self) -> String {
+        format!("hcc_c0: {} vcc_c4: {}", self.hcc_c0, self.vcc_c4)
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use std::io::Cursor;
+
+    #[test]
+    fn degenerate_2_by_2_den_test() {
+        let trace_logger = TraceLogger::None;
+        let mut crtc = Crtc6845::new(trace_logger);
+
+        crtc.write_register_direct(HorizontalTotal, 0x01);
+        crtc.write_register_direct(HorizontalDisplayed, 0x01);
+        crtc.write_register_direct(VerticalTotal, 0x01);
+        crtc.write_register_direct(VerticalDisplayed, 0x01);
+
+        for clock in 0..16 {
+            let (status, _) = crtc.tick(&mut || 0);
+            println!(
+                "Clock: {} den:{} {}",
+                clock,
+                if status.den { "1" } else { "0" },
+                crtc.debug_string()
+            );
+        }
+    }
+
+    #[test]
+    fn port_write_register_select() {
+        let trace_logger = TraceLogger::None;
+        let mut crtc = Crtc6845::new(trace_logger);
+        crtc.port_write(0, 4);
+        assert_eq!(crtc.reg_select, CrtcRegister::VerticalTotal);
+    }
+
+    #[test]
+    fn port_write_register_write() {
+        let trace_logger = TraceLogger::None;
+        let mut crtc = Crtc6845::new(trace_logger);
+        crtc.port_write(0, 4);
+        crtc.port_write(1, 0x7F);
+        assert_eq!(crtc.reg[4], 0x7F);
+    }
+
+    #[test]
+    fn port_read_address_register() {
+        let trace_logger = TraceLogger::None;
+        let mut crtc = Crtc6845::new(trace_logger);
+        assert_eq!(crtc.port_read(0), 0xFF);
+    }
+
+    #[test]
+    fn port_read_data_register() {
+        let trace_logger = TraceLogger::None;
+        let mut crtc = Crtc6845::new(trace_logger);
+        crtc.port_write(0, 14);
+        crtc.reg[14] = 0x3F;
+        assert_eq!(crtc.port_read(1), 0x3F);
+    }
+
+    #[test]
+    fn select_register_out_of_bounds() {
+        let trace_logger = TraceLogger::None;
+        let mut crtc = Crtc6845::new(trace_logger);
+        crtc.select_register(18);
+        assert_eq!(crtc.reg_select, CrtcRegister::HorizontalTotal);
+    }
+
+    #[test]
+    fn write_register_horizontal_total() {
+        let trace_logger = TraceLogger::None;
+        let mut crtc = Crtc6845::new(trace_logger);
+        crtc.select_register(0);
+        crtc.write_register(0xFF);
+        assert_eq!(crtc.reg[0], 0xFF);
+    }
+
+    #[test]
+    fn write_register_vertical_total() {
+        let trace_logger = TraceLogger::None;
+        let mut crtc = Crtc6845::new(trace_logger);
+        crtc.select_register(4);
+        crtc.write_register(0xFF);
+        assert_eq!(crtc.reg[4], 0x7F);
+    }
+
+    #[test]
+    fn read_register_unreadable() {
+        let trace_logger = TraceLogger::None;
+        let crtc = Crtc6845::new(trace_logger);
+        assert_eq!(crtc.read_register(), 0xFF);
+    }
+
+    #[test]
+    fn update_start_address() {
+        let trace_logger = TraceLogger::None;
+        let mut crtc = Crtc6845::new(trace_logger);
+        crtc.reg[12] = 0x12;
+        crtc.reg[13] = 0x34;
+        crtc.update_start_address();
+        assert_eq!(crtc.start_address, 0x1234);
+    }
+
+    #[test]
+    fn update_cursor_address() {
+        let trace_logger = TraceLogger::None;
+        let mut crtc = Crtc6845::new(trace_logger);
+        crtc.reg[14] = 0x12;
+        crtc.reg[15] = 0x34;
+        crtc.update_cursor_address();
+        assert_eq!(crtc.cursor_address, 0x1234);
+    }
+
+    #[test]
+    fn update_cursor_data_normal() {
+        let trace_logger = TraceLogger::None;
+        let mut crtc = Crtc6845::new(trace_logger);
+        crtc.reg[10] = 2;
+        crtc.reg[11] = 5;
+        crtc.reg[9] = 7;
+        crtc.update_cursor_data();
+        assert!(crtc.cursor_data[2]);
+        assert!(crtc.cursor_data[5]);
+        assert!(!crtc.cursor_data[6]);
+    }
+
+    #[test]
+    fn update_cursor_data_split() {
+        let trace_logger = TraceLogger::None;
+        let mut crtc = Crtc6845::new(trace_logger);
+        crtc.reg[10] = 5;
+        crtc.reg[11] = 2;
+        crtc.reg[9] = 7;
+        crtc.update_cursor_data();
+        assert!(crtc.cursor_data[0]);
+        assert!(crtc.cursor_data[2]);
+        assert!(crtc.cursor_data[5]);
+        assert!(crtc.cursor_data[7]);
     }
 }
