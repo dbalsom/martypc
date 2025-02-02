@@ -159,7 +159,7 @@ impl Intel808x {
 
         // "Time(s),addr,clk,ready,qs,s,clk0,intr,dr0,vs,hs"
         // sigrok import string:
-        // t,x20,l,l,x2,x3,l,l,l,l,l,l
+        // t,x20,l,l,x2,x3,l,l,l,l,l,l,l,l
         self.trace_emit(&format!(
             "{},{:05X},1,{},{},{},{},{},{},{},{},{},{},{}",
             self.t_stamp,
