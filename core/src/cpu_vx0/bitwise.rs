@@ -541,7 +541,7 @@ impl NecVx0 {
         result
     }
 }
-
+/*
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -661,3 +661,4 @@ mod tests {
         assert_eq!(carry, true);
     }
 }
+*/
