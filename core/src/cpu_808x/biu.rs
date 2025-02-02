@@ -308,7 +308,11 @@ impl Intel808x {
     pub fn biu_fetch_halt(&mut self) {
         self.trace_comment("HALT_FETCH");
 
-        match self.t_cycle {
+        // TODO: Attempt to fix this logic.  As written it would cause prefetching to continue
+        //       after halt until the queue was full, which is clearly not correct.
+        self.fetch_state = FetchState::Halted;
+
+        /*        match self.t_cycle {
             TCycle::T1 | TCycle::T2 => {
                 // We have time to prevent a prefetch decision.
                 self.fetch_state = FetchState::Halted;
@@ -316,7 +320,7 @@ impl Intel808x {
             _ => {
                 // We halted too late - a prefetch will be attempted.
             }
-        }
+        }*/
     }
 
     /// Implement the FLUSH microcode subroutine to flush the instruction queue. This will trigger
@@ -366,6 +370,7 @@ impl Intel808x {
         }
         else if self.bus_pending != BusPendingType::EuEarly
             && self.fetch_state != FetchState::Suspended
+            && self.fetch_state != FetchState::Halted
             && !(self.queue.at_policy_len() && self.bus_status_latch == BusStatus::CodeFetch)
         {
             // EU has not claimed the bus this m-cycle, and we are not at a queue policy length

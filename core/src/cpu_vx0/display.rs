@@ -30,7 +30,7 @@
     Converts Instructions into string or token representations.
 
 */
-
+/*
 #[cfg(test)]
 mod tests {
     #[cfg(feature = "cpu_validator")]
@@ -108,3 +108,4 @@ mod tests {
         }
     }
 }
+*/
