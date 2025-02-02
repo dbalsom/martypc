@@ -39,7 +39,6 @@
     }
 */
 use serde::Deserialize;
-use std::str::FromStr;
 use strum_macros::{EnumIter, EnumString};
 
 #[derive(Copy, Clone, Debug, EnumIter, EnumString, Deserialize, PartialEq, Eq, Hash)]
