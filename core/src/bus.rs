@@ -91,7 +91,7 @@ use crate::machine_types::SoundType;
 use crate::sound::{SoundOutputConfig, SoundSourceDescriptor};
 
 use crate::{
-    cpu_common::CpuType,
+    cpu_common::{CpuType, LogicAnalyzer},
     device_traits::videocard::VideoCardSubType,
     devices::{
         a0::A0Register,
@@ -2199,6 +2199,7 @@ impl BusInterface {
         sys_ticks: u32,
         kb_event_opt: Option<KeybufferEntry>,
         kb_buf: &mut VecDeque<KeybufferEntry>,
+        logic_analyzer: Option<&mut LogicAnalyzer>,
     ) -> Option<DeviceEvent> {
         let mut event = None;
 

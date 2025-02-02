@@ -34,6 +34,7 @@
 
 pub mod addressing;
 pub mod alu;
+pub mod analyzer;
 pub mod builder;
 pub mod error;
 pub mod instruction;
@@ -46,11 +47,16 @@ use serde::Deserialize;
 use std::str::FromStr;
 
 pub use addressing::{AddressingMode, CpuAddress, Displacement};
+pub use analyzer::{AnalyzerEntry, LogicAnalyzer};
 pub use error::CpuError;
 pub use instruction::Instruction;
 pub use mnemonic::Mnemonic;
 pub use operands::OperandType;
 
+#[cfg(feature = "cpu_validator")]
+use crate::cpu_validator::CpuValidator;
+#[cfg(feature = "cpu_validator")]
+use crate::cpu_validator::CycleState;
 use crate::{
     breakpoints::{BreakPointType, StopWatchData},
     bus::BusInterface,
@@ -59,11 +65,6 @@ use crate::{
     cpu_vx0::NecVx0,
     syntax_token::{SyntaxToken, SyntaxTokenize},
 };
-
-#[cfg(feature = "cpu_validator")]
-use crate::cpu_validator::CpuValidator;
-#[cfg(feature = "cpu_validator")]
-use crate::cpu_validator::CycleState;
 
 // Instruction prefixes
 pub const OPCODE_PREFIX_0F: u32 = 0b_1000_0000_0000_0000;
@@ -459,4 +460,8 @@ pub trait Cpu {
     fn randomize_regs(&mut self);
     fn random_grp_instruction(&mut self, opcode: u8, extension_list: &[u8]);
     fn random_inst_from_opcodes(&mut self, opcode_list: &[u8], prefix: Option<u8>);
+
+    // Logic Analyzer
+    fn logic_analyzer(&mut self) -> Option<&mut LogicAnalyzer>;
+    fn bus_and_analyzer_mut(&mut self) -> (&mut BusInterface, Option<&mut LogicAnalyzer>);
 }

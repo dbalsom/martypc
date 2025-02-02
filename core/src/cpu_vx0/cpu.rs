@@ -41,6 +41,7 @@ use crate::{
         CpuStringState,
         CpuType,
         Disassembly,
+        LogicAnalyzer,
         QueueOp,
         Register8,
         ServiceEvent,
@@ -537,5 +538,12 @@ impl Cpu for NecVx0 {
 
     fn random_inst_from_opcodes(&mut self, opcode_list: &[u8], prefix: Option<u8>) {
         self.random_inst_from_opcodes(opcode_list, prefix);
+    }
+
+    fn logic_analyzer(&mut self) -> Option<&mut LogicAnalyzer> {
+        None
+    }
+    fn bus_and_analyzer_mut(&mut self) -> (&mut BusInterface, Option<&mut LogicAnalyzer>) {
+        (&mut self.bus, None)
     }
 }

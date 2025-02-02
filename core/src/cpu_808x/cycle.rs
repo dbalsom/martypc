@@ -389,8 +389,6 @@ impl Intel808x {
             self.ready = true;
         }
 
-        // Advance timestamp 210ns.
-        self.t_stamp += self.t_step;
         self.last_queue_len = self.queue.len();
     }
 

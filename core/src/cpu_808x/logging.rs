@@ -49,7 +49,7 @@ use crate::{
         CPU_FLAG_TRAP,
         CPU_FLAG_ZERO,
     },
-    cpu_common::{QueueOp, Segment, TraceMode},
+    cpu_common::{AnalyzerEntry, QueueOp, Segment, TraceMode},
     syntax_token::SyntaxToken,
 };
 
@@ -93,7 +93,7 @@ impl Intel808x {
                 self.trace_instr = MC_NONE;
             }
             TraceMode::CycleSigrok => {
-                self.trace_csv_line();
+                self.push_analyzer_entry();
             }
             _ => {}
         }
@@ -125,8 +125,31 @@ impl Intel808x {
 
     pub fn emit_header(&mut self) {
         match self.trace_mode {
-            TraceMode::CycleSigrok => self.trace_print("Time(s),addr,clk,ready,qs,s,clk0,intr,dr0,holda,vs,hs,den,brd"),
+            TraceMode::CycleSigrok => self.trace_print(AnalyzerEntry::emit_header()),
             _ => {}
+        }
+    }
+
+    pub fn push_analyzer_entry(&mut self) {
+        self.analyzer.push(AnalyzerEntry {
+            timestamp: self.cycle_num as f64 * self.t_step,
+            address_bus: self.address_bus,
+            pclk: 1,
+            ready: self.ready as u8,
+            q_op: self.last_queue_op as u8,
+            bus_status: self.bus_status as u8,
+            dma_req: self.dma_req as u8,
+            dma_holda: self.dma_holda as u8,
+            intr: self.intr as u8,
+            // The rest of the fields must be filled out by devices
+            ..Default::default()
+        });
+    }
+
+    pub fn emit_analyzer_entries(&mut self) {
+        for entry in &self.analyzer.entries {
+            entry.emit_edge(1);
+            entry.emit_edge(0);
         }
     }
 
@@ -156,6 +179,9 @@ impl Intel808x {
             };
             self.address_bus = (self.address_bus & 0b1100_1111_1111_1111_1111) | (seg_n << 16);
         }
+
+        // Calculate timestamp
+        self.t_stamp = self.cycle_num as f64 * self.t_step;
 
         // "Time(s),addr,clk,ready,qs,s,clk0,intr,dr0,vs,hs"
         // sigrok import string:

@@ -30,6 +30,7 @@
 
 */
 use crate::{
+    bus::ClockFactor,
     cpu_808x::Intel808x,
     cpu_common::{CpuDispatch, CpuSubType, CpuType, TraceMode},
     cpu_vx0::NecVx0,
@@ -41,6 +42,7 @@ use anyhow::{bail, Result};
 pub struct CpuBuilder {
     cpu_type: Option<CpuType>,
     cpu_subtype: Option<CpuSubType>,
+    clock_factor: Option<ClockFactor>,
     trace_mode: TraceMode,
     trace_logger: Option<TraceLogger>,
     #[cfg(feature = "cpu_validator")]
@@ -67,6 +69,7 @@ impl CpuBuilder {
                     let cpu = Intel808x::new(
                         CpuType::Intel8088,
                         CpuSubType::Intel8088,
+                        self.clock_factor,
                         self.trace_mode,
                         self.trace_logger.take().unwrap_or_default(),
                         #[cfg(feature = "cpu_validator")]
@@ -108,6 +111,11 @@ impl CpuBuilder {
 
     pub fn with_cpu_type(mut self, cpu_type: CpuType) -> Self {
         self.cpu_type = Some(cpu_type);
+        self
+    }
+
+    pub fn with_clock_factor(mut self, clock_factor: ClockFactor) -> Self {
+        self.clock_factor = Some(clock_factor);
         self
     }
 

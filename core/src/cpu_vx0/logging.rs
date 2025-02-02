@@ -154,6 +154,9 @@ impl NecVx0 {
             self.address_bus = (self.address_bus & 0b1100_1111_1111_1111_1111) | (seg_n << 16);
         }
 
+        // Calculate timestamp
+        self.t_stamp = self.cycle_num as f64 * self.t_step;
+
         // "Time(s),addr,clk,ready,qs,s,clk0,intr,dr0,vs,hs"
         // sigrok import string:
         // t,x20,l,l,x2,x3,l,l,l,l,l,l

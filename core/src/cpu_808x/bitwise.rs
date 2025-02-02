@@ -455,8 +455,9 @@ impl Intel808x {
 
 #[cfg(test)]
 mod tests {
-    use super::*;
     /*
+    use super::*;
+
     #[test]
     fn test_shr() {
         let (result, carry) = Cpu::shr_u8_with_carry(0x80, 7);

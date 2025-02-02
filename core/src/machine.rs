@@ -1574,11 +1574,13 @@ impl Machine {
         // Run devices.
         // We send the IO bus the elapsed time in us, and a mutable reference to the PIT channel #2 ring buffer
         // so that we can collect output from the timer.
-        let device_event = self.cpu.bus_mut().run_devices(
+        let (bus, analyzer) = self.cpu.bus_and_analyzer_mut();
+        let device_event = bus.run_devices(
             us,
             sys_ticks,
             kb_event_opt,
             &mut self.kb_buf,
+            analyzer,
         );
 
         if let Some(event) = device_event {

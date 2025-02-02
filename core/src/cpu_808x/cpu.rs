@@ -40,7 +40,7 @@ use crate::{
 
 #[cfg(feature = "cpu_validator")]
 use crate::cpu_808x::CpuValidatorState;
-use crate::cpu_common::{Disassembly, Register8};
+use crate::cpu_common::{Disassembly, LogicAnalyzer, Register8, TraceMode};
 #[cfg(feature = "cpu_validator")]
 use crate::cpu_validator::CpuValidator;
 #[cfg(feature = "cpu_validator")]
@@ -373,5 +373,18 @@ impl Cpu for Intel808x {
 
     fn random_inst_from_opcodes(&mut self, opcode_list: &[u8], _prefix: Option<u8>) {
         self.random_inst_from_opcodes(opcode_list);
+    }
+
+    fn logic_analyzer(&mut self) -> Option<&mut LogicAnalyzer> {
+        Some(&mut self.analyzer)
+    }
+
+    fn bus_and_analyzer_mut(&mut self) -> (&mut BusInterface, Option<&mut LogicAnalyzer>) {
+        if self.trace_enabled && matches!(self.trace_mode, TraceMode::CycleSigrok) {
+            (&mut self.bus, Some(&mut self.analyzer))
+        }
+        else {
+            (&mut self.bus, None)
+        }
     }
 }

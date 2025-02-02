@@ -39,6 +39,7 @@ use crate::cpu_common::{
     CpuStringState,
     CpuSubType,
     ExecutionResult,
+    LogicAnalyzer,
     Mnemonic,
     QueueOp,
     Segment,
@@ -128,7 +129,10 @@ macro_rules! gdr {
     };
 }
 
-use crate::cpu_common::{operands::OperandSize, services::CPUDebugServices, Register16, Register8};
+use crate::{
+    bus::ClockFactor,
+    cpu_common::{operands::OperandSize, services::CPUDebugServices, Register16, Register8},
+};
 use trace_print;
 
 const QUEUE_MAX: usize = 6;
@@ -661,6 +665,8 @@ pub struct Intel808x {
     halt_resume_delay: u32,
     int_flags: Vec<u8>,
     io_flags: Vec<u8>,
+
+    analyzer: LogicAnalyzer,
 }
 
 #[cfg(feature = "cpu_validator")]
@@ -805,6 +811,7 @@ impl Intel808x {
     pub fn new(
         cpu_type: CpuType,
         cpu_subtype: CpuSubType,
+        clock_factor: Option<ClockFactor>,
         trace_mode: TraceMode,
         trace_logger: TraceLogger,
         #[cfg(feature = "cpu_validator")] validator_type: ValidatorType,
@@ -864,6 +871,10 @@ impl Intel808x {
 
         cpu.int_flags = vec![0; 256];
         cpu.io_flags = vec![0; 0x10000];
+
+        if let Some(clock_factor) = clock_factor {
+            cpu.analyzer.set_factor(clock_factor);
+        }
 
         cpu.reset();
         cpu
@@ -990,6 +1001,8 @@ impl Intel808x {
         self.rni = false;
 
         self.halt_resume_delay = 4;
+
+        self.analyzer.clear();
 
         trace_print!(self, "Resetting CPU!");
 
