@@ -1,5 +1,6 @@
 [package]
 name = "martypc_desktop_wgpu"
+description = "A frontend for the MartyPC emulator, using winit, wgpu and egui"
 version.workspace = true
 edition.workspace = true
 license.workspace = true
@@ -71,6 +72,9 @@ wgpu = { version = "0.16", features = ["webgl"] }
 criterion = "0.5.1"
 
 [features]
+default = ["sound", "use_serialport"]
+sound = ["marty_core/sound"]
+use_serialport = ["marty_core/serialport"]
 devtools = []
 cpu_validator = []
 arduino_validator = []

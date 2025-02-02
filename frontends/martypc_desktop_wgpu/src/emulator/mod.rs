@@ -412,7 +412,7 @@ impl Emulator {
         self.gui.set_floppy_drives(drive_types);
 
         // Set default floppy path. This is used to set the default path for Save As dialogs.
-        self.gui.set_paths(self.rm.get_resource_path("floppy").unwrap());
+        self.gui.set_paths(self.rm.resource_path("floppy").unwrap());
 
         // Set hard drives.
         self.gui.set_hdds(self.machine.bus().hdd_ct());

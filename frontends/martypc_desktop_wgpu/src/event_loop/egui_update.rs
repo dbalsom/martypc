@@ -145,7 +145,7 @@ pub fn update_egui(emu: &mut Emulator, tm: &TimestepManager, elwt: &EventLoopWin
 
     // Update data visualizer
     if emu.gui.is_window_open(GuiWindow::DataVisualizer) {
-        let path_opt = emu.rm.get_resource_path("dump");
+        let path_opt = emu.rm.resource_path("dump");
         if let Some(path) = path_opt {
             emu.gui.data_visualizer.set_dump_path(path);
         }

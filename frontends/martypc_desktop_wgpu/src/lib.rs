@@ -687,7 +687,7 @@ pub fn run() {
 
     let machine_config = machine_config_file.to_machine_config();
 
-    let trace_file_base = resource_manager.get_resource_path("trace").unwrap_or_else(|| {
+    let trace_file_base = resource_manager.resource_path("trace").unwrap_or_else(|| {
         eprintln!("Failed to retrieve 'trace' resource path.");
         std::process::exit(1);
     });
@@ -711,7 +711,7 @@ pub fn run() {
         }
     }
 
-    if let Some(mut kb_layout_resource_path) = resource_manager.get_resource_path("keyboard_layout") {
+    if let Some(mut kb_layout_resource_path) = resource_manager.resource_path("keyboard_layout") {
         kb_layout_resource_path.push(format!("keyboard_{}.toml", kb_string));
         kb_layout_file_path = Some(kb_layout_resource_path);
     }
