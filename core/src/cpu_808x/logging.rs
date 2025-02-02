@@ -131,25 +131,30 @@ impl Intel808x {
     }
 
     pub fn push_analyzer_entry(&mut self) {
+        if self.analyzer.need_flush() {
+            log::debug!("Emitting {} analyzer entries", self.analyzer.entries.len());
+            self.emit_analyzer_entries();
+            //self.analyzer.flush();
+        }
+
         self.analyzer.push(AnalyzerEntry {
-            timestamp: self.cycle_num as f64 * self.t_step,
+            cycle: self.cycle_num,
             address_bus: self.address_bus,
-            pclk: 1,
-            ready: self.ready as u8,
+            ready: self.ready,
             q_op: self.last_queue_op as u8,
             bus_status: self.bus_status as u8,
-            dma_req: self.dma_req as u8,
-            dma_holda: self.dma_holda as u8,
-            intr: self.intr as u8,
+            dma_req: self.dma_req,
+            dma_holda: self.dma_holda,
+            intr: self.intr,
             // The rest of the fields must be filled out by devices
             ..Default::default()
         });
     }
 
     pub fn emit_analyzer_entries(&mut self) {
-        for entry in &self.analyzer.entries {
-            entry.emit_edge(1);
-            entry.emit_edge(0);
+        while let Some(entry) = self.analyzer.pop_complete() {
+            self.trace_emit(&entry.emit_edge(1, self.t_step));
+            self.trace_emit(&entry.emit_edge(0, self.t_step));
         }
     }
 

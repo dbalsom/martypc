@@ -651,7 +651,7 @@ impl Machine {
             .install_devices(&machine_desc, &machine_config, core_config.get_terminal_port());
 
         #[cfg(feature = "sound")]
-        let mut sound_sources;
+        let sound_sources;
         match install_result {
             Ok(result) => {
                 #[cfg(feature = "sound")]

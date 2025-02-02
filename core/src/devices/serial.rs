@@ -45,10 +45,10 @@ use web_time::Duration;
 
 use crate::{
     bus::{BusInterface, DeviceRunTimeUnit, IoDevice},
+    cpu_common::LogicAnalyzer,
     devices::pic,
     syntax_token::SyntaxToken,
 };
-
 /*  1.8Mhz Oscillator.
     Divided by 16, then again by programmable Divisor to select baud rate.
     The 8250 has a maximum baud of 9600.
@@ -152,7 +152,14 @@ impl IoDevice for SerialPortController {
         }
     }
 
-    fn write_u8(&mut self, port: u16, byte: u8, _bus: Option<&mut BusInterface>, _delta: DeviceRunTimeUnit) {
+    fn write_u8(
+        &mut self,
+        port: u16,
+        byte: u8,
+        _bus: Option<&mut BusInterface>,
+        _delta: DeviceRunTimeUnit,
+        _analyzer: Option<&mut LogicAnalyzer>,
+    ) {
         match port {
             SERIAL1_RX_TX_BUFFER => self.port[0].tx_buffer_write(byte),
             SERIAL2_RX_TX_BUFFER => self.port[1].tx_buffer_write(byte),

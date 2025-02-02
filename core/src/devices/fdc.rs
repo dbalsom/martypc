@@ -33,6 +33,7 @@
 
 use crate::{
     bus::{BusInterface, DeviceRunTimeUnit, IoDevice},
+    cpu_common::LogicAnalyzer,
     device_types::fdc::FloppyImageType,
     devices::{
         dma,
@@ -324,7 +325,14 @@ impl IoDevice for FloppyController {
         }
     }
 
-    fn write_u8(&mut self, port: u16, data: u8, _bus: Option<&mut BusInterface>, _delta: DeviceRunTimeUnit) {
+    fn write_u8(
+        &mut self,
+        port: u16,
+        data: u8,
+        _bus: Option<&mut BusInterface>,
+        _delta: DeviceRunTimeUnit,
+        _analyzer: Option<&mut LogicAnalyzer>,
+    ) {
         let base = match self.fdc_type {
             FdcType::IbmNec => PCXT_IO_BASE,
             FdcType::IbmPCJrNec => PCJR_IO_BASE,

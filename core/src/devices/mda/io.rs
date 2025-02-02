@@ -31,7 +31,10 @@
 */
 
 use super::*;
-use crate::bus::{IoDevice, NO_IO_BYTE};
+use crate::{
+    bus::{IoDevice, NO_IO_BYTE},
+    cpu_common::LogicAnalyzer,
+};
 
 pub const LPT_DEFAULT_IO_BASE: u16 = 0x3BC;
 pub const LPT_PORT_MASK: u16 = !0x003;
@@ -92,7 +95,14 @@ impl IoDevice for MDACard {
         }
     }
 
-    fn write_u8(&mut self, port: u16, data: u8, _bus: Option<&mut BusInterface>, _delta: DeviceRunTimeUnit) {
+    fn write_u8(
+        &mut self,
+        port: u16,
+        data: u8,
+        _bus: Option<&mut BusInterface>,
+        _delta: DeviceRunTimeUnit,
+        _analyzer: Option<&mut LogicAnalyzer>,
+    ) {
         let _debug_port = (if port == 0x3D5 { true } else { false }) && self.debug;
 
         // Catch up to CPU state.

@@ -39,6 +39,7 @@ use std::{cell::Cell, collections::BTreeMap};
 
 use crate::{
     bus::{BusInterface, DeviceRunTimeUnit, IoDevice, NO_IO_BYTE},
+    cpu_common::LogicAnalyzer,
     device_traits::videocard::VideoType,
     devices::pic,
     machine_types::MachineType,
@@ -596,7 +597,14 @@ impl IoDevice for Ppi {
         }
     }
 
-    fn write_u8(&mut self, port: u16, byte: u8, _bus: Option<&mut BusInterface>, _delta: DeviceRunTimeUnit) {
+    fn write_u8(
+        &mut self,
+        port: u16,
+        byte: u8,
+        _bus: Option<&mut BusInterface>,
+        _delta: DeviceRunTimeUnit,
+        _analyzer: Option<&mut LogicAnalyzer>,
+    ) {
         match port {
             PPI_PORT_A => {
                 self.handle_porta_write(byte);

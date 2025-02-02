@@ -45,7 +45,10 @@
 
 */
 
-use crate::bus::{BusInterface, DeviceRunTimeUnit, IoDevice, NO_IO_BYTE};
+use crate::{
+    bus::{BusInterface, DeviceRunTimeUnit, IoDevice, NO_IO_BYTE},
+    cpu_common::LogicAnalyzer,
+};
 
 pub const GAMEPORT_DEFAULT_PORT: u16 = 0x201;
 pub const GAMEPORT_DEFAULT_MASK: u16 = 0xFFFF;
@@ -245,7 +248,14 @@ impl IoDevice for GamePort {
         }
     }
 
-    fn write_u8(&mut self, _port: u16, _data: u8, _bus: Option<&mut BusInterface>, _delta: DeviceRunTimeUnit) {
+    fn write_u8(
+        &mut self,
+        _port: u16,
+        _data: u8,
+        _bus: Option<&mut BusInterface>,
+        _delta: DeviceRunTimeUnit,
+        _analyzer: Option<&mut LogicAnalyzer>,
+    ) {
         // Writing to the game port resets the one-shot counters.
         self.reset_oneshots();
     }

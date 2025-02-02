@@ -41,7 +41,7 @@ use crate::{
     devices::dma,
 };
 //use crate::fdc::Operation;
-use crate::{bus::IoDevice, device_types::hdc::HardDiskFormat, vhd::VirtualHardDisk};
+use crate::{bus::IoDevice, cpu_common::LogicAnalyzer, device_types::hdc::HardDiskFormat, vhd::VirtualHardDisk};
 
 // Public consts
 pub const HDC_IRQ: u8 = 0x05;
@@ -165,7 +165,14 @@ impl IoDevice for HardDiskController {
         }
     }
 
-    fn write_u8(&mut self, port: u16, data: u8, bus: Option<&mut BusInterface>, _delta: DeviceRunTimeUnit) {
+    fn write_u8(
+        &mut self,
+        port: u16,
+        data: u8,
+        bus: Option<&mut BusInterface>,
+        _delta: DeviceRunTimeUnit,
+        _analyzer: Option<&mut LogicAnalyzer>,
+    ) {
         match port {
             HDC_DATA_REGISTER => {
                 // Bus will always call us with Bus defined, so safe to unwrap

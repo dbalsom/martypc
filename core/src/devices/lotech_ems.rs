@@ -31,7 +31,10 @@
 
 */
 
-use crate::bus::{BusInterface, DeviceRunTimeUnit, IoDevice, MemRangeDescriptor, MemoryMappedDevice, NO_IO_BYTE};
+use crate::{
+    bus::{BusInterface, DeviceRunTimeUnit, IoDevice, MemRangeDescriptor, MemoryMappedDevice, NO_IO_BYTE},
+    cpu_common::LogicAnalyzer,
+};
 
 pub const LOTECH_DEFAULT_IO_BASE: u16 = 0x260;
 pub const LOTECH_IO_MASK: u16 = !0x03;
@@ -96,7 +99,14 @@ impl IoDevice for LotechEmsCard {
         }
     }
 
-    fn write_u8(&mut self, port: u16, data: u8, _bus: Option<&mut BusInterface>, _delta: DeviceRunTimeUnit) {
+    fn write_u8(
+        &mut self,
+        port: u16,
+        data: u8,
+        _bus: Option<&mut BusInterface>,
+        _delta: DeviceRunTimeUnit,
+        _analyzer: Option<&mut LogicAnalyzer>,
+    ) {
         if (port & LOTECH_IO_MASK) == self.port_base {
             // Read is from LPT port.
             let port_num = port & 0x03;

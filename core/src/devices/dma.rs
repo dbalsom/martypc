@@ -30,7 +30,10 @@
 
 */
 
-use crate::bus::{BusInterface, DeviceRunTimeUnit, IoDevice};
+use crate::{
+    bus::{BusInterface, DeviceRunTimeUnit, IoDevice},
+    cpu_common::LogicAnalyzer,
+};
 
 pub const DMA_CHANNEL_0_ADDR_PORT: u16 = 0x00; // R/W
 pub const DMA_CHANNEL_0_WC_PORT: u16 = 0x01; // R/W
@@ -202,7 +205,14 @@ impl IoDevice for DMAController {
         }
     }
 
-    fn write_u8(&mut self, port: u16, data: u8, _bus: Option<&mut BusInterface>, _delta: DeviceRunTimeUnit) {
+    fn write_u8(
+        &mut self,
+        port: u16,
+        data: u8,
+        _bus: Option<&mut BusInterface>,
+        _delta: DeviceRunTimeUnit,
+        _analyzer: Option<&mut LogicAnalyzer>,
+    ) {
         match port {
             DMA_CHANNEL_0_ADDR_PORT => {
                 self.handle_addr_port_write(0, data);

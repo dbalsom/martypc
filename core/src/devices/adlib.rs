@@ -35,6 +35,7 @@ pub const SAMPLE_BUF_LEN: usize = 800;
 
 use crate::{
     bus::{BusInterface, DeviceRunTimeUnit, IoDevice},
+    cpu_common::LogicAnalyzer,
     device_traits::sounddevice::{AudioSample, SoundDevice},
 };
 use crossbeam_channel::Sender;
@@ -100,7 +101,14 @@ impl IoDevice for AdLibCard {
         }
     }
 
-    fn write_u8(&mut self, port: u16, data: u8, _bus: Option<&mut BusInterface>, _delta: DeviceRunTimeUnit) {
+    fn write_u8(
+        &mut self,
+        port: u16,
+        data: u8,
+        _bus: Option<&mut BusInterface>,
+        _delta: DeviceRunTimeUnit,
+        _analyzer: Option<&mut LogicAnalyzer>,
+    ) {
         match port - self.io_base {
             0 => {
                 //log::debug!("Write to Adlib address port {:02X}", data);

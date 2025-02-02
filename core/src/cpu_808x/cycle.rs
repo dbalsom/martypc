@@ -576,6 +576,7 @@ impl Intel808x {
                     (self.address_latch & 0xFFFF) as u16,
                     (self.data_bus & 0x00FF) as u8,
                     self.instr_elapsed,
+                    Some(&mut self.analyzer),
                 );
                 self.instr_elapsed = 0;
 

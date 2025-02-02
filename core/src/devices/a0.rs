@@ -40,6 +40,7 @@ pub enum A0Type {
 
 use crate::{
     bus::{BusInterface, DeviceRunTimeUnit, IoDevice},
+    cpu_common::LogicAnalyzer,
     devices::pit::Pit,
 };
 
@@ -74,7 +75,14 @@ impl IoDevice for A0Register {
         }
     }
 
-    fn write_u8(&mut self, _port: u16, data: u8, _bus_opt: Option<&mut BusInterface>, _delta: DeviceRunTimeUnit) {
+    fn write_u8(
+        &mut self,
+        _port: u16,
+        data: u8,
+        _bus_opt: Option<&mut BusInterface>,
+        _delta: DeviceRunTimeUnit,
+        _analyzer: Option<&mut LogicAnalyzer>,
+    ) {
         self.a0_byte = data;
         log::debug!("A0 NMI Control Register Write: {:08b}", data);
         match self.a0type {

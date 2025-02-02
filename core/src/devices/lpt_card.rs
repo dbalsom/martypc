@@ -32,7 +32,8 @@
 
 use crate::{
     bus::{BusInterface, DeviceRunTimeUnit, IoDevice, NO_IO_BYTE},
-    devices::{lpt_port::ParallelPort},
+    cpu_common::LogicAnalyzer,
+    devices::lpt_port::ParallelPort,
 };
 
 pub const LPT_DEFAULT_IO_BASE: u16 = 0x3BC;
@@ -75,7 +76,14 @@ impl IoDevice for ParallelController {
         }
     }
 
-    fn write_u8(&mut self, port: u16, data: u8, _bus: Option<&mut BusInterface>, _delta: DeviceRunTimeUnit) {
+    fn write_u8(
+        &mut self,
+        port: u16,
+        data: u8,
+        _bus: Option<&mut BusInterface>,
+        _delta: DeviceRunTimeUnit,
+        _analyzer: Option<&mut LogicAnalyzer>,
+    ) {
         if (port & LPT_PORT_MASK) == self.lpt_port_base {
             // Read is from LPT port.
             self.lpt.port_write(port, data);

@@ -39,6 +39,7 @@ use modular_bitfield::prelude::*;
 
 use crate::{
     bus::{BusInterface, DeviceRunTimeUnit, IoDevice},
+    cpu_common::LogicAnalyzer,
     syntax_token::*,
     updatable::*,
 };
@@ -165,6 +166,7 @@ pub enum ReadState {
 
 pub struct Channel {
     c: usize,
+    clocks: u64,
     ptype: PitType,
     mode: Updatable<ChannelMode>,
     rw_mode: Updatable<RwMode>,
@@ -253,11 +255,18 @@ impl IoDevice for ProgrammableIntervalTimer {
         }
     }
 
-    fn write_u8(&mut self, port: u16, data: u8, bus_opt: Option<&mut BusInterface>, delta: DeviceRunTimeUnit) {
+    fn write_u8(
+        &mut self,
+        port: u16,
+        data: u8,
+        bus_opt: Option<&mut BusInterface>,
+        delta: DeviceRunTimeUnit,
+        analyzer: Option<&mut LogicAnalyzer>,
+    ) {
         let bus = bus_opt.unwrap();
 
         // Catch up to CPU state.
-        self.catch_up(bus, delta);
+        self.catch_up(bus, delta, analyzer);
 
         // PIT will always receive a reference to bus, so it is safe to unwrap.
         match port {
@@ -283,6 +292,7 @@ impl Default for Channel {
     fn default() -> Self {
         Channel {
             c: 0,
+            clocks: 0,
             ptype: PitType::Model8253,
             mode: Updatable::Dirty(ChannelMode::InterruptOnTerminalCount, false),
             rw_mode: Updatable::Dirty(RwMode::Lsb, false),
@@ -696,6 +706,8 @@ impl Channel {
     }
 
     pub fn tick(&mut self, bus: &mut BusInterface, _buffer_producer: Option<&mut ringbuf::Producer<u8>>) {
+        self.clocks += 1;
+
         if self.channel_state == ChannelState::DeferLoadCycle {
             // We were too late to load the counter this tick. We'll load it next tick.
             self.change_channel_state(ChannelState::WaitingForLoadCycle);
@@ -924,9 +936,9 @@ impl ProgrammableIntervalTimer {
         }
     }
 
-    fn catch_up(&mut self, bus: &mut BusInterface, delta: DeviceRunTimeUnit) {
+    fn catch_up(&mut self, bus: &mut BusInterface, delta: DeviceRunTimeUnit, mut analyzer: Option<&mut LogicAnalyzer>) {
         // Catch PIT up to CPU.
-        let ticks = self.ticks_from_time(delta, self.timewarp);
+        let (ticks, warp) = self.ticks_from_time(delta, self.timewarp);
 
         //log::debug!("ticking PIT {} times on IO write. delta: {:?} timewarp: {:?}", ticks, delta, self.timewarp);
 
@@ -936,8 +948,8 @@ impl ProgrammableIntervalTimer {
         self.defer_reload_flag = false;
 
         // Tick the PIT for the number of timer clocks that have elapsed.
-        for _ in 0..ticks {
-            self.tick(bus, None);
+        for tick in 0..ticks {
+            self.tick(bus, tick + warp, analyzer.as_deref_mut());
         }
         // Any remaining ticks in the accumulator represent the number of system ticks that have
         // elapsed up until T3 of the write that fast-forwarded the PIT
@@ -1016,7 +1028,7 @@ impl ProgrammableIntervalTimer {
         DeviceRunTimeUnit::SystemTicks(ticks * self.clock_divisor)
     }
 
-    pub fn ticks_from_time(&mut self, run_unit: DeviceRunTimeUnit, advance: DeviceRunTimeUnit) -> u32 {
+    pub fn ticks_from_time(&mut self, run_unit: DeviceRunTimeUnit, advance: DeviceRunTimeUnit) -> (u32, u32) {
         let mut do_ticks = 0;
         match (run_unit, advance) {
             (DeviceRunTimeUnit::Microseconds(us), DeviceRunTimeUnit::Microseconds(_warp_us)) => {
@@ -1031,7 +1043,7 @@ impl ProgrammableIntervalTimer {
                     self.cycle_accumulator -= 1.0;
                     do_ticks += 1;
                 }
-                do_ticks
+                (do_ticks, 0)
             }
             (DeviceRunTimeUnit::SystemTicks(ticks), DeviceRunTimeUnit::SystemTicks(warp_ticks)) => {
                 // Add up system ticks, then tick the PIT if we have enough ticks for
@@ -1046,7 +1058,7 @@ impl ProgrammableIntervalTimer {
                     self.sys_tick_accumulator -= self.clock_divisor;
                     do_ticks += 1;
                 }
-                do_ticks
+                (do_ticks, warp_ticks)
             }
             _ => {
                 panic!("Invalid TimeUnit combination");
@@ -1091,8 +1103,13 @@ impl ProgrammableIntervalTimer {
         }
     }*/
 
-    pub fn run(&mut self, bus: &mut BusInterface, run_unit: DeviceRunTimeUnit) {
-        let do_ticks = self.ticks_from_time(run_unit, self.timewarp);
+    pub fn run(
+        &mut self,
+        bus: &mut BusInterface,
+        run_unit: DeviceRunTimeUnit,
+        mut analyzer: Option<&mut LogicAnalyzer>,
+    ) {
+        let (do_ticks, warp_ticks) = self.ticks_from_time(run_unit, self.timewarp);
 
         //log::trace!("doing {} ticks, run_unit: {:?} timewarp: {:?}", do_ticks, run_unit, self.timewarp);
 
@@ -1100,8 +1117,8 @@ impl ProgrammableIntervalTimer {
 
         self.timewarp = DeviceRunTimeUnit::SystemTicks(0);
 
-        for _ in 0..do_ticks {
-            self.tick(bus, None);
+        for tick in 0..do_ticks {
+            self.tick(bus, tick + warp_ticks, analyzer.as_mut().map(|a| &mut **a));
         }
     }
 
@@ -1146,7 +1163,7 @@ impl ProgrammableIntervalTimer {
         self.channels[channel].is_dirty()
     }
 
-    pub fn tick(&mut self, bus: &mut BusInterface, buffer_producer: Option<&mut ringbuf::Producer<u8>>) {
+    pub fn tick(&mut self, bus: &mut BusInterface, tick: u32, analyzer: Option<&mut LogicAnalyzer>) {
         self.pit_cycles += 1;
 
         // Get timer channel 2 state from ppi.
@@ -1177,6 +1194,28 @@ impl ProgrammableIntervalTimer {
             self.channels[0].tick(bus, None);
             self.channels[1].tick(bus, None);
             self.channels[2].tick(bus, None);
+        }
+
+        // Fill out the analyzer if we have one
+        // We should really be passed the timer clk0's clock_factor somewhere, but for now we'll assume
+        // a divisor of 12. (/4 for CPU)
+        if let Some(analyzer) = analyzer {
+            for entry in &mut analyzer.entries {
+                //entry.io = true;
+            }
+
+            let cpu_clk = (tick * 4) as usize;
+
+            for i in 0..4 {
+                analyzer.entries.get_mut(cpu_clk + i).map(|e| {
+                    // Start at falling edge.  Low for two CPU cycles, high for two CPU cycles.
+                    e.clk0 = e.cycle & 0x2 == 0;
+                    e.out0 = *self.channels[0].output;
+                    e.out1 = *self.channels[1].output;
+                    e.io = true;
+                    e.io_visits += 1;
+                });
+            }
         }
 
         //log::trace!("tick(): cycle: {} channel 1 count: {}", self.pit_cycles * 4 + 7, *self.channels[1].counting_element);

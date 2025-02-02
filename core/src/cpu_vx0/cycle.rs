@@ -555,6 +555,7 @@ impl NecVx0 {
                     (self.address_latch & 0xFFFF) as u16,
                     (self.data_bus & 0x00FF) as u8,
                     self.instr_elapsed,
+                    None,
                 );
                 self.instr_elapsed = 0;
 

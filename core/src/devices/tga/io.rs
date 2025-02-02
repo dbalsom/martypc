@@ -30,7 +30,7 @@
 
 */
 use super::*;
-use crate::bus::IoDevice;
+use crate::{bus::IoDevice, cpu_common::LogicAnalyzer};
 
 // CRTC registers are mirrored from 0x3D0 - 0x3D5 due to incomplete
 // address decoding.
@@ -90,7 +90,14 @@ impl IoDevice for TGACard {
         }
     }
 
-    fn write_u8(&mut self, port: u16, data: u8, _bus: Option<&mut BusInterface>, _delta: DeviceRunTimeUnit) {
+    fn write_u8(
+        &mut self,
+        port: u16,
+        data: u8,
+        _bus: Option<&mut BusInterface>,
+        _delta: DeviceRunTimeUnit,
+        _analyzer: Option<&mut LogicAnalyzer>,
+    ) {
         //let debug_port = (if port == 0x3D5 { true } else { false }) && self.debug;
 
         // Catch up to CPU state.

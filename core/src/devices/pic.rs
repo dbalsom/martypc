@@ -34,8 +34,10 @@
 
 //use std::io::Read;
 
-use crate::bus::{BusInterface, DeviceRunTimeUnit, IoDevice};
-
+use crate::{
+    bus::{BusInterface, DeviceRunTimeUnit, IoDevice},
+    cpu_common::LogicAnalyzer,
+};
 //pub const PIC_INTERRUPT_OFFSET: u8 = 8;
 
 pub const PIC_COMMAND_PORT: u16 = 0x20;
@@ -179,7 +181,14 @@ impl IoDevice for Pic {
             _ => unreachable!("PIC: Bad port #"),
         }
     }
-    fn write_u8(&mut self, port: u16, data: u8, _bus: Option<&mut BusInterface>, _delta: DeviceRunTimeUnit) {
+    fn write_u8(
+        &mut self,
+        port: u16,
+        data: u8,
+        _bus: Option<&mut BusInterface>,
+        _delta: DeviceRunTimeUnit,
+        _analyzer: Option<&mut LogicAnalyzer>,
+    ) {
         match port {
             PIC_COMMAND_PORT => {
                 self.handle_command_register_write(data);
