@@ -38,6 +38,9 @@ use std::{
     rc::Rc,
 };
 
+#[cfg(feature = "markdown")]
+use crate::windows::info_viewer::InfoViewer;
+
 use crate::{
     modal::ModalState,
     widgets::file_tree_menu::FileTreeMenu,
@@ -86,6 +89,7 @@ use frontend_common::{
     display_manager::DisplayTargetInfo,
     display_scaler::{ScalerMode, ScalerPreset},
     resource_manager::PathTreeNode,
+    types::sound::SoundSourceInfo,
     RelativeDirectory,
 };
 use marty_core::{
@@ -254,6 +258,9 @@ pub struct GuiState {
     video_mem: ColorImage,
     pub(crate) perf_stats: PerformanceStats,
 
+    // Audio stuff
+    pub(crate) sound_sources: Vec<SoundSourceInfo>,
+
     // Display stuff
     pub(crate) display_apertures: HashMap<usize, Vec<DisplayApertureDesc>>,
     pub(crate) scaler_modes: Vec<ScalerMode>,
@@ -310,6 +317,8 @@ pub struct GuiState {
     pub fdc_viewer: FdcViewerControl,
     pub floppy_viewer: FloppyViewerControl,
     pub call_stack_viewer: CallStackViewer,
+    #[cfg(feature = "markdown")]
+    pub info_viewer: InfoViewer,
 
     pub floppy_tree_menu: FileTreeMenu,
     pub hdd_tree_menu:    FileTreeMenu,
@@ -369,6 +378,8 @@ impl GuiState {
 
             perf_stats: Default::default(),
 
+            sound_sources: Vec::new(),
+
             display_apertures: Default::default(),
             scaler_modes: Vec::new(),
             scaler_presets: Vec::new(),
@@ -418,6 +429,8 @@ impl GuiState {
             fdc_viewer: FdcViewerControl::new(),
             floppy_viewer: FloppyViewerControl::new(),
             call_stack_viewer: CallStackViewer::new(),
+            #[cfg(feature = "markdown")]
+            info_viewer: InfoViewer::new(),
 
             floppy_tree_menu: FileTreeMenu::new().with_file_icon("💾"),
             hdd_tree_menu: FileTreeMenu::new().with_file_icon("🖴"),
@@ -511,6 +524,10 @@ impl GuiState {
 
     pub fn set_machine_state(&mut self, state: MachineState) {
         self.machine_state = state;
+    }
+
+    pub fn set_sound_state(&mut self, info: Vec<SoundSourceInfo>) {
+        self.sound_sources = info;
     }
 
     pub fn set_floppy_drives(&mut self, drives: Vec<FloppyDriveType>) {

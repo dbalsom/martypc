@@ -505,7 +505,7 @@ lazy_static! {
                 id: GuiWindow::TextModeViewer,
                 title: "Text Mode Viewer",
                 menu: "Text Mode Viewer",
-                width: 600.0,
+                width: 700.0,
                 resizable: false,
             },
         ),

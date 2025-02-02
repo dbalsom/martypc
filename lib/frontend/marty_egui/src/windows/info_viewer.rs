@@ -23,38 +23,40 @@
     DEALINGS IN THE SOFTWARE.
 
     --------------------------------------------------------------------------
-
-    egui::src::windows::mod.rs
-
-    Various gui windows
 */
+use crate::GuiEventQueue;
+use egui_commonmark::{CommonMarkCache, CommonMarkViewer};
 
-pub mod composite_adjust;
-pub mod cpu_control;
-pub mod disassembly_viewer;
-// Bring in submodules
-pub mod about;
-pub mod call_stack_viewer;
-pub mod cpu_state_viewer;
-pub mod cycle_trace_viewer;
-pub mod data_visualizer;
-pub mod delay_adjust;
-pub mod device_control;
-pub mod dma_viewer;
-pub mod fdc_viewer;
-pub mod floppy_viewer;
-#[cfg(feature = "markdown")]
-pub mod info_viewer;
-pub mod instruction_history_viewer;
-pub mod io_stats_viewer;
-pub mod ivt_viewer;
-pub mod memory_viewer;
-pub mod performance_viewer;
-pub mod pic_viewer;
-pub mod pit_viewer;
-pub mod ppi_viewer;
-pub mod scaler_adjust;
-pub mod serial_viewer;
-pub mod text_mode_viewer;
-pub mod vhd_creator;
-pub mod videocard_viewer;
+pub struct InfoViewer {
+    pub title: String,
+    pub md_content: String,
+    pub cache: CommonMarkCache,
+}
+
+impl Default for InfoViewer {
+    fn default() -> Self {
+        Self {
+            title: "Info".to_string(),
+            md_content: "".to_string(),
+            cache: CommonMarkCache::default(),
+        }
+    }
+}
+
+impl InfoViewer {
+    pub fn new() -> Self {
+        Self::default()
+    }
+
+    pub fn set_title(&mut self, title: &str) {
+        self.title = title.to_string();
+    }
+
+    pub fn set_content(&mut self, content: &str) {
+        self.md_content = content.to_string();
+    }
+
+    pub fn show(&mut self, ui: &mut egui::Ui, _events: &mut GuiEventQueue) {
+        CommonMarkViewer::new().show(ui, &mut self.cache, &self.md_content);
+    }
+}

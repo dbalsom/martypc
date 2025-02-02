@@ -98,6 +98,8 @@ pub fn open_file(
 /// 1. Creating an <input type="file"> element.
 /// 2. Attaching a `change` event listener.
 /// 3. Triggering `.click()`.
+///
+/// This doesn't seem to work on Safari. Safari requires a user gesture to open the file dialog.
 pub fn open_file_dialog(context: FileOpenContext, sender: crossbeam_channel::Sender<FrontendThreadEvent>) {
     use wasm_bindgen::{closure::Closure, JsCast};
     use web_sys::{Event, HtmlInputElement};
@@ -127,7 +129,7 @@ pub fn open_file_dialog(context: FileOpenContext, sender: crossbeam_channel::Sen
                     web_sys::console::log_1(&format!("Selected file: {:?}", file.name()).into());
                     // We'll create a second closure for the FileReader 'load' event
                     let sender_clone = sender.clone();
-                    let inner_inner_context = inner_context.clone();
+                    let mut inner_inner_context = inner_context.clone();
 
                     let inner_name = file.name();
                     let onload_handler = Closure::wrap(Box::new(move |e: Event| {
@@ -139,9 +141,24 @@ pub fn open_file_dialog(context: FileOpenContext, sender: crossbeam_channel::Sen
                             let mut bytes = vec![0u8; array.length() as usize];
                             array.copy_to(&mut bytes[..]);
 
+                            let new_context = match inner_inner_context.clone() {
+                                FileOpenContext::FloppyDiskImage { drive_select, fsc } => {
+                                    FileOpenContext::FloppyDiskImage {
+                                        drive_select,
+                                        fsc: FileSelectionContext::Path(inner_name.clone().into()),
+                                    }
+                                }
+                                FileOpenContext::CartridgeImage { slot_select, fsc } => {
+                                    FileOpenContext::CartridgeImage {
+                                        slot_select,
+                                        fsc: FileSelectionContext::Path(inner_name.clone().into()),
+                                    }
+                                }
+                            };
+
                             // Send the file bytes back via our channel
                             let _ = sender_clone.send(FrontendThreadEvent::FileOpenDialogComplete {
-                                context: inner_inner_context.clone(),
+                                context: new_context,
                                 path: Some(inner_name.clone().into()),
                                 contents: bytes,
                             });

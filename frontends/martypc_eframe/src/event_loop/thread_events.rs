@@ -71,12 +71,17 @@ pub fn handle_thread_event(emu: &mut Emulator) {
             } => {
                 emu.gui
                     .toasts()
-                    .info(format!("File opened: {:?} ({}) bytes", path.clone(), contents.len()))
+                    .info(format!(
+                        "File opened: {:?} ({}) bytes",
+                        path.clone().unwrap_or(PathBuf::from("None")),
+                        contents.len()
+                    ))
                     .duration(Some(NORMAL_NOTIFICATION_TIME));
 
                 match context {
                     FileOpenContext::FloppyDiskImage { drive_select, fsc } => {
                         let mut floppy_path = None;
+
                         if let FileSelectionContext::Path(path) = &fsc {
                             floppy_path = Some(path.clone());
                         }

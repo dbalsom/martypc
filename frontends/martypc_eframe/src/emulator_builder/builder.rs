@@ -565,7 +565,7 @@ impl EmulatorBuilder {
         // Create a MachineConfiguration for core initialization
         let machine_config = machine_config_file.to_machine_config();
 
-        let trace_file_base = resource_manager.get_resource_path("trace").unwrap_or_default();
+        let trace_file_base = resource_manager.resource_path("trace").unwrap_or_default();
         let mut trace_file_path = None;
         if let Some(trace_file) = &config.machine.cpu.trace_file {
             stdout.write_fmt(format_args!("Using CPU trace log file: {:?}", trace_file))?;
@@ -586,7 +586,7 @@ impl EmulatorBuilder {
         }
 
         // Get the 'keyboard_layout' resource path and append the calculated keyboard layout file name
-        if let Some(mut kb_layout_resource_path) = resource_manager.get_resource_path("keyboard_layout") {
+        if let Some(mut kb_layout_resource_path) = resource_manager.resource_path("keyboard_layout") {
             kb_layout_resource_path.push(format!("keyboard_{}.toml", kb_string));
             kb_layout_file_path = Some(kb_layout_resource_path);
         }
@@ -621,6 +621,7 @@ impl EmulatorBuilder {
 
         #[cfg(feature = "sound")]
         {
+            log::debug!("Sound is enabled. Adding sound configuration to MachineBuilder...");
             machine_builder = machine_builder.with_sound_config(sound_config);
         }
 
@@ -671,7 +672,7 @@ impl EmulatorBuilder {
         gui.set_floppy_drives(drive_types);
 
         // Set default floppy path. This is used to set the default path for Save As dialogs.
-        gui.set_paths(resource_manager.get_resource_path("floppy").unwrap());
+        gui.set_paths(resource_manager.resource_path("floppy").unwrap());
 
         // Set hard drives.
         gui.set_hdds(machine.bus().hdd_ct());
@@ -717,7 +718,7 @@ impl EmulatorBuilder {
                 debug_keyboard: false,
             },
             hkm: hotkey_manager,
-            si: None,
+            si: sound_player,
             sender,
             receiver,
         })

@@ -34,7 +34,7 @@ const MAX_BUFFER_SIZE: u32 = 100;
 
 use anyhow::{anyhow, Error};
 use crossbeam_channel::Receiver;
-use frontend_common::types::sound::SoundSourceStats;
+use frontend_common::types::sound::SoundSourceInfo;
 use marty_core::{
     device_traits::sounddevice::AudioSample,
     sound::{SoundOutputConfig, SoundSourceDescriptor},
@@ -54,6 +54,18 @@ pub struct SoundSource {
     pub sample_ct: u64,
     pub volume: f32,
     pub sink: Sink,
+}
+
+impl SoundSource {
+    pub fn info(&self) -> SoundSourceInfo {
+        SoundSourceInfo {
+            name: self.name.clone(),
+            sample_rate: self.sample_rate,
+            channels: self.channels,
+            sample_ct: self.sample_ct,
+            volume: self.volume,
+        }
+    }
 }
 
 pub struct SoundInterface {
@@ -206,16 +218,7 @@ impl SoundInterface {
         }
     }
 
-    pub fn get_stats(&self) -> Vec<SoundSourceStats> {
-        self.sources
-            .iter()
-            .map(|s| SoundSourceStats {
-                name: s.name.clone(),
-                sample_rate: s.sample_rate,
-                channels: s.channels,
-                sample_ct: s.sample_ct,
-                volume: s.volume,
-            })
-            .collect()
+    pub fn info(&self) -> Vec<SoundSourceInfo> {
+        self.sources.iter().map(|s| s.info()).collect()
     }
 }

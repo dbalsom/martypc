@@ -40,7 +40,6 @@ use frontend_common::{
 };
 use marty_egui_eframe::{context::GuiRenderContext, EGUI_MENU_BAR_HEIGHT};
 use marty_web_helpers::FetchResult;
-use std::{env, pin::Pin, task::Poll};
 
 #[cfg(feature = "use_winit")]
 use crate::event_loop::winit_events::handle_window_event;
@@ -285,13 +284,33 @@ impl MartyApp {
             }
         });
 
+        // Insert floppies specified in config.
+        match emu.insert_floppies(emu.sender.clone()) {
+            Ok(_) => {
+                log::debug!("Inserted floppies from config");
+            }
+            Err(e) => {
+                log::error!("Failed to insert floppies from config: {}", e);
+            }
+        }
+
+        // Attach VHD images specified in config.
+        match emu.mount_vhds() {
+            Ok(_) => {
+                log::debug!("Mounted VHDs from config");
+            }
+            Err(e) => {
+                log::error!("Failed to mount VHDs from config: {}", e);
+            }
+        }
+
         // Create event receivers - for winit, we have a hook in egui_winit to receive raw
         // WindowEvents. For web we have a hook in eframe to receive custom WebKeyboardEvents,
         // which are Send + Sync copies of the raw web_sys::KeyboardEvent.
         #[cfg(feature = "use_winit")]
         let winit_receiver = {
             let (winit_sender, winit_receiver) = crossbeam_channel::unbounded();
-            egui_winit::events::install_window_event_hook(winit_sender);
+            egui_winit::install_window_event_hook(winit_sender);
             winit_receiver
         };
         #[cfg(not(feature = "use_winit"))]

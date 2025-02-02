@@ -40,14 +40,14 @@ use egui::CollapsingHeader;
 use egui_plot::{GridMark, Line, Plot, PlotPoints};
 use frontend_common::{
     timestep_manager::{FrameEntry, PerfSnapshot},
-    types::sound::SoundSourceStats,
+    types::sound::SoundSourceInfo,
 };
 use marty_common::util::format_duration;
 use videocard_renderer::VideoParams;
 
 pub struct PerformanceViewerControl {
     dti: Vec<DisplayTargetInfo>,
-    sound_stats: Vec<SoundSourceStats>,
+    sound_stats: Vec<SoundSourceInfo>,
     perf: PerfSnapshot,
     video_data: VideoParams,
     frame_history: Vec<FrameEntry>,
@@ -225,7 +225,7 @@ impl PerformanceViewerControl {
     pub fn update(
         &mut self,
         dti: Vec<DisplayTargetInfo>,
-        sound_stats: Vec<SoundSourceStats>,
+        sound_stats: Vec<SoundSourceInfo>,
         perf: &PerfSnapshot,
         frame_history: Vec<FrameEntry>,
     ) {

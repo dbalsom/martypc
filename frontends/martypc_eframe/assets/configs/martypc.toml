@@ -227,6 +227,11 @@ enabled = true
 
 [emulator.media]
 
+[[emulator.media.floppy]]
+# Floppy image to mount into drive 0 (Typically A:)
+drive = 0
+filename = "MartyPC Boot Disk v1.0.img"
+
 # A list of file extensions to interpret as floppy raw sector images.
 # Files with these extensions will always be shown in the floppy image browser, regardless
 # of whether they can be mounted as a raw sector image.

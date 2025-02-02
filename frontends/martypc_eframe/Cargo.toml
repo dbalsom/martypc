@@ -1,5 +1,6 @@
 [package]
 name = "martypc_eframe"
+description = "A frontend for the MartyPC emulator, using eframe."
 version.workspace = true
 authors.workspace = true
 edition.workspace = true
@@ -15,7 +16,7 @@ targets = ["x86_64-unknown-linux-gnu", "wasm32-unknown-unknown"]
 # ---------------------------------------------------------------------------------------------------------------------
 # Internal crates
 # --------------
-marty_core = { path = "../../core", default-features = false, features = ["sound"]}
+marty_core = { path = "../../core", default-features = false, features = ["sound"] }
 config_toml_bpaf = { path = "../../lib/frontend/config_toml_bpaf", default-features = false }
 display_manager_eframe = { path = "../../lib/frontend/display_manager_eframe" }
 videocard_renderer = { path = "../../lib/frontend/videocard_renderer" }
@@ -46,8 +47,9 @@ url = "2.5"
 # Optional Dependencies
 # ---------------------------------------------------------------------------------------------------------------------
 rodio = {  workspace = true, optional = true }
-# wgpu is used if use_wgpu feature is enabled.
+# wgpu is used if the `use_wgpu` feature is enabled.
 wgpu = { workspace = true, optional = true }
+egui_commonmark = { workspace = true, optional = true }
 
 # Native build dependencies
 # ---------------------------------------------------------------------------------------------------------------------
@@ -89,8 +91,10 @@ config_toml_bpaf = { path = "../../lib/frontend/config_toml_bpaf", default-featu
 
 [features]
 all_video_cards = ["ega", "vga"]
-default = ["all_video_cards", "sound", "use_glow"]
+default = ["all_video_cards", "sound", "use_glow", "markdown"]
 sound = ["dep:rodio", "rodio/wasm-bindgen", "marty_core/sound"]
+# Enable markdown support. This is used to show disk image metadata and documentation.
+markdown = ["dep:egui_commonmark", "marty_egui/markdown"]
 # Use winit (disabled for wasm builds)
 use_winit = ["dep:egui-winit"]
 # Use the wgpu backend

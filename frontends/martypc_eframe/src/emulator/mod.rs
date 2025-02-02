@@ -41,10 +41,13 @@ use std::{cell::RefCell, ffi::OsString, rc::Rc};
 use anyhow::Error;
 use config_toml_bpaf::ConfigFileParams;
 
+#[cfg(target_arch = "wasm32")]
+use crate::wasm::file_open;
 use crate::{
+    app::FileOpenContext,
     counter::Counter,
     emulator::{joystick_state::JoystickData, keyboard_state::KeyboardData, mouse_state::MouseData},
-    event_loop::thread_events::FrontendThreadEvent,
+    event_loop::{egui_events::FileSelectionContext, thread_events::FrontendThreadEvent},
     input::HotkeyManager,
     sound::SoundInterface,
 };
@@ -62,7 +65,11 @@ use marty_core::{
     machine::{ExecutionControl, Machine, MachineEvent, MachineState},
     vhd::VirtualHardDisk,
 };
-use marty_egui::{state::GuiState, GuiBoolean, GuiWindow};
+use marty_egui::{
+    state::{FloppyDriveSelection, GuiState},
+    GuiBoolean,
+    GuiWindow,
+};
 use videocard_renderer::AspectCorrectionMode;
 
 /// Define flags to be used by emulator.
@@ -283,6 +290,41 @@ impl Emulator {
         vhd_names
     }
 
+    /// Insert floppy disks into floppy drives.
+    pub fn insert_floppies(&mut self, sender: crossbeam_channel::Sender<FrontendThreadEvent>) -> Result<(), Error> {
+        let floppy_max = self.machine.bus().floppy_drive_ct();
+        let mut image_names: Vec<Option<String>> = vec![None; floppy_max];
+
+        for (drive_i, vhd) in self
+            .config
+            .emulator
+            .media
+            .floppy
+            .as_ref()
+            .unwrap_or(&Vec::new())
+            .iter()
+            .enumerate()
+        {
+            if drive_i < floppy_max {
+                image_names[drive_i] = Some(vhd.filename.clone());
+            }
+        }
+
+        #[cfg(target_arch = "wasm32")]
+        for (idx, image_name) in image_names.into_iter().filter_map(|x| x).enumerate() {
+            let floppy_name: OsString = image_name.into();
+            let floppy_path = self
+                .rm
+                .resolve_path_from_filename("floppy", std::path::Path::new(&floppy_name))?;
+
+            let fsc = FileSelectionContext::Path(floppy_path);
+            let context = FileOpenContext::FloppyDiskImage { drive_select: idx, fsc };
+            file_open::open_file(context, sender.clone());
+        }
+
+        Ok(())
+    }
+
     /// Mount VHD images into hard drive devices.
     /// VHD images can be specified either in the machine configuration, or in the main configuration.
     /// Images specified in the main configuration will override images specified in a machine configuration.
@@ -405,7 +447,7 @@ impl Emulator {
         self.gui.set_floppy_drives(drive_types);
 
         // Set default floppy path. This is used to set the default path for Save As dialogs.
-        self.gui.set_paths(self.rm.get_resource_path("floppy").unwrap());
+        self.gui.set_paths(self.rm.resource_path("floppy").unwrap());
 
         // Set hard drives.
         self.gui.set_hdds(self.machine.bus().hdd_ct());

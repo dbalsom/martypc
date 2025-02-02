@@ -31,7 +31,7 @@
 */
 
 #[derive(Clone, Debug)]
-pub struct SoundSourceStats {
+pub struct SoundSourceInfo {
     pub name: String,
     pub sample_rate: u32,
     pub channels: u16,

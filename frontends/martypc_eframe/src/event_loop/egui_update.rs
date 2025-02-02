@@ -69,6 +69,11 @@ pub fn update_egui(emu: &mut Emulator, dm: &mut EFrameDisplayManager, tm: &Times
     // -- Update machine state
     emu.gui.set_machine_state(emu.machine.get_state());
 
+    // -- Update sound sources
+    if let Some(si) = emu.si.as_ref() {
+        emu.gui.set_sound_state(si.info());
+    }
+
     // -- Update serial ports
     emu.gui.set_serial_ports(emu.machine.bus().enumerate_serial_ports());
 
@@ -106,7 +111,7 @@ pub fn update_egui(emu: &mut Emulator, dm: &mut EFrameDisplayManager, tm: &Times
 
         let mut sound_stats = Vec::new();
         if let Some(si) = emu.si.as_ref() {
-            sound_stats = si.get_stats();
+            sound_stats = si.info();
         }
 
         let (_, frame_history) = tm.get_perf_stats();
@@ -144,7 +149,7 @@ pub fn update_egui(emu: &mut Emulator, dm: &mut EFrameDisplayManager, tm: &Times
 
     // Update data visualizer
     if emu.gui.is_window_open(GuiWindow::DataVisualizer) {
-        let path_opt = emu.rm.get_resource_path("dump");
+        let path_opt = emu.rm.resource_path("dump");
         if let Some(path) = path_opt {
             emu.gui.data_visualizer.set_dump_path(path);
         }

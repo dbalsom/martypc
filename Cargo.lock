@@ -1745,8 +1745,9 @@ dependencies = [
  "display_backend_trait",
  "log",
  "marty_egui",
+ "marty_egui_wgpu",
  "marty_pixels_scaler",
- "thiserror 1.0.69",
+ "thiserror 2.0.11",
  "videocard_renderer",
  "wgpu_wrapper",
  "winit 0.30.8",
@@ -2004,6 +2005,29 @@ dependencies = [
  "web-time 1.1.0",
  "webbrowser 1.0.3",
  "winit 0.30.8",
+]
+
+[[package]]
+name = "egui_commonmark"
+version = "0.19.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "43d76bd08ab5264071aab3bd0ad0f5bdc34cf36cbb4be4c17c853a935c84d5fe"
+dependencies = [
+ "egui 0.30.0",
+ "egui_commonmark_backend",
+ "egui_extras 0.30.0 (registry+https://github.com/rust-lang/crates.io-index)",
+ "pulldown-cmark",
+]
+
+[[package]]
+name = "egui_commonmark_backend"
+version = "0.19.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "47acd9dde83a575127a498e4ef77b00377f85c258ae259214bb125c79efefd00"
+dependencies = [
+ "egui 0.30.0",
+ "egui_extras 0.30.0 (registry+https://github.com/rust-lang/crates.io-index)",
+ "pulldown-cmark",
 ]
 
 [[package]]
@@ -3641,6 +3665,7 @@ dependencies = [
  "crossbeam-utils",
  "egui 0.30.0",
  "egui-notify",
+ "egui_commonmark",
  "egui_extras 0.30.0 (git+https://github.com/dbalsom/egui_martypc.git?branch=0.30.0_raw_winit_hook)",
  "egui_file",
  "egui_plot",
@@ -3688,9 +3713,11 @@ dependencies = [
  "egui_extras 0.30.0 (git+https://github.com/dbalsom/egui_martypc.git?branch=0.30.0_raw_winit_hook)",
  "frontend_common",
  "log",
+ "marty_egui",
  "serialport 4.3.1-alpha.0",
  "web-time 1.1.0",
  "wgpu 23.0.1",
+ "wgpu_wrapper",
  "winit 0.30.8",
 ]
 
@@ -3831,6 +3858,7 @@ dependencies = [
  "eframe",
  "egui 0.30.0",
  "egui-winit 0.30.0",
+ "egui_commonmark",
  "egui_extras 0.30.0 (registry+https://github.com/rust-lang/crates.io-index)",
  "env_logger 0.11.6",
  "fluxfox",
@@ -4951,6 +4979,17 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "afbdc74edc00b6f6a218ca6a5364d6226a259d4b8ea1af4a0ea063f27e179f4d"
 
 [[package]]
+name = "pulldown-cmark"
+version = "0.12.2"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "f86ba2052aebccc42cbbb3ed234b8b13ce76f75c3551a303cb2bcffcff12bb14"
+dependencies = [
+ "bitflags 2.8.0",
+ "memchr",
+ "unicase",
+]
+
+[[package]]
 name = "quick-xml"
 version = "0.30.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -5214,9 +5253,9 @@ checksum = "f7c45b9784283f1b2e7fb61b42047c2fd678ef0960d4f6f1eba131594cc369d4"
 
 [[package]]
 name = "ryu"
-version = "1.0.18"
+version = "1.0.19"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "f3cb5ba0dc43242ce17de99c180e96db90b235b8a9fdc9543c96d2209116bd9f"
+checksum = "6ea1a2d0a644769cc99faa24c3ad26b379b786fe7c36fd3c546254801650e6dd"
 
 [[package]]
 name = "safe_arch"
@@ -5899,7 +5938,7 @@ dependencies = [
  "serde",
  "serde_spanned",
  "toml_datetime",
- "winnow 0.6.24",
+ "winnow 0.6.25",
 ]
 
 [[package]]
@@ -6021,9 +6060,9 @@ checksum = "75b844d17643ee918803943289730bec8aac480150456169e647ed0b576ba539"
 
 [[package]]
 name = "unicode-ident"
-version = "1.0.15"
+version = "1.0.16"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "11cd88e12b17c6494200a9c1b683a04fcac9573ed74cd1b62aeb2727c5592243"
+checksum = "a210d160f08b701c8721ba1c726c11662f877ea6b7094007e1ca9a1041945034"
 
 [[package]]
 name = "unicode-segmentation"
@@ -7194,9 +7233,9 @@ dependencies = [
 
 [[package]]
 name = "winnow"
-version = "0.6.24"
+version = "0.6.25"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "c8d71a593cc5c42ad7876e2c1fda56f314f3754c084128833e64f1345ff8a03a"
+checksum = "ad699df48212c6cc6eb4435f35500ac6fd3b9913324f938aea302022ce19d310"
 dependencies = [
  "memchr",
 ]

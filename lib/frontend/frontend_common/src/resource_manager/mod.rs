@@ -49,7 +49,12 @@ pub use path_manager::PathConfigItem;
 use path_manager::PathManager;
 use regex::Regex;
 use serde_derive::Deserialize;
-use std::{collections::HashSet, ffi::OsString, future::Future, path::PathBuf};
+use std::{
+    collections::HashSet,
+    ffi::{OsStr, OsString},
+    future::Future,
+    path::{Path, PathBuf},
+};
 pub use tree::TreeNode as PathTreeNode;
 use url::Url;
 
@@ -232,6 +237,28 @@ impl ResourceManager {
         entries
     }
 
+    pub fn resolve_path_from_filename(&self, resource: &str, file_name: impl AsRef<Path>) -> Result<PathBuf, Error> {
+        let file_extension = file_name.as_ref().extension().map(|s| s.to_os_string());
+
+        let mut extensions = Vec::new();
+        if let Some(ext) = file_extension {
+            extensions.push(ext);
+        }
+
+        let items = self.enumerate_items(resource, None, false, true, Some(extensions))?;
+
+        for item in items {
+            if item.filename_only == Some(file_name.as_ref().as_os_str().to_os_string()) {
+                return Ok(item.location.clone());
+            }
+        }
+
+        Err(anyhow::anyhow!(
+            "Failed to resolve path for file: {}",
+            file_name.as_ref().to_string_lossy()
+        ))
+    }
+
     pub fn from_config(base_path: PathBuf, config: &[PathConfigItem]) -> Result<Self, Error> {
         let mut rm = Self::new(base_path);
         for item in config {
@@ -245,8 +272,8 @@ impl ResourceManager {
         self.ignore_dirs = dirs;
     }
 
-    pub fn get_resource_path(&self, resource: &str) -> Option<PathBuf> {
-        self.pm.get_resource_path(resource)
+    pub fn resource_path(&self, resource: &str) -> Option<PathBuf> {
+        self.pm.resource_path(resource)
     }
 
     /// Return a unique filename for the given resource, base name, and extension.
@@ -259,7 +286,7 @@ impl ResourceManager {
     ) -> Result<PathBuf, Error> {
         let mut path = self
             .pm
-            .get_resource_path(resource)
+            .resource_path(resource)
             .ok_or(anyhow::anyhow!("Resource path not found: {}", resource))?;
 
         // Generate a regex to extract a sequence of digits from a filename

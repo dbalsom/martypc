@@ -117,7 +117,7 @@ impl PathManager {
         }
     }
 
-    pub fn get_resource_path(&self, resource_name: &str) -> Option<PathBuf> {
+    pub fn resource_path(&self, resource_name: &str) -> Option<PathBuf> {
         self.paths.get(resource_name).map(|p| p[0].clone())
     }
 

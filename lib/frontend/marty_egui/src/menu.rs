@@ -29,8 +29,8 @@
     Implement the main emulator menu bar.
 
 */
-
 use crate::{state::GuiState, GuiBoolean, GuiEnum, GuiEvent, GuiVariable, GuiVariableContext, GuiWindow};
+use egui::RichText;
 use egui_file::FileDialog;
 use frontend_common::display_manager::DtHandle;
 //use egui_file_dialog::FileDialog;
@@ -220,6 +220,16 @@ impl GuiState {
                 };
             });
 
+            ui.menu_button("Sound", |ui| {
+                ui.set_min_width(240.0);
+                if !self.sound_sources.is_empty() {
+                    self.draw_sound_menu(ui);
+                }
+                else {
+                    ui.label(RichText::new("No sound sources available.").italics());
+                }
+            });
+
             ui.menu_button("Display", |ui| {
                 ui.set_min_size(egui::vec2(240.0, 0.0));
 
@@ -257,7 +267,6 @@ impl GuiState {
                                 GuiVariableContext::Global,
                                 GuiVariable::Bool(GuiBoolean::CpuEnableWaitStates, new_opt),
                             ));
-                            ui.close_menu();
                         }
                         if ui
                             .checkbox(
@@ -767,6 +776,18 @@ impl GuiState {
             self.event_queue.send(GuiEvent::TakeScreenshot(display.into()));
             ui.close_menu();
         };
+    }
+
+    pub fn draw_sound_menu(&mut self, ui: &mut egui::Ui) {
+        for source in &self.sound_sources {
+            ui.group(|ui| {
+                ui.vertical(|ui| {
+                    ui.label(format!("🔊 {}", source.name));
+                    ui.label(format!("Volume: {}", source.volume));
+                    ui.label(format!("Samples: {}", source.sample_ct));
+                });
+            });
+        }
     }
 
     pub fn draw_status_widgets(&mut self, _ui: &mut egui::Ui) {

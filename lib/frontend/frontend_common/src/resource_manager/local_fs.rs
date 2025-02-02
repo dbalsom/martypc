@@ -126,7 +126,7 @@ impl ResourceManager {
                                     relative_path: None,
                                     filename_only: Some(entry.path().file_name().unwrap_or_default().to_os_string()),
                                     flags: 0,
-                                    size: Some(entry.path().metadata()?.len() as usize),
+                                    size: Some(entry.path().metadata()?.len()),
                                 });
                             }
                         }
@@ -160,7 +160,7 @@ impl ResourceManager {
         // Convert paths to relative paths
         let path_prefix = self
             .pm
-            .get_resource_path(resource)
+            .resource_path(resource)
             .ok_or(anyhow::anyhow!("Resource path not found: {}", resource))?;
 
         ResourceManager::set_relative_paths_for_items(path_prefix, &mut items);
@@ -221,6 +221,7 @@ impl ResourceManager {
                     relative_path: None,
                     filename_only: Some(entry.path().file_name().unwrap_or_default().to_os_string()),
                     flags: 0,
+                    size: Some(entry.path().metadata().unwrap().len()),
                 });
             })?
         }
@@ -240,6 +241,7 @@ impl ResourceManager {
                 relative_path: None,
                 filename_only: Some(entry.path().file_name().unwrap_or_default().to_os_string()),
                 flags: 0,
+                size: Some(entry.path().metadata().unwrap().len()),
             });
         })?;
 
@@ -276,6 +278,7 @@ impl ResourceManager {
                             relative_path: None,
                             filename_only: Some(path.file_name().unwrap_or_default().to_os_string()),
                             flags: 0,
+                            size: Some(path.metadata()?.len()),
                         });
                     }
                 }
@@ -323,7 +326,7 @@ impl ResourceManager {
         // TODO: support multipath
         let root_path = self
             .pm
-            .get_resource_path(resource)
+            .resource_path(resource)
             .ok_or(anyhow::anyhow!("Resource path not found: {}", resource))?;
 
         log::debug!(

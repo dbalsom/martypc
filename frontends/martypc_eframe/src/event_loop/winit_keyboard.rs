@@ -266,7 +266,7 @@ pub fn process_hotkeys(
             HotkeyEvent::Screenshot => {
                 log::debug!("Screenshot hotkey triggered. Capturing screenshot.");
 
-                let screenshot_path = emu.rm.get_resource_path("screenshot").unwrap();
+                let screenshot_path = emu.rm.resource_path("screenshot").unwrap();
 
                 // Take as screenshot of the primary display target.
                 if let Err(err) = dm.save_screenshot(DtHandle::default(), screenshot_path) {

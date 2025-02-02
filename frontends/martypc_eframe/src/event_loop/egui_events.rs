@@ -264,7 +264,7 @@ pub fn handle_egui_event(emu: &mut Emulator, dm: &mut EFrameDisplayManager, gui_
         GuiEvent::CreateVHD(filename, fmt) => {
             log::info!("Got CreateVHD event: {:?}, {:?}", filename, fmt);
 
-            let mut vhd_path = emu.rm.get_resource_path("hdd").unwrap();
+            let mut vhd_path = emu.rm.resource_path("hdd").unwrap();
             vhd_path.push(filename);
 
             match vhd::create_vhd(
@@ -691,7 +691,7 @@ pub fn handle_egui_event(emu: &mut Emulator, dm: &mut EFrameDisplayManager, gui_
         }
         GuiEvent::DumpVRAM => {
             if let Some(video_card) = emu.machine.primary_videocard() {
-                let dump_path = emu.rm.get_resource_path("dump").unwrap();
+                let dump_path = emu.rm.resource_path("dump").unwrap();
                 video_card.dump_mem(&dump_path);
             }
 
@@ -864,7 +864,7 @@ pub fn handle_egui_event(emu: &mut Emulator, dm: &mut EFrameDisplayManager, gui_
             emu.machine.change_state(*state);
         }
         GuiEvent::TakeScreenshot(dt_idx) => {
-            let screenshot_path = emu.rm.get_resource_path("screenshot").unwrap();
+            let screenshot_path = emu.rm.resource_path("screenshot").unwrap();
 
             // TODO: Fix this (2024)
 

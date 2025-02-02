@@ -33,8 +33,12 @@ use egui::{ClippedPrimitive, Context, TexturesDelta, ViewportId};
 use egui_extras::install_image_loaders;
 use egui_wgpu::{Renderer, ScreenDescriptor};
 use frontend_common::display_manager::DmGuiOptions;
-use pixels::{wgpu, PixelsContext};
+use marty_egui::{
+    state::GuiState,
+    themes::{make_theme, GuiTheme},
+};
 use web_time::{Duration, Instant};
+use wgpu_wrapper::{wgpu, wrapper::raw_window_handle, PixelsContext};
 use winit::window::Window;
 
 /// Manages all state required for rendering egui over `Pixels`.
@@ -59,7 +63,7 @@ impl GuiRenderContext {
         width: u32,
         height: u32,
         scale_factor: f64,
-        pixels: &pixels::Pixels,
+        pixels: &wgpu_wrapper::Pixels,
         window: &Window,
         gui_options: &DmGuiOptions,
     ) -> Self {
@@ -85,8 +89,9 @@ impl GuiRenderContext {
             //egui::ViewportId::from_hash_of(id_string.as_str()),
             ViewportId::ROOT,
             //&event_loop,
-            window as &dyn pixels::raw_window_handle::HasDisplayHandle,
+            window as &dyn raw_window_handle::HasDisplayHandle,
             Some(scale_factor as f32),
+            None,
             None,
         );
         #[cfg(not(target_arch = "wasm32"))]
@@ -102,7 +107,7 @@ impl GuiRenderContext {
             pixels_per_point: scale_factor as f32,
         };
 
-        let renderer = Renderer::new(pixels.device(), pixels.render_texture_format(), None, 1);
+        let renderer = Renderer::new(pixels.device(), pixels.render_texture_format(), None, 1, false);
         let textures = TexturesDelta::default();
 
         // Resolve themes.
@@ -217,7 +222,7 @@ impl GuiRenderContext {
             .egui_input_mut()
             .viewports
             .get_mut(&ViewportId::ROOT)
-            .expect(&format!("Failed to get ROOT viewport!"))
+            .expect("Failed to get ROOT viewport!")
     }
 
     /// Prepare egui.
@@ -250,7 +255,7 @@ impl GuiRenderContext {
                 let ppp = egui_winit::pixels_per_point(&ctx, window);
                 //log::debug!("Tessellate with ppp: {}", ppp);
                 self.paint_jobs = self.egui_ctx.tessellate(output.shapes, ppp);
-                state.perf_stats.gui_time = gui_start.elapsed();
+                //state.perf_stats.gui_time = gui_start.elapsed();
             }
         }
     }

@@ -110,7 +110,7 @@ impl ResourceManager {
         // TODO: support multipath
         let root_path = self
             .pm
-            .get_resource_path(resource)
+            .resource_path(resource)
             .ok_or(anyhow::anyhow!("Resource path not found: {}", resource))?;
 
         log::debug!(
