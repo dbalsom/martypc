@@ -261,7 +261,8 @@ impl Intel808x {
                 match (self.pl_status, self.bus_pending) {
                     (BusStatus::CodeFetch, BusPendingType::None) => {
                         // We can immediately end the address cycle on Ti or T4 if there is no pending eu request.
-                        if matches!(self.t_cycle, TCycle::Ti | TCycle::T4) && self.fetch_state != FetchState::Suspended
+                        if matches!(self.t_cycle, TCycle::Ti | TCycle::T4)
+                            && !matches!(self.fetch_state, FetchState::Suspended | FetchState::Halted)
                         {
                             self.biu_fetch_bus_begin();
                             TaCycle::Td
