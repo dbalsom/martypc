@@ -729,7 +729,6 @@ impl Crtc6845 {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use std::io::Cursor;
 
     #[test]
     fn degenerate_2_by_2_den_test() {
