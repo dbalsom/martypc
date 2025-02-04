@@ -2906,6 +2906,10 @@ impl BusInterface {
         &mut self.pit
     }
 
+    pub fn pic(&self) -> &Option<Pic> {
+        &self.pic1
+    }
+
     pub fn pic_mut(&mut self) -> &mut Option<Pic> {
         &mut self.pic1
     }
