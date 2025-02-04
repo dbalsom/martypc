@@ -31,7 +31,7 @@
 */
 
 use crate::{
-    cpu_808x::{*},
+    cpu_808x::*,
     cpu_common::{CpuAddress, CpuError, CpuException, Disassembly, ExecutionResult, StepResult},
 };
 
@@ -280,6 +280,13 @@ impl Intel808x {
                 }
             }
         };
+
+        // Set analyzer RNI flag, if not in REP, since we have finished execution
+        if let Some(entry) = self.analyzer.entries.back_mut() {
+            if !self.in_rep {
+                entry.rni = true;
+            }
+        }
 
         // Reset interrupt pending flag - this flag is set on step_finish() and
         // only valid for a single instruction execution.
