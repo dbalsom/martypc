@@ -137,15 +137,35 @@ impl Intel808x {
             //self.analyzer.flush();
         }
 
+        let mut vs = false;
+        let mut hs = false;
+        let mut den = false;
+        if let Some(video) = self.bus().primary_video() {
+            let (vs_b, hs_b, den_b, _brd_b) = video.get_sync();
+            vs = vs_b;
+            hs = hs_b;
+            den = den_b;
+        }
+
+        let mut intr = false;
+        if let Some(pic) = self.bus().pic() {
+            (intr, _) = pic.calc_intr();
+        }
+
         self.analyzer.push(AnalyzerEntry {
             cycle: self.cycle_num,
             address_bus: self.address_bus,
             ready: self.ready,
+            q: !matches!(self.last_queue_op, QueueOp::Idle),
             q_op: self.last_queue_op as u8,
             bus_status: self.bus_status as u8,
             dma_req: self.dma_req,
             dma_holda: self.dma_holda,
-            intr: self.intr,
+            intr,
+
+            vs,
+            hs,
+            den,
             // The rest of the fields must be filled out by devices
             ..Default::default()
         });
