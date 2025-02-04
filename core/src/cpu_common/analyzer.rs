@@ -36,10 +36,12 @@ pub struct AnalyzerEntry {
     pub cycle: u64,
     pub address_bus: u32,
     pub ready: bool,
+    pub q: bool,
     pub q_op: u8,
     pub bus_status: u8,
     pub dma_req: bool,
     pub dma_holda: bool,
+    pub rni: bool,
     pub intr: bool,
     // Timer stuff
     pub clk0: bool,
@@ -57,13 +59,13 @@ pub struct AnalyzerEntry {
 impl AnalyzerEntry {
     pub fn emit_header() -> &'static str {
         // Sigrok import string
-        // t,x20,l,l,x2,x3,l,l,l,l,l,l,l,l,l,l
-        "Time(s),addr,clk,rdy,qs,s,dr0,holda,intr,clk0,out0,out1,vs,hs,den,io"
+        // t,x20,l,l,x2,x3,l,l,l,l,l,l,l,l,l,l,l,l
+        "Time(s),addr,clk,rdy,qs,s,dr0,holda,intr,clk0,out0,out1,vs,hs,den,rni,q,io"
     }
 
     pub fn emit_edge(&self, clk: u8, timestep: f64) -> String {
         format!(
-            "{},{:05X},{},{},{},{},{},{},{},{},{},{},{},{},{},{}",
+            "{},{:05X},{},{},{},{},{},{},{},{},{},{},{},{},{},{},{},{}",
             self.cycle as f64 * timestep,
             self.address_bus,
             clk,
@@ -79,6 +81,8 @@ impl AnalyzerEntry {
             self.vs as u8,
             self.hs as u8,
             self.den as u8,
+            self.rni as u8,
+            self.q as u8,
             self.io as u8
         )
     }
