@@ -956,6 +956,9 @@ impl ProgrammableIntervalTimer {
         if self.sys_tick_accumulator > (self.clock_divisor - PIT_WRITE_LATENCY) {
             self.defer_reload_flag = true; // Too close to next clock edge to latch this tick - defer to next tick
         }
+
+        // try deferring always
+        self.defer_reload_flag = true;
     }
 
     /// Return the number of PIT cycles that elapsed for the provided microsecond period.
@@ -1200,10 +1203,6 @@ impl ProgrammableIntervalTimer {
         // We should really be passed the timer clk0's clock_factor somewhere, but for now we'll assume
         // a divisor of 12. (/4 for CPU)
         if let Some(analyzer) = analyzer {
-            for entry in &mut analyzer.entries {
-                //entry.io = true;
-            }
-
             let cpu_clk = (tick * 4) as usize;
 
             for i in 0..4 {
@@ -1212,9 +1211,13 @@ impl ProgrammableIntervalTimer {
                     e.clk0 = e.cycle & 0x2 == 0;
                     e.out0 = *self.channels[0].output;
                     e.out1 = *self.channels[1].output;
-                    e.io = true;
+                    //e.io = true;
                     e.io_visits += 1;
                 });
+            }
+
+            if let Some(entry) = analyzer.entries.back_mut() {
+                entry.io = true;
             }
         }
 
