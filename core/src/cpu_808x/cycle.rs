@@ -125,6 +125,8 @@ impl Intel808x {
                     TCycle::T2 => {
                         // Turn off ale signal on T2
                         self.i8288.ale = false;
+                        // Default to no IO wait states. IO bus states can override.
+                        self.io_wait_states = 0;
 
                         // Read/write signals go high on T2.
                         match self.bus_status_latch {
@@ -165,10 +167,10 @@ impl Intel808x {
                                     .unwrap();
                             }
                             BusStatus::IoRead => {
-                                self.bus_wait_states = 1;
+                                self.io_wait_states = 1;
                             }
                             BusStatus::IoWrite => {
-                                self.bus_wait_states = 1;
+                                self.io_wait_states = 1;
                             }
                             _ => {}
                         }
@@ -340,23 +342,17 @@ impl Intel808x {
                 self.wait_states += self.bus_wait_states;
                 TCycle::T3
             }
-            TCycle::T3 => {
+            TCycle::Tw | TCycle::T3 => {
                 // If no wait states have been reported, advance to T3, otherwise go to Tw
-                if self.wait_states > 0 || self.dma_wait_states > 0 {
+                if self.wait_states > 0 || self.io_wait_states > 0 || self.dma_wait_states > 0 {
                     self.wait_states = self.wait_states.saturating_sub(1);
-                    TCycle::Tw
-                }
-                else {
-                    self.biu_bus_end();
-                    TCycle::T4
-                }
-            }
-            TCycle::Tw => {
-                // If we are handling wait states, continue in Tw (decrement at end of cycle)
-                // If we have handled all wait states, transition to T4
-                if self.wait_states > 0 || self.dma_wait_states > 0 {
-                    self.wait_states = self.wait_states.saturating_sub(1);
-                    //log::debug!("wait states: {}", self.wait_states);
+
+                    // Only drain IO wait states when DMA is not active. When DMA is on, the 8288
+                    // outputs are suppressed. This means that IO and DMA wait states cannot overlap -
+                    // an IO device would gain no benefit from the wait state it can't see or detect
+                    if self.dma_wait_states == 0 {
+                        self.io_wait_states = self.io_wait_states.saturating_sub(1);
+                    }
                     TCycle::Tw
                 }
                 else {

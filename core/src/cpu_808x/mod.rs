@@ -543,6 +543,7 @@ pub struct Intel808x {
     transfer_n: u32,             // Current transfer number (Either 1 or 2, for byte or word operand, respectively)
     final_transfer: bool, // Flag that determines if the current bus transfer is the final transfer for this bus request
     bus_wait_states: u32,
+    io_wait_states: u32,
     wait_states: u32,
     lock: bool, // LOCK pin. Asserted during 2nd INTA bus cycle.
 
@@ -1081,22 +1082,15 @@ impl Intel808x {
         CpuAddress::Segmented(self.cs, self.ip())
     }
 
-    #[inline]
+    #[inline(always)]
     pub fn is_last_wait_t3tw(&self) -> bool {
-        self.wait_states == 0 && self.dma_wait_states == 0
+        self.wait_states == 0 && self.io_wait_states == 0 && self.dma_wait_states == 0
     }
 
     #[inline]
     pub fn is_last_wait(&self) -> bool {
         match self.t_cycle {
-            TCycle::T3 | TCycle::Tw => {
-                if self.wait_states == 0 && self.dma_wait_states == 0 {
-                    true
-                }
-                else {
-                    false
-                }
-            }
+            TCycle::T3 | TCycle::Tw => self.is_last_wait_t3tw(),
             _ => false,
         }
     }
@@ -1105,14 +1099,7 @@ impl Intel808x {
     pub fn is_before_last_wait(&self) -> bool {
         match self.t_cycle {
             TCycle::T1 | TCycle::T2 => true,
-            TCycle::T3 | TCycle::Tw => {
-                if self.wait_states > 0 || self.dma_wait_states > 0 {
-                    true
-                }
-                else {
-                    false
-                }
-            }
+            TCycle::T3 | TCycle::Tw => self.is_last_wait_t3tw(),
             _ => false,
         }
     }
