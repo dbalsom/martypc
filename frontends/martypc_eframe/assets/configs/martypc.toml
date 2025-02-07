@@ -191,7 +191,7 @@ headless = false
 fuzzer = false
 
 # title_hacks: Enable compatibility tweaks for specific software titles
-title_hacks = true
+title_hacks = false
 
 # Debug mode does a few miscellaneous things. 
 # - CPU Autostart is disabled
