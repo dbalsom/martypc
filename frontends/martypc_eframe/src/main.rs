@@ -25,7 +25,8 @@
     --------------------------------------------------------------------------
 */
 #![warn(clippy::all, rust_2018_idioms)]
-#![cfg_attr(not(debug_assertions), windows_subsystem = "windows")] // hide console window on Windows in release
+// hide console window on Windows in release, unless devmode feature is enabled
+#![cfg_attr(all(not(debug_assertions), not(feature = "devmode")), windows_subsystem = "windows")]
 
 #[cfg(not(target_arch = "wasm32"))]
 use async_std::prelude::*;

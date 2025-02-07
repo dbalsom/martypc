@@ -109,3 +109,7 @@ cpu_validator = ["marty_core/cpu_validator"]
 ega = ["marty_core/ega", "frontend_common/ega", "videocard_renderer/ega"]
 vga = ["marty_core/vga", "frontend_common/vga", "videocard_renderer/vga"]
 opl = ["marty_core/opl"]
+
+# enable dev stuff, including logging in release.
+# !! Warning, may be unstable or completely broken !!
+devmode = []
