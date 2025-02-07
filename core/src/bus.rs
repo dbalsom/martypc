@@ -2883,7 +2883,7 @@ impl BusInterface {
                 e.1.writes += 1;
                 e.1.writes_dirty = true;
             })
-            .or_insert((resolved, IoDeviceStats::one_read()));
+            .or_insert((resolved, IoDeviceStats::one_write()));
     }
 
     /// Return a boolean indicating whether a timer interrupt is imminent.
