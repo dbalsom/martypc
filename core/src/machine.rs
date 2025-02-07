@@ -1591,16 +1591,23 @@ impl Machine {
                 DeviceEvent::InterruptUpdate(intr_counter, inter_counter_val, retrigger) => {
                     self.cpu.set_option(CpuOption::ScheduleInterrupt(
                         true,
-                        self.timer_ticks_to_cpu_cycles(intr_counter),
-                        self.timer_ticks_to_cpu_cycles(inter_counter_val),
+                        self.timer_ticks_to_cpu_cycles(intr_counter as u32),
+                        self.timer_ticks_to_cpu_cycles(inter_counter_val as u32),
                         retrigger,
                     ))
                 }
                 DeviceEvent::DramRefreshUpdate(dma_counter, dma_counter_val, _dma_tick_adjust, retrigger) => {
+                    let mut dma_counter: u32 = dma_counter.into();
+                    // CPU DRAM scheduler doesn't understand the PIT's 0->65536 conversion. Handle that here.
+                    // Normally the reload value would never be this high, but acid8088 sets it that way as a way of
+                    // effectively disabling refresh for a time.
+                    if dma_counter == 0 {
+                        dma_counter = 65536;
+                    }
                     self.cpu.set_option(CpuOption::ScheduleDramRefresh(
                         true,
                         self.timer_ticks_to_cpu_cycles(dma_counter),
-                        self.timer_ticks_to_cpu_cycles(dma_counter_val), //self.timer_ticks_to_cpu_cycles(0)
+                        self.timer_ticks_to_cpu_cycles(dma_counter_val as u32),
                         retrigger,
                     ))
                 }
@@ -1625,7 +1632,7 @@ impl Machine {
         (intr, sys_ticks)
     }
 
-    fn timer_ticks_to_cpu_cycles(&self, timer_ticks: u16) -> u32 {
+    fn timer_ticks_to_cpu_cycles(&self, timer_ticks: u32) -> u32 {
         let timer_multiplier = if let Some(_timer_crystal) = self.machine_desc.timer_crystal {
             // We have an alternate
             todo!("Unimplemented conversion for AT timer");
