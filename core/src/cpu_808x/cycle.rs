@@ -381,7 +381,7 @@ impl Intel808x {
         }
         self.dma_wait_states = self.dma_wait_states.saturating_sub(1);
 
-        if self.wait_states == 0 && self.dma_wait_states == 0 {
+        if self.wait_states == 0 && self.dma_wait_states == 0 && self.io_wait_states == 0 {
             self.ready = true;
         }
 
