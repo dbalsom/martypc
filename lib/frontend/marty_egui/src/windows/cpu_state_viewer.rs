@@ -229,6 +229,18 @@ impl CpuViewerControl {
                             egui::TextEdit::singleline(&mut self.cpu_state.dma_state).font(egui::TextStyle::Monospace),
                         );
                     });
+                    MartyLayout::kv_row(ui, "DRAM Refresh period", None, |ui| {
+                        ui.add(
+                            egui::TextEdit::singleline(&mut self.cpu_state.dram_refresh_cycle_period)
+                                .font(egui::TextStyle::Monospace),
+                        );
+                    });
+                    MartyLayout::kv_row(ui, "DRAM Refresh cycle number", None, |ui| {
+                        ui.add(
+                            egui::TextEdit::singleline(&mut self.cpu_state.dram_refresh_cycle_num)
+                                .font(egui::TextStyle::Monospace),
+                        );
+                    });
                 });
             });
     }
