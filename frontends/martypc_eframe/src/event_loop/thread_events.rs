@@ -155,7 +155,10 @@ pub fn handle_thread_event(emu: &mut Emulator) {
 
                             emu.gui
                                 .toasts()
-                                .info(format!("Floppy loaded: {:?}", path.clone()))
+                                .info(format!(
+                                    "Floppy loaded: {}",
+                                    path.clone().unwrap_or(PathBuf::from("None")).display()
+                                ))
                                 .duration(Some(NORMAL_NOTIFICATION_TIME));
 
                             emu.gui.modal.close();
