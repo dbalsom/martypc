@@ -345,7 +345,7 @@ impl eframe::App for MartyApp {
             #[cfg(feature = "use_winit")]
             if let Some(receiver) = &self.winit_receiver {
                 for event in receiver.try_iter() {
-                    log::debug!("Received winit event: {:?} from window id: {:?}", event.1, event.0);
+                    log::trace!("Received winit event: {:?} from window id: {:?}", event.1, event.0);
                     handle_window_event(
                         emu,
                         self.dm.as_mut().unwrap(),
@@ -361,7 +361,7 @@ impl eframe::App for MartyApp {
             #[cfg(not(feature = "use_winit"))]
             if let Some(receiver) = &self.web_receiver {
                 for event in receiver.try_iter() {
-                    log::debug!("Received web_sys event: {:?}", event);
+                    log::trace!("Received web_sys event: {:?}", event);
 
                     handle_web_key_event(
                         emu,
