@@ -1382,6 +1382,8 @@ impl NecVx0 {
             instruction_count: format!("{}", self.instruction_count),
             cycle_count: format!("{}", self.cycle_num),
             dma_state: format!("{:?}", self.dma_state),
+            dram_refresh_cycle_period: format!("{}", self.dram_refresh_cycle_period),
+            dram_refresh_cycle_num: format!("{}", self.dram_refresh_cycle_num),
         }
     }
 

@@ -181,6 +181,8 @@ pub struct CpuStringState {
     pub instruction_count: String,
     pub cycle_count: String,
     pub dma_state: String,
+    pub dram_refresh_cycle_period: String,
+    pub dram_refresh_cycle_num: String,
 }
 
 #[derive(Copy, Clone, Debug, Deserialize, Eq, PartialEq, Hash)]
