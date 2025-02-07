@@ -7,6 +7,7 @@ pub struct RelativeDirectory {
     pub name: OsString,
 }
 
+#[derive(Debug)]
 pub enum FloppyImageSource {
     DiskImage(Vec<u8>, PathBuf),
     ZipArchive(Vec<u8>, PathBuf),

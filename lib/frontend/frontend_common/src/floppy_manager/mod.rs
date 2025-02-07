@@ -299,29 +299,29 @@ impl FloppyManager {
         Some(self.image_vec[idx].path.clone())
     }
 
-    pub async fn load_floppy_by_idx(&self, idx: usize, rm: &ResourceManager) -> Result<FloppyImageSource, FloppyError> {
-        let floppy_vec;
+    pub fn load_floppy_by_idx(&self, idx: usize, rm: &ResourceManager) -> Result<FloppyImageSource, FloppyError> {
+        //let floppy_vec;
 
         if idx >= self.image_vec.len() {
             return Err(FloppyError::ImageNotFound);
         }
         let floppy_path = self.image_vec[idx].path.clone();
-        floppy_vec = match rm.read_resource_from_path(&floppy_path).await {
-            Ok(vec) => vec,
-            Err(_e) => {
-                return Err(FloppyError::FileReadError);
-            }
-        };
+        // floppy_vec = match rm.read_resource_from_path_blocking(&floppy_path) {
+        //     Ok(vec) => vec,
+        //     Err(_e) => {
+        //         return Err(FloppyError::FileReadError);
+        //     }
+        // };
 
-        self.load_floppy_by_path(floppy_path, rm).await
+        self.load_floppy_by_path(floppy_path, rm)
     }
 
-    pub async fn load_floppy_by_path(
+    pub fn load_floppy_by_path(
         &self,
         floppy_path: PathBuf,
         rm: &ResourceManager,
     ) -> Result<FloppyImageSource, FloppyError> {
-        let floppy_vec = match rm.read_resource_from_path(&floppy_path).await {
+        let floppy_vec = match rm.read_resource_from_path_blocking(&floppy_path) {
             Ok(vec) => vec,
             Err(_e) => {
                 return Err(FloppyError::FileReadError);

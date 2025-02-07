@@ -64,7 +64,12 @@ pub fn handle_load_floppy(emu: &mut Emulator, drive_select: usize, context: File
 
                 if let Some(name) = name {
                     floppy_name = Some(name.clone());
-                    log::info!("Loading floppy image: {:?} into drive: {}", name, drive_select);
+                    log::info!(
+                        "Loading floppy image by index: {}->{:?} into drive: {}",
+                        item_idx,
+                        name,
+                        drive_select
+                    );
 
                     let floppy_path = match emu.floppy_manager.get_floppy_path(item_idx) {
                         Some(path) => path,
@@ -72,28 +77,31 @@ pub fn handle_load_floppy(emu: &mut Emulator, drive_select: usize, context: File
                             log::error!("Failed to resolve index to floppy path");
                             emu.gui
                                 .toasts()
-                                .error(format!("Failed to resolve index to floppy path"))
+                                .error("Failed to resolve index to floppy path".to_string())
                                 .duration(Some(NORMAL_NOTIFICATION_TIME));
                             return;
                         }
                     };
 
-                    let new_fsc_context = FileSelectionContext::Path(floppy_path.clone());
-                    let new_context = FileOpenContext::FloppyDiskImage {
-                        drive_select,
-                        fsc: new_fsc_context,
-                    };
-
                     #[cfg(not(target_arch = "wasm32"))]
                     {
-                        //floppy_result = Some(emu.floppy_manager.load_floppy_by_path(path, &emu.rm).await);
+                        // On native target, we can use blocking native file io.
+                        floppy_result = Some(emu.floppy_manager.load_floppy_by_path(floppy_path, &emu.rm));
                     }
                     #[cfg(target_arch = "wasm32")]
                     {
-                        open_file(new_context, emu.sender.clone());
-                    }
+                        // On web, we must use our open_file utility to spawn a file open dialog, and
+                        // user the provided sender to send the result back to the main thread once
+                        // fetched.
 
-                    return;
+                        let new_fsc_context = FileSelectionContext::Path(floppy_path.clone());
+                        let new_context = FileOpenContext::FloppyDiskImage {
+                            drive_select,
+                            fsc: new_fsc_context,
+                        };
+                        open_file(new_context, emu.sender.clone());
+                        return;
+                    }
                 };
             }
             FileSelectionContext::Path(path) => {
@@ -101,12 +109,13 @@ pub fn handle_load_floppy(emu: &mut Emulator, drive_select: usize, context: File
                     floppy_name = Some(file_name.to_os_string());
                 }
 
-                log::info!("Loading floppy image: {:?} into drive: {}", path, drive_select);
+                log::info!("Loading floppy image by path: {:?} into drive: {}", path, drive_select);
                 //floppy_result = Some(emu.floppy_manager.load_floppy_by_path(path, &emu.rm).await);
             }
         }
 
         if let Some(floppy_result) = floppy_result {
+            log::debug!("Procesing floppy_result: {:?}", floppy_result);
             match floppy_result {
                 Ok(FloppyImageSource::ZipArchive(zip_vec, path)) => {
                     let mut image_type = None;
