@@ -316,10 +316,12 @@ impl Cpu for Intel808x {
         }
     }
 
+    #[inline]
     fn bus(&self) -> &BusInterface {
         &self.bus
     }
 
+    #[inline]
     fn bus_mut(&mut self) -> &mut BusInterface {
         &mut self.bus
     }
