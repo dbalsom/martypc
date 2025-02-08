@@ -1,18 +1,19 @@
 [workspace]
 members = [
-    "core",
-    "lib/common",
-    "lib/frontend/frontend_common",
-    "lib/frontend/videocard_renderer",
-    "lib/frontend/marty_scaler_wgpu",
-    "lib/frontend/display_manager_wgpu",
-    "lib/frontend/marty_egui",
-    "lib/frontend/marty_egui_wgpu",
-    "lib/frontend/config_toml_bpaf",
-    "lib/frontend/marty_web_helpers",
-    "frontends/martypc_eframe",
-    "frontends/martypc_web_player_wgpu",
-    "frontends/martypc_desktop_wgpu"
+    "crates/marty_core",
+    "crates/marty_common",
+    "crates/lib/frontend/marty_frontend_common",
+    "crates/lib/frontend/marty_videocard_renderer",
+    "crates/lib/frontend/marty_scaler_wgpu",
+    "crates/lib/frontend/display_manager_wgpu",
+    "crates/lib/frontend/marty_egui",
+    "crates/lib/frontend/marty_egui_wgpu",
+    "crates/lib/frontend/marty_config",
+    "crates/lib/frontend/marty_web_helpers",
+    "crates/frontends/martypc_headless",
+    "crates/frontends/martypc_eframe",
+    "crates/frontends/martypc_web_player_wgpu",
+    "crates/frontends/martypc_desktop_wgpu"
 ]
 
 [workspace.package]
@@ -31,14 +32,14 @@ authors.workspace = true
 
 [[bin]]
 name = "martypc"
-path = "frontends/martypc_desktop_wgpu/src/main.rs"
+path = "crates/frontends/martypc_desktop_wgpu/src/main.rs"
 
 [dependencies]
-marty_core = { path = "core"}
-videocard_renderer = { path = "lib/frontend/videocard_renderer" }
-marty_egui = { path = "lib/frontend/marty_egui" }
-frontend_common = { path = "lib/frontend/frontend_common" }
-martypc_desktop_wgpu = { path = "frontends/martypc_desktop_wgpu" }
+marty_core = { path = "crates/marty_core"}
+marty_videocard_renderer = { path = "crates/lib/frontend/marty_videocard_renderer" }
+marty_egui = { path = "crates/lib/frontend/marty_egui" }
+marty_frontend_common =  { path = "crates/lib/frontend/marty_frontend_common" }
+martypc_desktop_wgpu = { path = "crates/frontends/martypc_desktop_wgpu" }
 
 [workspace.dependencies]
 winit = "0.30"
@@ -63,6 +64,10 @@ strum = "0.26"
 strum_macros = "0.26"
 url = "2.5"
 egui_commonmark = { version = "0.19" }
+rand = "0.9"
+getrandom = "0.3"
+regex = "1.5"
+cfg-if = "1.0"
 
 # wasm workspace dependencies
 # ---------------------------------------------------------------------------------------------------------------------
@@ -190,8 +195,8 @@ default = ["ega", "vga", "opl"]
 devtools = ["martypc_desktop_wgpu/devtools"]
 arduino_validator = ["marty_core/arduino_validator", "martypc_desktop_wgpu/arduino_validator"]
 cpu_validator = ["marty_core/cpu_validator", "martypc_desktop_wgpu/cpu_validator"]
-ega = ["marty_core/ega", "frontend_common/ega", "videocard_renderer/ega"]
-vga = ["marty_core/vga", "frontend_common/vga", "videocard_renderer/vga"]
+ega = ["marty_core/ega", "marty_frontend_common/ega", "marty_videocard_renderer/ega"]
+vga = ["marty_core/vga", "marty_frontend_common/vga", "marty_videocard_renderer/vga"]
 opl = ["marty_core/opl"]
 
 [build-dependencies]

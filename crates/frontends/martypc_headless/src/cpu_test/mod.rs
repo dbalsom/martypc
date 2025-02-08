@@ -1,3 +1,7 @@
+/*
+    MartyPC
+    https://github.com/dbalsom/martypc
+
     Copyright 2022-2024 Daniel Balsom
 
     Permission is hereby granted, free of charge, to any person obtaining a
@@ -13,7 +17,23 @@
     THE SOFTWARE IS PROVIDED “AS IS”, WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
     IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
     FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
-    AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER   
+    AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
     LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING
     FROM, OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER
     DEALINGS IN THE SOFTWARE.
+
+    ---------------------------------------------------------------------------
+
+    /cpu_test/mod.rs - Implement data structures for JSON test generation mode.
+
+*/
+
+#[macro_use]
+pub mod common;
+
+#[cfg(feature = "arduino_validator")]
+pub mod gen_tests;
+#[cfg(feature = "arduino_validator")]
+pub mod process_tests;
+#[cfg(feature = "cpu_validator")]
+pub mod run_tests;

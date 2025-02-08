@@ -3,37 +3,38 @@
   <component name="NewModuleRootManager">
     <content url="file://$MODULE_DIR$">
       <sourceFolder url="file://$MODULE_DIR$/benches" isTestSource="true" />
-      <sourceFolder url="file://$MODULE_DIR$/core/src" isTestSource="false" />
-      <sourceFolder url="file://$MODULE_DIR$/frontends/martypc_pixels_desktop/src" isTestSource="false" />
-      <sourceFolder url="file://$MODULE_DIR$/frontends/martypc_pixels_wasm32/src" isTestSource="false" />
       <sourceFolder url="file://$MODULE_DIR$/tests" isTestSource="true" />
-      <sourceFolder url="file://$MODULE_DIR$/core/benches" isTestSource="true" />
-      <sourceFolder url="file://$MODULE_DIR$/lib/backend/display_backend_pixels/src" isTestSource="false" />
-      <sourceFolder url="file://$MODULE_DIR$/lib/backend/display_backend_trait/src" isTestSource="false" />
-      <sourceFolder url="file://$MODULE_DIR$/lib/frontend/config_toml_bpaf/src" isTestSource="false" />
-      <sourceFolder url="file://$MODULE_DIR$/lib/frontend/display_manager_trait/src" isTestSource="false" />
-      <sourceFolder url="file://$MODULE_DIR$/lib/frontend/display_manager_wgpu/src" isTestSource="false" />
-      <sourceFolder url="file://$MODULE_DIR$/lib/frontend/marty_color/src" isTestSource="false" />
-      <sourceFolder url="file://$MODULE_DIR$/lib/frontend/marty_egui/src" isTestSource="false" />
-      <sourceFolder url="file://$MODULE_DIR$/lib/frontend/videocard_renderer/benches" isTestSource="true" />
-      <sourceFolder url="file://$MODULE_DIR$/lib/frontend/videocard_renderer/src" isTestSource="false" />
-      <sourceFolder url="file://$MODULE_DIR$/lib/frontend/display_scaler_trait_rm/src" isTestSource="false" />
-      <sourceFolder url="file://$MODULE_DIR$/lib/frontend/marty_renderer/benches" isTestSource="true" />
-      <sourceFolder url="file://$MODULE_DIR$/lib/frontend/marty_renderer/src" isTestSource="false" />
-      <sourceFolder url="file://$MODULE_DIR$/lib/frontend/marty_scaler_wgpu/src" isTestSource="false" />
-      <sourceFolder url="file://$MODULE_DIR$/lib/common/src" isTestSource="false" />
-      <sourceFolder url="file://$MODULE_DIR$/lib/frontend/frontend_common/src" isTestSource="false" />
-      <sourceFolder url="file://$MODULE_DIR$/frontends/martypc_desktop_wgpu/src" isTestSource="false" />
-      <sourceFolder url="file://$MODULE_DIR$/frontends/martypc_web_player_wgpu/src" isTestSource="false" />
-      <sourceFolder url="file://$MODULE_DIR$/lib/backend/display_backend_wgpu/src" isTestSource="false" />
-      <sourceFolder url="file://$MODULE_DIR$/lib/backend/wgpu_wrapper/src" isTestSource="false" />
-      <sourceFolder url="file://$MODULE_DIR$/frontends/martypc_eframe/src" isTestSource="false" />
-      <sourceFolder url="file://$MODULE_DIR$/lib/backend/display_backend_eframe/src" isTestSource="false" />
-      <sourceFolder url="file://$MODULE_DIR$/lib/frontend/display_manager_eframe/src" isTestSource="false" />
-      <sourceFolder url="file://$MODULE_DIR$/lib/frontend/marty_egui_eframe/src" isTestSource="false" />
-      <sourceFolder url="file://$MODULE_DIR$/lib/frontend/marty_egui_wgpu/src" isTestSource="false" />
-      <sourceFolder url="file://$MODULE_DIR$/lib/frontend/marty_web_helpers/src" isTestSource="false" />
-      <sourceFolder url="file://$MODULE_DIR$/lib/frontend/null_scaler/src" isTestSource="false" />
+      <sourceFolder url="file://$MODULE_DIR$/crates/frontends/martypc_desktop_wgpu/src" isTestSource="false" />
+      <sourceFolder url="file://$MODULE_DIR$/crates/frontends/martypc_eframe/src" isTestSource="false" />
+      <sourceFolder url="file://$MODULE_DIR$/crates/frontends/martypc_headless/src" isTestSource="false" />
+      <sourceFolder url="file://$MODULE_DIR$/crates/frontends/martypc_pixels_desktop/src" isTestSource="false" />
+      <sourceFolder url="file://$MODULE_DIR$/crates/frontends/martypc_pixels_wasm32/src" isTestSource="false" />
+      <sourceFolder url="file://$MODULE_DIR$/crates/frontends/martypc_web_player_wgpu/src" isTestSource="false" />
+      <sourceFolder url="file://$MODULE_DIR$/crates/lib/backend/display_backend_eframe/src" isTestSource="false" />
+      <sourceFolder url="file://$MODULE_DIR$/crates/lib/backend/display_backend_pixels/src" isTestSource="false" />
+      <sourceFolder url="file://$MODULE_DIR$/crates/lib/backend/display_backend_trait/src" isTestSource="false" />
+      <sourceFolder url="file://$MODULE_DIR$/crates/lib/backend/display_backend_wgpu/src" isTestSource="false" />
+      <sourceFolder url="file://$MODULE_DIR$/crates/lib/backend/wgpu_wrapper/src" isTestSource="false" />
+      <sourceFolder url="file://$MODULE_DIR$/crates/lib/frontend/display_manager_eframe/src" isTestSource="false" />
+      <sourceFolder url="file://$MODULE_DIR$/crates/lib/frontend/display_manager_trait/src" isTestSource="false" />
+      <sourceFolder url="file://$MODULE_DIR$/crates/lib/frontend/display_manager_wgpu/src" isTestSource="false" />
+      <sourceFolder url="file://$MODULE_DIR$/crates/lib/frontend/display_scaler_trait_rm/src" isTestSource="false" />
+      <sourceFolder url="file://$MODULE_DIR$/crates/lib/frontend/marty_color/src" isTestSource="false" />
+      <sourceFolder url="file://$MODULE_DIR$/crates/lib/frontend/marty_config/src" isTestSource="false" />
+      <sourceFolder url="file://$MODULE_DIR$/crates/lib/frontend/marty_egui/src" isTestSource="false" />
+      <sourceFolder url="file://$MODULE_DIR$/crates/lib/frontend/marty_egui_eframe/src" isTestSource="false" />
+      <sourceFolder url="file://$MODULE_DIR$/crates/lib/frontend/marty_egui_wgpu/src" isTestSource="false" />
+      <sourceFolder url="file://$MODULE_DIR$/crates/lib/frontend/marty_frontend_common/src" isTestSource="false" />
+      <sourceFolder url="file://$MODULE_DIR$/crates/lib/frontend/marty_renderer/benches" isTestSource="true" />
+      <sourceFolder url="file://$MODULE_DIR$/crates/lib/frontend/marty_renderer/src" isTestSource="false" />
+      <sourceFolder url="file://$MODULE_DIR$/crates/lib/frontend/marty_scaler_null/src" isTestSource="false" />
+      <sourceFolder url="file://$MODULE_DIR$/crates/lib/frontend/marty_scaler_wgpu/src" isTestSource="false" />
+      <sourceFolder url="file://$MODULE_DIR$/crates/lib/frontend/marty_videocard_renderer/benches" isTestSource="true" />
+      <sourceFolder url="file://$MODULE_DIR$/crates/lib/frontend/marty_videocard_renderer/src" isTestSource="false" />
+      <sourceFolder url="file://$MODULE_DIR$/crates/lib/frontend/marty_web_helpers/src" isTestSource="false" />
+      <sourceFolder url="file://$MODULE_DIR$/crates/marty_common/src" isTestSource="false" />
+      <sourceFolder url="file://$MODULE_DIR$/crates/marty_core/benches" isTestSource="true" />
+      <sourceFolder url="file://$MODULE_DIR$/crates/marty_core/src" isTestSource="false" />
       <excludeFolder url="file://$MODULE_DIR$/target" />
     </content>
     <orderEntry type="inheritedJdk" />

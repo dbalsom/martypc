@@ -136,11 +136,11 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "e89da841a80418a9b391ebaea17f5c112ffaaa96f621d2c285b5174da76b9011"
 dependencies = [
  "cfg-if",
- "getrandom",
+ "getrandom 0.2.15",
  "once_cell",
  "serde",
  "version_check",
- "zerocopy",
+ "zerocopy 0.7.35",
 ]
 
 [[package]]
@@ -334,15 +334,6 @@ name = "anyhow"
 version = "1.0.95"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "34ac096ce696dc2fcabef30516bb13c0a68a11d30131d3df6f04711467681b04"
-
-[[package]]
-name = "approx"
-version = "0.4.0"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "3f2a05fd1bd10b2527e20a2cd32d8873d115b8b39fe219ee25f42a8aca6ba278"
-dependencies = [
- "num-traits",
-]
 
 [[package]]
 name = "arbitrary"
@@ -1109,16 +1100,6 @@ dependencies = [
 ]
 
 [[package]]
-name = "cgmath"
-version = "0.18.0"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "1a98d30140e3296250832bbaaff83b27dcd6fa3cc70fb6f1f3e5c9c0023b5317"
-dependencies = [
- "approx",
- "num-traits",
-]
-
-[[package]]
 name = "chrono"
 version = "0.4.39"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -1242,6 +1223,15 @@ dependencies = [
 ]
 
 [[package]]
+name = "colored"
+version = "3.0.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "fde0e0ec90c9dfb3b4b1a0891a7dcd0e2bffde2f7efed5fe7c9bb00e5bfb915e"
+dependencies = [
+ "windows-sys 0.59.0",
+]
+
+[[package]]
 name = "com-rs"
 version = "0.2.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -1264,21 +1254,6 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "4ca0197aee26d1ae37445ee532fefce43251d24cc7c166799f4d46817f1d3973"
 dependencies = [
  "crossbeam-utils",
-]
-
-[[package]]
-name = "config_toml_bpaf"
-version = "0.3.0"
-dependencies = [
- "anyhow",
- "bpaf",
- "frontend_common",
- "log",
- "marty_common",
- "marty_core",
- "serde",
- "serde_derive",
- "toml 0.8.19",
 ]
 
 [[package]]
@@ -1726,7 +1701,7 @@ dependencies = [
  "display_backend_trait",
  "egui 0.30.0",
  "egui-wgpu 0.30.0",
- "null_scaler",
+ "marty_scaler_null",
 ]
 
 [[package]]
@@ -1745,9 +1720,9 @@ dependencies = [
  "display_backend_trait",
  "log",
  "marty_egui",
- "marty_pixels_scaler",
+ "marty_scaler_wgpu",
+ "marty_videocard_renderer",
  "thiserror 1.0.69",
- "videocard_renderer",
  "wgpu_wrapper",
  "winit 0.30.8",
 ]
@@ -1760,16 +1735,16 @@ dependencies = [
  "display_backend_eframe",
  "egui 0.30.0",
  "egui-wgpu 0.30.0",
- "frontend_common",
  "image 0.25.5",
  "log",
  "marty_common",
  "marty_core",
  "marty_egui",
  "marty_egui_eframe",
- "marty_pixels_scaler",
- "null_scaler",
- "videocard_renderer",
+ "marty_frontend_common",
+ "marty_scaler_null",
+ "marty_scaler_wgpu",
+ "marty_videocard_renderer",
  "winit 0.30.8",
 ]
 
@@ -1779,14 +1754,14 @@ version = "0.3.0"
 dependencies = [
  "anyhow",
  "display_backend_wgpu",
- "frontend_common",
  "image 0.25.5",
  "log",
  "marty_common",
  "marty_core",
  "marty_egui",
- "marty_pixels_scaler",
- "videocard_renderer",
+ "marty_frontend_common",
+ "marty_scaler_wgpu",
+ "marty_videocard_renderer",
  "winit 0.30.8",
 ]
 
@@ -2437,12 +2412,12 @@ dependencies = [
  "env_logger 0.11.6",
  "fatfs 0.4.0 (git+https://github.com/dbalsom/fluxfox_fat.git?branch=bpb_fix)",
  "flate2",
- "getrandom",
+ "getrandom 0.2.15",
  "histogram",
  "log",
  "num-derive 0.4.2",
  "num-traits",
- "rand",
+ "rand 0.8.5",
  "regex",
  "serde",
  "sha1_smol",
@@ -2551,32 +2526,6 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "e13624c2627564efccf4934284bdd98cbaa14e79b0b5a141218e507b3a823456"
 dependencies = [
  "percent-encoding",
-]
-
-[[package]]
-name = "frontend_common"
-version = "0.3.0"
-dependencies = [
- "anyhow",
- "display_backend_trait",
- "fatfs 0.4.0 (git+https://github.com/dbalsom/fatfs_martypc.git?branch=master)",
- "log",
- "marty_common",
- "marty_core",
- "marty_web_helpers",
- "md5",
- "regex",
- "ringbuf 0.3.3",
- "serde",
- "serde_derive",
- "strum",
- "strum_macros",
- "toml 0.8.19",
- "url",
- "videocard_renderer",
- "web-time 1.1.0",
- "wgpu 23.0.1",
- "zip",
 ]
 
 [[package]]
@@ -2691,8 +2640,20 @@ dependencies = [
  "cfg-if",
  "js-sys",
  "libc",
- "wasi",
+ "wasi 0.11.0+wasi-snapshot-preview1",
  "wasm-bindgen",
+]
+
+[[package]]
+name = "getrandom"
+version = "0.3.1"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "43a49c392881ce6d5c3b8cb70f98717b7c07aabbdff06687b9030dbfbe2725f8"
+dependencies = [
+ "cfg-if",
+ "libc",
+ "wasi 0.13.3+wasi-0.2.2",
+ "windows-targets 0.52.6",
 ]
 
 [[package]]
@@ -2714,9 +2675,9 @@ dependencies = [
 
 [[package]]
 name = "glam"
-version = "0.24.2"
+version = "0.29.2"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "b5418c17512bdf42730f9032c74e1ae39afc408745ebb2acf72fbc4691c17945"
+checksum = "dc46dd3ec48fdd8e693a98d2b8bafae273a2d54c1de02a2a7e3d57d501f39677"
 
 [[package]]
 name = "glob"
@@ -3619,26 +3580,42 @@ dependencies = [
 ]
 
 [[package]]
+name = "marty_config"
+version = "0.3.0"
+dependencies = [
+ "anyhow",
+ "bpaf",
+ "log",
+ "marty_common",
+ "marty_core",
+ "marty_frontend_common",
+ "serde",
+ "serde_derive",
+ "toml 0.8.19",
+]
+
+[[package]]
 name = "marty_core"
 version = "0.3.0"
 dependencies = [
  "anyhow",
  "arraydeque",
  "bytemuck",
+ "cfg-if",
  "const_format",
  "criterion",
  "crossbeam-channel",
  "enum_dispatch",
  "fluxfox",
  "fxhash",
- "getrandom",
+ "getrandom 0.2.15",
  "lazy_static",
  "log",
  "marty_common",
  "md5",
  "modular-bitfield",
  "opl3-rs",
- "rand",
+ "rand 0.8.5",
  "regex",
  "ringbuf 0.2.8",
  "serde",
@@ -3670,12 +3647,13 @@ dependencies = [
  "egui_plot",
  "fluxfox",
  "fluxfox_egui",
- "frontend_common",
  "image 0.25.5",
  "lazy_static",
  "log",
  "marty_common",
  "marty_core",
+ "marty_frontend_common",
+ "marty_videocard_renderer",
  "regex",
  "serde",
  "serialport 4.3.1-alpha.0",
@@ -3683,7 +3661,6 @@ dependencies = [
  "strum_macros",
  "tiny-skia",
  "toml 0.8.19",
- "videocard_renderer",
  "web-time 1.1.0",
  "wgpu 23.0.1",
 ]
@@ -3694,9 +3671,9 @@ version = "0.3.0"
 dependencies = [
  "egui 0.30.0",
  "egui_extras 0.30.0 (git+https://github.com/dbalsom/egui_martypc.git?branch=0.30.0_raw_winit_hook)",
- "frontend_common",
  "log",
  "marty_egui",
+ "marty_frontend_common",
  "serialport 4.3.1-alpha.0",
  "web-time 1.1.0",
  "wgpu 23.0.1",
@@ -3710,9 +3687,9 @@ dependencies = [
  "egui-wgpu 0.30.0",
  "egui-winit 0.30.0",
  "egui_extras 0.30.0 (git+https://github.com/dbalsom/egui_martypc.git?branch=0.30.0_raw_winit_hook)",
- "frontend_common",
  "log",
  "marty_egui",
+ "marty_frontend_common",
  "serialport 4.3.1-alpha.0",
  "web-time 1.1.0",
  "wgpu 23.0.1",
@@ -3721,14 +3698,29 @@ dependencies = [
 ]
 
 [[package]]
-name = "marty_pixels_scaler"
+name = "marty_frontend_common"
 version = "0.3.0"
 dependencies = [
- "bytemuck",
- "frontend_common",
- "ultraviolet",
+ "anyhow",
+ "display_backend_trait",
+ "fatfs 0.4.0 (git+https://github.com/dbalsom/fatfs_martypc.git?branch=master)",
+ "log",
+ "marty_common",
+ "marty_core",
+ "marty_videocard_renderer",
+ "marty_web_helpers",
+ "md5",
+ "regex",
+ "ringbuf 0.3.3",
+ "serde",
+ "serde_derive",
+ "strum",
+ "strum_macros",
+ "toml 0.8.19",
+ "url",
+ "web-time 1.1.0",
  "wgpu 23.0.1",
- "wgpu_wrapper",
+ "zip",
 ]
 
 [[package]]
@@ -3744,27 +3736,63 @@ dependencies = [
  "egui-winit 0.22.0",
  "emath 0.20.0",
  "error-iter",
- "getrandom",
+ "getrandom 0.2.15",
  "image 0.24.9",
  "instant",
  "js-sys",
  "log",
  "marty_core",
- "marty_pixels_scaler",
+ "marty_scaler_wgpu",
+ "marty_videocard_renderer",
  "marty_web_helpers",
  "pixels",
- "rand",
+ "rand 0.8.5",
  "regex",
  "resize",
  "rgb",
  "serialport 4.7.0",
- "videocard_renderer",
  "wasm-bindgen",
  "wasm-bindgen-futures",
  "web-sys",
  "wgpu 0.16.3",
  "winit 0.29.15",
  "winit_input_helper",
+]
+
+[[package]]
+name = "marty_scaler_null"
+version = "0.3.0"
+dependencies = [
+ "marty_frontend_common",
+]
+
+[[package]]
+name = "marty_scaler_wgpu"
+version = "0.3.0"
+dependencies = [
+ "bytemuck",
+ "marty_frontend_common",
+ "ultraviolet",
+ "wgpu 23.0.1",
+ "wgpu_wrapper",
+]
+
+[[package]]
+name = "marty_videocard_renderer"
+version = "0.3.0"
+dependencies = [
+ "bytemuck",
+ "criterion",
+ "display_backend_trait",
+ "fast_image_resize",
+ "glam",
+ "image 0.25.5",
+ "log",
+ "marty_common",
+ "marty_core",
+ "rand 0.9.0",
+ "serde",
+ "web-time 1.1.0",
 ]
 
 [[package]]
@@ -3786,11 +3814,11 @@ dependencies = [
 name = "martypc"
 version = "0.3.0"
 dependencies = [
- "frontend_common",
  "marty_core",
  "marty_egui",
+ "marty_frontend_common",
+ "marty_videocard_renderer",
  "martypc_desktop_wgpu",
- "videocard_renderer",
  "winres",
 ]
 
@@ -3800,8 +3828,7 @@ version = "0.3.0"
 dependencies = [
  "anyhow",
  "bytemuck",
- "colored",
- "config_toml_bpaf",
+ "colored 2.2.0",
  "console_error_panic_hook",
  "console_log",
  "cpal 0.13.5",
@@ -3816,17 +3843,19 @@ dependencies = [
  "error-iter",
  "flate2",
  "fluxfox",
- "frontend_common",
- "getrandom",
+ "getrandom 0.2.15",
  "image 0.24.9",
  "indexmap 2.7.1",
  "instant",
  "js-sys",
  "log",
+ "marty_config",
  "marty_core",
  "marty_egui",
- "marty_pixels_scaler",
- "rand",
+ "marty_frontend_common",
+ "marty_scaler_wgpu",
+ "marty_videocard_renderer",
+ "rand 0.8.5",
  "regex",
  "resize",
  "rgb",
@@ -3837,7 +3866,6 @@ dependencies = [
  "serialport 4.3.1-alpha.0",
  "strum",
  "strum_macros",
- "videocard_renderer",
  "wasm-bindgen",
  "wasm-bindgen-futures",
  "web-sys",
@@ -3851,7 +3879,6 @@ version = "0.3.0"
 dependencies = [
  "anyhow",
  "async-std",
- "config_toml_bpaf",
  "crossbeam-channel",
  "display_manager_eframe",
  "eframe",
@@ -3861,24 +3888,53 @@ dependencies = [
  "egui_extras 0.30.0 (registry+https://github.com/rust-lang/crates.io-index)",
  "env_logger 0.11.6",
  "fluxfox",
- "frontend_common",
  "log",
+ "marty_config",
  "marty_core",
  "marty_egui",
  "marty_egui_eframe",
+ "marty_frontend_common",
+ "marty_videocard_renderer",
  "marty_web_helpers",
  "rodio",
  "serde",
  "serialport 4.3.1-alpha.0",
  "strum",
  "url",
- "videocard_renderer",
  "wasm-bindgen",
  "wasm-bindgen-futures",
  "web-sys",
  "web-time 1.1.0",
  "wgpu 23.0.1",
  "winit 0.30.8",
+]
+
+[[package]]
+name = "martypc_headless"
+version = "0.3.0"
+dependencies = [
+ "anyhow",
+ "colored 3.0.0",
+ "criterion",
+ "crossbeam-channel",
+ "env_logger 0.11.6",
+ "flate2",
+ "getrandom 0.3.1",
+ "indexmap 2.7.1",
+ "log",
+ "marty_config",
+ "marty_core",
+ "marty_frontend_common",
+ "pollster 0.4.0",
+ "rand 0.9.0",
+ "regex",
+ "rgb",
+ "serde",
+ "serde_derive",
+ "serde_json",
+ "serialport 4.3.1-alpha.0",
+ "strum",
+ "strum_macros",
 ]
 
 [[package]]
@@ -4221,13 +4277,6 @@ checksum = "d273983c5a657a70a3e8f2a01329822f3b8c8172b73826411a55751e404a0a4a"
 dependencies = [
  "memchr",
  "minimal-lexical",
-]
-
-[[package]]
-name = "null_scaler"
-version = "0.3.0"
-dependencies = [
- "frontend_common",
 ]
 
 [[package]]
@@ -4924,7 +4973,7 @@ version = "0.2.20"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "77957b295656769bb8ad2b6a6b09d897d94f05c41b069aede1fcdaa675eaea04"
 dependencies = [
- "zerocopy",
+ "zerocopy 0.7.35",
 ]
 
 [[package]]
@@ -5023,8 +5072,19 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "34af8d1a0e25924bc5b7c43c079c942339d8f0a8b57c39049bef581b46327404"
 dependencies = [
  "libc",
- "rand_chacha",
- "rand_core",
+ "rand_chacha 0.3.1",
+ "rand_core 0.6.4",
+]
+
+[[package]]
+name = "rand"
+version = "0.9.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "3779b94aeb87e8bd4e834cee3650289ee9e0d5677f976ecdb6d219e5f4f6cd94"
+dependencies = [
+ "rand_chacha 0.9.0",
+ "rand_core 0.9.0",
+ "zerocopy 0.8.17",
 ]
 
 [[package]]
@@ -5034,7 +5094,17 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "e6c10a63a0fa32252be49d21e7709d4d4baf8d231c2dbce1eaa8141b9b127d88"
 dependencies = [
  "ppv-lite86",
- "rand_core",
+ "rand_core 0.6.4",
+]
+
+[[package]]
+name = "rand_chacha"
+version = "0.9.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "d3022b5f1df60f26e1ffddd6c66e8aa15de382ae63b3a0c1bfc0e4d3e3f325cb"
+dependencies = [
+ "ppv-lite86",
+ "rand_core 0.9.0",
 ]
 
 [[package]]
@@ -5043,7 +5113,17 @@ version = "0.6.4"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "ec0be4795e2f6a28069bec0b5ff3e2ac9bafc99e6a9a7dc3547996c5c816922c"
 dependencies = [
- "getrandom",
+ "getrandom 0.2.15",
+]
+
+[[package]]
+name = "rand_core"
+version = "0.9.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "b08f3c9802962f7e1b25113931d94f43ed9725bebc59db9d0c3e9a23b67e15ff"
+dependencies = [
+ "getrandom 0.3.1",
+ "zerocopy 0.8.17",
 ]
 
 [[package]]
@@ -5739,7 +5819,7 @@ checksum = "9a8a559c81686f576e8cd0290cd2a24a2a9ad80c98b3478856500fcbd7acd704"
 dependencies = [
  "cfg-if",
  "fastrand",
- "getrandom",
+ "getrandom 0.2.15",
  "once_cell",
  "rustix",
  "windows-sys 0.59.0",
@@ -6116,7 +6196,7 @@ version = "1.12.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "b3758f5e68192bb96cc8f9b7e2c2cfdabb435499a28499a42f8f984092adad4b"
 dependencies = [
- "getrandom",
+ "getrandom 0.2.15",
 ]
 
 [[package]]
@@ -6130,25 +6210,6 @@ name = "version_check"
 version = "0.9.5"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "0b928f33d975fc6ad9f86c8f283853ad26bdd5b10b7f1542aa2fa15e2289105a"
-
-[[package]]
-name = "videocard_renderer"
-version = "0.3.0"
-dependencies = [
- "bytemuck",
- "cgmath",
- "criterion",
- "display_backend_trait",
- "fast_image_resize",
- "glam",
- "image 0.25.5",
- "log",
- "marty_common",
- "marty_core",
- "rand",
- "serde",
- "web-time 1.1.0",
-]
 
 [[package]]
 name = "walkdir"
@@ -6165,6 +6226,15 @@ name = "wasi"
 version = "0.11.0+wasi-snapshot-preview1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "9c8d87e72b64a3b4db28d11ce29237c246188f4f51057d65a7eab63b7987e423"
+
+[[package]]
+name = "wasi"
+version = "0.13.3+wasi-0.2.2"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "26816d2e1a4a36a2940b96c5296ce403917633dff8f3440e9b236ed6f6bacad2"
+dependencies = [
+ "wit-bindgen-rt",
+]
 
 [[package]]
 name = "wasm-bindgen"
@@ -7249,6 +7319,15 @@ dependencies = [
 ]
 
 [[package]]
+name = "wit-bindgen-rt"
+version = "0.33.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "3268f3d866458b787f390cf61f4bbb563b922d091359f9608842999eaee3943c"
+dependencies = [
+ "bitflags 2.8.0",
+]
+
+[[package]]
 name = "write16"
 version = "1.0.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -7392,7 +7471,7 @@ dependencies = [
  "hex",
  "nix 0.29.0",
  "ordered-stream",
- "rand",
+ "rand 0.8.5",
  "serde",
  "serde_repr",
  "sha1",
@@ -7474,7 +7553,16 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "1b9b4fd18abc82b8136838da5d50bae7bdea537c574d8dc1a34ed098d6c166f0"
 dependencies = [
  "byteorder",
- "zerocopy-derive",
+ "zerocopy-derive 0.7.35",
+]
+
+[[package]]
+name = "zerocopy"
+version = "0.8.17"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "aa91407dacce3a68c56de03abe2760159582b846c6a4acd2f456618087f12713"
+dependencies = [
+ "zerocopy-derive 0.8.17",
 ]
 
 [[package]]
@@ -7482,6 +7570,17 @@ name = "zerocopy-derive"
 version = "0.7.35"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "fa4f8080344d4671fb4e831a13ad1e68092748387dfc4f55e356242fae12ce3e"
+dependencies = [
+ "proc-macro2",
+ "quote",
+ "syn 2.0.96",
+]
+
+[[package]]
+name = "zerocopy-derive"
+version = "0.8.17"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "06718a168365cad3d5ff0bb133aad346959a2074bd4a85c121255a11304a8626"
 dependencies = [
  "proc-macro2",
  "quote",

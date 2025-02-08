@@ -1,3 +1,7 @@
+/*
+    MartyPC
+    https://github.com/dbalsom/martypc
+
     Copyright 2022-2024 Daniel Balsom
 
     Permission is hereby granted, free of charge, to any person obtaining a
@@ -13,7 +17,35 @@
     THE SOFTWARE IS PROVIDED “AS IS”, WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
     IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
     FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
-    AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER   
+    AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
     LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING
     FROM, OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER
     DEALINGS IN THE SOFTWARE.
+
+    --------------------------------------------------------------------------
+*/
+#![warn(clippy::all, rust_2018_idioms)]
+
+pub mod app;
+pub mod counter;
+pub mod emulator;
+pub mod emulator_builder;
+pub mod event_loop;
+pub mod floppy;
+pub mod input;
+pub mod sound;
+pub mod timestep_update;
+
+#[cfg(not(target_arch = "wasm32"))]
+pub mod native;
+#[cfg(not(target_arch = "wasm32"))]
+pub use native::worker;
+#[cfg(target_arch = "wasm32")]
+pub mod wasm;
+#[cfg(target_arch = "wasm32")]
+pub use wasm::worker;
+
+pub use app::MartyApp;
+
+// Embed default icon
+pub const MARTY_ICON: &[u8] = include_bytes!("../../../../assets/martypc_icon_small.png");

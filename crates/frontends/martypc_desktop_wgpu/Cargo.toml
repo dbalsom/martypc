@@ -1,0 +1,80 @@
+[package]
+name = "martypc_desktop_wgpu"
+description = "A frontend for the MartyPC emulator, using winit, wgpu and egui"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+authors.workspace = true
+
+[lib]
+name = "martypc_desktop_wgpu"
+path = "src/lib.rs"
+crate-type = ["lib"]
+
+[dependencies]
+display_backend_wgpu = { path = "../../lib/backend/display_backend_wgpu" }
+marty_core = { path = "../../marty_core" }
+marty_frontend_common =  { path = "../../lib/frontend/marty_frontend_common" }
+marty_videocard_renderer = { path = "../../lib/frontend/marty_videocard_renderer" }
+display_manager_wgpu = { path = "../../lib/frontend/display_manager_wgpu" }
+
+marty_egui = { path = "../../lib/frontend/marty_egui" }
+marty_config = { path = "../../lib/frontend/marty_config" }
+#display_scaler = { path = "../../lib/frontend/display_scaler_trait" }
+marty_scaler_wgpu = { path = "../../lib/frontend/marty_scaler_wgpu" }
+
+bytemuck.workspace = true
+colored = "2.0.4"
+rodio.workspace = true
+
+log = "0.4"
+env_logger = "0.10"
+flate2 = "1.0"
+image = { version = "0.24.2", default-features = false, features = ["png"] }
+
+rand = "0.8.5"
+getrandom = "0.2.6"
+regex = "1.10"
+resize = "0.7.4"
+rgb = "0.8.33"
+serde = { workspace = true, features = ["derive"] }
+serde_derive = "1.0"
+serde_json = "1.0"
+serialport.workspace = true
+winit.workspace = true
+anyhow.workspace = true
+indexmap.workspace = true
+crossbeam-channel.workspace = true
+fluxfox.workspace = true
+
+egui.workspace = true
+egui-wgpu.workspace = true
+egui-winit.workspace = true
+strum = "0.26"
+strum_macros = "0.26"
+
+# Conditional dependencies for wasm32 target. 
+[target.'cfg(target_arch = "wasm32")'.dependencies]
+cpal = { version = "0.13.5", features = ["wasm-bindgen"] }
+console_error_panic_hook = "0.1"
+console_log = "0.2"
+error-iter = "0.4"
+getrandom = { version = "0.2.6", features = ["js"] }
+instant = "0.1.12"
+#futures = "0.3.28"
+js-sys = "0.3.63"
+wasm-bindgen = "0.2.86"
+wasm-bindgen-futures = "0.4"
+web-sys = { version = "0.3", features = ["GpuTextureFormat", "Request", "RequestInit", "Response", "Headers", "Blob", "FileReader", "ProgressEvent"] }
+wgpu = { version = "0.16", features = ["webgl"] }
+
+[dev-dependencies]
+criterion = "0.5.1"
+
+[features]
+default = ["sound", "use_serialport"]
+sound = ["marty_core/sound"]
+use_serialport = ["marty_core/serialport"]
+devtools = []
+cpu_validator = []
+arduino_validator = []

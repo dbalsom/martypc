@@ -1,0 +1,28 @@
+[package]
+name = "marty_web_helpers"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+authors.workspace = true
+
+[lib]
+name = "marty_web_helpers"
+path = "src/lib.rs"
+crate-type = ["lib"]
+
+[dependencies]
+marty_common = { path = "../../../marty_common" }
+web-time.workspace = true
+wasm-bindgen.workspace = true
+wasm-bindgen-futures.workspace = true
+log.workspace = true
+web-sys = { workspace = true , features = [
+    "ConsoleInstance",
+    "Request",
+    "RequestInit",
+    "RequestMode",
+    "Response",
+]}
+crossbeam-channel.workspace = true
+url.workspace = true
+gloo-timers = { version = "0.3", features = ["futures"] }
