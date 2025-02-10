@@ -664,7 +664,7 @@ impl Machine {
                         sound_sources = result.sound_sources;
                     } else {
                         log::debug!("Installed devices.");
-                        { &result; () }
+                        { _ = &result; () }
                     }
                 }
             }
