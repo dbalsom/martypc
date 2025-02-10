@@ -326,31 +326,6 @@ pub enum Flag {
     Overflow,
 }
 
-/*
-pub enum Register {
-    AH,
-    AL,
-    AX,
-    BH,
-    BL,
-    BX,
-    CH,
-    CL,
-    CX,
-    DH,
-    DL,
-    DX,
-    SP,
-    BP,
-    SI,
-    DI,
-    CS,
-    DS,
-    SS,
-    ES,
-    IP,
-}*/
-
 #[derive(Copy, Clone, Default, Debug)]
 pub enum DmaState {
     #[default]
@@ -442,16 +417,12 @@ impl Default for InterruptDescriptor {
     }
 }
 
-#[derive(Copy, Clone, Debug)]
+#[repr(u8)]
+#[derive(Copy, Clone, Debug, Default, PartialEq)]
 pub enum TransferSize {
-    Byte,
-    Word,
-}
-
-impl Default for TransferSize {
-    fn default() -> TransferSize {
-        TransferSize::Byte
-    }
+    #[default]
+    Byte = 1,
+    Word = 2,
 }
 
 #[derive(Default)]
@@ -522,6 +493,7 @@ pub struct Intel808x {
     */
     // BIU stuff
     ready: bool, // READY line from 8284
+    wait_ct: u32,
     queue: InstructionQueue,
     fetch_size: TransferSize,
     fetch_state: FetchState,
@@ -726,14 +698,25 @@ pub enum RegisterType {
 /// T0: The last cycle of address calculation (may repeat)
 /// Td: No address calculation in progress (done)
 /// https://martypc.blogspot.com/2024/02/the-complete-bus-logic-of-intel-8088.html
-#[derive(Copy, Clone, Debug, Default, PartialEq)]
+#[repr(u8)]
+#[derive(Copy, Clone, Debug, Default, PartialEq, PartialOrd)]
 pub enum TaCycle {
     #[default]
-    Tr, // T-Request. This is the cycle on which the EU or prefetcher requests a bus cycle.
-    Ts, // T-Start. This is the cycle on which the first cycle of address calculation occurs.
-    T0, // T-Zero. This is the cycle on which address calculation completes. T0 may be repeated.
-    Td, // T-done. Not a real cycle state, but indicates that no address cycle is in progress.
-    Ta, // T-abort. Signals that the address cycle has been aborted.
+    Tr = 0, // T-Request. This is the cycle on which the EU or prefetcher requests a bus cycle.
+    Ts = 1, // T-Start. This is the cycle on which the first cycle of address calculation occurs.
+    T0 = 2, // T-Zero. This is the cycle on which address calculation completes. T0 may be repeated.
+    Td = 3, // T-done. Not a real cycle state, but indicates that no address cycle is in progress.
+    Ta = 4, // T-abort. Signals that the address cycle has been aborted.
+}
+
+impl TaCycle {
+    #[inline]
+    pub(crate) fn in_address_cycle(&self) -> bool {
+        match self {
+            TaCycle::Tr | TaCycle::Ts | TaCycle::T0 => true,
+            _ => false,
+        }
+    }
 }
 
 impl Display for TaCycle {
@@ -752,7 +735,8 @@ impl Display for TaCycle {
 /// 'Ti' or idle T-states when not in an active bus transaction.
 /// Tinit is not a real T-cycle but a state that indicates a new bus cycle has just been initiated
 /// and should be moved to a valid state.
-#[derive(Copy, Clone, Debug, Default, PartialEq)]
+#[repr(u8)]
+#[derive(Copy, Clone, Debug, Default, PartialEq, PartialOrd)]
 pub enum TCycle {
     Tinit,
     #[default]
@@ -959,6 +943,7 @@ impl Intel808x {
         self.t_step = 0.00000021;
         self.t_step_h = 0.000000105;
         self.ready = true;
+        self.wait_ct = 0;
         self.in_rep = false;
         self.halted = false;
         self.reported_halt = false;
@@ -1281,34 +1266,6 @@ impl Intel808x {
             flags: self.flags,
         }
     }
-
-    /*
-    pub fn get_register(&self, reg: Register) -> RegisterType {
-        match reg {
-            Register::AH => RegisterType::Register8(self.ah),
-            Register::AL => RegisterType::Register8(self.al),
-            Register::AX => RegisterType::Register16(self.ax),
-            Register::BH => RegisterType::Register8(self.bh),
-            Register::BL => RegisterType::Register8(self.bl),
-            Register::BX => RegisterType::Register16(self.bx),
-            Register::CH => RegisterType::Register8(self.ch),
-            Register::CL => RegisterType::Register8(self.cl),
-            Register::CX => RegisterType::Register16(self.cx),
-            Register::DH => RegisterType::Register8(self.dh),
-            Register::DL => RegisterType::Register8(self.dl),
-            Register::DX => RegisterType::Register16(self.dx),
-            Register::SP => RegisterType::Register16(self.sp),
-            Register::BP => RegisterType::Register16(self.bp),
-            Register::SI => RegisterType::Register16(self.si),
-            Register::DI => RegisterType::Register16(self.di),
-            Register::CS => RegisterType::Register16(self.cs),
-            Register::DS => RegisterType::Register16(self.ds),
-            Register::SS => RegisterType::Register16(self.ss),
-            Register::ES => RegisterType::Register16(self.es),
-            _ => panic!("Invalid register")
-        }
-    }
-    */
 
     #[inline]
     pub fn get_register8(&self, reg: Register8) -> u8 {

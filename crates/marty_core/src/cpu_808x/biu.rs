@@ -335,26 +335,20 @@ impl Intel808x {
         self.biu_fetch_start();
     }
 
-    pub fn biu_queue_has_room(&mut self) -> bool {
-        match self.cpu_subtype {
-            CpuSubType::Intel8088 | CpuSubType::Harris80C88 => self.queue.len() < QUEUE_SIZE,
-            CpuSubType::Intel8086 => {
-                // 8086 fetches two bytes at a time, so must be two free bytes in queue
-                self.queue.len() < QUEUE_SIZE - 1
-            }
-            _ => {
-                panic!("Unsupported CPU subtype")
-            }
-        }
-    }
-
     /// Decide whether to start a code fetch this cycle. Should be called at Ti and end of T2.
     pub fn biu_make_fetch_decision(&mut self) {
-        if matches!(self.fetch_state, FetchState::Delayed(0)) && self.biu_queue_has_room() {
-            // If fetch_state is Delayed, we can assume this is being called on Ti.
-            self.trace_comment("FETCH_RESUME");
+        if !self.queue.has_room_for_fetch() {
+            // Queue is full, suspend fetching.
+            self.fetch_state = FetchState::PausedFull;
+        }
+        else if self.bus_pending != BusPendingType::EuEarly
+            && !matches!(self.fetch_state, FetchState::Suspended | FetchState::Halted)
+            && !(self.queue.at_policy_len() && self.bus_status_latch == BusStatus::CodeFetch)
+        {
+            // EU has not claimed the bus this m-cycle, and we are not at a queue policy length
+            // during a code fetch, and fetching is not suspended. Begin a code fetch address cycle.
+            self.trace_comment("FETCH_NORMAL");
             self.biu_fetch_start();
-            //self.fetch_state = FetchState::Normal;
             return;
         }
         else if self.bus_status == BusStatus::CodeFetch
@@ -363,18 +357,15 @@ impl Intel808x {
         {
             self.fetch_state = FetchState::Delayed(3);
         }
+    }
 
-        if !self.biu_queue_has_room() {
-            // Queue is full, suspend fetching.
-            self.fetch_state = FetchState::PausedFull;
-        }
-        else if self.bus_pending != BusPendingType::EuEarly
-            && self.fetch_state != FetchState::Suspended
-            && self.fetch_state != FetchState::Halted
-            && !(self.queue.at_policy_len() && self.bus_status_latch == BusStatus::CodeFetch)
-        {
-            // EU has not claimed the bus this m-cycle, and we are not at a queue policy length
-            // during a code fetch, and fetching is not suspended. Begin a code fetch address cycle.
+    /// Make a fetch decision on T4. Normally, a fetch decision is made at the end of T2, but if
+    /// fetching was delayed by policy, it will resume at the end of T4 if the specified conditions
+    /// apply.
+    #[inline]
+    pub fn biu_make_fetch_decision_t4(&mut self) {
+        if self.ta_cycle == TaCycle::Td && self.biu_is_last_transfer() && self.queue.has_room_for_fetch() {
+            self.trace_comment("T4_FETCH_RESUME");
             self.biu_fetch_start();
         }
     }
@@ -644,19 +635,14 @@ impl Intel808x {
 
     /// If in an active bus cycle, cycle the cpu until the bus cycle has reached T4.
     #[inline]
-    pub fn biu_bus_wait_finish(&mut self) -> u32 {
-        let mut elapsed = 0;
-
-        if let BusStatus::Passive = self.bus_status_latch {
-            // No bus cycle in progress
-            0
-        }
-        else {
-            while self.t_cycle != TCycle::T4 {
-                self.cycle();
-                elapsed += 1;
+    pub fn biu_bus_wait_finish(&mut self) {
+        match self.bus_status_latch {
+            BusStatus::Passive => {}
+            _ => {
+                while !matches!(self.t_cycle, TCycle::T4) {
+                    self.cycle();
+                }
             }
-            elapsed
         }
     }
 
@@ -682,25 +668,28 @@ impl Intel808x {
         was_delay
     }
 
+    #[inline]
+    pub fn biu_bus_wait_t0(&mut self) {
+        while !matches!(self.ta_cycle, TaCycle::T0) {
+            self.cycle();
+        }
+    }
+
     /// If an address cycle is in progress, cycle the cpu until the address cycle has completed
     /// or has aborted.
     #[inline]
-    pub fn biu_bus_wait_address(&mut self) -> u32 {
-        let mut elapsed = 0;
+    pub fn biu_bus_wait_address(&mut self) {
         while !matches!(self.ta_cycle, TaCycle::Td | TaCycle::Ta) {
             self.cycle();
-            elapsed += 1;
         }
-        elapsed
     }
 
     /// If in an active bus cycle, cycle the cpu until the bus cycle has reached at least T2.
-    pub fn biu_bus_wait_halt(&mut self) -> u32 {
+    #[inline]
+    pub fn biu_bus_wait_halt(&mut self) {
         if matches!(self.bus_status_latch, BusStatus::Passive) && self.t_cycle == TCycle::T1 {
             self.cycle();
-            return 1;
         }
-        0
     }
 
     /// If in an active bus cycle, cycle the CPU until the target T-state is reached.
@@ -708,9 +697,8 @@ impl Intel808x {
     /// This function is usually used on a terminal write to wait for T3-TwLast to
     /// handle RNI in microcode. The next instruction byte will be fetched on this
     /// terminating cycle and the beginning of execution will overlap with T4.
-    pub fn biu_bus_wait_until_tx(&mut self) -> u32 {
-        let mut bus_cycles_elapsed = 0;
-        return match self.bus_status_latch {
+    pub fn biu_bus_wait_until_tx(&mut self) {
+        match self.bus_status_latch {
             BusStatus::MemRead
             | BusStatus::MemWrite
             | BusStatus::IoRead
@@ -719,52 +707,11 @@ impl Intel808x {
                 self.trace_comment("WAIT_TX");
                 while !self.is_last_wait() {
                     self.cycle();
-                    bus_cycles_elapsed += 1;
                 }
                 self.trace_comment("TX");
-                /*
-                if target_state == TCycle::Tw {
-                    // Interpret waiting for Tw as waiting for T3 or Last Tw
-                    loop {
-                        match (self.t_cycle, effective_wait_states) {
-                            (TCycle::T3, 0) => {
-                                self.trace_comment(" >> wait match!");
-                                if self.bus_wait_states == 0 {
-                                    self.trace_comment(">> no bus_wait_states");
-                                    return bus_cycles_elapsed
-                                }
-                                else {
-                                    self.trace_comment(">> wait state!");
-                                    self.cycle();
-                                }
-                            }
-                            (TCycle::T3, n) | (TCycle::Tw, n) => {
-                                log::trace!("waits: {}", n);
-                                for _ in 0..n {
-                                    self.cycle();
-                                    bus_cycles_elapsed += 1;
-                                }
-                                return bus_cycles_elapsed
-                            }
-                            _ => {
-                                self.cycle();
-                                bus_cycles_elapsed += 1;
-                            }
-                        }
-                    }
-                }
-                else {
-                    while self.t_cycle != target_state {
-                        self.cycle();
-                        bus_cycles_elapsed += 1;
-                    }
-                }
-                */
-
-                bus_cycles_elapsed
             }
-            _ => 0,
-        };
+            _ => {}
+        }
     }
 
     /// Begins a new bus cycle of the specified type.
@@ -786,6 +733,14 @@ impl Intel808x {
     ) {
         self.trace_comment("BUS_BEGIN");
 
+        match self.ta_cycle {
+            TaCycle::Td => self.trace_comment("TD"),
+            TaCycle::Tr => self.trace_comment("TR"),
+            TaCycle::Ts => self.trace_comment("TS"),
+            TaCycle::T0 => self.trace_comment("T0"),
+            TaCycle::Ta => self.trace_comment("TA"),
+        };
+
         assert_ne!(
             new_bus_status,
             BusStatus::CodeFetch,
@@ -805,7 +760,11 @@ impl Intel808x {
                 panic!("Can't start a bus cycle on Tinit")
             }
             TCycle::Ti => {
-                // Bus is idle, enter Tr state immediately.
+                // Bus is idle, enter Tr state immediately, except in the special case we are resuming
+                // a fetch after a delay and the queue is at the policy length
+                if self.ta_cycle.in_address_cycle() && self.queue.at_policy_len() {
+                    self.biu_bus_wait_t0();
+                }
                 self.biu_address_start(new_bus_status);
             }
             TCycle::T1 | TCycle::T2 => {
@@ -850,7 +809,6 @@ impl Intel808x {
         if self.t_cycle == TCycle::T4 && self.bus_status_latch != BusStatus::CodeFetch {
             // We should be in a T0 or Td address state now; with any prefetch aborted.
             //assert_eq!(self.ta_cycle, TaCycle::Td);
-
             self.cycle();
         }
 
@@ -895,16 +853,15 @@ impl Intel808x {
         self.operand_size = op_size;
     }
 
+    /// Reset i8288 signals after an m-cycle has completed.
+    #[inline]
     pub fn biu_bus_end(&mut self) {
-        // Reset i8288 signals
         self.i8288.mrdc = false;
         self.i8288.amwc = false;
         self.i8288.mwtc = false;
         self.i8288.iorc = false;
         self.i8288.aiowc = false;
         self.i8288.iowc = false;
-
-        //self.bus_pending = BusPendingType::None;
     }
 
     #[inline]
@@ -917,11 +874,11 @@ impl Intel808x {
         }
     }
 
-    /// Start a new address cycle. This will set the Ta cycle to Tr and switch the pipeline slots.
-    /// ta_cycle should never be set to Tr outside of this function.
+    /// Start a new address cycle. This will set `ta_cycle` to `TaCycle::Tr` and switch the pipeline
+    /// slots.
+    /// `ta_cycle` should never be set to Tr outside of this function.
     #[inline]
     pub fn biu_address_start(&mut self, new_bus_status: BusStatus) {
-        // Switch pipeline slots and start a new address cycle.
         if self.t_cycle != TCycle::Ti {
             // If the bus is not idle, we usually want to change pipeline slots on a new address
             // cycle, except when we abort a fetch. It is clearer to me to remain in the same
@@ -947,8 +904,10 @@ impl Intel808x {
         self.pl_status = new_bus_status;
     }
 
-    /// Perform a prefetch abort. This should be called on T4 of a code fetch when a late eu bus
-    /// request is present. Whether this is a T0 or a Tr state is academic, the next cycle will be
+    /// Perform a (pre)fetch abort.
+    /// Usually, this is called on T4 of a code fetch when a 'late' EU bus request is present.
+    /// A late EU request is a request made on T2 or T3 of a bus cycle.
+    /// Whether this is a T0 or a Tr state is academic, the next cycle will be
     /// a Ts state regardless.
     #[inline]
     pub fn biu_fetch_abort(&mut self) {
@@ -956,9 +915,11 @@ impl Intel808x {
         self.ta_cycle = TaCycle::Ta;
     }
 
+    /// Begin a code fetch bus cycle. This is a special case of `biu_bus_begin` that is only
+    /// used for code fetches.
     pub fn biu_fetch_bus_begin(&mut self) {
         let addr = Intel808x::calc_linear_address(self.cs, self.pc);
-        if self.biu_queue_has_room() {
+        if self.queue.has_room_for_fetch() {
             //trace_print!(self, "Setting address bus to PC: {:05X}", self.pc);
             self.fetch_state = FetchState::Normal;
             self.pl_status = BusStatus::Passive; // Pipeline status must always be reset on T1
@@ -978,10 +939,14 @@ impl Intel808x {
             self.transfer_n = 1;
             self.final_transfer = true;
         }
-        //else if !self.bus_pending_eu {
-        // Cancel fetch if queue is full and no pending bus request from EU that
-        // would otherwise trigger an abort.
-        //self.biu_abort_fetch_full();
-        //}
+    }
+
+    /// Return a bool representing whether the current bus m-cycle is the last cycle of a transfer.
+    /// A 'transfer' is either a word or byte size bus operation. On the 8088, word size transfers
+    /// are always split into two byte transfers, but on the 8086 a word-aligned transfer can be
+    /// word sized.
+    #[inline]
+    pub fn biu_is_last_transfer(&mut self) -> bool {
+        (self.transfer_size == TransferSize::Byte) || (self.transfer_n > 1)
     }
 }

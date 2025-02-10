@@ -105,6 +105,7 @@ impl Intel808x {
             BusStatus::Passive => {
                 self.transfer_n = 0;
                 if let FetchState::Delayed(0) = self.fetch_state {
+                    self.trace_comment("END_DELAY");
                     self.biu_make_fetch_decision();
                 }
             }
@@ -167,6 +168,8 @@ impl Intel808x {
                                     .unwrap();
                             }
                             BusStatus::IoRead => {
+                                // TODO: IO wait states are not determined by the CPU, but by motherboard logic.
+                                //       We should look up IO wait states from the motherboard (bus).
                                 self.io_wait_states = 1;
                             }
                             BusStatus::IoWrite => {
@@ -196,12 +199,14 @@ impl Intel808x {
                             // Do bus transfer on T3 if no wait states.
                             self.do_bus_transfer();
                             self.ready = true;
+                            self.wait_ct = 0;
                         }
                     }
                     TCycle::Tw => {
                         if self.is_last_wait_t3tw() {
                             self.do_bus_transfer();
                             self.ready = true;
+                            self.wait_ct = 0;
                         }
                     }
                     TCycle::T4 => {
@@ -239,9 +244,6 @@ impl Intel808x {
             if self.t_cycle != TCycle::Tw {
                 *delay = delay.saturating_sub(1);
             }
-            if *delay == 0 {
-                //self.fetch_state = FetchState::Normal;
-            }
         }
 
         // Transition to next Ta state
@@ -251,12 +253,7 @@ impl Intel808x {
                 TaCycle::Ts
             }
             TaCycle::Ts => {
-                // We can proceed from Ts to T0 if there is not a late EU bus request.
-                /*                match (self.pl_status, self.bus_pending) {
-                    (BusStatus::CodeFetch, BusPendingType::EuLate) => TaCycle::Tr,
-                    _ => TaCycle::T0,
-                }*/
-
+                // Always proceed from Ts to T0(?).
                 TaCycle::T0
             }
             TaCycle::T0 => {
@@ -276,7 +273,7 @@ impl Intel808x {
                     }
                     (BusStatus::CodeFetch, BusPendingType::EuLate) => {
                         // We have a late EU bus request. We will abort the code fetch, but only
-                        // on T4. We will do nothing on T3; this implements the prefetch abort delay.
+                        // on T4. We will do nothing on T3; this implements the prefetch abort "delay".
                         if matches!(self.t_cycle, TCycle::Ti | TCycle::T4) {
                             self.biu_fetch_abort();
                             self.ta_cycle
@@ -354,6 +351,11 @@ impl Intel808x {
                     if self.dma_wait_states == 0 {
                         self.io_wait_states = self.io_wait_states.saturating_sub(1);
                     }
+
+                    self.wait_ct = self.wait_ct.wrapping_add(1);
+                    if self.wait_ct > 100 {
+                        panic!("Wait state count exceeded 100!");
+                    }
                     TCycle::Tw
                 }
                 else {
@@ -363,6 +365,11 @@ impl Intel808x {
             }
             TCycle::T4 => {
                 // We reached the end of a bus transfer, to transition back to Ti and PASV.
+
+                // If prefetching is not suspended, make a fetch decision
+                if self.fetch_state != FetchState::Suspended {
+                    self.biu_make_fetch_decision_t4();
+                }
                 self.bus_status_latch = BusStatus::Passive;
                 TCycle::Ti
             }
@@ -611,6 +618,7 @@ impl Intel808x {
 
     #[inline]
     pub fn cycles_i(&mut self, ct: u32, instrs: &[u16]) {
+        assert!(ct as usize <= instrs.len());
         for i in 0..ct as usize {
             self.cycle_i(instrs[i]);
         }

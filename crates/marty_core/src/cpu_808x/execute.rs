@@ -167,18 +167,6 @@ impl Intel808x {
                 }
                 _ => {
                     invalid_rep = true;
-                    //return ExecutionResult::ExecutionError(
-                    //    format!("REP prefix on invalid opcode: {:?} at [{:04X}:{:04X}].", self.i.mnemonic, self.cs, self.ip)
-                    //);
-                    
-                    /*
-                    log::warn!(
-                       "REP prefix on invalid opcode: {:?} at [{:04X}:{:04X}].",
-                       self.i.mnemonic,
-                       self.cs,
-                       self.ip(),
-                    );
-                    */
                 }
             }
 
@@ -1027,20 +1015,8 @@ impl Intel808x {
                 let op2_value = self.read_operand8(self.i.operand2_type, self.i.segment_override).unwrap();
                 self.cycle_i(MC_JUMP); // Skip 2nd immediate byte
                 if self.i.operand1_type.is_address() {
-                    cycles_mc!(self, 0x016);                    
-                    /*
-                    if let OperandType::AddressingMode(AddressingMode::BpDi) 
-                        | OperandType::AddressingMode(AddressingMode::BxSi)
-                        | OperandType::AddressingMode(AddressingMode::BpDiDisp8(_))
-                        | OperandType::AddressingMode(AddressingMode::BxSiDisp8(_)) = self.i.operand1_type {
-                        
-                        if self.queue.at_policy_len() && (self.i.prefixes & OPCODE_SEG_OVERRIDE_MASK == 0) {
-                            // If one of several specific addressing modes with no segment override and queue at policy length, do an extra cycle.
-                            // Either this is a silicon bug, or the fallout of a ridiculously obscure hole in my BIU logic.
-                            self.cycle();
-                        }
-                    }
-                    */
+                    // This cycle is an RNI for register operands
+                    cycles_mc!(self, 0x016);
                 }
                 self.write_operand8(self.i.operand1_type, self.i.segment_override, op2_value, ReadWriteFlag::RNI);
             }
@@ -1048,6 +1024,7 @@ impl Intel808x {
                 // MOV r/m16, imm16
                 let op2_value = self.read_operand16(self.i.operand2_type, self.i.segment_override).unwrap();
                 if self.i.operand1_type.is_address() {
+                    // This cycle is an RNI for register operands
                     self.cycle_i(0x016);
                 }
                 self.write_operand16(self.i.operand1_type, self.i.segment_override, op2_value, ReadWriteFlag::RNI);
