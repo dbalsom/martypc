@@ -72,9 +72,29 @@ wgpu = { version = "0.16", features = ["webgl"] }
 criterion = "0.5.1"
 
 [features]
-default = ["sound", "use_serialport"]
+default = ["ega", "vga", "opl", "sound", "use_serialport"]
 sound = ["marty_core/sound"]
 use_serialport = ["marty_core/serialport"]
 devtools = []
-cpu_validator = []
-arduino_validator = []
+cpu_validator = ["marty_core/cpu_validator"]
+arduino_validator = ["marty_core/arduino_validator"]
+ega = ["marty_core/ega", "marty_frontend_common/ega", "marty_videocard_renderer/ega"]
+vga = ["marty_core/vga", "marty_frontend_common/vga", "marty_videocard_renderer/vga"]
+opl = ["marty_core/opl"]
+
+[build-dependencies]
+winres = "0.1"
+
+[package.metadata.appimage]
+assets = [
+    "install/martypc.toml",
+    "install/configs",
+    "install/media",
+    "install/output",
+]
+auto_link = true
+auto_link_exclude_list = [
+    "libc.so*",
+    "libdl.so*",
+    "libpthread.so*",
+]

@@ -15,6 +15,8 @@ members = [
     "crates/frontends/martypc_web_player_wgpu",
     "crates/frontends/martypc_desktop_wgpu"
 ]
+resolver = "2"
+default-members = ["crates/frontends/martypc_eframe"]
 
 [workspace.package]
 version = "0.3.0"
@@ -22,24 +24,6 @@ edition = "2021"
 rust-version = "1.76"
 license = "MIT"
 authors = ["Daniel Balsom"]
-
-[package]
-name = "martypc"
-version.workspace = true
-edition.workspace = true
-license.workspace = true
-authors.workspace = true
-
-[[bin]]
-name = "martypc"
-path = "crates/frontends/martypc_desktop_wgpu/src/main.rs"
-
-[dependencies]
-marty_core = { path = "crates/marty_core"}
-marty_videocard_renderer = { path = "crates/lib/frontend/marty_videocard_renderer" }
-marty_egui = { path = "crates/lib/frontend/marty_egui" }
-marty_frontend_common =  { path = "crates/lib/frontend/marty_frontend_common" }
-martypc_desktop_wgpu = { path = "crates/frontends/martypc_desktop_wgpu" }
 
 [workspace.dependencies]
 winit = "0.30"
@@ -190,29 +174,7 @@ opt-level = 3
 [profile.dev.package."*"]
 opt-level = 3
 
-[features]
-default = ["ega", "vga", "opl"]
-devtools = ["martypc_desktop_wgpu/devtools"]
-arduino_validator = ["marty_core/arduino_validator", "martypc_desktop_wgpu/arduino_validator"]
-cpu_validator = ["marty_core/cpu_validator", "martypc_desktop_wgpu/cpu_validator"]
-ega = ["marty_core/ega", "marty_frontend_common/ega", "marty_videocard_renderer/ega"]
-vga = ["marty_core/vga", "marty_frontend_common/vga", "marty_videocard_renderer/vga"]
-opl = ["marty_core/opl"]
 
-[build-dependencies]
-winres = "0.1"
 
-[package.metadata.appimage]
-assets = [
-    "install/martypc.toml",
-    "install/configs",
-    "install/media",
-    "install/output",
-]
-auto_link = true
-auto_link_exclude_list = [
-    "libc.so*",
-    "libdl.so*",
-    "libpthread.so*",
-]
+
 

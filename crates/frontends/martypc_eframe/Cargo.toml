@@ -89,9 +89,14 @@ eframe = { workspace = true, default-features = false, features = [
 # Disable bpaf on web - no command line!
 marty_config = { path = "../../lib/frontend/marty_config", default-features = false }
 
+# Build dependencies
+# ---------------------------------------------------------------------------------------------------------------------
+[build-dependencies]
+winres = "0.1"
+
 [features]
+default = ["all_video_cards", "sound", "use_winit", "use_glow", "markdown"]
 all_video_cards = ["ega", "vga"]
-default = ["all_video_cards", "sound", "use_glow", "markdown"]
 sound = ["dep:rodio", "rodio/wasm-bindgen", "marty_core/sound"]
 # Enable markdown support. This is used to show disk image metadata and documentation.
 markdown = ["dep:egui_commonmark", "marty_egui/markdown"]

@@ -3811,18 +3811,6 @@ dependencies = [
 ]
 
 [[package]]
-name = "martypc"
-version = "0.3.0"
-dependencies = [
- "marty_core",
- "marty_egui",
- "marty_frontend_common",
- "marty_videocard_renderer",
- "martypc_desktop_wgpu",
- "winres",
-]
-
-[[package]]
 name = "martypc_desktop_wgpu"
 version = "0.3.0"
 dependencies = [
@@ -3871,6 +3859,7 @@ dependencies = [
  "web-sys",
  "wgpu 0.16.3",
  "winit 0.30.8",
+ "winres",
 ]
 
 [[package]]
@@ -3907,6 +3896,7 @@ dependencies = [
  "web-time 1.1.0",
  "wgpu 23.0.1",
  "winit 0.30.8",
+ "winres",
 ]
 
 [[package]]

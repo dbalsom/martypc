@@ -23,11 +23,10 @@
     DEALINGS IN THE SOFTWARE.
 
     --------------------------------------------------------------------------
-
-    build.rs
-
-    Build procedures for MartyPC.
 */
+
+//! Build procedure for MartyPC.
+//! This build script is used to compile the Windows icon resource for the executable.
 
 use std::{env, io};
 use winres::WindowsResource;
@@ -39,7 +38,7 @@ fn main() -> io::Result<()> {
         // We have to set the icon again in Winit for each window we create.
         WindowsResource::new()
             // This path can be absolute, or relative to your crate root.
-            .set_icon("assets/martypc.ico")
+            .set_icon("../../../assets/martypc.ico")
             .compile()?;
     }
     Ok(())
