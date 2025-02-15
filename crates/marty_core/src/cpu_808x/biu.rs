@@ -136,6 +136,12 @@ impl Intel808x {
         let byte;
         //trace_print!(self, "biu_queue_read()");
 
+        // If we read from the queue while prefetching is delayed, we can abort the delay state.
+        // Don't abort the delay state on T3 as it will just put us back at the policy length immediately.
+        if matches!(self.fetch_state, FetchState::Delayed(_)) && self.queue.at_policy_len() {
+            self.fetch_state = FetchState::Delayed(0);
+        }
+
         if let Some(preload_byte) = self.queue.get_preload() {
             // We have a preloaded byte from finalizing the last instruction.
             self.last_queue_op = QueueOp::First;
@@ -145,9 +151,7 @@ impl Intel808x {
             // execution on the next cycle. If NX bit is set, advance the MC PC to
             // execute the RNI from the previous instruction.
             self.next_mc();
-            if self.nx {
-                self.nx = false;
-            }
+            self.nx = false;
 
             self.biu_fetch_on_queue_read();
             return preload_byte;
@@ -193,9 +197,7 @@ impl Intel808x {
 
         self.cycle();
         if advance_pc {
-            if self.nx {
-                self.nx = false;
-            }
+            self.nx = false;
             self.mc_pc += 1;
         }
         byte
@@ -210,9 +212,16 @@ impl Intel808x {
                     self.ta_cycle = TaCycle::Td;
                 }
                 FetchState::PausedFull => {
-                    self.trace_comment("FETCH_ON_READ");
-                    //self.ta_cycle = TaCycle::Ta;
-                    self.ta_cycle = TaCycle::Td;
+                    if self.t_cycle == TCycle::Ti {
+                        self.trace_comment("FETCH_ON_READ");
+                        //self.ta_cycle = TaCycle::Ta;
+                        self.ta_cycle = TaCycle::Td;
+                    }
+                    else {
+                        // If we are in an active bus cycle, fetch will resume at T4 fetch
+                        // decision, so we don't need to do anything here.
+                        return;
+                    }
                 }
                 _ => {}
             }
@@ -250,7 +259,10 @@ impl Intel808x {
                     fetch_timeout += 1;
                     if fetch_timeout == 20 {
                         self.trace_flush();
-                        panic!("FETCH timeout! wait states: {}", self.wait_states);
+                        panic!(
+                            "FETCH timeout! wait states: {} fetch state: {:?} t_cycle: {:?} ta_cycle: {:?}",
+                            self.wait_states, self.fetch_state, self.t_cycle, self.ta_cycle
+                        );
                     }
                     self.queue.len() == 0
                 } {}
@@ -341,21 +353,30 @@ impl Intel808x {
             // Queue is full, suspend fetching.
             self.fetch_state = FetchState::PausedFull;
         }
-        else if self.bus_pending != BusPendingType::EuEarly
-            && !matches!(self.fetch_state, FetchState::Suspended | FetchState::Halted)
-            && !(self.queue.at_policy_len() && self.bus_status_latch == BusStatus::CodeFetch)
-        {
-            // EU has not claimed the bus this m-cycle, and we are not at a queue policy length
-            // during a code fetch, and fetching is not suspended. Begin a code fetch address cycle.
-            self.trace_comment("FETCH_NORMAL");
-            self.biu_fetch_start();
-            return;
-        }
-        else if self.bus_status == BusStatus::CodeFetch
-            && self.queue.at_policy_len()
-            && self.bus_pending != BusPendingType::EuEarly
-        {
-            self.fetch_state = FetchState::Delayed(3);
+        else if self.bus_pending != BusPendingType::EuEarly {
+            // If the EU has not claimed the bus...
+            if !matches!(self.fetch_state, FetchState::Suspended | FetchState::Halted) {
+                // And prefetching isn't suspended or halted...
+                if self.queue.at_policy_len() && self.bus_status_latch == BusStatus::CodeFetch {
+                    // If we are at a queue policy length during a code fetch. Delay the fetch.
+                    if self.ta_cycle == TaCycle::Td {
+                        if let FetchState::Delayed(count) = self.fetch_state {
+                            if count == 0 {
+                                self.fetch_state = FetchState::Delayed(3);
+                            }
+                        }
+                        else {
+                            self.fetch_state = FetchState::Delayed(3);
+                        }
+                    }
+                }
+                else {
+                    // The EU has not claimed the bus this m-cycle, and we are not at a queue policy length
+                    // during a code fetch, and fetching is not suspended. Begin a code fetch address cycle.
+                    self.trace_comment("FETCH_NORMAL");
+                    self.biu_fetch_start();
+                }
+            }
         }
     }
 
@@ -365,6 +386,12 @@ impl Intel808x {
     #[inline]
     pub fn biu_make_fetch_decision_t4(&mut self) {
         if self.ta_cycle == TaCycle::Td && self.biu_is_last_transfer() && self.queue.has_room_for_fetch() {
+            if self.fetch_state == FetchState::PausedFull {
+                // The queue was full, but now has room.
+                // We set the 'abort' ta_cycle to skip Tr, but this is not actually an abort.
+                // I just don't feel like creating another flag for this.
+                self.ta_cycle = TaCycle::Ta;
+            }
             self.trace_comment("T4_FETCH_RESUME");
             self.biu_fetch_start();
         }
@@ -756,15 +783,12 @@ impl Intel808x {
         let mut fetch_abort = false;
 
         match self.t_cycle {
-            TCycle::Tinit => {
-                panic!("Can't start a bus cycle on Tinit")
-            }
             TCycle::Ti => {
                 // Bus is idle, enter Tr state immediately, except in the special case we are resuming
                 // a fetch after a delay and the queue is at the policy length
-                if self.ta_cycle.in_address_cycle() && self.queue.at_policy_len() {
-                    self.biu_bus_wait_t0();
-                }
+                // if self.ta_cycle.in_address_cycle() && self.queue.at_policy_len() {
+                //     self.biu_bus_wait_t0();
+                // }
                 self.biu_address_start(new_bus_status);
             }
             TCycle::T1 | TCycle::T2 => {
@@ -893,12 +917,12 @@ impl Intel808x {
 
         // Skip Tr if we aborted. (T0 of abort was our Tr)
         if self.ta_cycle == TaCycle::Ta {
-            self.trace_comment("ADDRESS_START_ABT");
+            self.trace_comment("ADDRESS_START_TS");
             self.ta_cycle = TaCycle::Ts;
         }
         else {
             // Did not abort, start new address cycle at Tr
-            self.trace_comment("ADDRESS_START");
+            self.trace_comment("ADDRESS_START_TR");
             self.ta_cycle = TaCycle::Tr;
         }
         self.pl_status = new_bus_status;

@@ -105,6 +105,7 @@ impl Intel808x {
             BusStatus::Passive => {
                 self.transfer_n = 0;
                 if let FetchState::Delayed(0) = self.fetch_state {
+                    self.fetch_state = FetchState::Normal;
                     self.trace_comment("END_DELAY");
                     self.biu_make_fetch_decision();
                 }
@@ -214,6 +215,10 @@ impl Intel808x {
                         if let BusStatus::CodeFetch = self.bus_status_latch {
                             self.queue.push8(self.data_bus as u8);
                             self.pc = self.pc.wrapping_add(1);
+                        }
+
+                        if self.final_transfer {
+                            self.biu_make_fetch_decision();
                         }
                     }
                 }
@@ -365,11 +370,6 @@ impl Intel808x {
             }
             TCycle::T4 => {
                 // We reached the end of a bus transfer, to transition back to Ti and PASV.
-
-                // If prefetching is not suspended, make a fetch decision
-                if self.fetch_state != FetchState::Suspended {
-                    self.biu_make_fetch_decision_t4();
-                }
                 self.bus_status_latch = BusStatus::Passive;
                 TCycle::Ti
             }
