@@ -215,9 +215,6 @@ impl NecVx0 {
             if self.t_cycle != TCycle::Tw {
                 *delay = delay.saturating_sub(1);
             }
-            if *delay == 0 {
-                //self.fetch_state = FetchState::Normal;
-            }
         }
 
         // Transition to next Ta state
