@@ -729,27 +729,22 @@ impl Intel808x {
             }
             0xA4 | 0xA5 => {
                 // MOVSB & MOVSW
-
-                // rep_start() will terminate early if CX==0
+                // Segment override: DS overridable
+                // Flags: None
                 if self.rep_start() {
-
                     self.string_op(self.i.mnemonic, self.i.segment_override);
                     self.cycle_i(0x130);
 
                     // Check for end condition (CX==0)
                     if self.in_rep {
-                        
                         self.decrement_register16(Register16::CX); // 131
-
                         // Check for interrupt
                         if self.intr_pending {
                             cycles_mc!(self, 0x131, MC_JUMP); // Jump to RPTI
                             self.rep_interrupt();
-                            
                         }
                         else {
                             cycles_mc!(self, 0x131, 0x132);
-
                             if self.c.x() == 0 {
                                 // Fall through to 133, RNI
                                 self.rep_end();
@@ -769,11 +764,8 @@ impl Intel808x {
                 // CMPSB, CMPSW, SCASB, SCASW
                 // Segment override: DS overridable
                 // Flags: All
-
                 if self.rep_start() {
-                    
                     self.string_op(self.i.mnemonic, self.i.segment_override);
-    
                     if self.in_rep {
                         let mut end = false;
                         // Check for REP end condition #1 (Z/NZ)
@@ -801,14 +793,11 @@ impl Intel808x {
                         };
 
                         if !end {
-                            
                             self.cycle_i(0x12a);
-    
                             if self.intr_pending {
                                 self.cycle_i(MC_JUMP); // Jump to RPTI
                                 self.rep_interrupt();
-                            }   
-    
+                            }
                             // Check for REP end condition #2 (CX==0)
                             self.cycle_i(0x12b);
                             if self.c.x() == 0 {
@@ -844,22 +833,20 @@ impl Intel808x {
             }
             0xAA | 0xAB => {
                 // STOSB & STOSW
-
+                // Segment override: DS overridable
+                // Flags: None
                 if self.rep_start() {
-                    
                     self.string_op(self.i.mnemonic, None);
                     self.cycle_i(0x11e);
     
                     // Check for end condition (CX==0)
                     if self.in_rep {
-
                         // Check for interrupt
                         self.cycle_i(0x11f);
                         if self.intr_pending {
                             self.cycle_i(MC_JUMP); // Jump to RPTI
                             self.rep_interrupt();
                         }
-                        
                         self.cycle_i(0x1f0);
                         self.decrement_register16(Register16::CX); //1f0
                         if self.c.x() == 0 {
@@ -878,21 +865,16 @@ impl Intel808x {
             }
             0xAC | 0xAD => {
                 // LODSB & LODSW
+                // Segment override: DS overridable
                 // Flags: None
                 // Although LODSx is not typically used with a REP prefix, it can be
-
-                // rep_start() will terminate early if CX==0
                 if self.rep_start() {
-
                     self.string_op(self.i.mnemonic, self.i.segment_override);
                     cycles_mc!(self, 0x12e, MC_JUMP, 0x1f8);
-
                     // Check for REP end condition #1 (CX==0)
                     if self.in_rep {
-
                         cycles_mc!(self, MC_JUMP, 0x131); // Jump to 131
                         self.decrement_register16(Register16::CX); // 131
-
                         // Check for interrupt
                         if self.intr_pending {
                             self.cycle_i(MC_JUMP); // Jump to RPTI
