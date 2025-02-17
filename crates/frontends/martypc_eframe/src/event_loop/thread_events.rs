@@ -121,10 +121,10 @@ pub fn handle_thread_event(emu: &mut Emulator) {
                 image,
                 path,
             } => {
-                emu.gui
-                    .toasts()
-                    .info("Got FloppyImageLoadComplete event")
-                    .duration(Some(NORMAL_NOTIFICATION_TIME));
+                // emu.gui
+                //     .toasts()
+                //     .info("Got FloppyImageLoadComplete event")
+                //     .duration(Some(NORMAL_NOTIFICATION_TIME));
 
                 if let Some(fdc) = emu.machine.fdc() {
                     match fdc.attach_image(
