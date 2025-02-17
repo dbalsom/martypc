@@ -2303,19 +2303,6 @@ impl BusInterface {
         // from halt.
         self.intr_imminent = pit_counting & (pit_counting_element <= IMMINENT_TIMER_INTERRUPT);
 
-        if self.do_title_hacks {
-            // Arm timer adjustment triggers for Area5150 lake/wibble effects.
-            // The ISR chains that set up these effects are a worst-case situation for emulators.
-            if pit_reload_value == 5117 && !self.timer_trigger1_armed {
-                self.timer_trigger1_armed = true;
-                log::debug!("Area5150 hack armed for lake effect.");
-            }
-            else if pit_reload_value == 5162 && !self.timer_trigger2_armed {
-                self.timer_trigger2_armed = true;
-                log::debug!("Area5150 hack armed for wibble effect.");
-            }
-        }
-
         // Put the PIT back.
         self.pit = Some(pit);
 
@@ -2378,11 +2365,6 @@ impl BusInterface {
                             None,
                         );
                         self.cga_tick_accum = 0;
-
-                        if (self.timer_trigger1_armed || self.timer_trigger2_armed) && (pit_reload_value == 19912) {
-                            do_area5150_hack = true;
-                            save_cga = *vid;
-                        }
                     }
                 }
                 VideoCardDispatch::Tga(tga) => {
@@ -2408,19 +2390,6 @@ impl BusInterface {
                 }
                 VideoCardDispatch::None => {}
             }
-        }
-
-        if self.do_title_hacks && do_area5150_hack {
-            if let VideoCardDispatch::Cga(cga) = self.videocards.get_mut(&save_cga).unwrap() {
-                Self::do_area5150_hack(
-                    pit_counting_element,
-                    self.timer_trigger1_armed,
-                    self.timer_trigger2_armed,
-                    cga,
-                );
-            }
-            self.timer_trigger1_armed = false;
-            self.timer_trigger2_armed = false;
         }
 
         // Commit logic analyzer if present
