@@ -2651,8 +2651,10 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "43a49c392881ce6d5c3b8cb70f98717b7c07aabbdff06687b9030dbfbe2725f8"
 dependencies = [
  "cfg-if",
+ "js-sys",
  "libc",
  "wasi 0.13.3+wasi-0.2.2",
+ "wasm-bindgen",
  "windows-targets 0.52.6",
 ]
 
@@ -3877,6 +3879,7 @@ dependencies = [
  "egui_extras 0.30.0 (registry+https://github.com/rust-lang/crates.io-index)",
  "env_logger 0.11.6",
  "fluxfox",
+ "getrandom 0.3.1",
  "log",
  "marty_config",
  "marty_core",

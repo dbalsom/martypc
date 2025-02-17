@@ -1,7 +1,11 @@
 [target.wasm32-unknown-unknown]
 # Wasm may be limited to 1GB of memory by default - this increases it to 4GB
 # See https://stackoverflow.com/questions/72334989/only-1-4th-of-max-memory-available-when-rust-wasm-compiled-with-atomics-flag-we
-rustflags = ["-C", "target-feature=+atomics,+bulk-memory,+mutable-globals", "-C", "link-arg=--max-memory=4294967296"]
+rustflags = [
+    "-C", "target-feature=+atomics,+bulk-memory,+mutable-globals",
+    "-C", "link-arg=--max-memory=4294967296",
+    "--cfg", "getrandom_backend=\"wasm_js\""
+]
 
 [unstable]
 build-std = ["panic_abort", "std"]
