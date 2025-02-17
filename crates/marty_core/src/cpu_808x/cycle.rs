@@ -183,9 +183,8 @@ impl Intel808x {
                             //trace_print!(self, "Suppressing wait states!");
                             self.io_wait_states = 0;
                             self.bus_wait_states = 0;
-                            self.wait_states = 0;
                         }
-                        else if self.bus_wait_states > 0 {
+                        else if self.have_wait_states() {
                             self.ready = false;
                         }
 
@@ -200,14 +199,12 @@ impl Intel808x {
                             // Do bus transfer on T3 if no wait states.
                             self.do_bus_transfer();
                             self.ready = true;
-                            self.wait_ct = 0;
                         }
                     }
                     TCycle::Tw => {
                         if self.is_last_wait_t3tw() {
                             self.do_bus_transfer();
                             self.ready = true;
-                            self.wait_ct = 0;
                         }
                     }
                     TCycle::T4 => {
@@ -341,14 +338,12 @@ impl Intel808x {
                     _ => TCycle::T2,
                 }
             }
-            TCycle::T2 => {
-                self.wait_states += self.bus_wait_states;
-                TCycle::T3
-            }
+            TCycle::T2 => TCycle::T3,
             TCycle::Tw | TCycle::T3 => {
                 // If no wait states have been reported, advance to T3, otherwise go to Tw
-                if self.wait_states > 0 || self.io_wait_states > 0 || self.dma_wait_states > 0 {
-                    self.wait_states = self.wait_states.saturating_sub(1);
+                if self.have_wait_states() {
+                    // First drain bus wait states
+                    self.bus_wait_states = self.bus_wait_states.saturating_sub(1);
 
                     // Only drain IO wait states when DMA is not active. When DMA is on, the 8288
                     // outputs are suppressed. This means that IO and DMA wait states cannot overlap -
@@ -357,10 +352,6 @@ impl Intel808x {
                         self.io_wait_states = self.io_wait_states.saturating_sub(1);
                     }
 
-                    self.wait_ct = self.wait_ct.wrapping_add(1);
-                    if self.wait_ct > 100 {
-                        panic!("Wait state count exceeded 100!");
-                    }
                     TCycle::Tw
                 }
                 else {
@@ -389,7 +380,7 @@ impl Intel808x {
         }
         self.dma_wait_states = self.dma_wait_states.saturating_sub(1);
 
-        if self.wait_states == 0 && self.dma_wait_states == 0 && self.io_wait_states == 0 {
+        if !self.have_wait_states() {
             self.ready = true;
         }
 
@@ -449,9 +440,11 @@ impl Intel808x {
             }
             DmaState::HoldA => {
                 // DMA Hold Acknowledge has been issued. DMA controller will enter S1
-                // on next cycle.
-                self.dma_state = DmaState::Operating(0);
-                self.dma_aen = true;
+                // on next cycle, if no bus wait states are present.
+                if self.bus_wait_states == 0 {
+                    self.dma_state = DmaState::Operating(0);
+                    self.dma_aen = true;
+                }
             }
             DmaState::Operating(cycles) => {
                 // the DMA controller has control of the bus now.

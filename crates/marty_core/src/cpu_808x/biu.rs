@@ -261,7 +261,7 @@ impl Intel808x {
                         self.trace_flush();
                         panic!(
                             "FETCH timeout! wait states: {} fetch state: {:?} t_cycle: {:?} ta_cycle: {:?}",
-                            self.wait_states, self.fetch_state, self.t_cycle, self.ta_cycle
+                            self.bus_wait_states, self.fetch_state, self.t_cycle, self.ta_cycle
                         );
                     }
                     self.queue.len() == 0

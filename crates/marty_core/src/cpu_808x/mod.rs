@@ -493,7 +493,6 @@ pub struct Intel808x {
     */
     // BIU stuff
     ready: bool, // READY line from 8284
-    wait_ct: u32,
     queue: InstructionQueue,
     fetch_size: TransferSize,
     fetch_state: FetchState,
@@ -516,7 +515,6 @@ pub struct Intel808x {
     final_transfer: bool, // Flag that determines if the current bus transfer is the final transfer for this bus request
     bus_wait_states: u32,
     io_wait_states: u32,
-    wait_states: u32,
     lock: bool, // LOCK pin. Asserted during 2nd INTA bus cycle.
 
     // Halt-related stuff
@@ -943,7 +941,6 @@ impl Intel808x {
         self.t_step = 0.00000021;
         self.t_step_h = 0.000000105;
         self.ready = true;
-        self.wait_ct = 0;
         self.in_rep = false;
         self.halted = false;
         self.reported_halt = false;
@@ -1068,8 +1065,13 @@ impl Intel808x {
     }
 
     #[inline(always)]
+    pub fn have_wait_states(&self) -> bool {
+        self.bus_wait_states > 0 || self.io_wait_states > 0 || self.dma_wait_states > 0
+    }
+
+    #[inline(always)]
     pub fn is_last_wait_t3tw(&self) -> bool {
-        self.wait_states == 0 && self.io_wait_states == 0 && self.dma_wait_states == 0
+        !self.have_wait_states()
     }
 
     #[inline]

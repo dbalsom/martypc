@@ -371,7 +371,7 @@ impl Intel808x {
             false => '.',
         };
 
-        let ready_chr = if self.wait_states > 0 { '.' } else { 'R' };
+        let ready_chr = if self.have_wait_states() { '.' } else { 'R' };
 
         let dma_count_str = &format!("{:02} {:02}", dma_count, self.dram_refresh_cycle_num);
 
@@ -402,7 +402,7 @@ impl Intel808x {
                 self.address_latch,
                 seg_str,
                 ready_chr,
-                self.wait_states,
+                self.bus_wait_states,
                 rs_chr, aws_chr, ws_chr, ior_chr, aiow_chr, iow_chr,
                 dma_str,
                 self.bus_status,
@@ -427,7 +427,7 @@ impl Intel808x {
                 self.address_latch,
                 seg_str,
                 ready_chr,
-                self.wait_states,
+                self.bus_wait_states,
                 tx_cycle,
                 rs_chr, aws_chr, ws_chr, ior_chr, aiow_chr, iow_chr,
                 dma_str,
@@ -614,7 +614,7 @@ impl Intel808x {
             false => '.',
         };
 
-        let ready_chr = if self.wait_states > 0 { '.' } else { 'R' };
+        let ready_chr = if self.bus_wait_states > 0 { '.' } else { 'R' };
 
         let dma_count_str = &format!("{:02} {:02}", dma_count, self.dram_refresh_cycle_num);
 
@@ -651,7 +651,7 @@ impl Intel808x {
             SyntaxToken::Text(format!("{:05X}", self.address_bus)),
             seg_token,
             SyntaxToken::Text(ready_chr.to_string()),
-            SyntaxToken::Text(self.wait_states.to_string()),
+            SyntaxToken::Text(self.bus_wait_states.to_string()),
             SyntaxToken::Text(tx_cycle.to_string()),
             bus_signal_token,
             SyntaxToken::Text(dma_str.to_string()),
