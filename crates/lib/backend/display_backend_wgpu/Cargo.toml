@@ -1,0 +1,23 @@
+[package]
+name = "display_backend_wgpu"
+authors = [""]
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+
+[lib]
+name = "display_backend_wgpu"
+path = "src/lib.rs"
+crate-type = ["lib"]
+
+[dependencies]
+wgpu_wrapper = { path = "../wgpu_wrapper" }
+display_backend_trait = { path = "../display_backend_trait" }
+marty_videocard_renderer = { path = "../../frontend/marty_videocard_renderer" }
+#display_scaler_trait = { path = "../../frontend/display_scaler_trait" }
+marty_scaler_wgpu = { path = "../../frontend/marty_scaler_wgpu" }
+marty_egui = { path = "../../frontend/marty_egui" }
+winit.workspace = true
+thiserror = "1.0"
+anyhow = "1.0"
+log = "0.4.20"

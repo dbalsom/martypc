@@ -1,0 +1,29 @@
+[package]
+name = "marty_config"
+description = "A support crate for MartyPC that reads configuration parameters from TOML files (and optionally, the command line)"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+authors.workspace = true
+
+[lib]
+name = "marty_config"
+path = "src/lib.rs"
+crate-type = ["lib"]
+
+[dependencies]
+marty_common = { path = "../../../marty_common" }
+marty_core = { path = "../../../marty_core" }
+marty_frontend_common =  { path = "../marty_frontend_common" }
+log.workspace = true
+anyhow.workspace = true
+bpaf = { version = "0.7.7", features = ["derive"], optional = true }
+
+toml.workspace = true
+serde = { workspace = true, features = ["derive"] }
+serde_derive.workspace = true
+
+[features]
+# use_bpaf: Control whether we use bpaf to read the command line. Disable this feature on web.
+default = ["use_bpaf"]
+use_bpaf = ["dep:bpaf"]
