@@ -57,7 +57,7 @@ overlays = [
 [[machine]]
 name = "ibm5160_diags"
 type = "Ibm5160"
-rom_set = "supersoft_diags"
+rom_set = "rudds_diags"
 speaker = true
 overlays = [
     "pcxt_2_720k_floppies",
