@@ -30,7 +30,7 @@
 
 */
 
-use crate::resource_manager::ResourceItem;
+use crate::resource_manager::{ResourceItem, ResourceItemType};
 use anyhow::{anyhow, Error};
 use std::{
     collections::BTreeMap,
@@ -168,34 +168,134 @@ impl TreeNode {
     }
 }
 
-pub fn build_tree(root_str: String, items: &Vec<ResourceItem>, skip: usize) -> Result<TreeNode, Error> {
+pub fn new_tree(root_str: String) -> TreeNode {
+    TreeNode::new_directory(0, root_str)
+}
+
+pub fn build_tree(root_str: String, items: &[ResourceItem], skip: usize) -> Result<TreeNode, Error> {
     let mut root = TreeNode::new_directory(0, root_str);
     if items.is_empty() {
         return Err(anyhow!("Items vec is empty"));
     }
     for (idx, item) in items.iter().enumerate() {
-        insert_path(&mut root, idx, &item.location, skip);
+        insert_item(&mut root, idx, item, skip);
+        //insert_path(&mut root, idx, &item.location, skip);
     }
     Ok(root)
 }
 
-fn insert_path(root: &mut TreeNode, idx: usize, path: &Path, skip: usize) {
+pub fn merge_items(root: &mut TreeNode, items: &[ResourceItem], skip: usize) -> Result<(), Error> {
+    if items.is_empty() {
+        return Err(anyhow!("Items vec is empty"));
+    }
+    for (idx, item) in items.iter().enumerate() {
+        insert_item(root, idx, item, skip);
+        //insert_path(root, idx, &item.location, skip);
+    }
+    Ok(())
+}
+
+// fn insert_path(root: &mut TreeNode, idx: usize, path: &Path, skip: usize) {
+//     let mut current_node = root;
+//     for component in path.components().skip(skip) {
+//         // skip the root of the path
+//         let component_str = component.as_os_str().to_str().unwrap().to_string();
+//         match &mut current_node.node_type {
+//             NodeType::Directory(children) => {
+//                 current_node = children.entry(component_str.clone()).or_insert_with(|| {
+//                     if component_str == path.file_name().unwrap().to_str().unwrap() {
+//                         TreeNode::new_file(idx, component_str, path.to_path_buf())
+//                     }
+//                     else {
+//                         TreeNode::new_directory(idx, component_str)
+//                     }
+//                 });
+//             }
+//             NodeType::File(_) => break,
+//         }
+//     }
+// }
+
+fn insert_item(root: &mut TreeNode, idx: usize, item: &ResourceItem, skip: usize) {
     let mut current_node = root;
-    for component in path.components().skip(skip) {
-        // skip the root of the path
+    let mut components = item.location.components().skip(skip).peekable(); // Path traversal
+
+    while let Some(component) = components.next() {
         let component_str = component.as_os_str().to_str().unwrap().to_string();
+        let is_last = components.peek().is_none(); // Are we at the last component?
+
         match &mut current_node.node_type {
             NodeType::Directory(children) => {
-                current_node = children.entry(component_str.clone()).or_insert_with(|| {
-                    if component_str == path.file_name().unwrap().to_str().unwrap() {
-                        TreeNode::new_file(idx, component_str, path.to_path_buf())
+                // If the entry exists and is a file, but we need a directory, convert it
+                if let Some(existing_node) = children.get_mut(&component_str) {
+                    if matches!(existing_node.node_type, NodeType::File(_)) {
+                        log::warn!(
+                            "Converting file {:?} into a directory to accommodate new entries.",
+                            existing_node.name
+                        );
+                        *existing_node = TreeNode::new_directory(idx, component_str.clone());
                     }
-                    else {
-                        TreeNode::new_directory(idx, component_str)
+                }
+
+                // Insert or update the node
+                current_node = children.entry(component_str.clone()).or_insert_with(|| {
+                    match item.rtype {
+                        ResourceItemType::Directory(_) => TreeNode::new_directory(idx, component_str),
+                        ResourceItemType::File(_) if is_last => {
+                            TreeNode::new_file(idx, component_str, item.location.clone())
+                        }
+                        _ => TreeNode::new_directory(idx, component_str), // Default to directory if unsure
                     }
                 });
             }
-            NodeType::File(_) => break,
+            NodeType::File(existing_path) => {
+                log::warn!(
+                    "Conflict: {} is already a file, cannot add {:?}",
+                    existing_path.display(),
+                    item.location
+                );
+                return; // Stop processing this path
+            }
+        }
+    }
+}
+
+fn insert_path(root: &mut TreeNode, idx: usize, path: &Path, skip: usize) {
+    let mut current_node = root;
+    let mut components = path.components().skip(skip).peekable(); // Allows looking ahead
+
+    while let Some(component) = components.next() {
+        let component_str = component.as_os_str().to_str().unwrap().to_string();
+
+        match &mut current_node.node_type {
+            NodeType::Directory(children) => {
+                // If this is the last component, determine if it should be a file or directory
+                let is_last = components.peek().is_none();
+
+                current_node = children.entry(component_str.clone()).or_insert_with(|| {
+                    if is_last {
+                        // It's the last component, should be a file
+                        TreeNode::new_file(idx, component_str, path.to_path_buf())
+                    }
+                    else {
+                        // It's a directory
+                        TreeNode::new_directory(idx, component_str)
+                    }
+                });
+
+                // Conflict: If a file already exists, but we need a directory
+                if is_last && matches!(current_node.node_type, NodeType::Directory(_)) {
+                    log::warn!("Conflict: Expected a file but found a directory at {:?}", path);
+                }
+            }
+            NodeType::File(existing_path) => {
+                log::warn!(
+                    "Conflict: Cannot insert {:?} because {:?} is already a file",
+                    path,
+                    existing_path
+                );
+                return; // Stop merging this path
+            }
         }
     }
 }

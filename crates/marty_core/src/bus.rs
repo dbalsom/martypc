@@ -2296,7 +2296,7 @@ impl BusInterface {
         self.handle_refresh_scheduling(&mut pit, &mut event);
 
         // Save current count info.
-        let (pit_reload_value, pit_counting_element, pit_counting) = pit.get_channel_count(0);
+        let (_pit_reload_value, pit_counting_element, pit_counting) = pit.get_channel_count(0);
 
         // Set imminent interrupt flag. The CPU can use this as a hint to adjust cycles for halt instructions - using
         // more cycles when an interrupt is not imminent, and one cycle when it is. This allows for cycle-precise wake
@@ -2346,11 +2346,8 @@ impl BusInterface {
             adlib.run(us);
         }
 
-        let mut do_area5150_hack = false;
-        let mut save_cga: VideoCardId = Default::default();
-
         // Run all video cards
-        for (vid, video_dispatch) in self.videocards.iter_mut() {
+        for (_vid, video_dispatch) in self.videocards.iter_mut() {
             match video_dispatch {
                 VideoCardDispatch::Mda(mda) => {
                     mda.run(DeviceRunTimeUnit::Microseconds(us), &mut self.pic1, None);

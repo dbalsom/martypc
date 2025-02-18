@@ -282,7 +282,7 @@ pub fn handle_egui_event(emu: &mut Emulator, dm: &mut EFrameDisplayManager, gui_
                         .duration(Some(Duration::from_secs(5)));
 
                     // Rescan resource paths to show new file in list
-                    if let Err(e) = emu.vhd_manager.scan_resource(&emu.rm) {
+                    if let Err(e) = emu.vhd_manager.scan_resource(&mut emu.rm) {
                         log::error!("Error scanning hdd directory: {}", e);
                     };
                 }
@@ -296,22 +296,22 @@ pub fn handle_egui_event(emu: &mut Emulator, dm: &mut EFrameDisplayManager, gui_
             }
         }
         GuiEvent::RescanMediaFolders => {
-            if let Err(e) = emu.floppy_manager.scan_resource(&emu.rm) {
+            if let Err(e) = emu.floppy_manager.scan_resource(&mut emu.rm) {
                 log::error!("Error scanning floppy directory: {}", e);
             }
-            if let Err(e) = emu.floppy_manager.scan_autofloppy(&emu.rm) {
+            if let Err(e) = emu.floppy_manager.scan_autofloppy(&mut emu.rm) {
                 log::error!("Error scanning autofloppy directory: {}", e);
             }
-            if let Err(e) = emu.vhd_manager.scan_resource(&emu.rm) {
+            if let Err(e) = emu.vhd_manager.scan_resource(&mut emu.rm) {
                 log::error!("Error scanning hdd directory: {}", e);
             }
-            if let Err(e) = emu.cart_manager.scan_resource(&emu.rm) {
+            if let Err(e) = emu.cart_manager.scan_resource(&mut emu.rm) {
                 log::error!("Error scanning cartridge directory: {}", e);
             }
             // Update Floppy Disk Image tree
-            match emu.floppy_manager.make_tree(&emu.rm) {
+            match emu.floppy_manager.make_tree(&mut emu.rm) {
                 Ok(floppy_tree) => {
-                    log::debug!("Built tree {:?}, setting tree in GUI...", floppy_tree);
+                    //log::debug!("Built tree {:?}, setting tree in GUI...", floppy_tree);
                     emu.gui.set_floppy_tree(floppy_tree)
                 }
                 Err(e) => {
@@ -324,11 +324,11 @@ pub fn handle_egui_event(emu: &mut Emulator, dm: &mut EFrameDisplayManager, gui_
 
             emu.gui.set_autofloppy_paths(emu.floppy_manager.get_autofloppy_paths());
             // Update VHD Image tree
-            if let Ok(hdd_tree) = emu.vhd_manager.make_tree(&emu.rm) {
+            if let Ok(hdd_tree) = emu.vhd_manager.make_tree(&mut emu.rm) {
                 emu.gui.set_hdd_tree(hdd_tree);
             }
             // Update Cartridge Image tree
-            if let Ok(cart_tree) = emu.cart_manager.make_tree(&emu.rm) {
+            if let Ok(cart_tree) = emu.cart_manager.make_tree(&mut emu.rm) {
                 emu.gui.set_cart_tree(cart_tree);
             }
         }

@@ -23,19 +23,21 @@
     DEALINGS IN THE SOFTWARE.
 
     --------------------------------------------------------------------------
-
-    marty_config::lib.rs
-
-    Routines to parse configuration file and command line arguments.
-
-    This library implements CoreConfig for bpaf & TOML parsing.
-
 */
+
+//! The `marty_config` crate provides functionality for parsing MartyPC's main configuration file,
+//! and overlaying either command line arguments (for native builds) or URL query parameters
+//! (for web builds) on top of the configuration file settings.
+//! We always consider command line arguments or query parameters to take priority over the
+//! configuration file.
+//!
+//! Features:
+//! - `use_bpaf`: Enable BPAF support for command line argument parsing.
 
 #[cfg(feature = "use_bpaf")]
 mod bpaf_config;
 mod coreconfig;
-#[cfg(not(feature = "use_bpaf"))]
+#[cfg(target_arch = "wasm32")]
 mod web_config;
 
 use std::{
@@ -64,9 +66,10 @@ use bpaf::Bpaf;
 #[cfg(feature = "use_bpaf")]
 use bpaf_config::{cli_args, CmdLineArgs};
 
-#[cfg(not(feature = "use_bpaf"))]
-use web_config::CmdLineArgs;
+#[cfg(target_arch = "wasm32")]
+use web_config::{parse_query_params, CmdLineArgs};
 
+use cfg_if::cfg_if;
 use serde_derive::Deserialize;
 
 const fn _default_true() -> bool {
@@ -154,6 +157,7 @@ pub struct Backend {
 pub struct Emulator {
     pub basedir: PathBuf,
     pub paths: Vec<PathConfigItem>,
+    pub virtual_fs: Option<PathBuf>,
     pub ignore_dirs: Option<Vec<String>>,
     pub benchmark_mode: bool,
     #[serde(default = "_default_true")]
@@ -341,7 +345,7 @@ impl ConfigFileParams {
             self.validator.vtype = Some(validator);
         }
 
-        if let Some(basedir) = shell_args.basedir {
+        if let Some(basedir) = shell_args.base_dir {
             self.emulator.basedir = basedir;
         }
 
@@ -351,7 +355,7 @@ impl ConfigFileParams {
         self.emulator.auto_poweron |= shell_args.auto_poweron;
         self.emulator.warpspeed |= shell_args.warpspeed;
         self.emulator.title_hacks |= shell_args.title_hacks;
-        self.emulator.audio.enabled &= !shell_args.noaudio;
+        self.emulator.audio.enabled &= !shell_args.no_sound;
 
         //self.emulator.scaler_aspect_correction |= shell_args.scaler_aspect_correction;
         self.emulator.debug_mode |= shell_args.debug_mode;
@@ -406,48 +410,72 @@ impl ConfigFileParams {
     }
 }
 
-pub fn read_local_config<P>(default_path: P) -> Result<ConfigFileParams, anyhow::Error>
+pub fn read_config(toml_string: impl AsRef<str>, shell_args: CmdLineArgs) -> Result<ConfigFileParams, anyhow::Error> {
+    let mut toml_args: ConfigFileParams;
+
+    //log::debug!("toml_config: {:?}", toml_args);
+
+    toml_args = toml::from_str(toml_string.as_ref())?;
+
+    // Command line arguments override config file arguments
+    cfg_if! {
+        if #[cfg(any(feature = "use_bpaf", target_arch = "wasm32"))] {
+            toml_args.overlay(shell_args);
+        }
+    }
+
+    Ok(toml_args)
+}
+
+/// Read the TOML configuration from a file path, parse and overlay command line or query parameter
+/// arguments.
+pub fn read_config_file<P>(default_path: P) -> Result<ConfigFileParams, anyhow::Error>
 where
     P: AsRef<Path>,
 {
     let shell_args: CmdLineArgs;
 
-    #[cfg(feature = "use_bpaf")]
-    {
-        log::debug!("Reading command line arguments...");
-        shell_args = cli_args().run();
-    }
-    #[cfg(not(feature = "use_bpaf"))]
-    {
-        shell_args = CmdLineArgs::default();
+    cfg_if! {
+        if #[cfg(all(feature = "use_bpaf", not(target_arch = "wasm32")))] {
+            log::debug!("Reading command line arguments...");
+            shell_args = cli_args().run();
+        } else if #[cfg(target_arch = "wasm32")] {
+            log::debug!("Parsing query parameters...");
+            shell_args = parse_query_params();
+        } else {
+            log::debug!("Argument reading disabled...");
+            shell_args = CmdLineArgs::default();
+        }
     }
 
-    let mut toml_args: ConfigFileParams;
-
-    // Allow configuration file path to be overridden by command line argument 'configfile'
-    if let Some(configfile_path) = shell_args.configfile.as_ref() {
-        let toml_string = std::fs::read_to_string(configfile_path)?;
-        toml_args = toml::from_str(&toml_string)?;
+    // Allow configuration file path to be overridden by command line argument 'config_file'
+    let toml_string = if let Some(configfile_path) = shell_args.config_file.as_ref() {
+        std::fs::read_to_string(configfile_path)?
     }
     else {
-        let toml_string = std::fs::read_to_string(default_path)?;
-        toml_args = toml::from_str(&toml_string)?;
-    }
+        std::fs::read_to_string(default_path)?
+    };
 
-    //log::debug!("toml_config: {:?}", toml_args);
-
-    // Command line arguments override config file arguments
-    toml_args.overlay(shell_args);
-
-    Ok(toml_args)
+    read_config(toml_string, shell_args)
 }
 
-pub fn read_config_from_str(toml_text: &str) -> Result<ConfigFileParams, anyhow::Error> {
-    let toml_args: ConfigFileParams;
+/// Read the TOML configuration from a string, parse and overlay command line or query parameter
+/// arguments.
+pub fn read_config_string(toml_string: impl AsRef<str>) -> Result<ConfigFileParams, anyhow::Error> {
+    let shell_args: CmdLineArgs;
 
-    toml_args = toml::from_str(toml_text)?;
+    cfg_if! {
+        if #[cfg(all(feature = "use_bpaf", not(target_arch = "wasm32")))] {
+            log::debug!("Reading command line arguments...");
+            shell_args = cli_args().run();
+        } else if #[cfg(target_arch = "wasm32")] {
+            log::debug!("Parsing query parameters...");
+            shell_args = parse_query_params();
+        } else {
+            log::debug!("Argument reading disabled...");
+            shell_args = CmdLineArgs::default();
+        }
+    }
 
-    //log::debug!("toml_config: {:?}", toml_args);
-
-    Ok(toml_args)
+    read_config(toml_string, shell_args)
 }

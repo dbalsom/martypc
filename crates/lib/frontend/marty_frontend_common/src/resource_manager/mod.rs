@@ -33,68 +33,55 @@
 
 */
 
+mod archive_overlay;
 #[cfg(not(target_arch = "wasm32"))]
 mod local_fs;
+mod manifest;
 mod path_manager;
 pub mod tree;
 #[cfg(target_arch = "wasm32")]
 mod wasm;
 
-use crate::types::resource_location::ResourceLocation;
-use anyhow::Error;
-use marty_common::MartyHashMap;
-#[cfg(target_arch = "wasm32")]
-use marty_web_helpers::fetch_file;
-pub use path_manager::PathConfigItem;
-use path_manager::PathManager;
-use regex::Regex;
-use serde_derive::Deserialize;
 use std::{
     collections::HashSet,
     ffi::OsString,
     future::Future,
     path::{Path, PathBuf},
 };
+
+#[cfg(target_arch = "wasm32")]
+use crate::resource_manager::manifest::ResourceManifest;
+
+use crate::{
+    resource_manager::{archive_overlay::ArchiveOverlay, manifest::ManifestFile},
+    types::resource_location::ResourceLocation,
+};
+
+#[cfg(target_arch = "wasm32")]
+use marty_web_helpers::fetch_file;
+pub use path_manager::PathConfigItem;
+use path_manager::PathManager;
+
+use anyhow::Error;
+use regex::Regex;
 pub use tree::TreeNode as PathTreeNode;
 use url::Url;
 
 pub type AsyncResourceReadResult = dyn Future<Output = Result<Vec<u8>, anyhow::Error>> + Send;
 
-const BASEDIR_TOKEN: &'static str = "$basedir$";
-
 // Resource flags
 const RESOURCE_READONLY: u32 = 0x00000001;
 
-#[derive(Copy, Clone, Debug, Deserialize)]
-pub enum ManifestFileType {
-    Directory,
-    File,
-}
-
-#[derive(Clone, Debug, Deserialize)]
-pub struct ManifestEntry {
-    path: String,
-    #[serde(rename = "type")]
-    kind: ManifestFileType,
-    size: Option<u64>,
-}
-
-#[derive(Clone, Debug, Deserialize)]
-struct ManifestFile {
-    version: String,
-    entries: Vec<ManifestEntry>,
+#[derive(Copy, Clone, Debug)]
+pub enum ResourceItemType {
+    Directory(ResourceFsType),
+    File(ResourceFsType),
 }
 
 #[derive(Copy, Clone, Debug)]
-pub enum ResourceItemType {
-    Directory,
-    LocalFile,
-    RemoteDirectory,
-    RemoteFile,
-    LocalArchive,
-    LocalArchiveFile,
-    RemoteArchive,
-    RemoteArchiveFile,
+pub enum ResourceFsType {
+    Native,
+    Overlay(usize),
 }
 
 #[derive(Clone, Debug)]
@@ -112,7 +99,7 @@ impl ResourceItem {
         let mut new_path: PathBuf = PathBuf::from(".");
         new_path.push(filename.replace("/", "\\"));
         Self {
-            rtype: ResourceItemType::LocalFile,
+            rtype: ResourceItemType::File(ResourceFsType::Native),
             location: new_path.clone(),
             relative_path: None,
             filename_only: new_path.file_name().map(|s| s.to_os_string()),
@@ -122,58 +109,12 @@ impl ResourceItem {
     }
 }
 
-#[derive(Default)]
-pub struct ResourceManifest {
-    entries: Vec<ManifestEntry>,
-    map: MartyHashMap<String, ManifestEntry>,
-}
-
-impl ResourceManifest {
-    pub fn new(entries: &[ManifestEntry]) -> Self {
-        let mut manifest = Self::default();
-        for entry in entries.iter() {
-            manifest.map.insert(entry.path.clone(), entry.clone());
-        }
-        manifest.entries = entries.to_vec();
-        manifest
-    }
-
-    pub fn entry(&self, key: &str) -> Option<&ManifestEntry> {
-        self.map.get(key)
-    }
-
-    pub fn debug(&self) {
-        for entry in self.entries.iter() {
-            log::debug!("Manifest entry: {:?}", entry);
-        }
-    }
-}
-
-#[derive(Clone, Debug)]
-pub struct ManifestDirEntry {
-    path:   String,
-    is_dir: bool,
-    size:   Option<u64>,
-}
-
-impl ManifestDirEntry {
-    pub fn path(&self) -> PathBuf {
-        PathBuf::from(&self.path)
-    }
-
-    pub fn is_dir(&self) -> bool {
-        self.is_dir
-    }
-
-    pub fn size(&self) -> Option<u64> {
-        self.size
-    }
-}
-
 pub struct ResourceManager {
     pub pm: PathManager,
     pub base_url: Option<Url>,
     pub ignore_dirs: Vec<String>,
+    pub overlays: Vec<ArchiveOverlay<std::io::Cursor<Vec<u8>>>>,
+    #[cfg(target_arch = "wasm32")]
     manifest: ResourceManifest,
 }
 
@@ -183,6 +124,8 @@ impl ResourceManager {
             pm: PathManager::new(base_path),
             base_url: None,
             ignore_dirs: Vec::new(),
+            overlays: Vec::new(),
+            #[cfg(target_arch = "wasm32")]
             manifest: ResourceManifest::default(),
         }
     }
@@ -222,22 +165,11 @@ impl ResourceManager {
         Ok(())
     }
 
-    fn read_manifest_dir(&self, dir: &String) -> Vec<ManifestDirEntry> {
-        let mut entries = Vec::new();
-        for file in &self.manifest.entries {
-            log::debug!("Checking dir: {} against manifest entry {:?}", dir, file.path);
-            if file.path.starts_with(dir) && matches!(file.kind, ManifestFileType::File) {
-                entries.push(ManifestDirEntry {
-                    path:   file.path.clone(),
-                    is_dir: false,
-                    size:   file.size,
-                });
-            }
-        }
-        entries
-    }
-
-    pub fn resolve_path_from_filename(&self, resource: &str, file_name: impl AsRef<Path>) -> Result<PathBuf, Error> {
+    pub fn resolve_path_from_filename(
+        &mut self,
+        resource: &str,
+        file_name: impl AsRef<Path>,
+    ) -> Result<PathBuf, Error> {
         let file_extension = file_name.as_ref().extension().map(|s| s.to_os_string());
 
         let mut extensions = Vec::new();
@@ -279,7 +211,7 @@ impl ResourceManager {
     /// Return a unique filename for the given resource, base name, and extension.
     /// Names will be generated by appending digits to the base name until a unique name is found.
     pub fn get_available_filename(
-        &self,
+        &mut self,
         resource: &str,
         base_name: &str,
         extension: Option<&str>,

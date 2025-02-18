@@ -121,7 +121,7 @@ impl FloppyManager {
         }
     }
 
-    pub fn scan_resource(&mut self, rm: &ResourceManager) -> Result<bool, Error> {
+    pub fn scan_resource(&mut self, rm: &mut ResourceManager) -> Result<bool, Error> {
         log::debug!("Scanning floppy resource...");
         // Clear and rebuild image lists.
         self.image_vec.clear();
@@ -129,6 +129,12 @@ impl FloppyManager {
 
         // Retrieve all items from the floppy resource paths.
         let floppy_items = rm.enumerate_items("floppy", None, true, true, Some(self.extensions.clone()))?;
+
+        let floppy_names = floppy_items
+            .iter()
+            .map(|f| f.location.clone())
+            .collect::<Vec<PathBuf>>();
+        log::debug!("Got floppy filenames from resource: {:#?}", floppy_names);
 
         // Index mapping between 'files' vec and 'image_vec' should be maintained.
         for item in floppy_items.iter() {
@@ -149,7 +155,7 @@ impl FloppyManager {
         Ok(true)
     }
 
-    pub fn scan_autofloppy(&mut self, rm: &ResourceManager) -> Result<bool, Error> {
+    pub fn scan_autofloppy(&mut self, rm: &mut ResourceManager) -> Result<bool, Error> {
         // Clear and rebuild autofloppy list.
         self.autofloppy_dir_vec.clear();
 
@@ -160,7 +166,7 @@ impl FloppyManager {
         for item in autofloppy_dirs.iter() {
             //let idx = self.image_vec.len();
 
-            if matches!(item.rtype, ResourceItemType::Directory) {
+            if matches!(item.rtype, ResourceItemType::Directory(_)) {
                 self.autofloppy_dir_vec.push(RelativeDirectory {
                     full: item.location.clone(),
                     relative: item.relative_path.clone().unwrap_or(PathBuf::new()),
@@ -177,6 +183,8 @@ impl FloppyManager {
     }
 
     pub fn make_tree(&mut self, rm: &ResourceManager) -> Result<PathTreeNode, Error> {
+        let filenames = &self.files.iter().map(|f| f.location.clone()).collect::<Vec<PathBuf>>();
+        log::debug!("FloppyManager::make_tree(): Building tree from files: {:#?}", filenames);
         let tree = rm.items_to_tree("floppy", &self.files)?;
         Ok(tree)
     }
@@ -293,7 +301,7 @@ impl FloppyManager {
         Some(self.image_vec[idx].path.clone())
     }
 
-    pub fn load_floppy_by_idx(&self, idx: usize, rm: &ResourceManager) -> Result<FloppyImageSource, FloppyError> {
+    pub fn load_floppy_by_idx(&self, idx: usize, rm: &mut ResourceManager) -> Result<FloppyImageSource, FloppyError> {
         //let floppy_vec;
 
         if idx >= self.image_vec.len() {
@@ -313,7 +321,7 @@ impl FloppyManager {
     pub fn load_floppy_by_path(
         &self,
         floppy_path: PathBuf,
-        rm: &ResourceManager,
+        rm: &mut ResourceManager,
     ) -> Result<FloppyImageSource, FloppyError> {
         let floppy_vec = match rm.read_resource_from_path_blocking(&floppy_path) {
             Ok(vec) => vec,
@@ -350,7 +358,7 @@ impl FloppyManager {
         &self,
         archive: Vec<u8>,
         format: Option<FloppyImageType>,
-        rm: &ResourceManager,
+        rm: &mut ResourceManager,
     ) -> Result<Vec<u8>, Error> {
         let format = format.unwrap_or(FloppyImageType::Image360K);
 
@@ -448,8 +456,12 @@ impl FloppyManager {
             let dst_root_dir = vfat12.root_dir();
 
             if let Some(src_root_node) = src_root_node_opt {
-                if let Err(err) =
-                    build_autofloppy_dir(&src_root_node, dst_root_dir, rm, &files_visited, &mut |path: &Path| {
+                if let Err(err) = build_autofloppy_dir(
+                    &src_root_node,
+                    dst_root_dir,
+                    rm,
+                    &files_visited,
+                    &mut |rm: &mut ResourceManager, path: &Path| {
                         // This callback strips the first directory entry back off the tree (.\\)
                         // and converts backslashes to forward slashes.
 
@@ -472,8 +484,8 @@ impl FloppyManager {
                         else {
                             Err(FloppyError::ImageBuildError.into())
                         }
-                    })
-                {
+                    },
+                ) {
                     log::error!("Error building autofloppy directory: {}", err);
                 }
             }
@@ -515,7 +527,7 @@ impl FloppyManager {
         &self,
         path: &PathBuf,
         format: Option<FloppyImageType>,
-        rm: &ResourceManager,
+        rm: &mut ResourceManager,
     ) -> Result<Vec<u8>, Error> {
         let format = format.unwrap_or(FloppyImageType::Image360K);
 
@@ -604,12 +616,16 @@ impl FloppyManager {
             let dst_root_dir = vfat12.root_dir();
 
             if let Some(src_root_node) = src_root_node_opt {
-                if let Err(err) =
-                    build_autofloppy_dir(&src_root_node, dst_root_dir, rm, &files_visited, &mut |path: &Path| {
+                if let Err(err) = build_autofloppy_dir(
+                    &src_root_node,
+                    dst_root_dir,
+                    rm,
+                    &files_visited,
+                    &mut |rm: &mut ResourceManager, path: &Path| {
                         log::trace!("Building FAT image with path: {}", path.display());
                         rm.read_resource_from_path_blocking(path)
-                    })
-                {
+                    },
+                ) {
                     log::error!("Error building autofloppy directory: {:?}", err);
                 }
             }
@@ -790,9 +806,9 @@ fn create_drive_label(input: &str) -> [u8; 11] {
 pub fn build_autofloppy_dir<IO: fatfs::Read + fatfs::Write + fatfs::Seek, TP, OCC>(
     dir_node: &TreeNode,
     fs: Dir<'_, IO, TP, OCC>,
-    rm: &ResourceManager,
+    rm: &mut ResourceManager,
     visited: &HashSet<PathBuf>,
-    file_callback: &mut dyn FnMut(&Path) -> Result<Vec<u8>, Error>,
+    file_callback: &mut dyn FnMut(&mut ResourceManager, &Path) -> Result<Vec<u8>, Error>,
 ) -> Result<(), Error>
 where
     OCC: OemCpConverter,
@@ -814,7 +830,7 @@ where
                 }
                 log::debug!("build_autofloppy_dir: file_name: {}", path.display());
 
-                let file_vec = file_callback(path)?;
+                let file_vec = file_callback(rm, path)?;
                 let mut file = fs
                     .create_file(&filename)
                     .map_err(|_| anyhow::anyhow!("Failed to create file: {}", filename))?;

@@ -150,7 +150,7 @@ pub fn process_update(emu: &mut Emulator, dm: &mut EFrameDisplayManager, tm: &mu
 
                         if emuc.config.machine.reload_roms {
                             // Reload ROMs from the saved list of ROM sets.
-                            match emuc.romm.create_manifest(emuc.romsets.clone(), &emuc.rm) {
+                            match emuc.romm.create_manifest(emuc.romsets.clone(), &mut emuc.rm) {
                                 Ok(manifest) => match emuc.machine.reinstall_roms(manifest) {
                                     Ok(_) => {
                                         emuc.gui

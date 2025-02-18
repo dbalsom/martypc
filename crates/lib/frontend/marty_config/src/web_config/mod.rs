@@ -25,43 +25,51 @@
     --------------------------------------------------------------------------
 */
 
+//! On the web, we treat the URL query parameters as command line arguments.
+//! This module is conditionally compiled when building for the web wasm target.
+
 use std::path::PathBuf;
 
 use marty_core::{cpu_common::CpuType, cpu_validator::ValidatorType};
 
+use url::Url;
+use wasm_bindgen::prelude::*;
+use web_sys::window;
+
 #[derive(Default)]
 pub struct CmdLineArgs {
-    pub configfile: Option<PathBuf>,
-    pub basedir: Option<PathBuf>,
+    pub config_file: Option<PathBuf>,
+    // Ignored on wasm
+    pub base_dir: Option<PathBuf>,
+    // Ignored on wasm
     pub benchmark_mode: bool,
-    pub noaudio: bool,
-
-    // Emulator options
+    pub no_sound: bool,
+    // Ignored on wasm
     pub headless: bool,
-    pub fuzzer:   bool,
-
-    // Emulator options
+    // Ignored on wasm
+    pub fuzzer: bool,
+    // Ignored on wasm
     pub romscan: bool,
+    // Ignored on wasm
     pub machinescan: bool,
+    // Ignored on wasm
     pub auto_poweron: bool,
+    // Ignored on wasm
     pub warpspeed: bool,
     pub title_hacks: bool,
     pub off_rails_detection: bool,
-
     pub reverse_mouse_buttons: bool,
     pub machine_config_name: Option<String>,
     pub machine_config_overlays: Option<String>,
     pub turbo: bool,
+    // Ignored on wasm
     pub validator: Option<ValidatorType>,
     pub debug_mode: bool,
     pub debug_keyboard: bool,
     pub no_roms: bool,
 
-    //#[bpaf(long)]
-    //pub video_type: Option<VideoType>,
-
-    //#[bpaf(long, switch)]
-    //pub video_frame_debug: bool,
+    // Everything below ignored on wasm
+    // --------------------------------
     pub run_bin: Option<String>,
     pub run_bin_seg: Option<u16>,
     pub run_bin_ofs: Option<u16>,
@@ -71,4 +79,30 @@ pub struct CmdLineArgs {
     // Test stuff
     pub test_cpu_type: Option<CpuType>,
     pub test_path: Option<PathBuf>,
+}
+
+/// Parse the URL query parameters into a [CmdLineArgs] struct.
+pub fn parse_query_params() -> CmdLineArgs {
+    let mut args = CmdLineArgs::default();
+
+    if let Some(window) = window() {
+        if let Ok(url) = Url::parse(&window.location().href().unwrap_or_default()) {
+            let query_pairs = url.query_pairs();
+
+            for (key, value) in query_pairs {
+                log::debug!("Read query parameter: {}={}", key, value);
+                match key.as_ref() {
+                    "configfile" => args.config_file = Some(PathBuf::from(value.into_owned())),
+                    "no_sound" => args.no_sound = true,
+                    "machine_config_name" => args.machine_config_name = Some(String::from(value.into_owned())),
+                    "machine_config_overlays" => args.machine_config_name = Some(String::from(value.into_owned())),
+                    "no_roms" => args.no_roms = true,
+                    "turbo" => args.turbo = true,
+                    _ => {} // Ignore unknown parameters
+                }
+            }
+        }
+    }
+
+    args
 }

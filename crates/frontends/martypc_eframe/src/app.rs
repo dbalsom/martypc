@@ -43,6 +43,8 @@ use marty_web_helpers::FetchResult;
 
 #[cfg(feature = "use_winit")]
 use crate::event_loop::winit_events::handle_window_event;
+#[cfg(feature = "use_winit")]
+use winit::event::ElementState;
 
 #[cfg(not(feature = "use_winit"))]
 use crate::event_loop::web_keyboard::handle_web_key_event;
@@ -58,7 +60,6 @@ use marty_videocard_renderer::AspectCorrectionMode;
 use marty_web_helpers::console_writer::ConsoleWriter;
 #[cfg(target_arch = "wasm32")]
 use url::Url;
-use winit::event::ElementState;
 
 #[derive(Clone, Debug)]
 pub enum FileOpenContext {

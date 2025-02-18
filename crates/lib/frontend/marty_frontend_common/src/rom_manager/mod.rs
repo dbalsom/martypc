@@ -29,7 +29,7 @@
     ROM management services for frontends.
 */
 
-use crate::resource_manager::ResourceManager;
+use crate::resource_manager::{ResourceItemType, ResourceManager};
 use anyhow::Error;
 use marty_core::machine::{MachineCheckpoint, MachinePatch, MachineRomEntry, MachineRomManifest};
 use serde::Deserialize;
@@ -199,7 +199,7 @@ impl RomManager {
         }
     }
 
-    pub async fn load_defs(&mut self, rm: &ResourceManager) -> Result<(), Error> {
+    pub async fn load_defs(&mut self, rm: &mut ResourceManager) -> Result<(), Error> {
         let mut rom_defs: Vec<RomSetDefinition> = Vec::new();
 
         // Get a file listing of the rom directory.
@@ -237,7 +237,7 @@ impl RomManager {
         Ok(())
     }
 
-    async fn load_def(&mut self, toml_path: &PathBuf, rm: &ResourceManager) -> Result<RomDefinitionFile, Error> {
+    async fn load_def(&mut self, toml_path: &PathBuf, rm: &mut ResourceManager) -> Result<RomDefinitionFile, Error> {
         let toml_str = rm.read_string_from_path(toml_path).await?;
         //let toml_str = std::fs::read_to_string(toml_path)?;
         let romdef = toml::from_str::<RomDefinitionFile>(&toml_str)?;
@@ -424,7 +424,7 @@ impl RomManager {
         Ok(())
     }
 
-    pub async fn scan(&mut self, rm: &ResourceManager) -> Result<(), Error> {
+    pub async fn scan(&mut self, rm: &mut ResourceManager) -> Result<(), Error> {
         let roms = rm.enumerate_items("rom", None, true, true, None)?;
 
         if roms.is_empty() {
@@ -435,70 +435,75 @@ impl RomManager {
         self.rom_candidates.clear();
 
         for rom_item in roms {
-            log::debug!("Scanning ROM: {:?}", rom_item.location);
-            let mut new_candidate: RomFileCandidate = Default::default();
-            let file_vec = match rm.read_resource_from_path(rom_item.location.clone()).await {
-                Ok(vec) => vec,
-                Err(e) => {
-                    log::error!("Error opening filename {:?}: {}", &rom_item.location, e);
-                    eprintln!("Error opening filename {:?}: {}", &rom_item.location, e);
-                    continue;
+            match rom_item.rtype {
+                ResourceItemType::File(_) => {
+                    log::debug!("Scanning ROM: {:?}", rom_item.location);
+                    let mut new_candidate: RomFileCandidate = Default::default();
+                    let file_vec = match rm.read_resource_from_path(rom_item.location.clone()).await {
+                        Ok(vec) => vec,
+                        Err(e) => {
+                            log::error!("Error opening filename {:?}: {}", &rom_item.location, e);
+                            eprintln!("Error opening filename {:?}: {}", &rom_item.location, e);
+                            continue;
+                        }
+                    };
+
+                    // Compute the md5 digest of the file and convert to string
+                    let file_digest = md5::compute(&file_vec);
+                    let file_digest_str = format!("{:x}", file_digest);
+                    new_candidate.md5 = file_digest_str.clone();
+
+                    // Store the file size
+                    new_candidate.size = file_vec.len();
+
+                    // Store the path and filename
+                    new_candidate.path = rom_item.location.clone();
+                    new_candidate.filename = rom_item
+                        .filename_only
+                        .clone()
+                        .unwrap_or_default()
+                        .into_string()
+                        .unwrap_or_default();
+
+                    if new_candidate.filename.len() == 0 {
+                        eprintln!("Error: Non-UTF8 filename for {:?}", &rom_item.location);
+                        continue;
+                    }
+
+                    // stash clones of filename and path for the name map
+                    let map_filename = new_candidate.filename.clone();
+                    let map_path = new_candidate.path.clone();
+
+                    // Store the candidate by md5
+                    match self.rom_candidates.entry(file_digest_str.clone()) {
+                        Entry::Occupied(prev_entry) => {
+                            eprintln!(
+                                "Hash collision! Rom #1: {:?} Rom #2 {:?} both have hash {}. Rom #2 will be ignored.",
+                                prev_entry.get().path,
+                                new_candidate.path,
+                                file_digest_str
+                            );
+                        }
+                        Entry::Vacant(entry) => {
+                            entry.insert(new_candidate);
+                        }
+                    }
+
+                    // Store the candidate by filename
+                    match self.rom_candidate_name_map.entry(map_filename) {
+                        Entry::Occupied(prev_entry) => {
+                            eprintln!(
+                                "Name collision! Rom #1: {:?} Rom #2 {:?} have the same name. Rom #2 will be ignored when referenced by name.",
+                                prev_entry.get().1,
+                                map_path,
+                            );
+                        }
+                        Entry::Vacant(entry) => {
+                            entry.insert((file_digest_str, map_path));
+                        }
+                    }
                 }
-            };
-
-            // Compute the md5 digest of the file and convert to string
-            let file_digest = md5::compute(&file_vec);
-            let file_digest_str = format!("{:x}", file_digest);
-            new_candidate.md5 = file_digest_str.clone();
-
-            // Store the file size
-            new_candidate.size = file_vec.len();
-
-            // Store the path and filename
-            new_candidate.path = rom_item.location.clone();
-            new_candidate.filename = rom_item
-                .filename_only
-                .clone()
-                .unwrap_or_default()
-                .into_string()
-                .unwrap_or_default();
-
-            if new_candidate.filename.len() == 0 {
-                eprintln!("Error: Non-UTF8 filename for {:?}", &rom_item.location);
-                continue;
-            }
-
-            // stash clones of filename and path for the name map
-            let map_filename = new_candidate.filename.clone();
-            let map_path = new_candidate.path.clone();
-
-            // Store the candidate by md5
-            match self.rom_candidates.entry(file_digest_str.clone()) {
-                Entry::Occupied(prev_entry) => {
-                    eprintln!(
-                        "Hash collision! Rom #1: {:?} Rom #2 {:?} both have hash {}. Rom #2 will be ignored.",
-                        prev_entry.get().path,
-                        new_candidate.path,
-                        file_digest_str
-                    );
-                }
-                Entry::Vacant(entry) => {
-                    entry.insert(new_candidate);
-                }
-            }
-
-            // Store the candidate by filename
-            match self.rom_candidate_name_map.entry(map_filename) {
-                Entry::Occupied(prev_entry) => {
-                    eprintln!(
-                        "Name collision! Rom #1: {:?} Rom #2 {:?} have the same name. Rom #2 will be ignored when referenced by name.",
-                        prev_entry.get().1,
-                        map_path,
-                    );
-                }
-                Entry::Vacant(entry) => {
-                    entry.insert((file_digest_str, map_path));
-                }
+                _ => continue,
             }
         }
 
@@ -805,7 +810,7 @@ impl RomManager {
     pub fn reload_manifest(
         &mut self,
         rom_set_list: Vec<String>,
-        rm: &ResourceManager,
+        rm: &mut ResourceManager,
     ) -> Result<MachineRomManifest, Error> {
         self.create_manifest(rom_set_list, rm)
     }
@@ -815,7 +820,7 @@ impl RomManager {
     pub fn create_manifest(
         &mut self,
         rom_set_list: Vec<String>,
-        rm: &ResourceManager,
+        rm: &mut ResourceManager,
     ) -> Result<MachineRomManifest, Error> {
         let mut new_manifest = MachineRomManifest::new();
 
@@ -947,7 +952,7 @@ impl RomManager {
     pub async fn create_manifest_async(
         &mut self,
         rom_set_list: Vec<String>,
-        rm: &ResourceManager,
+        rm: &mut ResourceManager,
     ) -> Result<MachineRomManifest, Error> {
         let mut new_manifest = MachineRomManifest::new();
 

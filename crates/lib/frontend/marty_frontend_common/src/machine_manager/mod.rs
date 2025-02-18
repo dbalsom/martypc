@@ -150,7 +150,7 @@ impl MachineManager {
         slf
     }
 
-    pub async fn load_configs(&mut self, rm: &ResourceManager) -> Result<(), Error> {
+    pub async fn load_configs(&mut self, rm: &mut ResourceManager) -> Result<(), Error> {
         let mut machine_configs: Vec<MachineConfigFileEntry> = Vec::new();
         let mut overlay_configs: Vec<MachineConfigFileOverlayEntry> = Vec::new();
 
