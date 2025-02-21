@@ -218,12 +218,16 @@ impl Default for DmViewportOptions {
 ///     window creation to be done in the event loop. If no event loop is required for window
 ///     creation this type parameter can be ().
 pub trait DisplayManager<B, G, Vh, V, C> {
+    /// The native texture handle type for the graphics backend.
+    type NativeTexture;
     /// The native texture view type for the graphics backend.
-    type NativeTextureView;
+    //type NativeTextureView;
     /// The native encoder type for the graphics backend.
     type NativeEncoder;
     /// The native event loop type
     type NativeEventLoop;
+    /// The implementation type of Surface
+    type ImplSurface;
     /// The implementation type of Scaler
     type ImplScaler;
     /// The implementation type of DisplayTarget
@@ -321,13 +325,13 @@ pub trait DisplayManager<B, G, Vh, V, C> {
     where
         F: FnMut(&mut VideoRenderer, VideoCardId, &mut [u8]);
 
-    /// Execute a closure that is passed a mutable reference to each Backend in the manager.
-    fn for_each_backend<F>(&mut self, f: F)
+    /// Execute a closure that is passed a mutable reference to the Surface of each Display Target in the manager.
+    fn for_each_surface<F>(&mut self, f: F)
     //where F: FnMut(&mut B, &mut dyn DisplayScaler<B, NativeTextureView=Self::NativeTextureView, NativeEncoder=Self::NativeEncoder>, Option<&mut G>);
     where
-        F: FnMut(&mut B, Option<&mut Self::ImplScaler>, Option<&mut G>);
+        F: FnMut(&mut B, &mut Self::ImplSurface, Option<&mut Self::ImplScaler>, Option<&mut G>);
 
-    /// Execute a closure that is passed a mutable reference to each RenderTarget in the manager.
+    /// Execute a closure that is passed a mutable reference to each Display Target in the manager.
     fn for_each_target<F>(&mut self, f: F)
     where
         F: FnMut(&mut Self::ImplDisplayTarget, usize);

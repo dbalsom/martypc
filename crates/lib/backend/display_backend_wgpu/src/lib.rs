@@ -37,7 +37,7 @@ pub use display_backend_trait::{
     BufferDimensions,
     DisplayBackend,
     DisplayBackendBuilder,
-    SurfaceDimensions,
+    TextureDimensions,
     //DisplayBackendError
 };
 
@@ -52,7 +52,7 @@ pub struct PixelsBackend<'p> {
     pixels: Pixels<'p>,
 
     buffer_dim:  BufferDimensions,
-    surface_dim: SurfaceDimensions,
+    surface_dim: TextureDimensions,
 }
 
 impl<'p> PixelsBackend<'p> {
@@ -81,7 +81,7 @@ impl<'p> PixelsBackend<'p> {
 }
 
 impl<'p> DisplayBackendBuilder for PixelsBackend<'p> {
-    fn build(_buffer_size: BufferDimensions, _surface_size: SurfaceDimensions) -> Self
+    fn build(_buffer_size: BufferDimensions, _surface_size: TextureDimensions) -> Self
     where
         Self: Sized,
     {
@@ -101,13 +101,13 @@ where
         Some(self.pixels.adapter().get_info())
     }
 
-    fn resize_buf(&mut self, new: BufferDimensions) -> Result<(), Error> {
+    fn resize_surface_cpu_buffer(&mut self, new: BufferDimensions) -> Result<(), Error> {
         self.pixels.resize_buffer(new.w, new.h)?;
         self.buffer_dim = (new.w, new.h, new.w).into();
         Ok(())
     }
 
-    fn resize_surface(&mut self, new: SurfaceDimensions) -> Result<(), Error> {
+    fn resize_surface(&mut self, new: TextureDimensions) -> Result<(), Error> {
         self.pixels.resize_surface(new.w, new.h)?;
         self.surface_dim = (new.w, new.h).into();
         Ok(())
@@ -116,7 +116,7 @@ where
     fn buf_dimensions(&self) -> BufferDimensions {
         self.buffer_dim
     }
-    fn surface_dimensions(&self) -> SurfaceDimensions {
+    fn surface_dimensions(&self) -> TextureDimensions {
         self.surface_dim
     }
 

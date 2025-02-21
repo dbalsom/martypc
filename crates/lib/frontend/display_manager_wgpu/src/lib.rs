@@ -45,7 +45,7 @@ pub use display_backend_wgpu::{
     DisplayBackendBuilder,
     Pixels,
     PixelsBackend,
-    SurfaceDimensions,
+    TextureDimensions,
 };
 use marty_frontend_common::types::window::WindowDefinition;
 use std::{collections::HashMap, path::PathBuf, sync::Arc, time::Duration};
@@ -1108,12 +1108,12 @@ impl<'p> DisplayManager<PixelsBackend<'p>, GuiRenderContext, WindowId, Window, A
                         // resolution.
                         if software_aspect {
                             backend
-                                .resize_buf(BufferDimensions::from(aspect_dimensions.unwrap()))
+                                .resize_surface_cpu_buffer(BufferDimensions::from(aspect_dimensions.unwrap()))
                                 .expect("FATAL: Failed to resize backend");
                         }
                         else {
                             backend
-                                .resize_buf(BufferDimensions::from(buf_dimensions.unwrap()))
+                                .resize_surface_cpu_buffer(BufferDimensions::from(buf_dimensions.unwrap()))
                                 .expect("FATAL: Failed to resize backend");
                         }
 
@@ -1126,7 +1126,7 @@ impl<'p> DisplayManager<PixelsBackend<'p>, GuiRenderContext, WindowId, Window, A
                                 new_min_surface_size.height,
                             );
                             backend
-                                .resize_surface(SurfaceDimensions {
+                                .resize_surface(TextureDimensions {
                                     w: new_min_surface_size.width,
                                     h: new_min_surface_size.height,
                                 })
@@ -1215,7 +1215,7 @@ impl<'p> DisplayManager<PixelsBackend<'p>, GuiRenderContext, WindowId, Window, A
                         *idx,
                         resize_string
                     );
-                    backend.resize_surface(SurfaceDimensions { w: rt.w, h: rt.h })?;
+                    backend.resize_surface(TextureDimensions { w: rt.w, h: rt.h })?;
 
                     // We may receive this event in response to a on_card_resized event that triggered a window size
                     // change. We should get the current aspect ratio from the renderer.

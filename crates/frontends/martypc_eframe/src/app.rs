@@ -33,7 +33,14 @@ use crate::{
     MARTY_ICON,
 };
 
-use display_manager_eframe::{DisplayBackend, EFrameDisplayManager, EFrameDisplayManagerBuilder};
+use display_manager_eframe::{
+    builder::EFrameDisplayManagerBuilder,
+    BufferDimensions,
+    DisplayBackend,
+    EFrameBackend,
+    EFrameDisplayManager,
+    TextureDimensions,
+};
 use marty_egui_eframe::{context::GuiRenderContext, EGUI_MENU_BAR_HEIGHT};
 use marty_frontend_common::{
     display_manager::{DisplayManager, DmGuiOptions},
@@ -221,15 +228,48 @@ impl MartyApp {
 
         // Create DisplayManager.
         log::debug!("Creating DisplayManager...");
-        let mut display_manager = match EFrameDisplayManagerBuilder::build(
-            cc.egui_ctx.clone(),
-            &emu.config.emulator.window,
-            cardlist,
-            &emu.config.emulator.scaler_preset,
-            None,
-            Some(MARTY_ICON),
-            &gui_options,
-        ) {
+        let mut dm_builder = EFrameDisplayManagerBuilder::new();
+
+        // If `use_wgpu` is set, we need to get the wgpu device and queue from the creation context, and
+        // create a wgpu backend for the display manager.
+        #[cfg(feature = "use_wgpu")]
+        {
+            if let Some(render_state) = &cc.wgpu_render_state {
+                let wgpu_backend = match EFrameBackend::new(
+                    cc.egui_ctx.clone(),
+                    BufferDimensions {
+                        w: 640,
+                        h: 480,
+                        pitch: 640,
+                    },
+                    TextureDimensions { w: 640, h: 480 },
+                    render_state.device.clone(),
+                    render_state.queue.clone(),
+                    render_state.target_format,
+                ) {
+                    Ok(backend) => backend,
+                    Err(e) => {
+                        log::error!("init(): Failed to create wgpu backend: {}", e);
+                        return MartyApp::default();
+                    }
+                };
+                log::debug!("init(): Installing wpgu backend");
+                dm_builder = dm_builder.with_backend(wgpu_backend);
+            }
+            else {
+                panic!("init(): use_wgpu feature enabled, but failed to get wgpu render state from eframe creation context");
+            }
+        }
+
+        dm_builder = dm_builder
+            .with_egui_ctx(cc.egui_ctx.clone())
+            .with_win_configs(&emu.config.emulator.window)
+            .with_cards(cardlist)
+            .with_scaler_presets(&emu.config.emulator.scaler_preset)
+            .with_icon_buf(MARTY_ICON)
+            .with_gui_options(&gui_options);
+
+        let mut display_manager = match dm_builder.build() {
             Ok(dm) => dm,
             Err(e) => {
                 log::error!("Failed to create display manager: {}", e);
@@ -383,8 +423,8 @@ impl eframe::App for MartyApp {
 
         if let Some(dm) = &mut self.dm {
             // Present the render targets (this will draw windows for any GuiWidget targets).
-            dm.for_each_backend(|backend, scaler, gui| {
-                _ = backend.present();
+            dm.for_each_surface(|backend, surface, scaler, gui| {
+                //_ = backend.present();
             });
         }
 

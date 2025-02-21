@@ -161,7 +161,7 @@ pub trait HasWgpu<Q> {
     fn queue(&self) -> &Q;
 }
 
-pub trait DisplayScaler<B>: Send + Sync {
+pub trait DisplayScaler<D, Q, T>: Send + Sync {
     type NativeTextureView;
     type NativeEncoder;
 
@@ -169,7 +169,9 @@ pub trait DisplayScaler<B>: Send + Sync {
     fn render(&self, encoder: &mut Self::NativeEncoder, render_target: &Self::NativeTextureView);
     fn resize(
         &mut self,
-        backend: &B,
+        device: &D,
+        queue: &Q,
+        texture: &T,
         texture_width: u32,  // Actual width, in pixels, of source texture
         texture_height: u32, // Actual height, in pixels, of source texture
         target_width: u32,   // Width, in pixels, of destination texture (stretch to fit)
@@ -179,16 +181,18 @@ pub trait DisplayScaler<B>: Send + Sync {
     );
     fn resize_surface(
         &mut self,
-        backend: &B,
+        device: &D,
+        queue: &Q,
+        texture: &T,
         screen_width: u32,  // Width, in pixels, of destination surface
         screen_height: u32, // Height, in pixels, of destination surface
     );
 
-    fn set_mode(&mut self, backend: &B, new_mode: ScalerMode);
+    fn set_mode(&mut self, device: &D, queue: &Q, new_mode: ScalerMode);
     fn get_mode(&self) -> ScalerMode;
     fn set_margins(&mut self, l: u32, r: u32, t: u32, b: u32);
     fn set_bilinear(&mut self, bilinear: bool);
     fn set_fill_color(&mut self, fill: MartyColor);
-    fn set_option(&mut self, backend: &B, opt: ScalerOption, update: bool) -> bool;
-    fn set_options(&mut self, backend: &B, opts: Vec<ScalerOption>);
+    fn set_option(&mut self, device: &D, queue: &Q, opt: ScalerOption, update: bool) -> bool;
+    fn set_options(&mut self, device: &D, queue: &Q, opts: Vec<ScalerOption>);
 }

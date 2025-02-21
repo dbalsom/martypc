@@ -53,7 +53,7 @@ impl NullScaler {
     }
 }
 
-impl DisplayScaler<()> for NullScaler {
+impl DisplayScaler<(), (), ()> for NullScaler {
     type NativeTextureView = ();
     type NativeEncoder = ();
 
@@ -66,7 +66,9 @@ impl DisplayScaler<()> for NullScaler {
 
     fn resize(
         &mut self,
-        _backend: &(),
+        _device: &(),
+        _queue: &(),
+        _texture: &(),
         _texture_width: u32,
         _texture_height: u32,
         _target_width: u32,
@@ -76,9 +78,9 @@ impl DisplayScaler<()> for NullScaler {
     ) {
     }
 
-    fn resize_surface(&mut self, _backend: &(), _screen_width: u32, _screen_height: u32) {}
+    fn resize_surface(&mut self, _device: &(), _queue: &(), _texture: &(), _screen_width: u32, _screen_height: u32) {}
 
-    fn set_mode(&mut self, _backend: &(), _new_mode: ScalerMode) {}
+    fn set_mode(&mut self, _device: &(), _queue: &(), _new_mode: ScalerMode) {}
 
     fn get_mode(&self) -> ScalerMode {
         self.mode
@@ -95,11 +97,11 @@ impl DisplayScaler<()> for NullScaler {
     /// Apply a ScalerOption. Update of uniform buffers is controlled by the 'update' boolean. If
     /// it is true we will perform an immediate uniform update; if false it will be delayed and
     /// set_option() will return true to indicate that the caller should perform an update.
-    fn set_option(&mut self, _backend: &(), _opt: ScalerOption, _update: bool) -> bool {
+    fn set_option(&mut self, _device: &(), _queue: &(), _opt: ScalerOption, _update: bool) -> bool {
         false
     }
 
     /// Iterate though a vector of ScalerOptions and apply them all. We can defer uniform update
     /// until all options have been processed.
-    fn set_options(&mut self, _backend: &(), _opts: Vec<ScalerOption>) {}
+    fn set_options(&mut self, _device: &(), _queue: &(), _opts: Vec<ScalerOption>) {}
 }

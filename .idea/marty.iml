@@ -35,6 +35,7 @@
       <sourceFolder url="file://$MODULE_DIR$/crates/marty_common/src" isTestSource="false" />
       <sourceFolder url="file://$MODULE_DIR$/crates/marty_core/benches" isTestSource="true" />
       <sourceFolder url="file://$MODULE_DIR$/crates/marty_core/src" isTestSource="false" />
+      <sourceFolder url="file://$MODULE_DIR$/crates/lib/backend/display_backend_eframe_wgpu/src" isTestSource="false" />
       <excludeFolder url="file://$MODULE_DIR$/target" />
     </content>
     <orderEntry type="inheritedJdk" />

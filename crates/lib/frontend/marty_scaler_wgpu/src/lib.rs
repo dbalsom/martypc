@@ -37,8 +37,6 @@
 
 use bytemuck::{Pod, Zeroable};
 
-use wgpu_wrapper::Pixels;
-
 // Reexport trait items
 pub use marty_frontend_common::{
     color::MartyColor,
@@ -117,8 +115,12 @@ struct ScalerOptionsUniform {
 }
 
 #[allow(dead_code)]
-fn create_texture_view(pixels: &Pixels, width: u32, height: u32) -> wgpu::TextureView {
-    let device = pixels.device();
+fn create_texture_view(
+    device: &wgpu::Device,
+    texture_format: wgpu::TextureFormat,
+    width: u32,
+    height: u32,
+) -> wgpu::TextureView {
     let texture_descriptor = TextureDescriptor {
         label: None,
         size: wgpu::Extent3d {
@@ -129,8 +131,8 @@ fn create_texture_view(pixels: &Pixels, width: u32, height: u32) -> wgpu::Textur
         mip_level_count: 1,
         sample_count: 1,
         dimension: wgpu::TextureDimension::D2,
-        format: pixels.render_texture_format(),
-        view_formats: &[pixels.render_texture_format()],
+        format: texture_format,
+        view_formats: &[texture_format],
         usage: wgpu::TextureUsages::TEXTURE_BINDING | wgpu::TextureUsages::RENDER_ATTACHMENT,
     };
 
@@ -218,7 +220,9 @@ pub struct MartyScaler {
 impl MartyScaler {
     pub fn new(
         mode: ScalerMode,
-        pixels: &wgpu_wrapper::Pixels,
+        device: &wgpu::Device,
+        texture: &wgpu::Texture,
+        texture_format: wgpu::TextureFormat,
         texture_width: u32,
         texture_height: u32,
         target_width: u32,
@@ -229,12 +233,11 @@ impl MartyScaler {
         bilinear: bool,
         fill_color: MartyColor,
     ) -> Self {
-        let device = pixels.device();
         let scale_shader = wgpu::include_wgsl!("./shaders/scaler.wgsl");
         let scale_module = device.create_shader_module(scale_shader);
 
         //let texture_view = create_texture_view(pixels, screen_width, screen_height);
-        let texture_view = pixels.texture().create_view(&wgpu::TextureViewDescriptor::default());
+        let texture_view = texture.create_view(&wgpu::TextureViewDescriptor::default());
 
         // Create a texture sampler with nearest neighbor
         let nearest_sampler = device.create_sampler(&wgpu::SamplerDescriptor {
@@ -425,7 +428,7 @@ impl MartyScaler {
                 module: &scale_module,
                 entry_point: Some("fs_main"),
                 targets: &[Some(wgpu::ColorTargetState {
-                    format: pixels.render_texture_format(),
+                    format: texture_format,
                     blend: Some(wgpu::BlendState {
                         color: wgpu::BlendComponent::REPLACE,
                         alpha: wgpu::BlendComponent::OVER,
@@ -489,7 +492,7 @@ impl MartyScaler {
         }
     }
 
-    fn update_matrix(&mut self, pixels: &wgpu_wrapper::Pixels) {
+    fn update_matrix(&mut self, queue: &wgpu::Queue) {
         let matrix = ScalingMatrix::new(
             self.mode,
             (self.texture_width as f32, self.texture_height as f32),
@@ -499,9 +502,7 @@ impl MartyScaler {
         );
         let transform_bytes = matrix.as_bytes();
 
-        pixels
-            .queue()
-            .write_buffer(&self.transform_uniform_buffer, 0, transform_bytes);
+        queue.write_buffer(&self.transform_uniform_buffer, 0, transform_bytes);
     }
 
     fn get_default_param_uniform() -> Vec<u8> {
@@ -573,7 +574,8 @@ impl MartyScaler {
 
         bytemuck::bytes_of(&uniform_struct).to_vec()
     }
-    fn update_uniforms(&mut self, pixels: &wgpu_wrapper::Pixels) {
+
+    fn update_uniforms(&mut self, queue: &wgpu::Queue) {
         //println!("Updating uniform data...");
 
         // Calculate current scaling matrix.
@@ -586,8 +588,6 @@ impl MartyScaler {
         );
 
         let transform_bytes = matrix.as_bytes();
-
-        let queue = pixels.queue();
         queue.write_buffer(&self.transform_uniform_buffer, 0, transform_bytes);
 
         // Calculate shader parameters
@@ -597,7 +597,7 @@ impl MartyScaler {
     }
 }
 
-impl DisplayScaler<wgpu_wrapper::Pixels<'_>> for MartyScaler {
+impl DisplayScaler<wgpu::Device, wgpu::Queue, wgpu::Texture> for MartyScaler {
     type NativeTextureView = wgpu::TextureView;
     type NativeEncoder = wgpu::CommandEncoder;
     fn get_texture_view(&self) -> &wgpu::TextureView {
@@ -647,7 +647,9 @@ impl DisplayScaler<wgpu_wrapper::Pixels<'_>> for MartyScaler {
 
     fn resize(
         &mut self,
-        pixels: &wgpu_wrapper::Pixels,
+        device: &wgpu::Device,
+        queue: &wgpu::Queue,
+        texture: &wgpu::Texture,
         texture_width: u32,
         texture_height: u32,
         target_width: u32,
@@ -656,9 +658,9 @@ impl DisplayScaler<wgpu_wrapper::Pixels<'_>> for MartyScaler {
         screen_height: u32,
     ) {
         //self.texture_view = create_texture_view(pixels, self.texture_width, self.texture_height);
-        self.texture_view = pixels.texture().create_view(&wgpu::TextureViewDescriptor::default());
+        self.texture_view = texture.create_view(&wgpu::TextureViewDescriptor::default());
         self.nearest_bind_group = create_bind_group(
-            pixels.device(),
+            device,
             &self.bind_group_layout,
             &self.texture_view,
             &self.nearest_sampler,
@@ -667,7 +669,7 @@ impl DisplayScaler<wgpu_wrapper::Pixels<'_>> for MartyScaler {
         );
 
         self.bilinear_bind_group = create_bind_group(
-            pixels.device(),
+            device,
             &self.bind_group_layout,
             &self.texture_view,
             &self.bilinear_sampler,
@@ -692,16 +694,21 @@ impl DisplayScaler<wgpu_wrapper::Pixels<'_>> for MartyScaler {
         self.screen_width = screen_width;
         self.screen_height = screen_height;
 
-        pixels
-            .queue()
-            .write_buffer(&self.transform_uniform_buffer, 0, transform_bytes);
+        queue.write_buffer(&self.transform_uniform_buffer, 0, transform_bytes);
     }
 
-    fn resize_surface(&mut self, pixels: &wgpu_wrapper::Pixels, screen_width: u32, screen_height: u32) {
+    fn resize_surface(
+        &mut self,
+        device: &wgpu::Device,
+        queue: &wgpu::Queue,
+        texture: &wgpu::Texture,
+        screen_width: u32,
+        screen_height: u32,
+    ) {
         //self.texture_view = create_texture_view(pixels, self.screen_width, self.screen_height);
-        self.texture_view = pixels.texture().create_view(&wgpu::TextureViewDescriptor::default());
+        self.texture_view = texture.create_view(&wgpu::TextureViewDescriptor::default());
         self.nearest_bind_group = create_bind_group(
-            pixels.device(),
+            device,
             &self.bind_group_layout,
             &self.texture_view,
             &self.nearest_sampler,
@@ -710,7 +717,7 @@ impl DisplayScaler<wgpu_wrapper::Pixels<'_>> for MartyScaler {
         );
 
         self.bilinear_bind_group = create_bind_group(
-            pixels.device(),
+            device,
             &self.bind_group_layout,
             &self.texture_view,
             &self.bilinear_sampler,
@@ -729,14 +736,12 @@ impl DisplayScaler<wgpu_wrapper::Pixels<'_>> for MartyScaler {
         );
         let transform_bytes = matrix.as_bytes();
 
-        pixels
-            .queue()
-            .write_buffer(&self.transform_uniform_buffer, 0, transform_bytes);
+        queue.write_buffer(&self.transform_uniform_buffer, 0, transform_bytes);
     }
 
-    fn set_mode(&mut self, pixels: &wgpu_wrapper::Pixels, new_mode: ScalerMode) {
+    fn set_mode(&mut self, _device: &wgpu::Device, queue: &wgpu::Queue, new_mode: ScalerMode) {
         self.mode = new_mode;
-        self.update_matrix(pixels);
+        self.update_matrix(queue);
     }
 
     fn get_mode(&self) -> ScalerMode {
@@ -761,12 +766,12 @@ impl DisplayScaler<wgpu_wrapper::Pixels<'_>> for MartyScaler {
     /// Apply a ScalerOption. Update of uniform buffers is controlled by the 'update' boolean. If
     /// it is true we will perform an immediate uniform update; if false it will be delayed and
     /// set_option() will return true to indicate that the caller should perform an update.
-    fn set_option(&mut self, pixels: &wgpu_wrapper::Pixels, opt: ScalerOption, update: bool) -> bool {
+    fn set_option(&mut self, device: &wgpu::Device, queue: &wgpu::Queue, opt: ScalerOption, update: bool) -> bool {
         let mut update_uniform = false;
 
         match opt {
             ScalerOption::Mode(new_mode) => {
-                self.set_mode(pixels, new_mode);
+                self.set_mode(device, queue, new_mode);
             }
             ScalerOption::Adjustment { h: _h, s: _s, b, c, g } => {
                 self.brightness = b;
@@ -827,7 +832,7 @@ impl DisplayScaler<wgpu_wrapper::Pixels<'_>> for MartyScaler {
         }
 
         if update && update_uniform {
-            self.update_uniforms(pixels);
+            self.update_uniforms(queue);
         }
         else if update_uniform {
             return true;
@@ -869,17 +874,17 @@ impl DisplayScaler<wgpu_wrapper::Pixels<'_>> for MartyScaler {
 
     /// Iterate though a vector of ScalerOptions and apply them all. We can defer uniform update
     /// until all options have been processed.
-    fn set_options(&mut self, pixels: &wgpu_wrapper::Pixels, opts: Vec<ScalerOption>) {
+    fn set_options(&mut self, device: &wgpu::Device, queue: &wgpu::Queue, opts: Vec<ScalerOption>) {
         let mut update_uniform = false;
         for opt in opts {
-            let update_flag = self.set_option(pixels, opt, false);
+            let update_flag = self.set_option(device, queue, opt, false);
             if update_flag {
                 update_uniform = true;
             }
         }
 
         if update_uniform {
-            self.update_uniforms(pixels);
+            self.update_uniforms(queue);
         }
     }
 }

@@ -28,7 +28,7 @@
 use marty_common::VideoDimensions;
 use serde_derive::Deserialize;
 
-#[derive(Debug, Deserialize)]
+#[derive(Clone, Debug, Deserialize)]
 pub struct WindowDefinition {
     #[serde(default)]
     pub enabled: bool,

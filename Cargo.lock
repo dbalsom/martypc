@@ -1705,6 +1705,18 @@ dependencies = [
 ]
 
 [[package]]
+name = "display_backend_eframe_wgpu"
+version = "0.3.0"
+dependencies = [
+ "anyhow",
+ "display_backend_trait",
+ "egui 0.30.0",
+ "egui-wgpu 0.30.0",
+ "log",
+ "marty_scaler_null",
+]
+
+[[package]]
 name = "display_backend_trait"
 version = "0.3.0"
 dependencies = [
@@ -1733,6 +1745,7 @@ version = "0.3.0"
 dependencies = [
  "anyhow",
  "display_backend_eframe",
+ "display_backend_eframe_wgpu",
  "egui 0.30.0",
  "egui-wgpu 0.30.0",
  "image 0.25.5",

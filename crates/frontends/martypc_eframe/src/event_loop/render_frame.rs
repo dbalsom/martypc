@@ -92,9 +92,10 @@ pub fn render_frame(emu: &mut Emulator, dm: &mut EFrameDisplayManager) {
     //     None
     // });
 
-    // Finally, render each backend
-    dm.for_each_backend(|backend, scaler, gui_opt| {
-        if let Err(e) = backend.render(scaler, None) {
+    // Finally, render each surface
+
+    dm.for_each_surface(|backend, surface, scaler, gui_opt| {
+        if let Err(e) = backend.render(surface, scaler, None) {
             log::error!("Failed to render backend: {}", e);
         }
     });

@@ -40,7 +40,7 @@ pub use display_backend_trait::{
     BufferDimensions,
     DisplayBackend,
     DisplayBackendBuilder,
-    SurfaceDimensions,
+    TextureDimensions,
     //DisplayBackendError
 };
 
@@ -55,7 +55,7 @@ pub struct PixelsBackend {
     pixels: Pixels,
 
     buffer_dim:  BufferDimensions,
-    surface_dim: SurfaceDimensions,
+    surface_dim: TextureDimensions,
 }
 
 impl PixelsBackend {
@@ -84,7 +84,7 @@ impl PixelsBackend {
 }
 
 impl DisplayBackendBuilder for PixelsBackend {
-    fn build(_buffer_size: BufferDimensions, _surface_size: SurfaceDimensions) -> Self
+    fn build(_buffer_size: BufferDimensions, _surface_size: TextureDimensions) -> Self
     where
         Self: Sized,
     {
@@ -112,7 +112,7 @@ impl DisplayBackend<GuiRenderContext> for PixelsBackend {
         Ok(())
     }
 
-    fn resize_surface(&mut self, new: SurfaceDimensions) -> Result<(), Error> {
+    fn resize_surface(&mut self, new: TextureDimensions) -> Result<(), Error> {
         self.pixels.resize_surface(new.w, new.h)?;
         self.surface_dim = (new.w, new.h).into();
         Ok(())
@@ -121,7 +121,7 @@ impl DisplayBackend<GuiRenderContext> for PixelsBackend {
     fn buf_dimensions(&self) -> BufferDimensions {
         self.buffer_dim
     }
-    fn surface_dimensions(&self) -> SurfaceDimensions {
+    fn surface_dimensions(&self) -> TextureDimensions {
         self.surface_dim
     }
 

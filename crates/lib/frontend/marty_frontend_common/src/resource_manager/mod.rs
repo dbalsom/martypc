@@ -52,10 +52,7 @@ use std::{
 #[cfg(target_arch = "wasm32")]
 use crate::resource_manager::manifest::ResourceManifest;
 
-use crate::{
-    resource_manager::{archive_overlay::ArchiveOverlay, manifest::ManifestFile},
-    types::resource_location::ResourceLocation,
-};
+use crate::{resource_manager::archive_overlay::ArchiveOverlay, types::resource_location::ResourceLocation};
 
 #[cfg(target_arch = "wasm32")]
 use marty_web_helpers::fetch_file;

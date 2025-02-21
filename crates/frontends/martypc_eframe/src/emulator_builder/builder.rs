@@ -55,7 +55,6 @@ use marty_config::ConfigFileParams;
 // This module will export either a rodio or null sound interface depending on the `sound` feature.
 use crate::sound::{SoundInterface, SoundSourceDescriptor};
 
-use display_manager_eframe::EFrameDisplayManagerBuilder;
 #[cfg(feature = "cpu_validator")]
 use marty_core::cpu_validator::ValidatorType;
 use marty_core::{
