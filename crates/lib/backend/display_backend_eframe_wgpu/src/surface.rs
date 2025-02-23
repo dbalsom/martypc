@@ -44,6 +44,7 @@ impl DisplayTargetSurface for EFrameBackendSurface {
     type NativeDevice = wgpu::Device;
     type NativeQueue = wgpu::Queue;
     type NativeTexture = wgpu::Texture;
+    type NativeTextureFormat = wgpu::TextureFormat;
 
     #[inline(always)]
     fn buf_dimensions(&self) -> BufferDimensions {
@@ -71,6 +72,7 @@ impl DisplayTargetSurface for EFrameBackendSurface {
     }
 
     fn update_backing(&mut self, _device: Arc<Self::NativeDevice>, queue: Arc<Self::NativeQueue>) -> Result<(), Error> {
+        self.dirty = true;
         if self.dirty {
             self.dirty = false;
 
@@ -133,6 +135,11 @@ impl DisplayTargetSurface for EFrameBackendSurface {
     fn backing_texture(&self) -> Arc<Self::NativeTexture> {
         // Texture in wgpu 0.24 is Clone, we could avoid using an Arc.
         self.backing.clone()
+    }
+
+    #[inline]
+    fn backing_texture_format(&self) -> Self::NativeTextureFormat {
+        self.backing_texture().format()
     }
 
     #[inline(always)]

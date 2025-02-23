@@ -25,6 +25,10 @@
    ---------------------------------------------------------------------------
 */
 
+//! [WindowDefinition] is shared between an implementation of [DisplayManager]
+//! and the `marty_config` crate, to enable reading of a [WindowDefinition] from
+//! a configuration file.
+
 use marty_common::VideoDimensions;
 use serde_derive::Deserialize;
 

@@ -92,7 +92,7 @@ use marty_core::{
     machine_types::FloppyDriveType,
 };
 use marty_frontend_common::{
-    display_manager::DisplayTargetInfo,
+    display_manager::{DisplayTargetInfo, DtHandle},
     display_scaler::{ScalerMode, ScalerPreset},
     resource_manager::PathTreeNode,
     types::sound::SoundSourceInfo,
@@ -758,7 +758,7 @@ impl GuiState {
 
             // Set the initial scaler params for the Scaler Adjustments window if we have them.
             if let Some(scaler_params) = &display.scaler_params {
-                self.scaler_adjust.set_params(idx, scaler_params.clone());
+                self.scaler_adjust.set_params(DtHandle(idx), scaler_params.clone());
             }
         }
 

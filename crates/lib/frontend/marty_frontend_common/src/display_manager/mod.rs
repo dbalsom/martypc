@@ -37,7 +37,7 @@ use std::{
     path::PathBuf,
 };
 
-use crate::display_scaler::{ScalerMode, ScalerParams, ScalerPreset};
+use crate::display_scaler::{ScalerGeometry, ScalerMode, ScalerParams, ScalerPreset};
 
 pub use crate::{
     types::{display_target_dimensions::DisplayTargetDimensions, display_target_margins::DisplayTargetMargins},
@@ -75,6 +75,24 @@ impl From<usize> for DtHandle {
 impl From<DtHandle> for usize {
     fn from(handle: DtHandle) -> usize {
         handle.0
+    }
+}
+
+#[derive(Copy, Clone, Debug, PartialEq)]
+pub struct DisplayDimensions {
+    pub w: u32,
+    pub h: u32,
+}
+
+impl DisplayDimensions {
+    pub fn new(w: u32, h: u32) -> Self {
+        DisplayDimensions { w, h }
+    }
+}
+
+impl From<DisplayDimensions> for (u32, u32) {
+    fn from(dim: DisplayDimensions) -> Self {
+        (dim.w, dim.h)
     }
 }
 
@@ -121,6 +139,7 @@ pub struct DisplayTargetInfo {
     pub gui_render_time: Duration,
     pub scaler_mode: Option<ScalerMode>,
     pub scaler_params: Option<ScalerParams>,
+    pub scaler_geometry: Option<ScalerGeometry>,
 }
 
 pub struct DmGuiOptions {
@@ -241,6 +260,7 @@ pub trait DisplayManager<B, G, Vh, V, C> {
         name: String,
         dt_type: DisplayTargetType,
         native_context: Option<&C>,
+        viewport: Option<Vh>,
         viewport_opts: Option<DmViewportOptions>,
         card_id: Option<VideoCardId>,
         scaler_preset: String,
@@ -251,12 +271,17 @@ pub trait DisplayManager<B, G, Vh, V, C> {
     /// to a [Machine] must be provided to query video card parameters.
     fn display_info(&self, machine: &Machine) -> Vec<DisplayTargetInfo>;
 
+    /// Return the main `Viewport`.
+    /// This viewport should be where the main interface of the emulator is rendered.
+    /// (For eframe target, this is the ROOT viewport).
+    fn main_viewport(&self) -> Option<V>;
+
     /// Return the associated `Viewport` given a Viewport ID. This is not always possible,
     /// so the result is an Option.
-    fn viewport_by_id(&self, vid: Vh) -> Option<&V>;
+    fn viewport_by_id(&self, vid: Vh) -> Option<V>;
 
     /// Return the associated [Viewport] given a [DtHandle].
-    fn viewport(&self, dt: DtHandle) -> Option<&V>;
+    fn viewport(&self, dt: DtHandle) -> Option<V>;
 
     /// Load and set the specified icon for the main viewport in the DisplayManager.
     /// If the viewport does not support icons, this method should do nothing.
@@ -268,32 +293,35 @@ pub trait DisplayManager<B, G, Vh, V, C> {
     /// A default implementation is provided that does nothing.
     fn set_viewport_icon(&mut self, _vid: Vh, _icon_path: PathBuf) {}
 
-    /// Return the main `Viewport`.
-    /// This viewport should be where the main interface of the emulator is rendered.
-    /// (For eframe target, this is the ROOT viewport).
-    fn main_viewport(&self) -> Option<&V>;
+    /// Returns an immutable reference to the [Backend]
+    fn backend(&mut self) -> Option<&B>;
 
-    /// Returns a reference to the [Backend] associated with the main window.
-    fn main_backend(&mut self) -> Option<&B>;
+    /// Returns a mutable reference to the [Backend]
+    fn backend_mut(&mut self) -> Option<&mut B>;
 
-    /// Returns a mutable reference to the [Backend] associated with the main window.
-    fn main_backend_mut(&mut self) -> Option<&mut B>;
+    /// Pass a mutable reference to the main viewport's GUI context to the provided closure.
+    fn with_main_gui_mut<F>(&mut self, f: F)
+    where
+        F: FnOnce(&mut G);
 
-    /// Returns a mutable reference ot the GUI render context associated to the main window, if
-    /// applicable.
-    fn main_gui_mut(&mut self) -> Option<&mut G>;
+    /// Resolve the GUI context for the specified viewport ID and pass a mutable reference to it to
+    /// the provided closure.
+    fn with_gui_by_viewport_id_mut<F>(&mut self, vid: Vh, f: F)
+    where
+        F: FnOnce(&mut G);
 
-    /// Returns the associated GUI render context for the specified Window id, if any.
-    fn gui_by_viewport_id(&mut self, vid: Vh) -> Option<&mut G>;
+    fn with_renderer_mut<F>(&mut self, dt: DtHandle, f: F)
+    where
+        F: FnOnce(&mut VideoRenderer);
 
-    /// Return the associated [VideoRenderer] for the specified display target handle, if present.
-    fn renderer_mut(&mut self, dt: DtHandle) -> Option<&mut VideoRenderer>;
+    // TODO: Rethink this function. A card can have multiple renderers. Which one would we return?
+    fn with_renderer_by_card_id_mut<F>(&mut self, id: VideoCardId, f: F)
+    where
+        F: FnOnce(&mut VideoRenderer);
 
-    /// Return a mutable reference to the [VideoRenderer] for a card id, if present.
-    fn renderer_by_card_id_mut(&mut self, id: VideoCardId) -> Option<&mut VideoRenderer>;
-
-    /// Returns the associated [VideoRenderer] for the primary video card, if such is present.
-    fn primary_renderer_mut(&mut self) -> Option<&mut VideoRenderer>;
+    fn with_primary_renderer_mut<F>(&mut self, f: F)
+    where
+        F: FnOnce(&mut VideoRenderer);
 
     /// Reflect a change to a videocard's output resolution, so that associated
     /// resources can be resized as well.

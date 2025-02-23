@@ -42,7 +42,7 @@ async fn main() -> eframe::Result {
     // If we create an EmulatorBuilder, we can have a pre_init and post_init function,
     // the latter can be called after the eframe instance is created, to instantiate the
     // DisplayManager.
-    let native_options = eframe::NativeOptions {
+    let mut native_options = eframe::NativeOptions {
         viewport: egui::ViewportBuilder::default()
             .with_inner_size([400.0, 300.0])
             .with_min_inner_size([300.0, 220.0])
@@ -53,7 +53,7 @@ async fn main() -> eframe::Result {
         ..Default::default()
     };
 
-    let app = MartyApp::new().await;
+    let app = MartyApp::new(&mut native_options).await;
 
     eframe::run_native("MartyPC", native_options, Box::new(|cc| Ok(Box::new(app.init(cc)))))
 }

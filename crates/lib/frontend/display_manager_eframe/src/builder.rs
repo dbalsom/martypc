@@ -41,7 +41,7 @@ use super::EFrameBackend;
 
 use anyhow::{anyhow, Error};
 use display_backend_eframe_wgpu::DisplayTargetSurface;
-use egui::Context;
+use egui::{Context, ViewportId};
 use winit::window::Icon;
 
 #[derive(Default)]
@@ -236,30 +236,30 @@ impl<'a> EFrameDisplayManagerBuilder<'a> {
         );
 
         // TODO: Implement FROM for this?
-        let mut window_opts: DmViewportOptions = Default::default();
+        let mut viewport_opts: DmViewportOptions = Default::default();
 
         // Honor initial window size, but we may have to resize it later.
-        window_opts.size = window_def.size.unwrap_or_default().into();
-        window_opts.always_on_top = window_def.always_on_top;
+        viewport_opts.size = window_def.size.unwrap_or_default().into();
+        viewport_opts.always_on_top = window_def.always_on_top;
 
         // If this is the main window, and we have a GUI...
         if main_window && gui_options.enabled {
             // Set the top margin to clear the egui menu bar.
-            window_opts.margins = DisplayTargetMargins::from_t(gui_options.menubar_h);
+            viewport_opts.margins = DisplayTargetMargins::from_t(gui_options.menubar_h);
         }
 
         // Is window resizable?
         if !window_def.resizable {
-            window_opts.min_size = Some(window_opts.size);
-            window_opts.max_size = Some(window_opts.size);
-            window_opts.resizable = false;
+            viewport_opts.min_size = Some(viewport_opts.size);
+            viewport_opts.max_size = Some(viewport_opts.size);
+            viewport_opts.resizable = false;
         }
         else {
-            window_opts.resizable = true;
+            viewport_opts.resizable = true;
         }
 
         // If this is Some, it locks the window resolution to some scale factor of card resolution
-        window_opts.card_scale = window_def.card_scale;
+        viewport_opts.card_scale = window_def.card_scale;
 
         let preset_name = window_def.scaler_preset.clone().unwrap_or("default".to_string());
 
@@ -282,7 +282,8 @@ impl<'a> EFrameDisplayManagerBuilder<'a> {
             window_title,
             dt_type,
             Some(&egui_ctx),
-            Some(window_opts),
+            if main_window { Some(ViewportId::ROOT) } else { None },
+            Some(viewport_opts),
             card_id_opt,
             preset_name,
             gui_options,

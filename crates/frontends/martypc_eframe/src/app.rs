@@ -24,7 +24,6 @@
 
     --------------------------------------------------------------------------
 */
-
 use crate::{
     emulator::Emulator,
     emulator_builder::EmulatorBuilder,
@@ -32,6 +31,7 @@ use crate::{
     timestep_update::process_update,
     MARTY_ICON,
 };
+use std::sync::Arc;
 
 use display_manager_eframe::{
     builder::EFrameDisplayManagerBuilder,
@@ -57,7 +57,8 @@ use winit::event::ElementState;
 use crate::event_loop::web_keyboard::handle_web_key_event;
 
 use crossbeam_channel::{Receiver, Sender};
-use egui::{Context, RawInput};
+use eframe::egui_wgpu;
+use egui::{Context, RawInput, Sense, ViewportId};
 
 use crate::input::TranslateKey;
 #[cfg(target_arch = "wasm32")]
@@ -67,6 +68,7 @@ use marty_videocard_renderer::AspectCorrectionMode;
 use marty_web_helpers::console_writer::ConsoleWriter;
 #[cfg(target_arch = "wasm32")]
 use url::Url;
+use winit::{event::WindowEvent, window::WindowId};
 
 #[derive(Clone, Debug)]
 pub enum FileOpenContext {
@@ -78,7 +80,9 @@ pub enum FileOpenContext {
 #[derive(serde::Deserialize, serde::Serialize)]
 #[serde(default)] // if we add new fields, give them default values when deserializing old state
 pub struct MartyApp {
-    // Example stuff:
+    current_size: egui::Vec2,
+    last_size:    egui::Vec2,
+
     #[serde(skip)]
     gui: GuiRenderContext,
     #[serde(skip)]
@@ -106,6 +110,8 @@ impl Default for MartyApp {
         let (sender, receiver) = crossbeam_channel::bounded(1);
 
         Self {
+            current_size: egui::Vec2::ZERO,
+            last_size: egui::Vec2::INFINITY,
             // Example stuff:
             gui: GuiRenderContext::default(),
             emu_loading: false,
@@ -126,7 +132,7 @@ impl MartyApp {
     /// We split app initialization into two parts, since we can't make the callback eframe passes
     /// the creation context to async. So we first create the app, then let eframe call `init` with
     /// the partially initialized app - it should have the emulator built by then.
-    pub async fn new() -> Self {
+    pub async fn new(native_options: &mut eframe::NativeOptions) -> Self {
         // Build the emulator.
         let mut emu_builder = EmulatorBuilder::default();
         let mut emu_result;
@@ -247,7 +253,13 @@ impl MartyApp {
                     render_state.queue.clone(),
                     render_state.target_format,
                 ) {
-                    Ok(backend) => backend,
+                    Ok(backend) => {
+                        log::debug!(
+                            "init(): Created wgpu backend, texture format: {:?}",
+                            render_state.target_format
+                        );
+                        backend
+                    }
                     Err(e) => {
                         log::error!("init(): Failed to create wgpu backend: {}", e);
                         return MartyApp::default();
@@ -376,12 +388,42 @@ impl MartyApp {
             ..self
         }
     }
+
+    pub fn viewport_resized(dm: &mut EFrameDisplayManager, new_width: u32, new_height: u32) {
+        let (adjust_x, adjust_y) = (0, 0);
+        if new_width > 0 && new_height > 0 {
+            if let Err(e) = dm.on_viewport_resized(
+                ViewportId::ROOT,
+                new_width.saturating_sub(adjust_x),
+                new_height.saturating_sub(adjust_y),
+            ) {
+                log::error!("Failed to resize window: {}", e);
+            }
+        }
+        else {
+            log::debug!("Ignoring invalid size: {}x{}", new_width, new_height);
+            return;
+        }
+    }
 }
 
 impl eframe::App for MartyApp {
     /// Called each time the UI needs repainting, which may be many times per second.
+    /// A display manager must be created before this is called.
     fn update(&mut self, ctx: &Context, _frame: &mut eframe::Frame) {
         if let Some(emu) = &mut self.emu {
+            self.current_size = ctx.screen_rect().size(); // Get window size
+
+            if self.current_size != self.last_size {
+                log::warn!("MartyApp::update(): Window resized to: {:?}", self.current_size);
+                MartyApp::viewport_resized(
+                    self.dm.as_mut().unwrap(),
+                    self.current_size.x as u32,
+                    self.current_size.y as u32,
+                );
+                self.last_size = self.current_size; // Update tracked size
+            }
+
             // Receive hooked Winit events.
             #[cfg(feature = "use_winit")]
             if let Some(receiver) = &self.winit_receiver {
@@ -418,7 +460,22 @@ impl eframe::App for MartyApp {
             handle_thread_event(emu);
 
             // Draw the emulator GUI.
-            self.gui.show(&mut emu.gui);
+            self.gui.show(&mut emu.gui, |ui| {
+                ui.allocate_ui(ui.available_size(), |ui| {
+                    let rect = ui.max_rect();
+
+                    //log::debug!("in allocate_ui with response rect: {:?}", rect);
+
+                    if let Some(dm) = &self.dm {
+                        #[cfg(feature = "use_wgpu")]
+                        {
+                            let callback = dm.main_display_callback();
+                            let paint_callback = egui_wgpu::Callback::new_paint_callback(rect, callback);
+                            ui.painter().add(paint_callback);
+                        }
+                    }
+                });
+            });
         }
 
         if let Some(dm) = &mut self.dm {

@@ -520,14 +520,14 @@ impl EmulatorBuilder {
         cart_manager.scan_resource(&mut resource_manager)?;
 
         // Enumerate the host's serial ports if the feature is enabled
-        #[cfg(feature = "serial")]
+        #[cfg(feature = "use_serialport")]
         let serial_ports = {
             let ports = serialport::available_ports().unwrap_or_else(|e| {
                 log::warn!("Didn't find any serial ports: {:?}", e);
                 Vec::new()
             });
 
-            for port in &serial_ports {
+            for port in &ports {
                 log::debug!("Found serial port: {:?}", port);
             }
             ports
@@ -680,6 +680,7 @@ impl EmulatorBuilder {
                 drive_types.push(fdc.drive(i).get_type());
             }
         }
+
         gui.set_floppy_drives(drive_types);
 
         // Set default floppy path. This is used to set the default path for Save As dialogs.

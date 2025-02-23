@@ -43,7 +43,7 @@
     A DisplayBackend should be able to be instantiated multiple times, to
     support multiple windows/displays.
 */
-use std::sync::Arc;
+use std::sync::{Arc, RwLock};
 use thiserror::Error;
 
 #[derive(Error, Debug)]
@@ -114,10 +114,11 @@ use anyhow::Error;
 /// - a texture object representing the uploaded pixel buffer
 /// - a texture object representing a scaled display surface - usually produced by a scaling shader
 /// It is this latter texture that is ultimately presented to the display.
-pub trait DisplayTargetSurface {
+pub trait DisplayTargetSurface: Send + Sync {
     type NativeDevice;
     type NativeQueue;
     type NativeTexture;
+    type NativeTextureFormat;
     /// Retrieve the pixel buffer dimensions.
     fn buf_dimensions(&self) -> BufferDimensions;
     /// Retrieve the backing texture dimensions.
@@ -141,6 +142,8 @@ pub trait DisplayTargetSurface {
     fn buf_mut(&mut self) -> &mut [u8];
     /// Retrieve the pixel buffer backing texture.
     fn backing_texture(&self) -> Arc<Self::NativeTexture>;
+    /// Retrieve the pixel buffer backing texture format.
+    fn backing_texture_format(&self) -> Self::NativeTextureFormat;
     /// Retrieve the display surface texture.
     fn surface_texture(&self) -> Arc<Self::NativeTexture>;
     /// Retrieve the dirty flag.
@@ -163,6 +166,8 @@ pub trait DisplayBackend<'p, 'win, G> {
     /// The native type for a Texture.
     /// For wgpu, this is [wgpu::Texture].
     type NativeTexture;
+    /// The native type for a TextureFormat.
+    type NativeTextureFormat;
     /// Originally I wrote a DisplayBackend that was a simple wrapper around the Pixels crate, and
     /// this returned a reference to the Pixels instance. I'm not sure if this is necessary.
     type NativeBackend;
@@ -178,20 +183,23 @@ pub trait DisplayBackend<'p, 'win, G> {
     /// adapter information is available (web targets, for example).
     fn adapter_info(&self) -> Option<Self::NativeBackendAdapterInfo>;
     /// Return the native device object for the backend.
-    fn device(&self) -> &Self::NativeDevice;
+    fn device(&self) -> Arc<Self::NativeDevice>;
     /// Return the native queue object for the backend.
-    fn queue(&self) -> &Self::NativeQueue;
+    fn queue(&self) -> Arc<Self::NativeQueue>;
     /// Create a new display target surface.
     fn create_surface(
         &self,
         buffer_size: BufferDimensions,
         surface_size: TextureDimensions,
     ) -> Result<
-        Box<
-            dyn DisplayTargetSurface<
-                NativeTexture = Self::NativeTexture,
-                NativeDevice = Self::NativeDevice,
-                NativeQueue = Self::NativeQueue,
+        Arc<
+            RwLock<
+                dyn DisplayTargetSurface<
+                    NativeTexture = Self::NativeTexture,
+                    NativeDevice = Self::NativeDevice,
+                    NativeQueue = Self::NativeQueue,
+                    NativeTextureFormat = Self::NativeTextureFormat,
+                >,
             >,
         >,
         Error,
@@ -199,11 +207,14 @@ pub trait DisplayBackend<'p, 'win, G> {
     /// Resize the cpu pixel buffer and backing texture to the specified dimensions, or return an error.
     fn resize_backing_texture(
         &mut self,
-        surface: &mut Box<
-            dyn DisplayTargetSurface<
-                NativeTexture = Self::NativeTexture,
-                NativeDevice = Self::NativeDevice,
-                NativeQueue = Self::NativeQueue,
+        surface: &mut Arc<
+            RwLock<
+                dyn DisplayTargetSurface<
+                    NativeTexture = Self::NativeTexture,
+                    NativeDevice = Self::NativeDevice,
+                    NativeQueue = Self::NativeQueue,
+                    NativeTextureFormat = Self::NativeTextureFormat,
+                >,
             >,
         >,
         new_dim: BufferDimensions,
@@ -211,11 +222,14 @@ pub trait DisplayBackend<'p, 'win, G> {
     /// Resize the display surface to the specified dimensions, or return an error.
     fn resize_surface_texture(
         &mut self,
-        surface: &mut Box<
-            dyn DisplayTargetSurface<
-                NativeTexture = Self::NativeTexture,
-                NativeDevice = Self::NativeDevice,
-                NativeQueue = Self::NativeQueue,
+        surface: &mut Arc<
+            RwLock<
+                dyn DisplayTargetSurface<
+                    NativeTexture = Self::NativeTexture,
+                    NativeDevice = Self::NativeDevice,
+                    NativeQueue = Self::NativeQueue,
+                    NativeTextureFormat = Self::NativeTextureFormat,
+                >,
             >,
         >,
         new_dim: TextureDimensions,
@@ -229,11 +243,14 @@ pub trait DisplayBackend<'p, 'win, G> {
     /// depending on the backend implementation.
     fn render(
         &mut self,
-        surface: &mut Box<
-            dyn DisplayTargetSurface<
-                NativeTexture = Self::NativeTexture,
-                NativeDevice = Self::NativeDevice,
-                NativeQueue = Self::NativeQueue,
+        surface: &mut Arc<
+            RwLock<
+                dyn DisplayTargetSurface<
+                    NativeTexture = Self::NativeTexture,
+                    NativeDevice = Self::NativeDevice,
+                    NativeQueue = Self::NativeQueue,
+                    NativeTextureFormat = Self::NativeTextureFormat,
+                >,
             >,
         >,
         scaler: Option<&mut Self::NativeScaler>,

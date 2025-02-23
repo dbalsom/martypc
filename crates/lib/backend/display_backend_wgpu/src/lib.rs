@@ -28,7 +28,7 @@
 
     Implements DisplayBackend for the Pixels backend
 */
-
+use std::sync::{Arc, RwLock};
 pub use wgpu_wrapper::{wgpu, Pixels};
 
 use wgpu_wrapper::{builder::PixelsBuilder, wrapper::*};
@@ -43,20 +43,20 @@ pub use display_backend_trait::{
 
 use winit::window::Window;
 
-use marty_egui::context::GuiRenderContext;
-use marty_pixels_scaler::DisplayScaler;
+use marty_egui_wgpu::context::GuiRenderContext;
+use marty_scaler_wgpu::DisplayScaler;
 
 use anyhow::Error;
 
-pub struct PixelsBackend<'p> {
+pub struct WgpuBackend<'p> {
     pixels: Pixels<'p>,
 
     buffer_dim:  BufferDimensions,
     surface_dim: TextureDimensions,
 }
 
-impl<'p> PixelsBackend<'p> {
-    pub fn new(w: u32, h: u32, window: &Window) -> Result<PixelsBackend, Error> {
+impl<'p> WgpuBackend<'p> {
+    pub fn new(w: u32, h: u32, window: &Window) -> Result<WgpuBackend, Error> {
         let window_size = window.inner_size();
 
         // Create a surface the size of the window's client area.
@@ -72,7 +72,7 @@ impl<'p> PixelsBackend<'p> {
             .enable_vsync(false)
             .build()?;
 
-        Ok(PixelsBackend {
+        Ok(WgpuBackend {
             pixels,
             buffer_dim: (w, h, w).into(),
             surface_dim: (window_size.width, window_size.height).into(),
@@ -80,7 +80,7 @@ impl<'p> PixelsBackend<'p> {
     }
 }
 
-impl<'p> DisplayBackendBuilder for PixelsBackend<'p> {
+impl<'p> DisplayBackendBuilder for WgpuBackend<'p> {
     fn build(_buffer_size: BufferDimensions, _surface_size: TextureDimensions) -> Self
     where
         Self: Sized,
@@ -88,16 +88,30 @@ impl<'p> DisplayBackendBuilder for PixelsBackend<'p> {
         todo!()
     }
 }
-impl<'p, 'win> DisplayBackend<'win, 'p, GuiRenderContext> for PixelsBackend<'p>
+
+impl<'p, 'win> DisplayBackend<'win, 'p, GuiRenderContext> for WgpuBackend<'p>
 where
     Self: 'p,
 {
-    type NativeBackend = Pixels<'p>;
+    type NativeDevice = wgpu::Device;
+    type NativeBackend = ();
+    type NativeTexture = wgpu::Texture;
+    type NativeTextureFormat = wgpu::TextureFormat,
     type NativeBackendAdapterInfo = wgpu::AdapterInfo;
-    type NativeScaler =
-        Box<dyn DisplayScaler<Pixels<'p>, NativeTextureView = wgpu::TextureView, NativeEncoder = wgpu::CommandEncoder>>;
+    type NativeScaler = Arc<
+        RwLock<
+            dyn DisplayScaler<
+                wgpu::Device,
+                wgpu::Queue,
+                wgpu::Texture,
+                NativeTextureView = wgpu::TextureView,
+                NativeEncoder = wgpu::CommandEncoder,
+                NativeRenderPass = wgpu::RenderPass<'static>,
+            >,
+        >,
+    >;
 
-    fn get_adapter_info(&self) -> Option<Self::NativeBackendAdapterInfo> {
+    fn adapter_info(&self) -> Option<Self::NativeBackendAdapterInfo> {
         Some(self.pixels.adapter().get_info())
     }
 

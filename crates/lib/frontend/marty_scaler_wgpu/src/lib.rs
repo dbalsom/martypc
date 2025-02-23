@@ -43,6 +43,7 @@ pub use marty_frontend_common::{
     display_scaler::{DisplayScaler, ScalerEffect, ScalerFilter, ScalerMode, ScalerOption},
 };
 
+use marty_frontend_common::display_scaler::ScalerGeometry;
 use ultraviolet::Mat4;
 use wgpu::{util::DeviceExt, TextureDescriptor};
 
@@ -598,16 +599,16 @@ impl MartyScaler {
 }
 
 impl DisplayScaler<wgpu::Device, wgpu::Queue, wgpu::Texture> for MartyScaler {
+    type NativeRenderPass = wgpu::RenderPass<'static>;
     type NativeTextureView = wgpu::TextureView;
     type NativeEncoder = wgpu::CommandEncoder;
-    fn get_texture_view(&self) -> &wgpu::TextureView {
+
+    fn texture_view(&self) -> &wgpu::TextureView {
         &self.texture_view
     }
 
-    /// Draw the pixel buffer to the marty_render target.
     fn render(&self, encoder: &mut wgpu::CommandEncoder, render_target: &wgpu::TextureView) {
-        //println!("render_target: {:?}", render_target);
-        let mut rpass = encoder.begin_render_pass(&wgpu::RenderPassDescriptor {
+        let mut render_pass = encoder.begin_render_pass(&wgpu::RenderPassDescriptor {
             label: Some("marty_renderer marty_render pass"),
             color_attachments: &[Some(wgpu::RenderPassColorAttachment {
                 view: render_target,
@@ -621,16 +622,17 @@ impl DisplayScaler<wgpu::Device, wgpu::Queue, wgpu::Texture> for MartyScaler {
             timestamp_writes: None,
             occlusion_query_set: None,
         });
-        rpass.set_pipeline(&self.render_pipeline);
+
+        render_pass.set_pipeline(&self.render_pipeline);
 
         if self.bilinear {
-            rpass.set_bind_group(0, &self.bilinear_bind_group, &[]);
+            render_pass.set_bind_group(0, &self.bilinear_bind_group, &[]);
         }
         else {
-            rpass.set_bind_group(0, &self.nearest_bind_group, &[]);
+            render_pass.set_bind_group(0, &self.nearest_bind_group, &[]);
         }
 
-        rpass.set_vertex_buffer(0, self.vertex_buffer.slice(..));
+        render_pass.set_vertex_buffer(0, self.vertex_buffer.slice(..));
 
         /*
         rpass.set_scissor_rect(
@@ -642,7 +644,32 @@ impl DisplayScaler<wgpu::Device, wgpu::Queue, wgpu::Texture> for MartyScaler {
         */
 
         //rpass.draw(0..3, 0..1);
-        rpass.draw(0..3, 0..1);
+        render_pass.draw(0..3, 0..1);
+    }
+
+    fn render_with_renderpass(&self, render_pass: &mut Self::NativeRenderPass) {
+        render_pass.set_pipeline(&self.render_pipeline);
+
+        if self.bilinear {
+            render_pass.set_bind_group(0, &self.bilinear_bind_group, &[]);
+        }
+        else {
+            render_pass.set_bind_group(0, &self.nearest_bind_group, &[]);
+        }
+
+        render_pass.set_vertex_buffer(0, self.vertex_buffer.slice(..));
+
+        /*
+        rpass.set_scissor_rect(
+            0,
+            0,
+            1,
+            1
+        );
+        */
+
+        //rpass.draw(0..3, 0..1);
+        render_pass.draw(0..3, 0..1);
     }
 
     fn resize(
@@ -739,13 +766,23 @@ impl DisplayScaler<wgpu::Device, wgpu::Queue, wgpu::Texture> for MartyScaler {
         queue.write_buffer(&self.transform_uniform_buffer, 0, transform_bytes);
     }
 
+    fn mode(&self) -> ScalerMode {
+        self.mode
+    }
+
     fn set_mode(&mut self, _device: &wgpu::Device, queue: &wgpu::Queue, new_mode: ScalerMode) {
+        //println!(">>> set_mode(): {:?}", new_mode);
         self.mode = new_mode;
         self.update_matrix(queue);
     }
 
-    fn get_mode(&self) -> ScalerMode {
-        self.mode
+    fn geometry(&self) -> ScalerGeometry {
+        ScalerGeometry {
+            texture_w: self.texture_width,
+            texture_h: self.texture_height,
+            surface_w: self.screen_width,
+            surface_h: self.screen_height,
+        }
     }
 
     fn set_margins(&mut self, l: u32, r: u32, t: u32, b: u32) {
@@ -920,7 +957,7 @@ impl ScalingMatrix {
         //let width_ratio = (screen_width / texture_width).max(1.0);
         //let height_ratio = (screen_height / texture_height).max(1.0);
 
-        // Get smallest scale size
+        // Get the smallest scale size
         //let scale = width_ratio.clamp(1.0, height_ratio).floor();
 
         //let scaled_width = texture_width * scale;
@@ -980,7 +1017,7 @@ impl ScalingMatrix {
         let width_ratio = (screen_width / texture_width).max(1.0);
         let height_ratio = (adjusted_screen_h / target_height).max(max_height_factor);
 
-        // Get smallest scale size
+        // Get the smallest scale size
         let scale = width_ratio.clamp(1.0, height_ratio).floor();
 
         let scaled_width = texture_width * scale;
@@ -1065,7 +1102,7 @@ impl ScalingMatrix {
         let width_ratio = (screen_width / texture_width).max(1.0);
         let height_ratio = (adjusted_screen_h / target_height).max(max_height_factor);
 
-        // Get smallest scale size. (Removed floor() call from integer scaler)
+        // Get the smallest scale size. (Removed floor() call from integer scaler)
         let scale = width_ratio.clamp(1.0, height_ratio);
 
         let scaled_width = texture_width * scale;

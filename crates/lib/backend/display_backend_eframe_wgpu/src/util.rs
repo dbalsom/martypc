@@ -72,6 +72,18 @@ pub(crate) fn create_texture(
     Ok((texture, backing_buffer_size))
 }
 
+/// Return whether the texture format requires a color swap from RGBA to BGRA. We can
+/// accomplish this by swizzling in the shader.
+#[inline]
+pub const fn texture_format_color_swap(texture_format: wgpu::TextureFormat) -> bool {
+    use wgpu::TextureFormat::*;
+    match texture_format {
+        Rgba8Unorm | Rgba8UnormSrgb => false,
+        Bgra8Unorm | Bgra8UnormSrgb => true,
+        _ => false,
+    }
+}
+
 /// This function calculates the size of a single texel in bytes for a given texture format.
 /// It will periodically need updating as wgpu adds more texture formats.
 #[rustfmt::skip]

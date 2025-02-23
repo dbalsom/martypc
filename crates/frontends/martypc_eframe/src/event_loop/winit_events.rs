@@ -62,19 +62,18 @@ pub fn handle_window_event(
         //         dt.set_scale_factor(scale_factor);
         //     });
         // }
-
         // WindowEvent::Resized(size) => {
-        //     let event_window = dm
-        //         .viewport_by_id(window_id)
-        //         .expect(&format!("Couldn't resolve window id {:?} to window.", window_id));
-        //
-        //     let is_fullscreen = match event_window.fullscreen() {
-        //         Some(_) => {
-        //             log::debug!("Resize event received while in fullscreen mode.");
-        //             true
-        //         }
-        //         None => false,
-        //     };
+        //     // let event_window = dm
+        //     //     .viewport_by_id(window_id)
+        //     //     .expect(&format!("Couldn't resolve window id {:?} to window.", window_id));
+        //     //
+        //     // let is_fullscreen = match event_window.fullscreen() {
+        //     //     Some(_) => {
+        //     //         log::debug!("Resize event received while in fullscreen mode.");
+        //     //         true
+        //     //     }
+        //     //     None => false,
+        //     // };
         //
         //     // wgpu under macOS and Intel graphics has a bug where it will draw stripes instead of the
         //     // shader clear color when in fullscreen. The workaround is to create the surface at 1 pixel

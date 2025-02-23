@@ -43,7 +43,7 @@ pub use display_backend_trait::{
 };
 pub use surface::EFrameBackendSurface;
 
-use std::sync::Arc;
+use std::sync::{Arc, RwLock};
 
 use crate::display_window::DisplayWindow;
 use marty_scaler_null::DisplayScaler;
@@ -52,8 +52,15 @@ use anyhow::{anyhow, Error};
 use egui;
 use egui_wgpu::wgpu;
 
-pub type DynDisplayTargetSurface = Box<
-    dyn DisplayTargetSurface<NativeTexture = wgpu::Texture, NativeDevice = wgpu::Device, NativeQueue = wgpu::Queue>,
+pub type DynDisplayTargetSurface = Arc<
+    RwLock<
+        dyn DisplayTargetSurface<
+            NativeTexture = wgpu::Texture,
+            NativeDevice = wgpu::Device,
+            NativeQueue = wgpu::Queue,
+            NativeTextureFormat = wgpu::TextureFormat,
+        >,
+    >,
 >;
 
 pub struct EFrameBackend {
@@ -99,6 +106,7 @@ pub type EFrameScalerType = Box<
         wgpu::Texture,
         NativeTextureView = wgpu::TextureView,
         NativeEncoder = wgpu::CommandEncoder,
+        NativeRenderPass = wgpu::RenderPass<'static>,
     >,
 >;
 
@@ -108,6 +116,7 @@ impl DisplayBackend<'_, '_, ()> for EFrameBackend {
     type NativeDevice = wgpu::Device;
     type NativeQueue = wgpu::Queue;
     type NativeTexture = wgpu::Texture;
+    type NativeTextureFormat = wgpu::TextureFormat;
     type NativeBackend = ();
     type NativeBackendAdapterInfo = wgpu::AdapterInfo;
     type NativeScaler = EFrameScalerType;
@@ -116,12 +125,12 @@ impl DisplayBackend<'_, '_, ()> for EFrameBackend {
         Some(self.adapter_info.clone()?)
     }
 
-    fn device(&self) -> &Self::NativeDevice {
-        &self.device
+    fn device(&self) -> Arc<Self::NativeDevice> {
+        self.device.clone()
     }
 
-    fn queue(&self) -> &Self::NativeQueue {
-        &self.queue
+    fn queue(&self) -> Arc<Self::NativeQueue> {
+        self.queue.clone()
     }
 
     /// Create a new display target surface as a [DynDisplayTargetSurface].
@@ -152,7 +161,7 @@ impl DisplayBackend<'_, '_, ()> for EFrameBackend {
 
         let (surface_texture, _) = util::create_texture(self.device.clone(), surface_size, self.texture_format)?;
 
-        Ok(Box::new(EFrameBackendSurface {
+        Ok(Arc::new(RwLock::new(EFrameBackendSurface {
             pixel_dimensions: buffer_size,
             pixels: cpu_buffer,
             backing: Arc::new(backing_texture),
@@ -160,7 +169,7 @@ impl DisplayBackend<'_, '_, ()> for EFrameBackend {
             texture_format: self.texture_format,
             texture_format_size: util::texture_format_size(self.texture_format),
             dirty: false,
-        }))
+        })))
     }
 
     fn resize_backing_texture(
@@ -168,7 +177,7 @@ impl DisplayBackend<'_, '_, ()> for EFrameBackend {
         surface: &mut DynDisplayTargetSurface,
         new_dim: BufferDimensions,
     ) -> Result<(), Error> {
-        surface.resize_backing(self.device.clone(), new_dim)?;
+        surface.write().unwrap().resize_backing(self.device.clone(), new_dim)?;
         Ok(())
     }
 
@@ -177,7 +186,10 @@ impl DisplayBackend<'_, '_, ()> for EFrameBackend {
         surface: &mut DynDisplayTargetSurface,
         new_dim: TextureDimensions,
     ) -> Result<(), Error> {
-        surface.resize_surface(self.device.clone(), self.queue.clone(), new_dim)?;
+        surface
+            .write()
+            .unwrap()
+            .resize_surface(self.device.clone(), self.queue.clone(), new_dim)?;
         Ok(())
     }
 
@@ -193,16 +205,5 @@ impl DisplayBackend<'_, '_, ()> for EFrameBackend {
     ) -> Result<(), Error> {
         // Update backing texture here if dirty.
         Ok(())
-    }
-}
-
-impl egui_wgpu::CallbackTrait for EFrameBackend {
-    // Required method
-    fn paint(
-        &self,
-        info: egui::PaintCallbackInfo,
-        render_pass: &mut wgpu::RenderPass<'static>,
-        _callback_resources: &egui_wgpu::CallbackResources,
-    ) {
     }
 }

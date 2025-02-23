@@ -3795,7 +3795,6 @@ dependencies = [
  "marty_frontend_common",
  "ultraviolet",
  "wgpu 23.0.1",
- "wgpu_wrapper",
 ]
 
 [[package]]

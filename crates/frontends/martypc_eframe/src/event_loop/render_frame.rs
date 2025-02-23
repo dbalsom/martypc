@@ -28,8 +28,8 @@
 
     Handle rendering of video targets at the end of event processing.
 */
-
 use crate::emulator::Emulator;
+use std::sync::Arc;
 
 //use display_backend_eframe::DisplayBackend;
 use display_manager_eframe::{DisplayBackend, DisplayManager, EFrameDisplayManager};
@@ -95,8 +95,18 @@ pub fn render_frame(emu: &mut Emulator, dm: &mut EFrameDisplayManager) {
     // Finally, render each surface
 
     dm.for_each_surface(|backend, surface, scaler, gui_opt| {
-        if let Err(e) = backend.render(surface, scaler, None) {
-            log::error!("Failed to render backend: {}", e);
-        }
+        // log::debug!(
+        //     "Rendering surface. Scaler? {} Gui? {}",
+        //     scaler.is_some(),
+        //     gui_opt.is_some()
+        // );
+        // if let Err(e) = backend.render(surface, scaler, None) {
+        //     log::error!("Failed to render backend: {}", e);
+        // }
+
+        let device = backend.device();
+        let queue = backend.queue();
+
+        _ = surface.write().unwrap().update_backing(device, queue);
     });
 }

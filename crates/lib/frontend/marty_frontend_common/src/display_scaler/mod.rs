@@ -112,6 +112,14 @@ pub struct ScalerPreset {
     pub renderer: RendererConfigParams,
 }
 
+#[derive(Copy, Clone, Debug, Default)]
+pub struct ScalerGeometry {
+    pub texture_w: u32,
+    pub texture_h: u32,
+    pub surface_w: u32,
+    pub surface_h: u32,
+}
+
 #[derive(Copy, Clone, Debug)]
 pub struct ScalerParams {
     pub filter: ScalerFilter,
@@ -157,16 +165,15 @@ impl Default for ScalerMode {
     }
 }
 
-pub trait HasWgpu<Q> {
-    fn queue(&self) -> &Q;
-}
-
 pub trait DisplayScaler<D, Q, T>: Send + Sync {
+    type NativeRenderPass;
     type NativeTextureView;
     type NativeEncoder;
 
-    fn get_texture_view(&self) -> &Self::NativeTextureView;
+    fn texture_view(&self) -> &Self::NativeTextureView;
     fn render(&self, encoder: &mut Self::NativeEncoder, render_target: &Self::NativeTextureView);
+
+    fn render_with_renderpass(&self, render_pass: &mut Self::NativeRenderPass);
     fn resize(
         &mut self,
         device: &D,
@@ -188,8 +195,10 @@ pub trait DisplayScaler<D, Q, T>: Send + Sync {
         screen_height: u32, // Height, in pixels, of destination surface
     );
 
+    fn mode(&self) -> ScalerMode;
     fn set_mode(&mut self, device: &D, queue: &Q, new_mode: ScalerMode);
-    fn get_mode(&self) -> ScalerMode;
+
+    fn geometry(&self) -> ScalerGeometry;
     fn set_margins(&mut self, l: u32, r: u32, t: u32, b: u32);
     fn set_bilinear(&mut self, bilinear: bool);
     fn set_fill_color(&mut self, fill: MartyColor);

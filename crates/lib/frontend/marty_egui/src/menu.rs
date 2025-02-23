@@ -43,7 +43,7 @@ use crate::modal::ModalContext;
 use marty_core::machine::MachineState;
 
 impl GuiState {
-    pub fn draw_menu(&mut self, ui: &mut egui::Ui) {
+    pub fn show_menu(&mut self, ui: &mut egui::Ui) {
         egui::menu::bar(ui, |ui| {
             ui.menu_button("Emulator", |ui| {
                 ui.set_min_width(120.0);
