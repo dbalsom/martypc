@@ -1,11 +1,11 @@
 [package]
-name = "display_backend_eframe"
+name = "display_backend_eframe_wgpu"
 version.workspace = true
 edition.workspace = true
 license.workspace = true
 
 [lib]
-name = "display_backend_eframe"
+name = "display_backend_eframe_wgpu"
 path = "src/lib.rs"
 crate-type = ["lib"]
 
@@ -14,6 +14,7 @@ display_backend_trait = { path = "../display_backend_trait" }
 egui.workspace = true
 egui-wgpu.workspace = true
 anyhow.workspace = true
+log.workspace = true
 
 marty_scaler_null = { path = "../../frontend/marty_scaler_null" }
 
@@ -22,3 +23,5 @@ marty_scaler_null = { path = "../../frontend/marty_scaler_null" }
 
 [features]
 default = []
+use_wgpu = []
+use_glow = []

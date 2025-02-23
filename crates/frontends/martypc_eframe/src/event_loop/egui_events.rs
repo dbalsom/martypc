@@ -83,7 +83,7 @@ use winit::event_loop::ActiveEventLoop;
 
 #[cfg(target_arch = "wasm32")]
 use crate::wasm::file_open;
-use marty_frontend_common::display_manager::DisplayManager;
+use marty_frontend_common::display_manager::{DisplayManager, DtHandle};
 #[cfg(not(target_arch = "wasm32"))]
 use std::thread::spawn;
 
@@ -131,9 +131,9 @@ pub fn handle_egui_event(emu: &mut Emulator, dm: &mut EFrameDisplayManager, gui_
                 _ => {}
             },
             GuiVariable::Enum(op) => match ctx {
-                GuiVariableContext::Display(d_idx) => match op {
+                GuiVariableContext::Display(dth) => match op {
                     GuiEnum::DisplayAperture(aperture) => {
-                        if let Some(vid) = dm.set_display_aperture(*d_idx, *aperture).ok().flatten() {
+                        if let Some(vid) = dm.set_display_aperture(*dth, *aperture).ok().flatten() {
                             if let Some(video_card) = emu.machine.bus().video(&vid) {
                                 if let Err(e) = dm.on_card_resized(&vid, video_card.get_display_extents()) {
                                     log::error!("Failed to set display aperture for display target: {:?}", e);
@@ -143,26 +143,28 @@ pub fn handle_egui_event(emu: &mut Emulator, dm: &mut EFrameDisplayManager, gui_
                     }
                     GuiEnum::DisplayScalerMode(new_mode) => {
                         log::debug!("Got scaler mode update event: {:?}", new_mode);
-                        if let Err(_e) = dm.set_scaler_mode(*d_idx, *new_mode) {
+                        if let Err(_e) = dm.set_scaler_mode(*dth, *new_mode) {
                             log::error!("Failed to set scaler mode for display target!");
                         }
                     }
                     GuiEnum::DisplayScalerPreset(new_preset) => {
                         log::debug!("Got scaler preset update event: {:?}", new_preset);
-                        if let Err(_e) = dm.apply_scaler_preset(*d_idx, new_preset.clone()) {
+                        if let Err(_e) = dm.apply_scaler_preset(*dth, new_preset.clone()) {
                             log::error!("Failed to set scaler preset for display target!");
                         }
 
-                        // Update dependent GUI items
-                        if let Some(_scaler_params) = dm.get_scaler_params(*d_idx) {
-                            //emu.gui.set_option_enum(GuiEnum::DisplayComposite(scaler_params), GuiVariableContext::Display(*d_idx));
+                        // Update the scaler adjustment window with the parameters from the preset,
+                        // so we can adjust them from that base.
+                        if let Some(scaler_params) = dm.get_scaler_params(*dth) {
+                            emu.gui.scaler_adjust.set_params(*dth, scaler_params);
                         }
-                        if let Some(renderer) = dm.renderer_mut(*d_idx) {
+
+                        dm.with_renderer_mut(*dth, |renderer| {
                             // Update composite checkbox state
                             let composite_enable = renderer.get_composite();
                             emu.gui.set_option_enum(
                                 GuiEnum::DisplayComposite(composite_enable),
-                                Some(GuiVariableContext::Display(*d_idx)),
+                                Some(GuiVariableContext::Display(*dth)),
                             );
 
                             // Update aspect correction checkbox state
@@ -170,18 +172,19 @@ pub fn handle_egui_event(emu: &mut Emulator, dm: &mut EFrameDisplayManager, gui_
                             let aspect_correct_on = !matches!(aspect_correct, AspectCorrectionMode::None);
                             emu.gui.set_option_enum(
                                 GuiEnum::DisplayAspectCorrect(aspect_correct_on),
-                                Some(GuiVariableContext::Display(*d_idx)),
+                                Some(GuiVariableContext::Display(*dth)),
                             );
-                        }
+                        });
                     }
                     GuiEnum::DisplayComposite(state) => {
                         log::debug!("Got composite state update event: {}", state);
-                        if let Some(renderer) = dm.renderer_mut(*d_idx) {
+
+                        dm.with_renderer_mut(*dth, |renderer| {
                             renderer.set_composite(*state);
-                        }
+                        });
                     }
                     GuiEnum::DisplayAspectCorrect(state) => {
-                        if let Err(_e) = dm.set_aspect_correction(*d_idx, *state) {
+                        if let Err(_e) = dm.set_aspect_correction(*dth, *state) {
                             log::error!("Failed to set aspect correction state for display target!");
                         }
                     }
@@ -282,7 +285,7 @@ pub fn handle_egui_event(emu: &mut Emulator, dm: &mut EFrameDisplayManager, gui_
                         .duration(Some(Duration::from_secs(5)));
 
                     // Rescan resource paths to show new file in list
-                    if let Err(e) = emu.vhd_manager.scan_resource(&emu.rm) {
+                    if let Err(e) = emu.vhd_manager.scan_resource(&mut emu.rm) {
                         log::error!("Error scanning hdd directory: {}", e);
                     };
                 }
@@ -296,22 +299,22 @@ pub fn handle_egui_event(emu: &mut Emulator, dm: &mut EFrameDisplayManager, gui_
             }
         }
         GuiEvent::RescanMediaFolders => {
-            if let Err(e) = emu.floppy_manager.scan_resource(&emu.rm) {
+            if let Err(e) = emu.floppy_manager.scan_resource(&mut emu.rm) {
                 log::error!("Error scanning floppy directory: {}", e);
             }
-            if let Err(e) = emu.floppy_manager.scan_autofloppy(&emu.rm) {
+            if let Err(e) = emu.floppy_manager.scan_autofloppy(&mut emu.rm) {
                 log::error!("Error scanning autofloppy directory: {}", e);
             }
-            if let Err(e) = emu.vhd_manager.scan_resource(&emu.rm) {
+            if let Err(e) = emu.vhd_manager.scan_resource(&mut emu.rm) {
                 log::error!("Error scanning hdd directory: {}", e);
             }
-            if let Err(e) = emu.cart_manager.scan_resource(&emu.rm) {
+            if let Err(e) = emu.cart_manager.scan_resource(&mut emu.rm) {
                 log::error!("Error scanning cartridge directory: {}", e);
             }
             // Update Floppy Disk Image tree
-            match emu.floppy_manager.make_tree(&emu.rm) {
+            match emu.floppy_manager.make_tree(&mut emu.rm) {
                 Ok(floppy_tree) => {
-                    log::debug!("Built tree {:?}, setting tree in GUI...", floppy_tree);
+                    //log::debug!("Built tree {:?}, setting tree in GUI...", floppy_tree);
                     emu.gui.set_floppy_tree(floppy_tree)
                 }
                 Err(e) => {
@@ -324,11 +327,11 @@ pub fn handle_egui_event(emu: &mut Emulator, dm: &mut EFrameDisplayManager, gui_
 
             emu.gui.set_autofloppy_paths(emu.floppy_manager.get_autofloppy_paths());
             // Update VHD Image tree
-            if let Ok(hdd_tree) = emu.vhd_manager.make_tree(&emu.rm) {
+            if let Ok(hdd_tree) = emu.vhd_manager.make_tree(&mut emu.rm) {
                 emu.gui.set_hdd_tree(hdd_tree);
             }
             // Update Cartridge Image tree
-            if let Ok(cart_tree) = emu.cart_manager.make_tree(&emu.rm) {
+            if let Ok(cart_tree) = emu.cart_manager.make_tree(&mut emu.rm) {
                 emu.gui.set_cart_tree(cart_tree);
             }
         }
@@ -901,9 +904,9 @@ pub fn handle_egui_event(emu: &mut Emulator, dm: &mut EFrameDisplayManager, gui_
         }
         GuiEvent::ScalerAdjust(dt_idx, params) => {
             // //log::warn!("Received ScalerAdjust event: {:?}", params);
-            // if let Err(err) = emu.dm.apply_scaler_params(*dt_idx, params) {
-            //     log::error!("Failed to apply scaler params: {}", err);
-            // }
+            if let Err(err) = dm.apply_scaler_params(DtHandle::from(*dt_idx), params) {
+                log::error!("Failed to apply scaler params: {}", err);
+            }
         }
         GuiEvent::ZoomChanged(zoom) => {
             // emu.dm.for_each_gui(|gui, _window| {

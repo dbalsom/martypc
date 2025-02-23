@@ -55,7 +55,6 @@ use marty_config::ConfigFileParams;
 // This module will export either a rodio or null sound interface depending on the `sound` feature.
 use crate::sound::{SoundInterface, SoundSourceDescriptor};
 
-use display_manager_eframe::EFrameDisplayManagerBuilder;
 #[cfg(feature = "cpu_validator")]
 use marty_core::cpu_validator::ValidatorType;
 use marty_core::{
@@ -198,7 +197,7 @@ impl EmulatorBuilder {
         };
 
         match config_location {
-            ResourceLocation::FilePath(path) => match marty_config::read_local_config(&path) {
+            ResourceLocation::FilePath(path) => match marty_config::read_config_file(&path) {
                 Ok(config) => Ok(config),
                 Err(e) => match e.downcast_ref::<std::io::Error>() {
                     Some(e) if e.kind() == std::io::ErrorKind::NotFound => Err(anyhow!(
@@ -219,7 +218,7 @@ impl EmulatorBuilder {
                         .await
                         .map_err(|e| anyhow!(e))?;
 
-                    match marty_config::read_config_from_str(
+                    match marty_config::read_config_string(
                         &std::str::from_utf8(&config).expect("TOML contained invalid UTF-8"),
                     ) {
                         Ok(config) => return Ok(config),
@@ -311,6 +310,16 @@ impl EmulatorBuilder {
                 .await?;
         }
 
+        // Mount the virtual filesystem if specified
+        if let Some(ref virtual_fs) = config.emulator.virtual_fs {
+            log::debug!(
+                "Loading virtual filesystem from {:?}",
+                virtual_fs.to_string_lossy().into_owned()
+            );
+
+            resource_manager.mount_overlay(&virtual_fs).await?;
+        }
+
         let resolved_paths = resource_manager.pm.dump_paths();
         if resolved_paths.is_empty() {
             return Err(anyhow!("No resource paths found!"));
@@ -329,7 +338,7 @@ impl EmulatorBuilder {
         // Instantiate the new machine manager to load Machine configurations.
         log::debug!("Creating MachineManager...");
         let mut machine_manager = MachineManager::new();
-        if let Err(err) = machine_manager.load_configs(&resource_manager).await {
+        if let Err(err) = machine_manager.load_configs(&mut resource_manager).await {
             let err_str = format!("Error loading Machine configuration files: {}", err);
             stderr.write(err_str.as_bytes())?;
             return Err(anyhow!(err_str));
@@ -359,8 +368,8 @@ impl EmulatorBuilder {
         let machine_names = machine_manager.get_config_names();
         let have_machine_config = machine_names.contains(&init_config_name);
 
-        // Do --machinescan commandline argument. We print machine info (and rom info if --romscan
-        // was also specified) and then quit.
+        // Do --machinescan commandline argument. We print machine info (and ROM info if --romscan
+        // was also specified), then quit.
         if config.emulator.machinescan {
             // Print the list of machine configurations and their rom requirements
             for machine in machine_names {
@@ -399,7 +408,7 @@ impl EmulatorBuilder {
         log::debug!("Creating RomManager...");
         let mut rom_manager = RomManager::new(init_prefer_oem);
         // Load ROM definitions
-        rom_manager.load_defs(&resource_manager).await?;
+        rom_manager.load_defs(&mut resource_manager).await?;
 
         // Get the ROM requirements for the requested machine type
         let machine_config_file = {
@@ -415,7 +424,7 @@ impl EmulatorBuilder {
         let (required_features, optional_features) = machine_config_file.get_rom_requirements()?;
 
         // Scan the rom resource director(ies)
-        rom_manager.scan(&resource_manager).await?;
+        rom_manager.scan(&mut resource_manager).await?;
         // Determine what complete ROM sets we have
         rom_manager.resolve_rom_sets()?;
 
@@ -460,7 +469,7 @@ impl EmulatorBuilder {
 
         // Create the ROM manifest to pass to the emulator core
         let rom_manifest = rom_manager
-            .create_manifest_async(rom_sets_resolved.clone(), &resource_manager)
+            .create_manifest_async(rom_sets_resolved.clone(), &mut resource_manager)
             .await?;
 
         log::debug!("Created manifest!");
@@ -493,32 +502,32 @@ impl EmulatorBuilder {
         // Update the floppy manager with the extension list
         floppy_manager.set_extensions(Some(floppy_extensions));
         // Scan the "floppy" resource
-        floppy_manager.scan_resource(&resource_manager)?;
+        floppy_manager.scan_resource(&mut resource_manager)?;
         log::debug!("Floppy resource scan complete!");
         // Scan the "autofloppy" resource
-        floppy_manager.scan_autofloppy(&resource_manager)?;
+        floppy_manager.scan_autofloppy(&mut resource_manager)?;
 
         // Instantiate the VHD manager
         log::debug!("Creating VhdManager...");
         let mut vhd_manager = VhdManager::new();
         // Scan the 'hdd' resource
-        vhd_manager.scan_resource(&resource_manager)?;
+        vhd_manager.scan_resource(&mut resource_manager)?;
 
         // Instantiate the cartridge manager
         log::debug!("Creating CartridgeManager...");
         let mut cart_manager = CartridgeManager::new();
         // Scan the 'cartridge' resource
-        cart_manager.scan_resource(&resource_manager)?;
+        cart_manager.scan_resource(&mut resource_manager)?;
 
         // Enumerate the host's serial ports if the feature is enabled
-        #[cfg(feature = "serial")]
+        #[cfg(feature = "use_serialport")]
         let serial_ports = {
             let ports = serialport::available_ports().unwrap_or_else(|e| {
                 log::warn!("Didn't find any serial ports: {:?}", e);
                 Vec::new()
             });
 
-            for port in &serial_ports {
+            for port in &ports {
                 log::debug!("Found serial port: {:?}", port);
             }
             ports
@@ -671,6 +680,7 @@ impl EmulatorBuilder {
                 drive_types.push(fdc.drive(i).get_type());
             }
         }
+
         gui.set_floppy_drives(drive_types);
 
         // Set default floppy path. This is used to set the default path for Save As dialogs.

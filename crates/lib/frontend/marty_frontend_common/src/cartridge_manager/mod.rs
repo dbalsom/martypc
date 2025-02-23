@@ -112,7 +112,7 @@ impl CartridgeManager {
         }
     }
 
-    pub fn scan_resource(&mut self, rm: &ResourceManager) -> Result<bool, Error> {
+    pub fn scan_resource(&mut self, rm: &mut ResourceManager) -> Result<bool, Error> {
         // Clear and rebuild image lists.
         self.image_vec.clear();
         self.image_map.clear();
@@ -232,7 +232,7 @@ impl CartridgeManager {
         Some(self.image_vec[idx].name.clone())
     }
 
-    pub async fn load_cart_data(&self, idx: usize, rm: &ResourceManager) -> Result<CartImage, Error> {
+    pub async fn load_cart_data(&self, idx: usize, rm: &mut ResourceManager) -> Result<CartImage, Error> {
         let cart_vec;
 
         if idx >= self.image_vec.len() {

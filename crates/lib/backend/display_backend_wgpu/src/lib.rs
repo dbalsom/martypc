@@ -28,7 +28,7 @@
 
     Implements DisplayBackend for the Pixels backend
 */
-
+use std::sync::{Arc, RwLock};
 pub use wgpu_wrapper::{wgpu, Pixels};
 
 use wgpu_wrapper::{builder::PixelsBuilder, wrapper::*};
@@ -37,26 +37,26 @@ pub use display_backend_trait::{
     BufferDimensions,
     DisplayBackend,
     DisplayBackendBuilder,
-    SurfaceDimensions,
+    TextureDimensions,
     //DisplayBackendError
 };
 
 use winit::window::Window;
 
-use marty_egui::context::GuiRenderContext;
-use marty_pixels_scaler::DisplayScaler;
+use marty_egui_wgpu::context::GuiRenderContext;
+use marty_scaler_wgpu::DisplayScaler;
 
 use anyhow::Error;
 
-pub struct PixelsBackend<'p> {
+pub struct WgpuBackend<'p> {
     pixels: Pixels<'p>,
 
     buffer_dim:  BufferDimensions,
-    surface_dim: SurfaceDimensions,
+    surface_dim: TextureDimensions,
 }
 
-impl<'p> PixelsBackend<'p> {
-    pub fn new(w: u32, h: u32, window: &Window) -> Result<PixelsBackend, Error> {
+impl<'p> WgpuBackend<'p> {
+    pub fn new(w: u32, h: u32, window: &Window) -> Result<WgpuBackend, Error> {
         let window_size = window.inner_size();
 
         // Create a surface the size of the window's client area.
@@ -72,7 +72,7 @@ impl<'p> PixelsBackend<'p> {
             .enable_vsync(false)
             .build()?;
 
-        Ok(PixelsBackend {
+        Ok(WgpuBackend {
             pixels,
             buffer_dim: (w, h, w).into(),
             surface_dim: (window_size.width, window_size.height).into(),
@@ -80,34 +80,48 @@ impl<'p> PixelsBackend<'p> {
     }
 }
 
-impl<'p> DisplayBackendBuilder for PixelsBackend<'p> {
-    fn build(_buffer_size: BufferDimensions, _surface_size: SurfaceDimensions) -> Self
+impl<'p> DisplayBackendBuilder for WgpuBackend<'p> {
+    fn build(_buffer_size: BufferDimensions, _surface_size: TextureDimensions) -> Self
     where
         Self: Sized,
     {
         todo!()
     }
 }
-impl<'p, 'win> DisplayBackend<'win, 'p, GuiRenderContext> for PixelsBackend<'p>
+
+impl<'p, 'win> DisplayBackend<'win, 'p, GuiRenderContext> for WgpuBackend<'p>
 where
     Self: 'p,
 {
-    type NativeBackend = Pixels<'p>;
+    type NativeDevice = wgpu::Device;
+    type NativeBackend = ();
+    type NativeTexture = wgpu::Texture;
+    type NativeTextureFormat = wgpu::TextureFormat,
     type NativeBackendAdapterInfo = wgpu::AdapterInfo;
-    type NativeScaler =
-        Box<dyn DisplayScaler<Pixels<'p>, NativeTextureView = wgpu::TextureView, NativeEncoder = wgpu::CommandEncoder>>;
+    type NativeScaler = Arc<
+        RwLock<
+            dyn DisplayScaler<
+                wgpu::Device,
+                wgpu::Queue,
+                wgpu::Texture,
+                NativeTextureView = wgpu::TextureView,
+                NativeEncoder = wgpu::CommandEncoder,
+                NativeRenderPass = wgpu::RenderPass<'static>,
+            >,
+        >,
+    >;
 
-    fn get_adapter_info(&self) -> Option<Self::NativeBackendAdapterInfo> {
+    fn adapter_info(&self) -> Option<Self::NativeBackendAdapterInfo> {
         Some(self.pixels.adapter().get_info())
     }
 
-    fn resize_buf(&mut self, new: BufferDimensions) -> Result<(), Error> {
+    fn resize_surface_cpu_buffer(&mut self, new: BufferDimensions) -> Result<(), Error> {
         self.pixels.resize_buffer(new.w, new.h)?;
         self.buffer_dim = (new.w, new.h, new.w).into();
         Ok(())
     }
 
-    fn resize_surface(&mut self, new: SurfaceDimensions) -> Result<(), Error> {
+    fn resize_surface(&mut self, new: TextureDimensions) -> Result<(), Error> {
         self.pixels.resize_surface(new.w, new.h)?;
         self.surface_dim = (new.w, new.h).into();
         Ok(())
@@ -116,7 +130,7 @@ where
     fn buf_dimensions(&self) -> BufferDimensions {
         self.buffer_dim
     }
-    fn surface_dimensions(&self) -> SurfaceDimensions {
+    fn surface_dimensions(&self) -> TextureDimensions {
         self.surface_dim
     }
 

@@ -23,39 +23,64 @@
    DEALINGS IN THE SOFTWARE.
 
    ---------------------------------------------------------------------------
-
-   display_manager::lib.rs
-
-   Implement MartyPC's DisplayManager for Winit/Pixels/egui frontend.
-
-   This facility handles managing the resources, backend, scaler, winit
-   window and egui contexts needed to render the output of a core VideoCard
-   to one of several DisplayTargets:
-
-   - The main window background via pixels / marty_pixels_scaler
-   - A dedicated window via pixels / marty_pixels_scaler
-   - An egui widget via pixels -> texture handle
-   - A file (for screenshots)
 */
 
+//! This module provides the [DisplayManager] trait implementation for the eframe frontend.
+//! This required a bit of rework from the previous Pixels-based implementation.
+//!
+//! A [DisplayManager] handles managing the resources needed to render the output of a core's
+//! VideoCard to one or more "Display Targets."
+//!
+//! A Display Target is an abstraction over some kind of display surface, which could be a native
+//! window background or a composited UI element in a GUI.
+//!
+//! Some of the new design considerations -
+//! - An instance of the generic Backend type is no longer created for each display target, but
+//!   once for the entire display manager.
+//! - A Backend does not hold textures. We can call the backend to create surfaces.
+//!   In eframe's case, a surface will never be the final display surface as we are always
+//!   rendering to a provided render pass to ultimately be composited by egui.
+//! - We do not create windows, we have no control over that. egui 'creates' windows with
+//!   immediate-mode drawing calls. This has yet to be implemented.
+//!
+
+pub mod builder;
+
+use std::{
+    collections::HashMap,
+    path::PathBuf,
+    sync::{Arc, RwLock},
+    time::Duration,
+};
+
 use marty_common::*;
-
-use std::{collections::HashMap, path::PathBuf, sync::Arc, time::Duration};
-
 use marty_core::{
     device_traits::videocard::{DisplayApertureType, DisplayExtents, VideoCardId},
     file_util,
     machine::Machine,
 };
 
-use marty_common::VideoDimensions;
-
+#[cfg(not(feature = "use_wgpu"))]
 pub use display_backend_eframe::{
     BufferDimensions,
     DisplayBackend,
     DisplayBackendBuilder,
+    DynDisplayTargetSurface,
     EFrameBackend,
-    SurfaceDimensions,
+    EFrameBackendSurface,
+    EFrameScalerType,
+    TextureDimensions,
+};
+#[cfg(feature = "use_wgpu")]
+pub use display_backend_eframe_wgpu::{
+    BufferDimensions,
+    DisplayBackend,
+    DisplayBackendBuilder,
+    DynDisplayTargetSurface,
+    EFrameBackend,
+    EFrameBackendSurface,
+    EFrameScalerType,
+    TextureDimensions,
 };
 
 pub use marty_frontend_common::{
@@ -64,33 +89,37 @@ pub use marty_frontend_common::{
 };
 use marty_frontend_common::{
     constants::*,
-    display_manager::DisplayTargetInfo,
+    display_manager::{DisplayTargetInfo, DtHandle},
     display_scaler::{PhosphorType, ScalerFilter, ScalerOption, ScalerParams, ScalerPreset},
     types::{display_target_margins::DisplayTargetMargins, window::WindowDefinition},
 };
 
+// Conditionally use the appropriate scaler per backend
+
+#[cfg(not(feature = "use_wgpu"))]
+use marty_scaler_null::{DisplayScaler, MartyScaler, ScalerMode};
 #[cfg(feature = "use_wgpu")]
 use marty_scaler_wgpu::{DisplayScaler, MartyScaler, ScalerMode};
 
-#[cfg(not(feature = "use_wgpu"))]
-use marty_scaler_null::{DisplayScaler, ScalerMode};
-
+use marty_egui_eframe::context::GuiRenderContext;
 use marty_videocard_renderer::{AspectCorrectionMode, AspectRatio, VideoRenderer};
 
-use anyhow::{anyhow, Error};
-use display_backend_eframe::EFrameBackendType;
 use egui::{Context, ViewportId};
 
 #[cfg(feature = "use_wgpu")]
 use egui_wgpu::wgpu;
 
-use marty_egui_eframe::context::GuiRenderContext;
-use marty_frontend_common::display_manager::DtHandle;
+use anyhow::{anyhow, Error};
+use display_backend_eframe_wgpu::DisplayTargetSurface;
+use marty_frontend_common::display_manager::DisplayDimensions;
 use winit::{
     dpi::{LogicalSize, PhysicalSize},
     event_loop::{ActiveEventLoop, ControlFlow, EventLoop},
     window::{Icon, Window, WindowButtons, WindowId, WindowLevel},
 };
+// There are a few macros here designed to avoid boilerplate code, with the idea of making
+// it easier to copy and paste code from one implementation of DisplayManager to another,
+// and in general make the whole thing a bit easier to scan...
 
 macro_rules! is_valid_handle {
     ($dt:expr, $other:expr) => {
@@ -101,6 +130,42 @@ macro_rules! is_valid_handle {
 macro_rules! is_bad_handle {
     ($dt:expr, $other:expr) => {
         $dt.idx() >= $other.len()
+    };
+}
+
+/// Macro to wrap the type of DisplayTargetContext instance.
+macro_rules! dtc {
+    () => {
+        Arc<RwLock<DisplayTargetContext>>
+    };
+}
+
+/// Macro to create a new DisplayTargetContext instance.
+macro_rules! new_dtc {
+    ($expr:expr) => {
+        Arc::new(RwLock::new($expr))
+    };
+}
+
+/// Macro to acquire a read lock on a DisplayTargetContext instance.
+/// Eventually we can add error handling here.
+macro_rules! resolve_dtc {
+    ($expr:expr) => {
+        $expr.read().unwrap()
+    };
+}
+
+/// Macro to acquire a write lock on a DisplayTargetContext instance.
+/// Eventually we can add error handling here.
+macro_rules! resolve_dtc_mut {
+    ($expr:expr) => {
+        $expr.write().unwrap()
+    };
+}
+
+macro_rules! resolve_dtc_ref_mut {
+    ($expr:expr) => {
+        $expr.write().as_mut().unwrap()
     };
 }
 
@@ -118,7 +183,7 @@ macro_rules! resolve_handle {
 macro_rules! resolve_handle_mut {
     ($handle:expr, $other:expr, $closure:expr) => {
         if $handle.idx() < $other.len() {
-            $closure($other.get_mut($handle.idx()).unwrap())
+            $closure(&mut resolve_dtc_mut!($other.get_mut($handle.idx()).unwrap()))
         }
         else {
             return Err(anyhow::anyhow!("Handle out of range!"));
@@ -129,7 +194,7 @@ macro_rules! resolve_handle_mut {
 macro_rules! resolve_handle_result {
     ($handle:expr, $other:expr, $closure:expr) => {
         if $handle.idx() < $other.len() {
-            return Ok($closure($other.get($handle.idx()).unwrap()));
+            return Ok($closure(&resolve_dtc!($other.get($handle.idx()).unwrap())));
         }
         else {
             return Err(anyhow::anyhow!("Handle out of range!"));
@@ -140,7 +205,7 @@ macro_rules! resolve_handle_result {
 macro_rules! resolve_handle_mut_result {
     ($handle:expr, $other:expr, $closure:expr) => {
         if $handle.idx() < $other.len() {
-            return Ok($closure($other.get_mut($handle.idx()).unwrap()));
+            return Ok($closure(&mut resolve_dtc_mut!($other.get_mut($handle.idx()).unwrap())));
         }
         else {
             return Err(anyhow::anyhow!("Handle out of range!"));
@@ -151,13 +216,16 @@ macro_rules! resolve_handle_mut_result {
 macro_rules! resolve_handle_opt {
     ($handle:expr, $other:expr, $closure:expr) => {
         if $handle.idx() < $other.len() {
-            $closure($other.get($handle.idx()).unwrap())
+            $closure(&resolve_dtc!($other.get($handle.idx()).unwrap()))
         }
         else {
             return None;
         }
     };
 }
+
+pub const DEFAULT_RESOLUTION_W: u32 = 640;
+pub const DEFAULT_RESOLUTION_H: u32 = 480;
 
 const EGUI_MENU_BAR: u32 = 24;
 
@@ -212,8 +280,17 @@ impl DisplayTargetParams {
     }
 }
 
+/// Tracks state for a viewport, allowing us to query the viewport size and fullscreen status
+/// without a direct viewport reference.
 #[derive(Default)]
-pub struct DisplayTargetContext<T> {
+pub struct ViewportState {
+    pub w: u32,
+    pub h: u32,
+    pub fullscreen: bool,
+}
+
+#[derive(Default)]
+pub struct DisplayTargetContext {
     //pub(crate) event_loop: EventLoop<()>,
     pub name: String,
     pub dt_type: DisplayTargetType, // The type of display we are targeting
@@ -221,29 +298,90 @@ pub struct DisplayTargetContext<T> {
     pub resolved_params: DisplayTargetParams,
     pub requested_params: Option<DisplayTargetParams>,
     pub viewport: Option<ViewportId>, // The EGUI ViewportId
-    pub window_opts: Option<DmViewportOptions>,
+    pub viewport_opts: Option<DmViewportOptions>,
+    pub viewport_state: ViewportState,
     pub(crate) gui_ctx: Option<GuiRenderContext>, // The egui render context, if any
     pub(crate) card_id: Option<VideoCardId>,      // The video card device id, if any
     pub(crate) renderer: Option<VideoRenderer>,   // The renderer
     pub(crate) aspect_ratio: AspectRatio,         // Aspect ratio configured for this display
-    pub(crate) backend: Option<T>,                // The graphics backend instance
-    pub(crate) scaler: Option<Box<dyn DisplayScaler<(), NativeTextureView = (), NativeEncoder = ()>>>, // The scaler pipeline
+    pub(crate) surface: Option<DynDisplayTargetSurface>, // The display target surface created by the backend
+    pub(crate) scaler: Option<EFrameScalerType>,  // The scaler pipeline
     pub(crate) scaler_params: Option<ScalerParams>,
     pub(crate) card_scale: Option<f32>, // If Some, the card resolution is scaled by this factor
 }
 
-pub struct EFrameDisplayManagerBuilder {}
+impl DisplayTargetContext {
+    pub fn destructure_surface<F>(&mut self, f: F)
+    where
+        F: FnOnce(&mut DynDisplayTargetSurface, &mut Option<EFrameScalerType>, &mut Option<GuiRenderContext>),
+    {
+        if let Some(surface) = &mut self.surface {
+            f(surface, &mut self.scaler, &mut self.gui_ctx);
+        }
+    }
+
+    pub fn destructure_gui<F>(&mut self, f: F)
+    where
+        F: FnOnce(&mut GuiRenderContext),
+    {
+        if let Some(gui_ctx) = &mut self.gui_ctx {
+            f(gui_ctx);
+        }
+    }
+}
+
+pub struct DisplayTargetCallback {
+    pub lock: Arc<RwLock<DisplayTargetContext>>,
+}
+
+impl egui_wgpu::CallbackTrait for DisplayTargetCallback {
+    // Required method
+    fn paint(
+        &self,
+        info: egui::PaintCallbackInfo,
+        render_pass: &mut wgpu::RenderPass<'static>,
+        _callback_resources: &egui_wgpu::CallbackResources,
+    ) {
+        // pub struct PaintCallbackInfo {
+        //     pub viewport: Rect,
+        //     pub clip_rect: Rect,
+        //     pub pixels_per_point: f32,
+        //     pub screen_size_px: [u32; 2],
+        // }
+
+        let dtc = self.lock.write().unwrap();
+
+        //log::debug!("DisplayTargetCallback::paint(): Entered...");
+        if dtc.surface.is_none() {
+            log::debug!("DisplayTargetCallback::paint(): No surface!.");
+            return;
+        }
+        if dtc.scaler.is_none() {
+            log::debug!("DisplayTargetCallback::paint(): No scaler!.");
+            return;
+        }
+
+        if let (Some(surface), Some(scaler)) = (&dtc.surface, &dtc.scaler) {
+            // log::debug!(
+            //     "DisplayTargetCallback::paint(): Rendering with scaler! viewport rect: {:?} clip rect: {:?}",
+            //     info.viewport,
+            //     info.clip_rect
+            // );
+            scaler.render_with_renderpass(render_pass);
+        }
+    }
+}
 
 pub struct EFrameDisplayManager {
     // All windows share a common event loop.
     //event_loop: Option<EventLoop<()>>,
-
+    backend: Option<EFrameBackend>,
     // There can be multiple display windows. One for the main egui window, which may or may not
     // be attached to a videocard.
     // Optionally, one for each potential graphics adapter. For the moment I only plan to support
     // two adapters - a primary and secondary adapter. This implies a limit of 3 windows.
     // The window containing egui will always be at index 0.
-    targets: Vec<DisplayTargetContext<EFrameBackend>>,
+    targets: Vec<dtc!()>,
     viewport_id_map: MartyHashMap<ViewportId, usize>,
     viewport_id_resize_requests: MartyHashMap<ViewportId, ResizeTarget>,
     card_id_map: MartyHashMap<VideoCardId, Vec<usize>>, // Card id maps to a Vec<usize> as a single card can have multiple targets.
@@ -254,7 +392,7 @@ pub struct EFrameDisplayManager {
 impl Default for EFrameDisplayManager {
     fn default() -> Self {
         Self {
-            //event_loop: None,
+            backend: None,
             targets: Vec::new(),
             viewport_id_map: MartyHashMap::default(),
             viewport_id_resize_requests: MartyHashMap::default(),
@@ -269,10 +407,6 @@ impl EFrameDisplayManager {
     pub fn new() -> Self {
         Default::default()
     }
-
-    // pub fn take_event_loop(&mut self) -> EventLoop<()> {
-    //     self.event_loop.take().unwrap()
-    // }
 }
 
 pub trait DefaultResolver {
@@ -297,202 +431,7 @@ impl DefaultResolver for WindowDefinition {
     }
 }
 
-/// Display managers should be constructed via a [DisplayManagerBuilder]. This allows display targets
-/// to be created as specified by a user-supplied configuration. For [EFrameDisplayManager], we build
-/// our display targets using:
-///
-/// - the user configuration file
-/// - a list of video cards from the emulator core
-/// - a list of scaler preset definitions
-/// - a path to an icon (TODO: support different icons per window?)
-/// - a struct of GUI options
-impl EFrameDisplayManagerBuilder {
-    pub fn build(
-        egui_ctx: Context,
-        win_configs: &[WindowDefinition],
-        cards: Vec<VideoCardId>,
-        scaler_presets: &Vec<ScalerPreset>,
-        icon_path: Option<PathBuf>,
-        icon_buf: Option<&[u8]>,
-        gui_options: &DmGuiOptions,
-    ) -> Result<EFrameDisplayManager, Error> {
-        let icon = {
-            if let Some(path) = icon_path {
-                if let Ok(image) = image::open(path.clone()) {
-                    log::debug!("Using icon from path: {}", path.display());
-                    let rgba8 = image.into_rgba8();
-                    let (width, height) = rgba8.dimensions();
-                    let icon_raw = rgba8.into_raw();
-
-                    let icon = winit::window::Icon::from_rgba(icon_raw.clone(), width, height)?;
-
-                    Some(icon)
-                }
-                else {
-                    log::error!("Couldn't load icon: {}", path.display());
-                    log::error!("Couldn't load icon: {}", path.display());
-                    None
-                }
-            }
-            else {
-                if let Some(buf) = icon_buf {
-                    if let Ok(image) = image::load_from_memory(buf) {
-                        let rgba8 = image.into_rgba8();
-                        let (width, height) = rgba8.dimensions();
-                        let icon_raw = rgba8.into_raw();
-
-                        let icon = winit::window::Icon::from_rgba(icon_raw.clone(), width, height)?;
-
-                        Some(icon)
-                    }
-                    else {
-                        log::error!("Couldn't load icon from buffer.");
-                        None
-                    }
-                }
-                else {
-                    log::warn!("No icon specified.");
-                    None
-                }
-            }
-        };
-
-        let mut dm = EFrameDisplayManager::new();
-
-        // Install scaler presets
-        for preset in scaler_presets.iter() {
-            log::debug!("Installing scaler preset: {}", &preset.name);
-            dm.add_scaler_preset(preset.clone());
-        }
-
-        // Only create windows if the config specifies any!
-        if win_configs.len() > 0 {
-            // Create the main window.
-            Self::create_target_from_window_def(
-                &mut dm,
-                egui_ctx.clone(),
-                true,
-                &win_configs[0],
-                &cards,
-                gui_options,
-                icon.clone(),
-            )
-            .expect("FATAL: Failed to create a window target");
-
-            // TODO: Reimplement this for egui Viewports
-
-            // // Create the rest of the windows
-            // for window_def in win_configs.iter().skip(1) {
-            //     if window_def.enabled {
-            //         Self::create_target_from_window_def(
-            //             &mut dm,
-            //             egui_ctx.clone(),
-            //             false,
-            //             &window_def,
-            //             &cards,
-            //             gui_options,
-            //             icon.clone(),
-            //         )
-            //         .expect("FATAL: Failed to create a window target");
-            //     }
-            // }
-        }
-
-        Ok(dm)
-    }
-
-    pub fn create_target_from_window_def(
-        dm: &mut EFrameDisplayManager,
-        egui_ctx: Context,
-        main_window: bool,
-        window_def: &WindowDefinition,
-        cards: &Vec<VideoCardId>,
-        gui_options: &DmGuiOptions,
-        icon: Option<Icon>,
-    ) -> Result<(), Error> {
-        let resolved_def = window_def.resolve_with_defaults();
-        log::debug!("{:?}", window_def);
-
-        let mut card_id_opt = None;
-        let mut card_string = String::new();
-
-        if let Some(w_card_id) = resolved_def.card_id {
-            if w_card_id < cards.len() {
-                card_id_opt = Some(cards[w_card_id]);
-                card_string.push_str(&format!("{:?}", cards[w_card_id].vtype))
-            }
-            card_string.push_str(&format!("({})", w_card_id));
-        }
-
-        log::debug!(
-            "Creating WindowBackground display target from window definition with card id: {:?}",
-            card_id_opt
-        );
-
-        // TODO: Implement FROM for this?
-        let mut window_opts: DmViewportOptions = Default::default();
-
-        // Honor initial window size, but we may have to resize it later.
-        window_opts.size = window_def.size.unwrap_or_default().into();
-        window_opts.always_on_top = window_def.always_on_top;
-
-        // If this is the main window, and we have a GUI...
-        if main_window && gui_options.enabled {
-            // Set the top margin to clear the egui menu bar.
-            window_opts.margins = DisplayTargetMargins::from_t(gui_options.menubar_h);
-        }
-
-        // Is window resizable?
-        if !window_def.resizable {
-            window_opts.min_size = Some(window_opts.size);
-            window_opts.max_size = Some(window_opts.size);
-            window_opts.resizable = false;
-        }
-        else {
-            window_opts.resizable = true;
-        }
-
-        // If this is Some, it locks the window resolution to some scale factor of card resolution
-        window_opts.card_scale = window_def.card_scale;
-
-        let preset_name = window_def.scaler_preset.clone().unwrap_or("default".to_string());
-
-        // Construct window title.
-        let window_title = format!("{}: {}", &window_def.name, card_string).to_string();
-
-        let dt_type = DisplayTargetType::WindowBackground {
-            main_window,
-            has_gui: main_window,
-            has_menu: main_window,
-        };
-
-        let dt_type = DisplayTargetType::GuiWidget {
-            main_window,
-            has_gui: main_window,
-            has_menu: main_window,
-        };
-
-        dm.create_target(
-            window_title,
-            dt_type,
-            Some(&egui_ctx),
-            Some(window_opts),
-            card_id_opt,
-            preset_name,
-            gui_options,
-        )
-        .expect("Failed to create window target!");
-
-        let last_idx = dm.targets.len() - 1;
-
-        // TODO: figure out how to set icon here
-        //dm.targets[last_idx].window.as_mut().unwrap().set_window_icon(icon);
-
-        Ok(())
-    }
-}
-
-impl DisplayTargetContext<EFrameBackend> {
+impl DisplayTargetContext {
     /// Set the aspect mode of the target. If the aspect mode is changed, we may need to resize
     /// the backend and scaler.
     pub fn set_aspect_mode(&mut self, _mode: AspectCorrectionMode) {}
@@ -508,13 +447,13 @@ impl DisplayTargetContext<EFrameBackend> {
     }
 
     pub fn set_on_top(&mut self, on_top: bool) {
-        if let Some(wopts) = &mut self.window_opts {
+        if let Some(wopts) = &mut self.viewport_opts {
             wopts.is_on_top = on_top;
         }
     }
 
     pub fn is_on_top(&self) -> bool {
-        if let Some(wopts) = &self.window_opts {
+        if let Some(wopts) = &self.viewport_opts {
             return wopts.is_on_top;
         }
         false
@@ -538,9 +477,9 @@ impl DisplayTargetContext<EFrameBackend> {
     //     GuiRenderContext::new(dt_idx, w, h, scale_factor, pixels, window, gui_options)
     // }
 
-    pub fn apply_scaler_preset(&mut self, preset: &ScalerPreset) {
-        // We must have a backend and scaler to continue...
-        if !self.backend.is_some() || !self.scaler.is_some() {
+    pub fn apply_scaler_preset(&mut self, backend: &EFrameBackend, preset: &ScalerPreset) {
+        // We must have a scaler to continue...
+        if !self.scaler.is_some() {
             return;
         }
         log::debug!("Applying scaler preset: {}", &preset.name);
@@ -552,13 +491,14 @@ impl DisplayTargetContext<EFrameBackend> {
         let scaler = self.scaler.as_mut().unwrap();
 
         scaler.set_mode(
-            self.backend.as_mut().unwrap().get_backend_raw().unwrap(),
-            preset.mode.unwrap_or(scaler.get_mode()),
+            &*backend.device(),
+            &*backend.queue(),
+            preset.mode.unwrap_or(scaler.mode()),
         );
         scaler.set_bilinear(bilinear);
         scaler.set_fill_color(MartyColor::from_u24(preset.border_color.unwrap_or(0)));
 
-        self.apply_scaler_params(&ScalerParams::from(preset.clone()));
+        self.apply_scaler_params(backend, &ScalerParams::from(preset.clone()));
 
         // Scaler preset also has certain renderer parameters. Set them now.
         if let Some(renderer) = &mut self.renderer {
@@ -573,9 +513,9 @@ impl DisplayTargetContext<EFrameBackend> {
         }
     }
 
-    pub fn apply_scaler_params(&mut self, params: &ScalerParams) {
+    pub fn apply_scaler_params(&mut self, backend: &EFrameBackend, params: &ScalerParams) {
         // We must have a backend and scaler to continue...
-        if !self.backend.is_some() || !self.scaler.is_some() {
+        if !self.scaler.is_some() {
             return;
         }
 
@@ -663,7 +603,7 @@ impl DisplayTargetContext<EFrameBackend> {
         self.scaler
             .as_mut()
             .unwrap()
-            .set_options(self.backend.as_mut().unwrap().get_backend_raw().unwrap(), scaler_update);
+            .set_options(&*backend.device(), &*backend.queue(), scaler_update);
     }
 
     pub fn request_params(&mut self, params: DisplayTargetParams) {
@@ -695,11 +635,28 @@ impl DisplayTargetContext<EFrameBackend> {
     }
 }
 
+impl EFrameDisplayManager {
+    pub fn main_display_target(&self) -> dtc!() {
+        self.targets[0].clone()
+    }
+
+    pub fn main_display_callback(&self) -> DisplayTargetCallback {
+        DisplayTargetCallback {
+            lock: self.targets[0].clone(),
+        }
+    }
+}
+
 impl<'p> DisplayManager<EFrameBackend, GuiRenderContext, ViewportId, ViewportId, Context> for EFrameDisplayManager {
     #[cfg(feature = "use_wgpu")]
-    type NativeTextureView = wgpu::TextureView;
+    type NativeTexture = wgpu::Texture;
     #[cfg(not(feature = "use_wgpu"))]
-    type NativeTextureView = ();
+    type NativeTexture = egui::TextureHandle;
+
+    //#[cfg(feature = "use_wgpu")]
+    //type NativeTextureView = wgpu::TextureView;
+    //#[cfg(not(feature = "use_wgpu"))]
+    //type NativeTextureView = ();
 
     #[cfg(feature = "use_wgpu")]
     type NativeEncoder = wgpu::CommandEncoder;
@@ -707,15 +664,17 @@ impl<'p> DisplayManager<EFrameBackend, GuiRenderContext, ViewportId, ViewportId,
     type NativeEncoder = ();
 
     type NativeEventLoop = ActiveEventLoop;
-    type ImplScaler = Box<dyn DisplayScaler<(), NativeTextureView = (), NativeEncoder = ()>>;
-    type ImplDisplayTarget = DisplayTargetContext<EFrameBackend>;
+    type ImplSurface = DynDisplayTargetSurface;
+    type ImplScaler = EFrameScalerType;
+    type ImplDisplayTarget = DisplayTargetContext;
 
     fn create_target(
         &mut self,
         name: String,
         dt_type: DisplayTargetType,
-        native_context: Option<&egui::Context>,
-        window_opts: Option<DmViewportOptions>,
+        native_context: Option<&Context>,
+        viewport: Option<ViewportId>,
+        viewport_opts: Option<DmViewportOptions>,
         card_id: Option<VideoCardId>,
         scaler_preset: String,
         gui_options: &DmGuiOptions,
@@ -744,11 +703,11 @@ impl<'p> DisplayManager<EFrameBackend, GuiRenderContext, ViewportId, ViewportId,
                 };
 
                 // Use the dimensions specified in window options, if supplied, otherwise fall back to default
-                let ((tw, th), resizable) = if let Some(ref window_opts) = window_opts {
+                let ((tw, th), resizable) = if let Some(ref window_opts) = viewport_opts {
                     (window_opts.size.into(), window_opts.resizable)
                 }
                 else {
-                    ((800, 600), true)
+                    ((DEFAULT_RESOLUTION_W, DEFAULT_RESOLUTION_H), true)
                 };
 
                 let dt_idx = self.targets.len();
@@ -815,16 +774,30 @@ impl<'p> DisplayManager<EFrameBackend, GuiRenderContext, ViewportId, ViewportId,
                 };
 
                 // Create the backend.
-                let mut pb = EFrameBackend::new(
-                    EFrameBackendType::EguiWindow,
-                    native_context.unwrap().clone(),
+                // let mut pb = EFrameBackend::new(
+                //     EFrameBackendType::EguiWindow,
+                //     native_context.unwrap().clone(),
+                //     BufferDimensions {
+                //         w: tw,
+                //         h: th,
+                //         pitch: tw,
+                //     },
+                //     TextureDimensions { w: sw, h: sh },
+                //     None,
+                // )?;
+
+                if self.backend.is_none() {
+                    return Err(anyhow!("create_target(): No backend!"));
+                }
+
+                // Create a new surface for the display target.
+                let surface = self.backend.as_mut().unwrap().create_surface(
                     BufferDimensions {
                         w: tw,
                         h: th,
                         pitch: tw,
                     },
-                    SurfaceDimensions { w: sw, h: sh },
-                    None,
+                    TextureDimensions { w: sw, h: sh },
                 )?;
 
                 // Create the scaler.
@@ -833,22 +806,24 @@ impl<'p> DisplayManager<EFrameBackend, GuiRenderContext, ViewportId, ViewportId,
                     false => ScalerMode::Fixed,
                 };
 
-                // The texture sizes specified initially aren't important. Since DisplyManager can't
+                // The texture sizes specified initially aren't important. Since DisplayManager can't
                 // query video cards directly, the caller must resize all video cards after calling
                 // the Builder.
-                // let scaler = MartyScaler::new(
-                //     scaler_preset.mode.unwrap_or(ScalerMode::Integer),
-                //     &pb.get_backend_raw().unwrap(),
-                //     640,
-                //     480,
-                //     640,
-                //     480,
-                //     w,
-                //     h,
-                //     menubar_h, // margin_y == egui menu height
-                //     true,
-                //     MartyColor::from_u24(scaler_preset.border_color.unwrap_or_default()),
-                // );
+                let scaler = MartyScaler::new(
+                    scaler_preset.mode.unwrap_or(ScalerMode::Integer),
+                    &*self.backend.as_ref().unwrap().device(),
+                    &surface.read().unwrap().backing_texture(),
+                    surface.read().unwrap().backing_texture_format(),
+                    DEFAULT_RESOLUTION_W,
+                    DEFAULT_RESOLUTION_H,
+                    DEFAULT_RESOLUTION_W,
+                    DEFAULT_RESOLUTION_W,
+                    sw,
+                    sh,
+                    0, // In the eframe backend, our surface is a panel drawn below the menu
+                    true,
+                    MartyColor::from_u24(scaler_preset.border_color.unwrap_or_default()),
+                );
 
                 // If we have a video card id, we need to build a VideoRenderer to render the card.
                 let renderer = if let Some(card_id) = card_id {
@@ -885,7 +860,15 @@ impl<'p> DisplayManager<EFrameBackend, GuiRenderContext, ViewportId, ViewportId,
                 //     None
                 // };
 
-                let card_scale = window_opts.as_ref().and_then(|wo| wo.card_scale);
+                let card_scale = viewport_opts.as_ref().and_then(|wo| wo.card_scale);
+
+                let viewport_state = ViewportState {
+                    w: tw,
+                    h: th,
+                    fullscreen: false,
+                };
+
+                let viewport = viewport.unwrap_or(ViewportId::ROOT);
 
                 let mut dtc = DisplayTargetContext {
                     name,
@@ -898,24 +881,25 @@ impl<'p> DisplayManager<EFrameBackend, GuiRenderContext, ViewportId, ViewportId,
                         window_dim: DisplayTargetDimensions::new(tw, th),
                     },
                     requested_params: None,
-                    viewport: None,
-                    window_opts,
+                    viewport: Some(viewport),
+                    viewport_opts,
+                    viewport_state,
                     gui_ctx: None,
                     card_id,
                     renderer,
                     aspect_ratio: scaler_preset.renderer.aspect_ratio.unwrap_or_default(),
-                    backend: Some(pb), // The graphics backend instance
-                    scaler: None,
-                    //scaler: Some(Box::new(scaler)), // The scaler pipeline
+                    //backend: Some(pb), // The graphics backend instance
+                    surface: Some(surface),
+                    scaler: Some(Box::new(scaler)),
                     scaler_params: Some(ScalerParams::from(scaler_preset.clone())),
                     card_scale,
                 };
 
-                dtc.apply_scaler_preset(&scaler_preset);
+                dtc.apply_scaler_preset(&self.backend.as_ref().unwrap(), &scaler_preset);
 
-                self.targets.push(dtc);
+                self.targets.push(new_dtc!(dtc));
 
-                self.viewport_id_map.insert(ViewportId::ROOT, dt_idx);
+                self.viewport_id_map.insert(viewport, dt_idx);
 
                 if let Some(vid) = card_id {
                     if let Some(card_vec) = self.card_id_map.get_mut(&vid) {
@@ -939,14 +923,15 @@ impl<'p> DisplayManager<EFrameBackend, GuiRenderContext, ViewportId, ViewportId,
     fn display_info(&self, machine: &Machine) -> Vec<DisplayTargetInfo> {
         let mut info_vec = Vec::new();
 
-        for (i, vt) in self.targets.iter().enumerate() {
+        for (i, vtc) in self.targets.iter().enumerate() {
+            let vtc = resolve_dtc_mut!(vtc);
             let mut vtype = None;
-            if let Some(vid) = vt.card_id {
+            if let Some(vid) = vtc.card_id {
                 vtype = machine.bus().video(&vid).and_then(|card| Some(card.get_video_type()));
             }
 
             let mut render_time = Duration::from_secs(0);
-            let renderer_params = if let Some(renderer) = &vt.renderer {
+            let renderer_params = if let Some(renderer) = &vtc.renderer {
                 render_time = renderer.get_last_render_time();
                 Some(renderer.get_config_params().clone())
             }
@@ -955,8 +940,10 @@ impl<'p> DisplayManager<EFrameBackend, GuiRenderContext, ViewportId, ViewportId,
             };
 
             let mut scaler_mode = None;
-            if let Some(scaler) = &vt.scaler {
-                scaler_mode = Some(scaler.get_mode());
+            let mut scaler_geometry = None;
+            if let Some(scaler) = &vtc.scaler {
+                scaler_mode = Some(scaler.mode());
+                scaler_geometry = Some(scaler.geometry());
             }
 
             let mut has_gui = false;
@@ -968,34 +955,39 @@ impl<'p> DisplayManager<EFrameBackend, GuiRenderContext, ViewportId, ViewportId,
 
             let mut backend_name = String::new();
 
-            #[cfg(feature = "use_wgpu")]
-            if let Some(backend) = &vt.backend {
-                backend_name = backend
-                    .get_adapter_info()
-                    .map(|info| format!("{:?} ({})", info.backend, info.name))
-                    .unwrap_or_default();
-            }
+            // TODO: A display target doesn't have a backend anymore,
+            //       so if we want the adapter name we'll have to either set it,
+            //       or get it from the main DisplayManager.
+
+            // #[cfg(feature = "use_wgpu")]
+            // if let Some(backend) = &vt.backend {
+            //     backend_name = backend
+            //         .get_adapter_info()
+            //         .map(|info| format!("{:?} ({})", info.backend, info.name))
+            //         .unwrap_or_default();
+            // }
 
             info_vec.push(DisplayTargetInfo {
                 handle: DtHandle(i),
                 backend_name,
-                dtype: vt.dt_type,
+                dtype: vtc.dt_type,
                 vtype,
-                vid: vt.card_id,
-                name: vt.name.clone(),
+                vid: vtc.card_id,
+                name: vtc.name.clone(),
                 renderer: renderer_params,
                 render_time,
                 contains_gui: has_gui,
                 gui_render_time,
                 scaler_mode,
-                scaler_params: vt.scaler_params,
+                scaler_params: vtc.scaler_params,
+                scaler_geometry,
             })
         }
 
         info_vec
     }
 
-    fn viewport_by_id(&self, _vid: ViewportId) -> Option<&ViewportId> {
+    fn viewport_by_id(&self, _vid: ViewportId) -> Option<ViewportId> {
         None
         // self.viewport_id_map.get(&wid).and_then(|idx| {
         //     //log::warn!("got id, running map():");
@@ -1003,62 +995,79 @@ impl<'p> DisplayManager<EFrameBackend, GuiRenderContext, ViewportId, ViewportId,
         // })
     }
 
-    fn viewport(&self, _dt: DtHandle) -> Option<&ViewportId> {
+    fn viewport(&self, _dt: DtHandle) -> Option<ViewportId> {
         //self.targets.get(dt.idx()).and_then(|dt| dt.window.as_ref())
         None
     }
 
-    fn main_viewport(&self) -> Option<&ViewportId> {
+    fn main_viewport(&self) -> Option<ViewportId> {
         // Main display should always be index 0.
-        self.targets[0].viewport.as_ref()
+        resolve_dtc!(self.targets[0]).viewport.clone()
     }
 
-    fn main_backend(&mut self) -> Option<&EFrameBackend> {
+    fn backend(&mut self) -> Option<&EFrameBackend> {
         // Main display should always be index 0.
-        self.targets[0].backend.as_ref()
+        self.backend.as_ref()
     }
-    fn main_backend_mut(&mut self) -> Option<&mut EFrameBackend> {
+    fn backend_mut(&mut self) -> Option<&mut EFrameBackend> {
         // Main display should always be index 0.
-        self.targets[0].backend.as_mut()
+        self.backend.as_mut()
     }
 
-    fn main_gui_mut(&mut self) -> Option<&mut GuiRenderContext> {
-        self.targets[0].gui_ctx.as_mut()
+    fn with_main_gui_mut<F>(&mut self, f: F)
+    where
+        F: FnOnce(&mut GuiRenderContext),
+    {
+        resolve_dtc_mut!(self.targets[0]).gui_ctx.as_mut().map(f);
     }
 
-    fn gui_by_viewport_id(&mut self, vid: ViewportId) -> Option<&mut GuiRenderContext> {
-        self.viewport_id_map
-            .get(&vid)
-            .and_then(|idx| self.targets[*idx].gui_ctx.as_mut())
-            .or_else(|| {
-                //log::warn!("get_gui_by_window_id(): No gui context for window id: {:?}", wid);
-                None
-            })
-    }
-
-    fn renderer_mut(&mut self, dt: DtHandle) -> Option<&mut VideoRenderer> {
-        if dt.idx() < self.targets.len() {
-            self.targets[dt.idx()].renderer.as_mut()
-        }
-        else {
-            None
+    fn with_gui_by_viewport_id_mut<F>(&mut self, vid: ViewportId, f: F)
+    where
+        F: FnOnce(&mut GuiRenderContext),
+    {
+        if let Some(&idx) = self.viewport_id_map.get(&vid) {
+            if let Some(dtc) = self.targets.get(idx) {
+                if let Some(gui_ctx) = resolve_dtc_mut!(dtc).gui_ctx.as_mut() {
+                    f(gui_ctx);
+                }
+            }
         }
     }
 
-    fn renderer_by_card_id_mut(&mut self, _id: VideoCardId) -> Option<&mut VideoRenderer> {
-        //self.card_id_map.get(&id).and_then(|idx| {
-        //    self.targets[*idx].renderer.as_mut()
-        //})
-        None
+    fn with_renderer_mut<F>(&mut self, dt: DtHandle, f: F)
+    where
+        F: FnOnce(&mut VideoRenderer),
+    {
+        self.targets
+            .get(dt.idx())
+            .and_then(|dtc| resolve_dtc_mut!(dtc).renderer.as_mut().map(f));
     }
 
-    fn primary_renderer_mut(&mut self) -> Option<&mut VideoRenderer> {
-        self.primary_idx.and_then(|idx| self.targets[idx].renderer.as_mut())
+    fn with_renderer_by_card_id_mut<F>(&mut self, _id: VideoCardId, _f: F)
+    where
+        F: FnOnce(&mut VideoRenderer),
+    {
+        // TODO: Rethink this function. A card can have multiple renderers. Which one would we return?
+
+        // self.card_id_map
+        //     .get(&id)
+        //     .and_then(|idx| self.targets.get(*idx).and_then(|dtc| dtc.renderer.as_mut().map(f)));
+    }
+
+    fn with_primary_renderer_mut<F>(&mut self, f: F)
+    where
+        F: FnOnce(&mut VideoRenderer),
+    {
+        self.primary_idx.and_then(|idx| {
+            self.targets
+                .get_mut(idx)
+                .and_then(|dtc| resolve_dtc_mut!(dtc).renderer.as_mut().map(f))
+        });
     }
 
     /// Reflect a potential update to a videocard's output resolution. This can be called once
     /// per frame regardless of whether we anticipate the card resolution actually changed.
-    /// This method needs to resize the resolution of the backend, renderer and scaler associated
+    /// This method needs to resize the resolution of the surface, renderer and scaler associated
     /// with all VideoTargets registered for this card.
     /// If the renderer for a display target reports that it would not resize given the updated card
     /// resolution, then we do nothing for that display target.
@@ -1070,13 +1079,15 @@ impl<'p> DisplayManager<EFrameBackend, GuiRenderContext, ViewportId, ViewportId,
 
             // log::debug!("card {:?} has {} display targets", id, idx_vec.len());
             for idx in idx_vec {
-                let dtc = &mut self.targets[*idx];
+                let dtc = &mut resolve_dtc_mut!(self.targets[*idx]);
 
                 let mut aspect_dimensions: Option<BufferDimensions> = None;
                 let mut buf_dimensions: Option<BufferDimensions> = None;
 
                 let mut resize_dt = false;
                 let mut software_aspect = false;
+
+                let mut dtc_initialized = dtc.initialized;
 
                 // Get the VideoRenderer for this display target, and determine whether the renderer
                 // (and thus the backend and scaler) should resize.
@@ -1094,26 +1105,23 @@ impl<'p> DisplayManager<EFrameBackend, GuiRenderContext, ViewportId, ViewportId,
                         h *= 2;
                     }
 
-                    resize_dt = renderer.would_resize((w, h).into()) || !dtc.initialized;
+                    resize_dt = renderer.would_resize((w, h).into()) || !dtc_initialized;
 
                     if resize_dt {
                         log::debug!(
-                            "on_card_resized(): Card {:?} init:{} new aperture: {}x{} [Doublescan: {}, Aperture: {:?}] Resizing renderer for dt {}...",
-                            vid,
-                            dtc.initialized,
-                            w,
-                            h,
+                            "on_card_resized(): Card {vid:?} init:{} new aperture: {w}x{h} [Doublescan: {}, Aperture: {aperture:?}] Resizing renderer for dt {idx}...",
+                            dtc_initialized,
                             extents.double_scan,
-                            aperture,
-                            idx
                         );
                         renderer.resize((w, h).into());
-                        dtc.initialized = true;
+                        dtc_initialized = true;
                     }
 
                     buf_dimensions = Some(DisplayTargetDimensions::from(renderer.get_buf_dimensions()).into());
                     aspect_dimensions = Some(DisplayTargetDimensions::from(renderer.get_display_dimensions()).into());
                 }
+
+                dtc.initialized = dtc_initialized;
 
                 // If no renderer was present we set a minimum placeholder buffer size for backend.
                 let src_dimensions = buf_dimensions.unwrap_or(BufferDimensions {
@@ -1127,134 +1135,149 @@ impl<'p> DisplayManager<EFrameBackend, GuiRenderContext, ViewportId, ViewportId,
                 if resize_dt {
                     let mut resize_surface = false;
 
-                    let top_margin = dtc.window_opts.as_ref().map_or(0, |opts| opts.margins.t);
+                    let top_margin = dtc.viewport_opts.as_ref().map_or(0, |opts| opts.margins.t);
 
                     // Calculate the minimum client area we need (including top margin for gui menu)
                     let mut new_min_surface_size = match dtc.card_scale {
                         Some(card_scale) => {
                             // Card scaling is enabled. Scale the window to the specified factor, even
                             // if that would shrink the window.
-                            PhysicalSize::new(
+                            DisplayDimensions::new(
                                 (target_dimensions.w as f32 * card_scale) as u32,
                                 (target_dimensions.h as f32 * card_scale) as u32 + top_margin,
                             )
                         }
-                        _ => PhysicalSize::new(target_dimensions.w, target_dimensions.h + top_margin),
+                        _ => DisplayDimensions::new(target_dimensions.w, target_dimensions.h + top_margin),
                     };
 
                     // First we need to see if the viewport needs resizing. If the renderer increased
                     // resolution, we may need to make the viewport bigger to fit. We don't support
                     // scaling downwards.
                     if let Some(viewport) = &mut dtc.viewport {
+                        log::debug!("on_card_resized(): handling viewport");
                         // TODO: fix all this for eframe viewports
 
                         // First, get the inner size of the window. We may not need to resize it if
-                        // its already big enough and we don't have card scaling on.
+                        // its already big enough, and we don't have card scaling on.
 
                         // let win_dim = window.inner_size();
+                        let win_dim = DisplayDimensions::new(dtc.viewport_state.w, dtc.viewport_state.h);
+
+                        if dtc.card_scale.is_some() {
+                            // window.set_max_inner_size(Some(new_min_surface_size));
+                            // window.set_min_inner_size(Some(new_min_surface_size));
+                        }
+                        else {
+                            if win_dim.w < new_min_surface_size.w || win_dim.h < new_min_surface_size.h {
+                                // Window is too small in at least one dimension.
+                                new_min_surface_size = DisplayDimensions::new(
+                                    std::cmp::max(win_dim.w, new_min_surface_size.w),
+                                    std::cmp::max(win_dim.h, new_min_surface_size.h),
+                                );
+                            }
+                            else {
+                                // Window is big enough, retain size
+                                new_min_surface_size = DisplayDimensions::new(win_dim.w, win_dim.h);
+                            }
+                        }
                         //
-                        // if dtc.card_scale.is_some() {
-                        //     window.set_max_inner_size(Some(new_min_surface_size));
-                        //     window.set_min_inner_size(Some(new_min_surface_size));
-                        // }
-                        // else {
-                        //     if win_dim.width < new_min_surface_size.width
-                        //         || win_dim.height < new_min_surface_size.height
-                        //     {
-                        //         // Window is too small in at least one dimension.
-                        //         new_min_surface_size = PhysicalSize::new(
-                        //             std::cmp::max(win_dim.width, new_min_surface_size.width),
-                        //             std::cmp::max(win_dim.height, new_min_surface_size.height),
-                        //         );
-                        //     }
-                        //     else {
-                        //         // Window is big enough, retain size
-                        //         new_min_surface_size = PhysicalSize::new(win_dim.width, win_dim.height);
-                        //     }
-                        // }
-                        //
-                        // log::debug!(
-                        //     "on_card_resized(): Resizing window to fit new calculated surface. {}x{} => {}x{} card_scale: {}",
-                        //     win_dim.width,
-                        //     win_dim.height,
-                        //     new_min_surface_size.width,
-                        //     new_min_surface_size.height,
-                        //     dtc.card_scale.unwrap_or(0.0)
-                        // );
-                        //
-                        // if new_min_surface_size == window.inner_size() {
-                        //     // Window is already the correct size.
-                        //     log::debug!("on_card_resized(): Window is already the correct size.");
-                        //     resize_surface = true;
-                        // }
-                        // else {
-                        //     // Request inner size may not immediately set the new size unless it returns Some.
-                        //     // If it returns None then we don't want to resize surfaces now - we'll resize
-                        //     // them when we get the window size event. Otherwise we could render a frame at
-                        //     // the wrong surface resolution.
-                        //     if let Some(resolved_size) = window.request_inner_size(new_min_surface_size) {
-                        //         log::debug!("on_card_resized(): Window size resolved immediately.");
-                        //         resize_surface = true;
-                        //         new_min_surface_size = resolved_size;
-                        //     }
-                        // }
+                        log::debug!(
+                            "on_card_resized(): Resizing window to fit new calculated surface. {}x{} => {}x{} card_scale: {}",
+                            win_dim.w,
+                            win_dim.h,
+                            new_min_surface_size.w,
+                            new_min_surface_size.h,
+                            dtc.card_scale.unwrap_or(0.0)
+                        );
+
+                        if new_min_surface_size == win_dim {
+                            // Window is already the correct size.
+                            log::debug!("on_card_resized(): Window is already the correct size.");
+                            resize_surface = true;
+                        }
+                        else {
+                            // Request inner size may not immediately set the new size unless it returns Some.
+                            // If it returns None then we don't want to resize surfaces now - we'll resize
+                            // them when we get the window size event. Otherwise, we could render a frame at
+                            // the wrong surface resolution.
+
+                            // if let Some(resolved_size) = window.request_inner_size(new_min_surface_size) {
+                            //     log::debug!("on_card_resized(): Window size resolved immediately.");
+                            //     resize_surface = true;
+                            //     new_min_surface_size = resolved_size;
+                            // }
+                            resize_surface = true;
+                            //new_min_surface_size = resolved_size;
+                        }
 
                         log::debug!("on_card_resized(): resizing viewport currently stubbed.");
+                        resize_surface = true;
                     }
 
-                    if let Some(backend) = &mut dtc.backend {
+                    // TODO: Fix this stuff for eframe viewports
+                    //resize_surface = true;
+
+                    if let (Some(backend), Some(surface)) = (&mut self.backend, &mut dtc.surface) {
                         // If software aspect correction is enabled for this renderer, the backend must
                         // be sized for it. Otherwise, the backend should be sized for the native
                         // resolution.
-                        if software_aspect {
-                            backend
-                                .resize_buf(BufferDimensions::from(aspect_dimensions.unwrap()))
-                                .expect("FATAL: Failed to resize backend");
-                        }
-                        else {
-                            backend
-                                .resize_buf(BufferDimensions::from(buf_dimensions.unwrap()))
-                                .expect("FATAL: Failed to resize backend");
-                        }
+                        let dims = match software_aspect {
+                            true => BufferDimensions::from(aspect_dimensions.unwrap()),
+                            false => BufferDimensions::from(buf_dimensions.unwrap()),
+                        };
+                        backend
+                            .resize_backing_texture(surface, dims)
+                            .expect("FATAL: Failed to resize backend");
 
                         // If the window resize resolved immediately, resize the surface and scaler here.
                         // Otherwise, they will resize when we receive the window resize event.
                         if resize_surface {
                             log::debug!(
                                 "on_card_resized(): Resizing backend surface to new calculated surface: {}x{}",
-                                new_min_surface_size.width,
-                                new_min_surface_size.height,
+                                new_min_surface_size.w,
+                                new_min_surface_size.h,
                             );
                             backend
-                                .resize_surface(SurfaceDimensions {
-                                    w: new_min_surface_size.width,
-                                    h: new_min_surface_size.height,
-                                })
+                                .resize_surface_texture(
+                                    surface,
+                                    TextureDimensions {
+                                        w: new_min_surface_size.w,
+                                        h: new_min_surface_size.h,
+                                    },
+                                )
                                 .expect("FATAL: Failed to resize backend surface");
 
-                            let surface_dimensions = backend.surface_dimensions();
+                            //let surface_dimensions = surface.read().unwrap().surface_dimensions();
 
-                            // Resize the DisplayScaler if present.
-                            if let Some(scaler) = &mut dtc.scaler {
-                                if resize_dt {
-                                    log::debug!(
-                                    "on_card_resized(): Resizing scaler to renderer target size: {}x{} surface: {}x{}",
-                                    target_dimensions.w,
-                                    target_dimensions.h,
-                                    surface_dimensions.w,
-                                    surface_dimensions.h,
-                                );
+                            dtc.destructure_surface(|surface, scaler, gui| {
+                                let surface = surface.read().unwrap();
+                                let surface_dimensions = surface.surface_dimensions();
+
+                                // Resize the DisplayScaler if present. This closure is only called if we have a surface, so no need to check.
+                                if let Some(scaler) = scaler {
+                                    if resize_dt {
+                                        log::debug!(
+                                            "on_card_resized(): Resizing scaler to renderer target size: {}x{} surface: {}x{}",
+                                            target_dimensions.w,
+                                            target_dimensions.h,
+                                            surface_dimensions.w,
+                                            surface_dimensions.h,
+                                        );
+
+                                        scaler.resize(
+                                            &*backend.device(),
+                                            &*backend.queue(),
+                                            &surface.backing_texture(),
+                                            src_dimensions.w,
+                                            src_dimensions.h,
+                                            target_dimensions.w,
+                                            target_dimensions.h,
+                                            surface_dimensions.w,
+                                            surface_dimensions.h,
+                                        );
+                                    }
                                 }
-                                scaler.resize(
-                                    backend.get_backend_raw().unwrap(),
-                                    src_dimensions.w,
-                                    src_dimensions.h,
-                                    target_dimensions.w,
-                                    target_dimensions.h,
-                                    surface_dimensions.w,
-                                    surface_dimensions.h,
-                                );
-                            }
+                            });
                         }
 
                         // Update the scaler's 'Scanlines' ScalerOption.
@@ -1266,7 +1289,8 @@ impl<'p> DisplayManager<EFrameBackend, GuiRenderContext, ViewportId, ViewportId,
                             };
 
                             scaler.set_option(
-                                backend.get_backend_raw().as_mut().unwrap(),
+                                &*backend.device(),
+                                &*backend.queue(),
                                 ScalerOption::Scanlines {
                                     enabled: None,
                                     lines: Some(scanlines),
@@ -1283,6 +1307,12 @@ impl<'p> DisplayManager<EFrameBackend, GuiRenderContext, ViewportId, ViewportId,
     }
 
     fn on_viewport_resized(&mut self, vid: ViewportId, w: u32, h: u32) -> Result<(), Error> {
+        log::debug!(
+            "on_viewport_resized(): go resize event for viewport id: {:?} to {}x{}",
+            vid,
+            w,
+            h
+        );
         let _idx = match self.viewport_id_map.get(&vid) {
             Some(idx) => *idx,
             None => {
@@ -1302,57 +1332,88 @@ impl<'p> DisplayManager<EFrameBackend, GuiRenderContext, ViewportId, ViewportId,
     }
 
     fn resize_viewports(&mut self) -> Result<(), Error> {
-        let wids: Vec<ViewportId> = self.viewport_id_resize_requests.keys().cloned().collect();
+        let vids: Vec<ViewportId> = self.viewport_id_resize_requests.keys().cloned().collect();
 
-        for wid in wids {
-            let rt = self.viewport_id_resize_requests.remove(&wid).unwrap();
+        //log::debug!("resize_viewports(): processing {} resize requests", wids.len());
+        for vid in vids {
+            let rt = self.viewport_id_resize_requests.remove(&vid).unwrap();
             use anyhow::Context;
-            let idx = self.viewport_id_map.get(&wid).context("Failed to look up window")?;
+            let idx = self.viewport_id_map.get(&vid).context("Failed to look up viewport")?;
 
-            let dt = &mut self.targets[*idx];
+            let dtc = &mut resolve_dtc_mut!(self.targets[*idx]);
 
-            if let Some(viewport) = &dt.viewport {
-                // TODO: Fix this stuff for eframe viewports
+            log::debug!(
+                "resize_viewports(): resizing viewport id: {:?} to {}x{}",
+                vid,
+                rt.w,
+                rt.h
+            );
+            if let Some(backend) = &mut self.backend {
+                if let Some(viewport) = &dtc.viewport {
+                    // TODO: Fix this stuff for eframe viewports
 
-                // let scale_factor = viewport.scale_factor();
-                //let resize_string = format!("{}x{} (scale factor: {})", rt.w, rt.h, scale_factor);
-                let resize_string = format!("{}x{} (scale factor: {})", rt.w, rt.h, 1.0);
-                // if let Some(backend) = &mut dt.backend {
-                //     log::debug!(
-                //         "resize_windows(): dt{}: resizing backend surface to {}",
-                //         *idx,
-                //         resize_string
-                //     );
-                //     backend.resize_surface(SurfaceDimensions { w: rt.w, h: rt.h })?;
-                //
-                //     // We may receive this event in response to a on_card_resized event that triggered a window size
-                //     // change. We should get the current aspect ratio from the renderer.
-                //     if let Some(renderer) = &mut dt.renderer {
-                //         let buf_dimensions = renderer.get_buf_dimensions();
-                //         let aspect_dimensions = renderer.get_display_dimensions();
-                //
-                //         // Resize the DisplayScaler if present.
-                //         if let Some(scaler) = &mut dt.scaler {
-                //             log::debug!("resize_windows(): dt{}: resizing scaler to {}", *idx, resize_string);
-                //             scaler.resize(
-                //                 backend.get_backend_raw().unwrap(),
-                //                 buf_dimensions.w,
-                //                 buf_dimensions.h,
-                //                 aspect_dimensions.w,
-                //                 aspect_dimensions.h,
-                //                 rt.w,
-                //                 rt.h,
-                //             );
-                //         }
-                //     }
-                //     else {
-                //         // Resize the DisplayScaler if present.
-                //         if let Some(scaler) = &mut dt.scaler {
-                //             log::debug!("resize_windows(): dt{}: resizing scaler to {}", *idx, resize_string);
-                //             scaler.resize_surface(backend.get_backend_raw().unwrap(), rt.w, rt.h)
-                //         }
-                //     }
-                // }
+                    // let scale_factor = viewport.scale_factor();
+                    //let resize_string = format!("{}x{} (scale factor: {})", rt.w, rt.h, scale_factor);
+                    let resize_string = format!("{}x{} (scale factor: {})", rt.w, rt.h, 1.0);
+
+                    log::debug!(
+                        "resize_viewports(): dt{}: resizing backend surface to {}",
+                        *idx,
+                        resize_string
+                    );
+                    backend.resize_surface_texture(
+                        &mut dtc.surface.as_mut().unwrap(),
+                        TextureDimensions { w: rt.w, h: rt.h },
+                    )?;
+
+                    // We may receive this event in response to an on_card_resized event that triggered a window size
+                    // change. We should get the current aspect ratio from the renderer.
+                    if let Some(renderer) = &mut dtc.renderer {
+                        let buf_dimensions = renderer.get_buf_dimensions();
+                        let aspect_dimensions = renderer.get_display_dimensions();
+
+                        // Resize the DisplayScaler if present.
+                        dtc.destructure_surface(|surface, scaler, gui| {
+                            if let Some(scaler) = scaler {
+                                log::debug!("resize_viewports(): dt{}: resizing scaler to {}", *idx, resize_string);
+
+                                scaler.resize(
+                                    &*backend.device(),
+                                    &*backend.queue(),
+                                    &surface.read().unwrap().backing_texture(),
+                                    buf_dimensions.w,
+                                    buf_dimensions.h,
+                                    aspect_dimensions.w,
+                                    aspect_dimensions.h,
+                                    rt.w,
+                                    rt.h,
+                                );
+                            }
+                        });
+                    }
+                    else {
+                        // Resize the DisplayScaler if present.
+                        dtc.destructure_surface(|surface, scaler, gui| {
+                            if let Some(scaler) = scaler {
+                                log::debug!("resize_windows(): dt{}: resizing scaler to {}", *idx, resize_string);
+                                scaler.resize_surface(
+                                    &*backend.device(),
+                                    &*backend.queue(),
+                                    &surface.read().unwrap().backing_texture(),
+                                    rt.w,
+                                    rt.h,
+                                )
+                            }
+                        });
+                    }
+
+                    // Update the viewport state.
+                    dtc.viewport_state.w = rt.w;
+                    dtc.viewport_state.h = rt.h;
+                }
+                else {
+                    log::warn!("resize_viewports(): dt{}: no viewport id: {:?}", *idx, vid);
+                }
 
                 //eframe doesn't host GUIs
 
@@ -1387,44 +1448,64 @@ impl<'p> DisplayManager<EFrameBackend, GuiRenderContext, ViewportId, ViewportId,
         F: FnMut(&mut VideoRenderer, VideoCardId, &mut [u8]),
     {
         for dtc in &mut self.targets {
+            let dtc = &mut resolve_dtc_mut!(dtc);
+
+            let card_id = dtc.card_id.unwrap();
+            let surface = dtc.surface.as_ref().unwrap().clone();
+
             if let Some(renderer) = &mut dtc.renderer {
-                f(renderer, dtc.card_id.unwrap(), dtc.backend.as_mut().unwrap().buf_mut())
+                let mut surface_lock = surface.write().unwrap();
+                let buf_mut = surface_lock.buf_mut();
+                f(renderer, card_id, buf_mut)
             }
         }
     }
 
-    fn for_each_backend<F>(&mut self, mut f: F)
+    #[rustfmt::skip]
+    fn for_each_surface<F>(&mut self, mut f: F)
     where
-        F: FnMut(&mut EFrameBackend, Option<&mut Self::ImplScaler>, Option<&mut GuiRenderContext>),
+        F: FnMut(
+            &mut EFrameBackend,
+            &mut Self::ImplSurface,
+            Option<&mut Self::ImplScaler>,
+            Option<&mut GuiRenderContext>,
+        ),
     {
-        for dtc in &mut self.targets {
-            //log::debug!("for_each_backend(): dt_type: {:?}", dtc.dt_type);
-            match dtc.dt_type {
-                DisplayTargetType::WindowBackground { .. } => {
-                    // A WindowBackground target will have a Backend and Scaler.
-                    if let Some(backend) = &mut dtc.backend {
-                        if let Some(scaler) = &mut dtc.scaler {
-                            f(backend, Some(&mut *scaler), dtc.gui_ctx.as_mut())
-                        }
+        if let Some(backend) = &mut self.backend {
+            for dtc in &mut self.targets {
+                let dtc = &mut resolve_dtc_mut!(dtc);
+
+                let dt_type = dtc.dt_type; // Copy enum value
+                                           // let gui_ctx = dtc.gui_ctx.as_mut(); // Extract before mutable borrow
+                                           // let scaler = dtc.scaler.as_mut();
+
+                //log::debug!("for_each_backend(): dt_type: {:?}", dtc.dt_type);
+                match dt_type {
+                    DisplayTargetType::WindowBackground { .. } => {
+                        // A WindowBackground target will have a Surface and Scaler
+                        dtc.destructure_surface(|surface, scaler, gui| {
+                            f(backend, surface, scaler.as_mut(), gui.as_mut())
+                        });
                     }
-                }
-                DisplayTargetType::GuiWidget { .. } => {
-                    // A GuiWidget target will have a Backend but no Scaler.
-                    if let Some(backend) = &mut dtc.backend {
-                        f(backend, None, dtc.gui_ctx.as_mut())
+                    DisplayTargetType::GuiWidget { .. } => {
+                        // TODO: I think we can actually have scalers for GuiWidget targets...
+                        // A GuiWidget target will have a Surface but no Scaler.
+                        dtc.destructure_surface(|surface, scaler, gui| {
+                            f(backend, surface, scaler.as_mut(), gui.as_mut())
+                        });
                     }
+                    _ => {}
                 }
-                _ => {}
             }
         }
     }
 
     fn for_each_target<F>(&mut self, mut f: F)
     where
-        F: FnMut(&mut DisplayTargetContext<EFrameBackend>, usize),
+        F: FnMut(&mut DisplayTargetContext, usize),
     {
         for (i, dtc) in &mut self.targets.iter_mut().enumerate() {
-            f(dtc, i)
+            f(&mut resolve_dtc_mut!(dtc), i)
         }
     }
 
@@ -1434,29 +1515,33 @@ impl<'p> DisplayManager<EFrameBackend, GuiRenderContext, ViewportId, ViewportId,
     {
         // Currently, only the main window can have a hosted gui.
 
-        if self.targets.len() > 0 {
-            let dtc = &mut self.targets[0];
-
-            if let Some(gui_ctx) = &mut dtc.gui_ctx {
-                if let Some(viewport) = &mut dtc.viewport {
-                    f(gui_ctx, &viewport)
-                }
-            }
-        }
+        // if self.targets.len() > 0 {
+        //     let dtc = &mut resolve_dtc_mut!(self.targets[0]);
+        //
+        //     if let Some(gui_ctx) = &mut dtc.gui_ctx {
+        //         if let Some(viewport) = &mut dtc.viewport {
+        //             f(gui_ctx, &viewport)
+        //         }
+        //     }
+        // }
     }
 
     fn for_each_viewport<F>(&mut self, mut f: F)
     where
         F: FnMut(&ViewportId, bool) -> Option<bool>,
     {
-        for dtc in &mut self.targets {
-            if let Some(window) = &mut dtc.viewport {
-                let is_on_top = dtc.window_opts.as_ref().map_or(false, |opts| opts.always_on_top);
-                dtc.window_opts
-                    .as_mut()
-                    .map(|opts| opts.is_on_top = f(&window, is_on_top).unwrap_or(opts.is_on_top));
-            }
-        }
+        // for dtc in &mut self.targets {
+        //     let dtc = &mut resolve_dtc_mut!(dtc);
+        //
+        //     let (viewport, window_opts) = (dtc.viewport.as_mut(), dtc.window_opts.as_mut());
+        //
+        //     if let Some(window) = &mut dtc.viewport {
+        //         let is_on_top = dtc.window_opts.as_ref().map_or(false, |opts| opts.always_on_top);
+        //         dtc.window_opts
+        //             .as_mut()
+        //             .map(|opts| opts.is_on_top = f(&window, is_on_top).unwrap_or(opts.is_on_top));
+        //     }
+        // }
     }
 
     fn with_renderer<F>(&mut self, dt: DtHandle, mut f: F)
@@ -1464,7 +1549,7 @@ impl<'p> DisplayManager<EFrameBackend, GuiRenderContext, ViewportId, ViewportId,
         F: FnMut(&mut VideoRenderer),
     {
         if dt.idx() < self.targets.len() {
-            if let Some(renderer) = &mut self.targets[dt.idx()].renderer {
+            if let Some(renderer) = &mut resolve_dtc_mut!(self.targets[dt.idx()]).renderer {
                 f(renderer)
             }
         }
@@ -1472,10 +1557,10 @@ impl<'p> DisplayManager<EFrameBackend, GuiRenderContext, ViewportId, ViewportId,
 
     fn with_target_by_vid<F>(&mut self, vid: ViewportId, mut f: F)
     where
-        F: FnMut(&mut DisplayTargetContext<EFrameBackend>),
+        F: FnMut(&mut DisplayTargetContext),
     {
         if let Some(idx) = self.viewport_id_map.get(&vid) {
-            f(&mut self.targets[*idx])
+            f(&mut resolve_dtc_mut!(self.targets[*idx]))
         }
     }
 
@@ -1495,7 +1580,7 @@ impl<'p> DisplayManager<EFrameBackend, GuiRenderContext, ViewportId, ViewportId,
     fn apply_scaler_preset(&mut self, dt: DtHandle, name: String) -> Result<(), Error> {
         if is_valid_handle!(dt, self.targets) {
             let preset = self.get_scaler_preset(name).unwrap().clone();
-            self.targets[dt.idx()].apply_scaler_preset(&preset);
+            resolve_dtc_mut!(self.targets[dt.idx()]).apply_scaler_preset(self.backend.as_ref().unwrap(), &preset);
         }
         else {
             return Err(anyhow!("Display target out of range!"));
@@ -1504,14 +1589,14 @@ impl<'p> DisplayManager<EFrameBackend, GuiRenderContext, ViewportId, ViewportId,
     }
 
     fn apply_scaler_params(&mut self, dt: DtHandle, params: &ScalerParams) -> Result<(), Error> {
-        resolve_handle_mut!(dt, self.targets, |dt: &mut DisplayTargetContext<EFrameBackend>| {
-            dt.apply_scaler_params(params);
+        resolve_handle_mut!(dt, self.targets, |dt: &mut DisplayTargetContext| {
+            dt.apply_scaler_params(self.backend.as_ref().unwrap(), params);
         });
         Ok(())
     }
 
     fn get_scaler_params(&self, dt: DtHandle) -> Option<ScalerParams> {
-        resolve_handle_opt!(dt, self.targets, |dt: &DisplayTargetContext<EFrameBackend>| {
+        resolve_handle_opt!(dt, self.targets, |dt: &DisplayTargetContext| {
             dt.scaler_params.clone()
         })
     }
@@ -1521,17 +1606,17 @@ impl<'p> DisplayManager<EFrameBackend, GuiRenderContext, ViewportId, ViewportId,
         dt: DtHandle,
         aperture: DisplayApertureType,
     ) -> Result<Option<VideoCardId>, Error> {
-        resolve_handle_mut_result!(dt, self.targets, |dt: &mut DisplayTargetContext<EFrameBackend>| {
+        resolve_handle_mut_result!(dt, self.targets, |dt: &mut DisplayTargetContext| {
             if let Some(renderer) = &mut dt.renderer {
                 log::debug!("Setting aperture to: {:?}", &aperture);
                 renderer.set_aperture(aperture);
             }
             dt.card_id
-        });
+        })
     }
 
     fn set_aspect_correction(&mut self, dt: DtHandle, state: bool) -> Result<(), Error> {
-        resolve_handle_mut!(dt, self.targets, |dt: &mut DisplayTargetContext<EFrameBackend>| {
+        resolve_handle_mut!(dt, self.targets, |dt: &mut DisplayTargetContext| {
             if let Some(renderer) = &mut dt.renderer {
                 let aspect = match state {
                     true => Some(dt.aspect_ratio),
@@ -1549,11 +1634,12 @@ impl<'p> DisplayManager<EFrameBackend, GuiRenderContext, ViewportId, ViewportId,
             return Err(anyhow!("Display target out of range!"));
         }
 
-        let dt = &mut self.targets[dt.idx()];
+        let dtc = &mut resolve_dtc_mut!(self.targets[dt.idx()]);
 
-        if let Some(backend) = &mut dt.backend {
-            if let Some(scaler) = &mut dt.scaler {
-                scaler.set_mode(&backend.get_backend_raw().unwrap(), mode)
+        if let Some(backend) = self.backend.as_mut() {
+            if let Some(scaler) = &mut dtc.scaler {
+                log::debug!("Setting scaler mode to: {:?}", mode);
+                scaler.set_mode(&*backend.device(), &*backend.queue(), mode)
             }
         }
         Ok(())
@@ -1566,7 +1652,7 @@ impl<'p> DisplayManager<EFrameBackend, GuiRenderContext, ViewportId, ViewportId,
 
         let filename = file_util::find_unique_filename(&path, "screenshot", "png");
 
-        if let Some(renderer) = &mut self.targets[dt.idx()].renderer {
+        if let Some(renderer) = &mut resolve_dtc_mut!(self.targets[dt.idx()]).renderer {
             renderer.request_screenshot(&filename);
         }
         else {

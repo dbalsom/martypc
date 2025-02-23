@@ -44,8 +44,8 @@ pub use display_backend_wgpu::{
     DisplayBackend,
     DisplayBackendBuilder,
     Pixels,
-    PixelsBackend,
-    SurfaceDimensions,
+    TextureDimensions,
+    WgpuBackend,
 };
 use marty_frontend_common::types::window::WindowDefinition;
 use std::{collections::HashMap, path::PathBuf, sync::Arc, time::Duration};
@@ -165,7 +165,7 @@ pub struct WgpuDisplayManager {
     // Optionally, one for each potential graphics adapter. For the moment I only plan to support
     // two adapters - a primary and secondary adapter. This implies a limit of 3 windows.
     // The window containing egui will always be at index 0.
-    targets: Vec<DisplayTargetContext<PixelsBackend<'static>>>,
+    targets: Vec<DisplayTargetContext<WgpuBackend<'static>>>,
     window_id_map: HashMap<WindowId, usize>,
     window_id_resize_requests: HashMap<WindowId, ResizeTarget>,
     card_id_map: HashMap<VideoCardId, Vec<usize>>, // Card id maps to a Vec<usize> as a single card can have multiple targets.
@@ -409,7 +409,7 @@ impl WgpuDisplayManagerBuilder {
     }
 }
 
-impl DisplayTargetContext<PixelsBackend<'static>> {
+impl DisplayTargetContext<WgpuBackend<'static>> {
     /// Set the aspect mode of the target. If the aspect mode is changed, we may need to resize
     /// the backend and scaler.
     pub fn set_aspect_mode(&mut self, _mode: AspectCorrectionMode) {}
@@ -612,13 +612,13 @@ impl DisplayTargetContext<PixelsBackend<'static>> {
     }
 }
 
-impl<'p> DisplayManager<PixelsBackend<'p>, GuiRenderContext, WindowId, Window, ActiveEventLoop> for WgpuDisplayManager {
+impl<'p> DisplayManager<WgpuBackend<'p>, GuiRenderContext, WindowId, Window, ActiveEventLoop> for WgpuDisplayManager {
     type NativeTextureView = TextureView;
     type NativeEncoder = CommandEncoder;
     type NativeEventLoop = ActiveEventLoop;
     type ImplScaler =
         Box<dyn DisplayScaler<Pixels<'p>, NativeTextureView = TextureView, NativeEncoder = CommandEncoder>>;
-    type ImplDisplayTarget = DisplayTargetContext<PixelsBackend<'p>>;
+    type ImplDisplayTarget = DisplayTargetContext<WgpuBackend<'p>>;
 
     fn create_target(
         &mut self,
@@ -718,7 +718,7 @@ impl<'p> DisplayManager<PixelsBackend<'p>, GuiRenderContext, WindowId, Window, A
                 };
 
                 // Create the backend.
-                let mut pb = PixelsBackend::new(w, h, &window)?;
+                let mut pb = WgpuBackend::new(w, h, &window)?;
 
                 // Create the scaler.
                 let _scale_mode = match main_window {
@@ -917,7 +917,7 @@ impl<'p> DisplayManager<PixelsBackend<'p>, GuiRenderContext, WindowId, Window, A
         self.targets[0].window.as_ref()
     }
 
-    fn get_main_backend(&mut self) -> Option<&PixelsBackend<'static>> {
+    fn get_main_backend(&mut self) -> Option<&WgpuBackend<'static>> {
         // Main display should always be index 0.
         self.targets[0].backend.as_ref()
     }
@@ -935,7 +935,7 @@ impl<'p> DisplayManager<PixelsBackend<'p>, GuiRenderContext, WindowId, Window, A
             })
     }
 
-    fn main_backend_mut(&mut self) -> Option<&mut PixelsBackend<'p>> {
+    fn backend_mut(&mut self) -> Option<&mut WgpuBackend<'p>> {
         // Main display should always be index 0.
         self.targets[0].backend.as_mut()
     }
@@ -1108,12 +1108,12 @@ impl<'p> DisplayManager<PixelsBackend<'p>, GuiRenderContext, WindowId, Window, A
                         // resolution.
                         if software_aspect {
                             backend
-                                .resize_buf(BufferDimensions::from(aspect_dimensions.unwrap()))
+                                .resize_surface_cpu_buffer(BufferDimensions::from(aspect_dimensions.unwrap()))
                                 .expect("FATAL: Failed to resize backend");
                         }
                         else {
                             backend
-                                .resize_buf(BufferDimensions::from(buf_dimensions.unwrap()))
+                                .resize_surface_cpu_buffer(BufferDimensions::from(buf_dimensions.unwrap()))
                                 .expect("FATAL: Failed to resize backend");
                         }
 
@@ -1126,7 +1126,7 @@ impl<'p> DisplayManager<PixelsBackend<'p>, GuiRenderContext, WindowId, Window, A
                                 new_min_surface_size.height,
                             );
                             backend
-                                .resize_surface(SurfaceDimensions {
+                                .resize_surface(TextureDimensions {
                                     w: new_min_surface_size.width,
                                     h: new_min_surface_size.height,
                                 })
@@ -1215,7 +1215,7 @@ impl<'p> DisplayManager<PixelsBackend<'p>, GuiRenderContext, WindowId, Window, A
                         *idx,
                         resize_string
                     );
-                    backend.resize_surface(SurfaceDimensions { w: rt.w, h: rt.h })?;
+                    backend.resize_surface(TextureDimensions { w: rt.w, h: rt.h })?;
 
                     // We may receive this event in response to a on_card_resized event that triggered a window size
                     // change. We should get the current aspect ratio from the renderer.
@@ -1285,7 +1285,7 @@ impl<'p> DisplayManager<PixelsBackend<'p>, GuiRenderContext, WindowId, Window, A
 
     fn for_each_backend<F>(&mut self, mut f: F)
     where
-        F: FnMut(&mut PixelsBackend<'p>, &mut Self::ImplScaler, Option<&mut GuiRenderContext>),
+        F: FnMut(&mut WgpuBackend<'p>, &mut Self::ImplScaler, Option<&mut GuiRenderContext>),
     {
         for dtc in &mut self.targets {
             match dtc.ttype {
@@ -1304,7 +1304,7 @@ impl<'p> DisplayManager<PixelsBackend<'p>, GuiRenderContext, WindowId, Window, A
 
     fn for_each_target<F>(&mut self, mut f: F)
     where
-        F: FnMut(&mut DisplayTargetContext<PixelsBackend<'p>>, usize),
+        F: FnMut(&mut DisplayTargetContext<WgpuBackend<'p>>, usize),
     {
         for (i, dtc) in &mut self.targets.iter_mut().enumerate() {
             f(dtc, i)
@@ -1355,7 +1355,7 @@ impl<'p> DisplayManager<PixelsBackend<'p>, GuiRenderContext, WindowId, Window, A
 
     fn with_target_by_wid<F>(&mut self, wid: WindowId, mut f: F)
     where
-        F: FnMut(&mut DisplayTargetContext<PixelsBackend<'p>>),
+        F: FnMut(&mut DisplayTargetContext<WgpuBackend<'p>>),
     {
         if let Some(idx) = self.window_id_map.get(&wid) {
             f(&mut self.targets[*idx])

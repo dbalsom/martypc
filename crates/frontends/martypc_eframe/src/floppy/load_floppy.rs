@@ -82,7 +82,7 @@ pub fn handle_load_floppy(emu: &mut Emulator, drive_select: usize, context: File
                     #[cfg(not(target_arch = "wasm32"))]
                     {
                         // On native target, we can use blocking native file io.
-                        floppy_result = Some(emu.floppy_manager.load_floppy_by_path(floppy_path, &emu.rm));
+                        floppy_result = Some(emu.floppy_manager.load_floppy_by_path(floppy_path, &mut emu.rm));
                     }
                     #[cfg(target_arch = "wasm32")]
                     {
@@ -111,7 +111,6 @@ pub fn handle_load_floppy(emu: &mut Emulator, drive_select: usize, context: File
         }
 
         if let Some(floppy_result) = floppy_result {
-            log::debug!("Procesing floppy_result: {:?}", floppy_result);
             match floppy_result {
                 Ok(FloppyImageSource::ZipArchive(zip_vec, path)) => {
                     let mut image_type = None;
@@ -119,7 +118,7 @@ pub fn handle_load_floppy(emu: &mut Emulator, drive_select: usize, context: File
                     match emu.floppy_manager.build_autofloppy_image_from_zip(
                         zip_vec,
                         Some(FloppyImageType::Image360K),
-                        &emu.rm,
+                        &mut emu.rm,
                     ) {
                         Ok(vec) => {
                             if let Some(fdc) = emu.machine.fdc() {

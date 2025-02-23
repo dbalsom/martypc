@@ -175,8 +175,8 @@ impl ScalerAdjustControl {
             });
     }
 
-    pub fn select_card(&mut self, dt_idx: usize) {
-        self.dt_idx = dt_idx;
+    pub fn select_card(&mut self, dth: DtHandle) {
+        self.dt_idx = dth.idx();
     }
 
     pub fn set_dt_list(&mut self, dt_list: Vec<String>) {
@@ -187,15 +187,16 @@ impl ScalerAdjustControl {
         }
     }
 
-    #[allow(dead_code)]
-    pub fn set_params(&mut self, dt_idx: usize, params: ScalerParams) {
+    pub fn set_params(&mut self, dth: DtHandle, params: ScalerParams) {
+        let dt_idx = dth.idx();
         if dt_idx < self.params.len() {
             self.params[dt_idx] = params;
         }
     }
 
     #[allow(dead_code)]
-    pub fn get_params(&self, dt_idx: usize) -> Option<&ScalerParams> {
+    pub fn get_params(&self, dth: DtHandle) -> Option<&ScalerParams> {
+        let dt_idx = dth.idx();
         if dt_idx < self.params.len() {
             Some(&self.params[dt_idx])
         }

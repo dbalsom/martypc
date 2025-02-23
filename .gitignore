@@ -28,6 +28,7 @@ marty*.toml
 *.cfg
 *.log
 *.exe
+*.dat
 /frontends/martypc_web_player_wgpu/wasm/
 icon.png
 *.crt

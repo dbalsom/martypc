@@ -28,6 +28,10 @@
 
     Implements DisplayBackend for the Pixels backend
 */
+
+#[cfg(feature = "use_wgpu")]
+compile_error!("Wrong backend was selected for use_wgpu feature!");
+
 mod display_window;
 
 use crate::display_window::DisplayWindow;
@@ -35,17 +39,20 @@ pub use display_backend_trait::{
     BufferDimensions,
     DisplayBackend,
     DisplayBackendBuilder,
-    SurfaceDimensions,
+    TextureDimensions,
     //DisplayBackendError
 };
 
 use marty_scaler_null::DisplayScaler;
 
 use anyhow::{anyhow, Error};
+use display_backend_trait::DisplayTargetSurface;
 use egui;
-
+use egui_wgpu::wgpu;
 #[cfg(feature = "use_wgpu")]
 use egui_wgpu::wgpu;
+
+pub type DynDisplayTargetSurface = Box<dyn DisplayTargetSurface<NativeTexture = egui::TextureHandle>>;
 
 #[derive(Debug)]
 pub enum EFrameBackendType {
@@ -53,14 +60,17 @@ pub enum EFrameBackendType {
     EguiWindow,
 }
 
+pub struct EFrameBackendSurface {
+    pub buffer:  egui::TextureHandle,
+    pub surface: egui::TextureHandle,
+}
+
 pub struct EFrameBackend {
     be_type: EFrameBackendType,
     ctx: egui::Context,
     cpu_buffer: Vec<u8>, // Virtual pixel buffer
     buffer_dim: BufferDimensions,
-    surface_dim: SurfaceDimensions,
-    #[cfg(feature = "use_wgpu")]
-    adapter_info: Option<wgpu::AdapterInfo>, // Adapter information
+    surface_dim: TextureDimensions,
     buffer_handle: Option<egui::TextureHandle>,  // Egui texture handle
     surface_handle: Option<egui::TextureHandle>, // Egui texture handle
     win: DisplayWindow,
@@ -71,10 +81,9 @@ impl EFrameBackend {
         be_type: EFrameBackendType,
         ctx: egui::Context,
         buffer_dim: BufferDimensions,
-        surface_dim: SurfaceDimensions,
+        surface_dim: TextureDimensions,
         //wgpu_render_state: &eframe::RenderState,
-        #[cfg(feature = "use_wgpu")] adapter_info: Option<wgpu::AdapterInfo>,
-        #[cfg(not(feature = "use_wgpu"))] _adapter_info: Option<()>,
+        _adapter_info: Option<()>,
     ) -> Result<EFrameBackend, Error> {
         //let adapter_info = wgpu_render_state.adapter_info.clone();
 
@@ -95,8 +104,6 @@ impl EFrameBackend {
             cpu_buffer,
             buffer_dim,
             surface_dim,
-            #[cfg(feature = "use_wgpu")]
-            adapter_info,
             buffer_handle: Some(buffer_handle),
             surface_handle: None,
             win: Default::default(),
@@ -105,7 +112,7 @@ impl EFrameBackend {
 }
 
 impl DisplayBackendBuilder for EFrameBackend {
-    fn build(_buffer_size: BufferDimensions, _surface_size: SurfaceDimensions) -> Self
+    fn build(_buffer_size: BufferDimensions, _surface_size: TextureDimensions) -> Self
     where
         Self: Sized,
     {
@@ -113,35 +120,40 @@ impl DisplayBackendBuilder for EFrameBackend {
     }
 }
 
+pub type EFrameScalerType = Box<dyn DisplayScaler<(), (), NativeTextureView = (), NativeEncoder = ()>>;
+
 impl DisplayBackend<'_, '_, ()> for EFrameBackend {
+    type NativeDevice = ();
+    type NativeQueue = ();
+    type NativeTexture = ();
     type NativeBackend = ();
-    #[cfg(feature = "use_wgpu")]
-    type NativeBackendAdapterInfo = wgpu::AdapterInfo;
-    #[cfg(not(feature = "use_wgpu"))]
     type NativeBackendAdapterInfo = ();
 
-    #[cfg(feature = "use_wgpu")]
-    type NativeScaler =
-        Box<dyn DisplayScaler<(), NativeTextureView = wgpu::TextureView, NativeEncoder = wgpu::CommandEncoder>>;
-    #[cfg(not(feature = "use_wgpu"))]
-    type NativeScaler = Box<dyn DisplayScaler<(), NativeTextureView = (), NativeEncoder = ()>>;
+    type NativeScaler = EFrameScalerType;
 
-    #[cfg(feature = "use_wgpu")]
-    fn get_adapter_info(&self) -> Option<Self::NativeBackendAdapterInfo> {
-        Some(self.adapter_info.clone()?)
+    fn device(&self) -> &() {
+        &()
     }
-    #[cfg(not(feature = "use_wgpu"))]
-    fn get_adapter_info(&self) -> Option<Self::NativeBackendAdapterInfo> {
+
+    fn queue(&self) -> &Self::NativeQueue {
+        &()
+    }
+
+    fn texture(&self) -> Option<wgpu::Texture> {
         None
     }
 
-    fn resize_buf(&mut self, new: BufferDimensions) -> Result<(), Error> {
+    fn adapter_info(&self) -> Option<Self::NativeBackendAdapterInfo> {
+        None
+    }
+
+    fn resize_surface_cpu_buffer(&mut self, new: BufferDimensions) -> Result<(), Error> {
         self.cpu_buffer.resize((new.w * new.h * 4) as usize, 0);
         self.buffer_dim = (new.w, new.h, new.w).into();
         Ok(())
     }
 
-    fn resize_surface(&mut self, new: SurfaceDimensions) -> Result<(), Error> {
+    fn resize_surface(&mut self, new: TextureDimensions) -> Result<(), Error> {
         //self.pixels.resize_surface(new.w, new.h)?;
         self.surface_dim = (new.w, new.h).into();
         Ok(())
@@ -150,7 +162,7 @@ impl DisplayBackend<'_, '_, ()> for EFrameBackend {
     fn buf_dimensions(&self) -> BufferDimensions {
         self.buffer_dim
     }
-    fn surface_dimensions(&self) -> SurfaceDimensions {
+    fn surface_dimensions(&self) -> TextureDimensions {
         self.surface_dim
     }
 
@@ -165,11 +177,7 @@ impl DisplayBackend<'_, '_, ()> for EFrameBackend {
         None
     }
 
-    fn render(
-        &mut self,
-        _scaler: Option<&mut Box<(dyn DisplayScaler<(), NativeEncoder = (), NativeTextureView = ()> + 'static)>>,
-        _gui: Option<&mut ()>,
-    ) -> Result<(), Error> {
+    fn render(&mut self, _scaler: Option<&mut Self::NativeScaler>, _gui: Option<&mut ()>) -> Result<(), Error> {
         //log::trace!("Rendering eframe backend: {:?}", self.be_type);
 
         // Update texture handle

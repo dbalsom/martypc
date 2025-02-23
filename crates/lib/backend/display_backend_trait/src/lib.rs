@@ -43,7 +43,7 @@
     A DisplayBackend should be able to be instantiated multiple times, to
     support multiple windows/displays.
 */
-
+use std::sync::{Arc, RwLock};
 use thiserror::Error;
 
 #[derive(Error, Debug)]
@@ -78,9 +78,15 @@ pub struct BufferDimensions {
 }
 
 #[derive(Copy, Clone, Debug)]
-pub struct SurfaceDimensions {
+pub struct TextureDimensions {
     pub w: u32,
     pub h: u32,
+}
+
+impl From<BufferDimensions> for TextureDimensions {
+    fn from(d: BufferDimensions) -> Self {
+        TextureDimensions { w: d.w, h: d.h }
+    }
 }
 
 impl From<(u32, u32, u32)> for BufferDimensions {
@@ -93,39 +99,174 @@ impl From<(u32, u32, u32)> for BufferDimensions {
     }
 }
 
-impl From<(u32, u32)> for SurfaceDimensions {
+impl From<(u32, u32)> for TextureDimensions {
     fn from(t: (u32, u32)) -> Self {
-        SurfaceDimensions { w: t.0, h: t.1 }
+        TextureDimensions { w: t.0, h: t.1 }
     }
 }
 
 use anyhow::Error;
 
+/// The [DisplayTargetSurface] trait defines an interface representing a display target surface
+/// for emulator rendering. Typically, this comprises three parts:
+/// - an RGBA, 32-bit pixel buffer containing the rendered frame data
+/// - a dirty flag representing whether the pixel buffer has been modified and should be re-uploaded
+/// - a texture object representing the uploaded pixel buffer
+/// - a texture object representing a scaled display surface - usually produced by a scaling shader
+/// It is this latter texture that is ultimately presented to the display.
+pub trait DisplayTargetSurface: Send + Sync {
+    type NativeDevice;
+    type NativeQueue;
+    type NativeTexture;
+    type NativeTextureFormat;
+    /// Retrieve the pixel buffer dimensions.
+    fn buf_dimensions(&self) -> BufferDimensions;
+    /// Retrieve the backing texture dimensions.
+    fn backing_dimensions(&self) -> TextureDimensions;
+    /// Resize the backing texture and RGBA pixel buffer.
+    fn resize_backing(&mut self, device: Arc<Self::NativeDevice>, new_dim: BufferDimensions) -> Result<(), Error>;
+    /// Update the backing texture from the RGBA pixel buffer.
+    fn update_backing(&mut self, device: Arc<Self::NativeDevice>, queue: Arc<Self::NativeQueue>) -> Result<(), Error>;
+    /// Retrieve the display surface dimensions.
+    fn surface_dimensions(&self) -> TextureDimensions;
+    /// Resize the display surface texture.
+    fn resize_surface(
+        &mut self,
+        device: Arc<Self::NativeDevice>,
+        queue: Arc<Self::NativeQueue>,
+        new_dim: TextureDimensions,
+    ) -> Result<(), Error>;
+    /// Retrieve an immutable reference to the RGBA pixel buffer data.
+    fn buf(&self) -> &[u8];
+    /// Retrieve a mutable reference to the RGBA pixel buffer data.
+    fn buf_mut(&mut self) -> &mut [u8];
+    /// Retrieve the pixel buffer backing texture.
+    fn backing_texture(&self) -> Arc<Self::NativeTexture>;
+    /// Retrieve the pixel buffer backing texture format.
+    fn backing_texture_format(&self) -> Self::NativeTextureFormat;
+    /// Retrieve the display surface texture.
+    fn surface_texture(&self) -> Arc<Self::NativeTexture>;
+    /// Retrieve the dirty flag.
+    fn dirty(&self) -> bool;
+    /// Set the dirty flag.
+    fn set_dirty(&mut self, dirty: bool);
+}
+
+/// The [DisplayBackend] trait is an attempt to create a generic interface for various graphical
+/// backends. It was originally designed to support `wgpu`, and its design may not be suitable for
+/// all backends yet.  I would like to be able to have an `SDL3` backend as well; we'll see if this
+/// trait can be expanded to support that.
 pub trait DisplayBackend<'p, 'win, G> {
+    /// The native type for a device instance. Ideally, this should be Clone.
+    /// For wgpu, this is [wgpu::Device].
+    type NativeDevice;
+    /// The native type for the device queue. Ideally, this should be Clone.
+    /// For wgpu, this is [wgpu::Queue].
+    type NativeQueue;
+    /// The native type for a Texture.
+    /// For wgpu, this is [wgpu::Texture].
+    type NativeTexture;
+    /// The native type for a TextureFormat.
+    type NativeTextureFormat;
+    /// Originally I wrote a DisplayBackend that was a simple wrapper around the Pixels crate, and
+    /// this returned a reference to the Pixels instance. I'm not sure if this is necessary.
     type NativeBackend;
+    /// A type alias for a structure containing adapter information. It may not always be available.
+    /// Therefore, the trait interface returns this as an Option. For greatest flexibility I should
+    /// probably implement an AdapterInfo trait and return a trait object.
     type NativeBackendAdapterInfo;
+    /// The native type for a scaler. For wgpu backends, this defines a shader that is used to
+    /// scale and apply effects to the pixel buffer before rendering to a display target surface.
     type NativeScaler;
 
-    fn get_adapter_info(&self) -> Option<Self::NativeBackendAdapterInfo>;
-    fn resize_buf(&mut self, new: BufferDimensions) -> Result<(), Error>;
-    fn resize_surface(&mut self, new: SurfaceDimensions) -> Result<(), Error>;
-    fn buf_dimensions(&self) -> BufferDimensions;
-    fn surface_dimensions(&self) -> SurfaceDimensions;
-    fn buf(&self) -> &[u8];
-    fn buf_mut(&mut self) -> &mut [u8];
-    fn get_backend_raw(&mut self) -> Option<&mut Self::NativeBackend>;
-    fn render(&mut self, scaler: Option<&mut Self::NativeScaler>, gui_renderer: Option<&mut G>) -> Result<(), Error>;
+    /// Return a structure containing information about the backend adapter, or None if no
+    /// adapter information is available (web targets, for example).
+    fn adapter_info(&self) -> Option<Self::NativeBackendAdapterInfo>;
+    /// Return the native device object for the backend.
+    fn device(&self) -> Arc<Self::NativeDevice>;
+    /// Return the native queue object for the backend.
+    fn queue(&self) -> Arc<Self::NativeQueue>;
+    /// Create a new display target surface.
+    fn create_surface(
+        &self,
+        buffer_size: BufferDimensions,
+        surface_size: TextureDimensions,
+    ) -> Result<
+        Arc<
+            RwLock<
+                dyn DisplayTargetSurface<
+                    NativeTexture = Self::NativeTexture,
+                    NativeDevice = Self::NativeDevice,
+                    NativeQueue = Self::NativeQueue,
+                    NativeTextureFormat = Self::NativeTextureFormat,
+                >,
+            >,
+        >,
+        Error,
+    >;
+    /// Resize the cpu pixel buffer and backing texture to the specified dimensions, or return an error.
+    fn resize_backing_texture(
+        &mut self,
+        surface: &mut Arc<
+            RwLock<
+                dyn DisplayTargetSurface<
+                    NativeTexture = Self::NativeTexture,
+                    NativeDevice = Self::NativeDevice,
+                    NativeQueue = Self::NativeQueue,
+                    NativeTextureFormat = Self::NativeTextureFormat,
+                >,
+            >,
+        >,
+        new_dim: BufferDimensions,
+    ) -> Result<(), Error>;
+    /// Resize the display surface to the specified dimensions, or return an error.
+    fn resize_surface_texture(
+        &mut self,
+        surface: &mut Arc<
+            RwLock<
+                dyn DisplayTargetSurface<
+                    NativeTexture = Self::NativeTexture,
+                    NativeDevice = Self::NativeDevice,
+                    NativeQueue = Self::NativeQueue,
+                    NativeTextureFormat = Self::NativeTextureFormat,
+                >,
+            >,
+        >,
+        new_dim: TextureDimensions,
+    ) -> Result<(), Error>;
 
-    /// Present the rendered frame to the display.
-    /// This method should be called every host frame to display the rendered frame.
-    /// It may not need to be specifically implemented by all backends, so a default implementation is provided.
-    fn present(&mut self) -> Result<(), Error> {
-        Ok(())
-    }
+    fn get_backend_raw(&mut self) -> Option<&mut Self::NativeBackend>;
+
+    /// Render the pixel buffer. If a scaler is provided, it will be used to scale the pixel buffer
+    /// to the display surface. If a GUI renderer is provided, it can be used to either
+    /// overlay a GUI on top of the display surface, or render the display surface with the GUI,
+    /// depending on the backend implementation.
+    fn render(
+        &mut self,
+        surface: &mut Arc<
+            RwLock<
+                dyn DisplayTargetSurface<
+                    NativeTexture = Self::NativeTexture,
+                    NativeDevice = Self::NativeDevice,
+                    NativeQueue = Self::NativeQueue,
+                    NativeTextureFormat = Self::NativeTextureFormat,
+                >,
+            >,
+        >,
+        scaler: Option<&mut Self::NativeScaler>,
+        gui_renderer: Option<&mut G>,
+    ) -> Result<(), Error>;
+
+    // Present the rendered frame to the display.
+    // This method should be called every host frame to display the rendered frame.
+    // It may not need to be specifically implemented by all backends, so a default implementation is provided.
+    // fn present(&mut self) -> Result<(), Error> {
+    //     Ok(())
+    // }
 }
 
 pub trait DisplayBackendBuilder {
-    fn build(buffer_size: BufferDimensions, surface_size: SurfaceDimensions) -> Self
+    fn build(buffer_size: BufferDimensions, surface_size: TextureDimensions) -> Self
     where
         Self: Sized;
 }

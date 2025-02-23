@@ -216,6 +216,8 @@ fn fs_main(@location(0) tex_coord: vec2<f32>) -> @location(0) vec4<f32> {
             color = do_monochrome(color, gamma);
         }
 
-        return color;
+        // We can emit a solid color for debugging...
+        // return vec4<f32>(0.0, 0.0, 1.0, 1.0);
+        return color.bgra;
     }
 }

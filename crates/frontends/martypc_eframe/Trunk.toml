@@ -3,6 +3,7 @@ release = true
 filehash = false
 no_sri = true
 create_nonce = false
+rustflags = ["-Awarnings"]
 
 [serve]
 addresses = ["127.0.0.1"]

@@ -1705,6 +1705,18 @@ dependencies = [
 ]
 
 [[package]]
+name = "display_backend_eframe_wgpu"
+version = "0.3.0"
+dependencies = [
+ "anyhow",
+ "display_backend_trait",
+ "egui 0.30.0",
+ "egui-wgpu 0.30.0",
+ "log",
+ "marty_scaler_null",
+]
+
+[[package]]
 name = "display_backend_trait"
 version = "0.3.0"
 dependencies = [
@@ -1733,6 +1745,7 @@ version = "0.3.0"
 dependencies = [
  "anyhow",
  "display_backend_eframe",
+ "display_backend_eframe_wgpu",
  "egui 0.30.0",
  "egui-wgpu 0.30.0",
  "image 0.25.5",
@@ -3587,6 +3600,7 @@ version = "0.3.0"
 dependencies = [
  "anyhow",
  "bpaf",
+ "cfg-if",
  "log",
  "marty_common",
  "marty_core",
@@ -3594,6 +3608,10 @@ dependencies = [
  "serde",
  "serde_derive",
  "toml 0.8.19",
+ "url",
+ "wasm-bindgen",
+ "wasm-bindgen-futures",
+ "web-sys",
 ]
 
 [[package]]
@@ -3704,6 +3722,7 @@ name = "marty_frontend_common"
 version = "0.3.0"
 dependencies = [
  "anyhow",
+ "cfg-if",
  "display_backend_trait",
  "fatfs 0.4.0 (git+https://github.com/dbalsom/fatfs_martypc.git?branch=master)",
  "log",
@@ -3776,7 +3795,6 @@ dependencies = [
  "marty_frontend_common",
  "ultraviolet",
  "wgpu 23.0.1",
- "wgpu_wrapper",
 ]
 
 [[package]]

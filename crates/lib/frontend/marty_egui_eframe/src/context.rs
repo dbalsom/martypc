@@ -28,9 +28,9 @@
 
     EGUI Render context
 */
-
 use egui::Context;
 use egui_extras::install_image_loaders;
+use std::sync::Arc;
 
 use marty_egui::{
     state::GuiState,
@@ -45,9 +45,9 @@ pub struct GuiRenderContext {
     /// Cloned egui context, in case we need to access it.
     ctx: Context,
     /// The theme to use for the main UI.
-    main_theme: Box<dyn GuiTheme>,
+    main_theme: Arc<dyn GuiTheme>,
     /// The theme to use for the menu UI.
-    menu_theme: Box<dyn GuiTheme>,
+    menu_theme: Arc<dyn GuiTheme>,
     /// The global scale factor for the UI.
     scale_factor: f64,
 }
@@ -145,10 +145,20 @@ impl GuiRenderContext {
         &mut self.ctx
     }
 
-    pub fn show(&mut self, state: &mut GuiState) {
+    pub fn show<F>(&mut self, state: &mut GuiState, mut custom_render: F)
+    where
+        F: FnMut(&mut egui::Ui),
+    {
         self.ctx.set_visuals(self.menu_theme.visuals());
-        state.menu_ui(&self.ctx);
+        egui::TopBottomPanel::top("martypc_top_panel").show(&self.ctx, |ui| {
+            state.show_menu(ui);
+        });
+
         self.ctx.set_visuals(self.main_theme.visuals());
-        state.ui(&self.ctx);
+        state.show_windows(&self.ctx);
+
+        egui::CentralPanel::default().show(&self.ctx, |ui| {
+            custom_render(ui);
+        });
     }
 }

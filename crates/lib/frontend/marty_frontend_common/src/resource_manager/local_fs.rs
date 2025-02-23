@@ -30,16 +30,20 @@
 
 */
 use crate::resource_manager::{
-    tree::{build_tree, TreeNode},
+    archive_overlay::ArchiveOverlay,
+    tree::{build_tree, merge_items, new_tree, TreeNode},
+    ResourceFsType,
     ResourceItem,
     ResourceItemType,
     ResourceManager,
 };
 use anyhow::Error;
+use marty_common::MartyHashMap;
 use std::{
     collections::HashSet,
     ffi::{OsStr, OsString},
     fs,
+    io::Cursor,
     path::{Path, PathBuf},
 };
 
@@ -70,7 +74,7 @@ impl ResourceManager {
     /// The function may return an error if the resource path is not found or if there's an issue in canonicalization
     /// the path.
     pub fn enumerate_items(
-        &self,
+        &mut self,
         resource: &str,
         subdir: Option<&OsStr>,
         multipath: bool,
@@ -111,7 +115,7 @@ impl ResourceManager {
                         Ok(entry) => {
                             if entry.path().is_dir() {
                                 items.push(ResourceItem {
-                                    rtype: ResourceItemType::Directory,
+                                    rtype: ResourceItemType::Directory(ResourceFsType::Native),
                                     location: entry.path().clone(),
                                     relative_path: None,
                                     filename_only: Some(entry.path().file_name().unwrap_or_default().to_os_string()),
@@ -121,7 +125,7 @@ impl ResourceManager {
                             }
                             else {
                                 items.push(ResourceItem {
-                                    rtype: ResourceItemType::LocalFile,
+                                    rtype: ResourceItemType::File(ResourceFsType::Native),
                                     location: entry.path().clone(),
                                     relative_path: None,
                                     filename_only: Some(entry.path().file_name().unwrap_or_default().to_os_string()),
@@ -139,16 +143,16 @@ impl ResourceManager {
             items
         };
 
+        let item_unfiltered_ct = items.len();
+
         // If extension filter was provided, filter items by extension
         if let Some(extension_filter) = extension_filter {
             items = items
                 .iter()
                 .filter_map(|item| {
-                    if item.location.is_file() {
-                        if let Some(extension) = item.location.extension() {
-                            if extension_filter.contains(&extension.to_ascii_lowercase()) {
-                                return Some(item);
-                            }
+                    if let Some(extension) = item.location.extension() {
+                        if extension_filter.contains(&extension.to_ascii_lowercase()) {
+                            return Some(item);
                         }
                     }
                     return None;
@@ -170,7 +174,8 @@ impl ResourceManager {
         }
         else {
             log::debug!(
-                "enumerate_items(): Found {} items for resource: {}",
+                "enumerate_items(): Found {} items, {} passing filters for resource: {}",
+                item_unfiltered_ct,
                 items.len(),
                 resource
             );
@@ -186,7 +191,7 @@ impl ResourceManager {
     /// available paths; otherwise, it only explores the first path. The search avoids directories listed in
     /// `self.ignore_dirs`.
     fn enumerate_items_recursive(
-        &self,
+        &mut self,
         multipath: bool,
         resource: &str,
         subdir: Option<&OsStr>,
@@ -211,21 +216,66 @@ impl ResourceManager {
 
         let mut items: Vec<ResourceItem> = Vec::new();
         let mut visited = HashSet::new();
+        let mut item_map = MartyHashMap::default();
 
         for root in roots.iter() {
             let ignore_dirs = self.ignore_dirs.iter().map(|s| s.as_str()).collect();
             ResourceManager::visit_dirs(&root, &mut visited, &ignore_dirs, &mut |entry: &fs::DirEntry| {
-                items.push(ResourceItem {
-                    rtype: ResourceItemType::LocalFile,
+                let path = entry.path();
+                let resource_item = ResourceItem {
+                    rtype: ResourceItemType::File(ResourceFsType::Native),
                     location: entry.path(),
                     relative_path: None,
                     filename_only: Some(entry.path().file_name().unwrap_or_default().to_os_string()),
                     flags: 0,
                     size: Some(entry.path().metadata().unwrap().len()),
-                });
+                };
+
+                item_map.insert(path.clone(), resource_item);
             })?
         }
 
+        for overlay in &mut self.overlays {
+            let overlay_items = overlay.list_resources();
+
+            for overlay_item in overlay_items {
+                let overlay_path = &overlay_item.location;
+
+                //log::debug!("Have roots: {:?}, item: {:?}", roots, overlay_path);
+
+                roots.iter().any(|root| {
+                    if overlay_path.starts_with(root) {
+                        log::debug!("Item {:?} matched resource root {:?}", overlay_item, root.display());
+
+                        if item_map.contains_key(overlay_path) {
+                            log::debug!(
+                                "Item {:?} already exists, local fs takes precedence. skipping.",
+                                overlay_item.location.display()
+                            );
+                        }
+                        else {
+                            log::debug!("Adding new overlay item {:?}", overlay_item.location.display());
+                            item_map.insert(overlay_path.clone(), overlay_item.clone());
+                        };
+                        true
+                    }
+                    else {
+                        false
+                    }
+                });
+            }
+        }
+
+        // Convert HashMap back to Vec while preserving insertion order
+
+        items.extend(item_map.into_values());
+
+        log::debug!(
+            "enumerate_items_recursive(): Found {} items for resource: {}",
+            items.len(),
+            resource
+        );
+        //log::debug!("items: {:#?}", items);
         Ok(items)
     }
 
@@ -236,7 +286,7 @@ impl ResourceManager {
         let ignore_dirs = self.ignore_dirs.iter().map(|s| s.as_str()).collect();
         ResourceManager::visit_dirs(&path, &mut visited, &ignore_dirs, &mut |entry: &fs::DirEntry| {
             items.push(ResourceItem {
-                rtype: ResourceItemType::LocalFile,
+                rtype: ResourceItemType::File(ResourceFsType::Native),
                 location: entry.path(),
                 relative_path: None,
                 filename_only: Some(entry.path().file_name().unwrap_or_default().to_os_string()),
@@ -273,7 +323,7 @@ impl ResourceManager {
 
                     if path.is_dir() {
                         dir_items.push(ResourceItem {
-                            rtype: ResourceItemType::Directory,
+                            rtype: ResourceItemType::Directory(ResourceFsType::Native),
                             location: path.clone(),
                             relative_path: None,
                             filename_only: Some(path.file_name().unwrap_or_default().to_os_string()),
@@ -368,19 +418,62 @@ impl ResourceManager {
         false
     }
 
+    /// Mount an ArchiveOverlay from a specified path, or return an error.
+    pub async fn mount_overlay(&mut self, path: impl AsRef<Path>) -> Result<(), Error> {
+        let file = fs::read(path)?;
+
+        let mut new_archive = ArchiveOverlay::new(Cursor::new(file))
+            .map_err(|e| anyhow::anyhow!("Failed to create archive overlay: {}", e))?;
+
+        let new_idx = self.overlays.len();
+        new_archive.set_index(new_idx);
+
+        // Create a new tree for the overlay.
+        let mut new_tree = new_tree("".to_string());
+        // Enumerate the items in the overlay and merge them into the tree.
+        let items = new_archive.list_resources();
+        merge_items(&mut new_tree, &items, 0)?;
+
+        self.overlays.push(new_archive);
+
+        Ok(())
+    }
+
     /// Reads the contents of a resource from a specified file system path into a byte vector, or returns an error.
-    pub fn read_resource_from_path_blocking(&self, path: impl AsRef<Path>) -> Result<Vec<u8>, Error> {
-        let buffer = std::fs::read(path)?;
+    pub fn read_resource_from_path_blocking(&mut self, path: impl AsRef<Path>) -> Result<Vec<u8>, Error> {
+        // First, try to read the local filesystem.
+        let path = path.as_ref();
+        let buffer = match std::fs::read(path) {
+            Ok(buffer) => buffer,
+            Err(e) => {
+                // If the file doesn't exist, try reading from the overlay.
+                for overlay in &mut self.overlays {
+                    log::debug!("Attempting to read file {:?} from fs overlay...", path.display());
+                    match overlay.read(path) {
+                        Ok(buf) => return Ok(buf),
+                        Err(e) => {
+                            log::error!("Failed to read file {:?} from fs overlay: {}", path.display(), e);
+                            continue;
+                        }
+                    }
+                }
+
+                return Err(anyhow::anyhow!(
+                    "Failed to read resource from path {:?}: {e}",
+                    path.display()
+                ));
+            }
+        };
         Ok(buffer)
     }
 
     /// Reads the contents of a resource from a specified file system path into a byte vector, or returns an error.
-    pub async fn read_resource_from_path(&self, path: impl AsRef<Path>) -> Result<Vec<u8>, Error> {
-        let buffer = std::fs::read(path)?;
+    pub async fn read_resource_from_path(&mut self, path: impl AsRef<Path>) -> Result<Vec<u8>, Error> {
+        let buffer = self.read_resource_from_path_blocking(path)?;
         Ok(buffer)
     }
 
-    pub async fn read_string_from_path(&self, path: impl AsRef<Path>) -> Result<String, Error> {
+    pub async fn read_string_from_path(&mut self, path: impl AsRef<Path>) -> Result<String, Error> {
         let file = self.read_resource_from_path(path).await?;
         let file_str =
             String::from_utf8(file).map_err(|e| anyhow::anyhow!("Failed to convert file to string: {}", e))?;

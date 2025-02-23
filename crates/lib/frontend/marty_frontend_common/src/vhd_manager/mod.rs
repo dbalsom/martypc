@@ -120,7 +120,7 @@ impl VhdManager {
         }
     }
 
-    pub fn scan_resource(&mut self, rm: &ResourceManager) -> Result<bool, Error> {
+    pub fn scan_resource(&mut self, rm: &mut ResourceManager) -> Result<bool, Error> {
         // TODO: the *_loaded maps will be invalidated on scan, we should handle this properly.
 
         // Clear and rebuild image lists.

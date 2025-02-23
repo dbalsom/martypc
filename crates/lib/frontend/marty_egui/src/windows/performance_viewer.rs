@@ -105,7 +105,14 @@ impl PerformanceViewerControl {
                                 ui.label("Backend: ");
                                 ui.label(egui::RichText::new(dt.backend_name.clone()));
                                 ui.end_row();
-
+                                if let Some(geom) = dt.scaler_geometry {
+                                    ui.label("Scaler source resolution: ");
+                                    ui.label(format!("{}, {}", geom.texture_w, geom.texture_h));
+                                    ui.end_row();
+                                    ui.label("Scaler target resolution: ");
+                                    ui.label(format!("{}, {}", geom.surface_w, geom.surface_h));
+                                    ui.end_row();
+                                }
                                 ui.label("SW Render Time: ");
                                 ui.label(egui::RichText::new(format_duration(dt.render_time)));
                                 ui.end_row();
