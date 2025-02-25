@@ -1,9 +1,6 @@
 name: Windows
 
 on:
-  push:
-    branches:
-      - version_0_4_0
   pull_request:
     branches:
       - version_0_4_0
@@ -29,12 +26,11 @@ jobs:
       - name: Prepare MSYS2 environment
         uses: msys2/setup-msys2@v2
         with:
-          release: false
           update: true
           msystem: ${{ matrix.environment.msystem }}
-          pacboy: >-
+          install: >-
+            curl
             git
-            msys2-devel
 
       - name: Install rustup and nightly Rust
         run: |
