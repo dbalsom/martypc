@@ -13,22 +13,13 @@ jobs:
     name: martypc
     runs-on: windows-2022
 
-    strategy:
-      matrix:
-        environment:
-          - msystem: MINGW64
-            prefix: mingw-w64-x86_64
     steps:
-      - name: Install Rust (GitHub Actions Native)
-        uses: dtolnay/rust-toolchain@nightly
-
       - name: Prepare MSYS2 environment
         uses: msys2/setup-msys2@v2
         with:
           release: false
           update: true
           msystem: MINGW64
-          # Note: Do NOT install mingw-w64-x86_64-rust
           install: >-
             mingw-w64-x86_64-gcc
             mingw-w64-x86_64-make
@@ -36,10 +27,14 @@ jobs:
             git
             base-devel
 
-      - name: Verify Rust in MSYS2
+      - name: Install Rustup + Nightly in MSYS2
         shell: msys2 {0}
         run: |
-          export PATH="$USERPROFILE/.cargo/bin:$PATH"
+          export HOME=/home/runneradmin
+          export CARGO_HOME=$HOME/.cargo
+          mkdir -p $CARGO_HOME
+          curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs | sh -s -- -y --default-toolchain nightly
+          source $CARGO_HOME/env
           rustc --version
           cargo --version
           rustup show active-toolchain
@@ -53,26 +48,29 @@ jobs:
         uses: actions/cache@v4
         with:
           path: |
-            ~/.cargo/registry
-            ~/.cargo/git
+            /home/runneradmin/.cargo/registry
+            /home/runneradmin/.cargo/git
             target
           key: cargo-${{ runner.os }}-${{ hashFiles('**/Cargo.lock') }}
           restore-keys: |
             cargo-${{ runner.os }}-
 
-      - name: Build inside MSYS2
+      - name: Build
         shell: msys2 {0}
         run: |
-          export PATH="$USERPROFILE/.cargo/bin:$PATH"
+          source /home/runneradmin/.cargo/env
           cargo build --profile release-lto --features use_winit,use_wgpu,devtools,sound,opl
 
-      - name: Cargo build
-        run: cargo +nightly build --profile release-lto --features use_winit,use_wgpu,devtools,sound,opl
+      - name: Prepare install dir
+        shell: msys2 {0}
+        run: mkdir -p install
 
-      - name: Copy files into install dir
-        run: cp LICENSE README.md CHANGELOG.md CREDITS.md target/release-lto/martypc install
+      - name: Copy files
+        shell: msys2 {0}
+        run: cp LICENSE README.md CHANGELOG.md CREDITS.md target/release-lto/martypc install/
 
       - name: Rename install directory
+        shell: msys2 {0}
         run: mv install martypc
 
       - name: Upload artifact
