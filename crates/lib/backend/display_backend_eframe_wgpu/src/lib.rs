@@ -39,29 +39,18 @@ pub use display_backend_trait::{
     DisplayBackend,
     DisplayBackendBuilder,
     DisplayTargetSurface,
+    DynDisplayTargetSurface,
     TextureDimensions,
 };
 pub use surface::EFrameBackendSurface;
 
 use std::sync::{Arc, RwLock};
 
-use crate::display_window::DisplayWindow;
 use marty_scaler_null::DisplayScaler;
 
 use anyhow::{anyhow, Error};
 use egui;
 use egui_wgpu::wgpu;
-
-pub type DynDisplayTargetSurface = Arc<
-    RwLock<
-        dyn DisplayTargetSurface<
-            NativeTexture = wgpu::Texture,
-            NativeDevice = wgpu::Device,
-            NativeQueue = wgpu::Queue,
-            NativeTextureFormat = wgpu::TextureFormat,
-        >,
-    >,
->;
 
 pub struct EFrameBackend {
     ctx: egui::Context,

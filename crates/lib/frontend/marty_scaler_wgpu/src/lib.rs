@@ -780,6 +780,8 @@ impl DisplayScaler<wgpu::Device, wgpu::Queue, wgpu::Texture> for MartyScaler {
         ScalerGeometry {
             texture_w: self.texture_width,
             texture_h: self.texture_height,
+            target_w:  self.target_width,
+            target_h:  self.target_height,
             surface_w: self.screen_width,
             surface_h: self.screen_height,
         }
@@ -943,6 +945,7 @@ impl ScalingMatrix {
             ScalerMode::Integer => ScalingMatrix::integer_matrix(texture_size, target_size, screen_size, margin_y),
             ScalerMode::Fit => ScalingMatrix::fit_matrix(texture_size, target_size, screen_size, margin_y),
             ScalerMode::Stretch => ScalingMatrix::stretch_matrix(texture_size, target_size, screen_size, margin_y),
+            ScalerMode::Windowed => ScalingMatrix::fit_matrix(texture_size, target_size, target_size, margin_y),
         }
     }
 

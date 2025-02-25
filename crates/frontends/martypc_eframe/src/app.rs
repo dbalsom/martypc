@@ -58,11 +58,15 @@ use crate::event_loop::web_keyboard::handle_web_key_event;
 
 use crossbeam_channel::{Receiver, Sender};
 use eframe::egui_wgpu;
-use egui::{Context, RawInput, Sense, ViewportId};
+use egui::{Color32, Context, RawInput, Sense, ViewportId};
 
 use crate::input::TranslateKey;
 #[cfg(target_arch = "wasm32")]
 use crate::wasm::*;
+use marty_frontend_common::{
+    color::MartyColor,
+    display_manager::{DisplayTargetType, DtHandle},
+};
 use marty_videocard_renderer::AspectCorrectionMode;
 #[cfg(target_arch = "wasm32")]
 use marty_web_helpers::console_writer::ConsoleWriter;
@@ -455,35 +459,82 @@ impl eframe::App for MartyApp {
                 }
             }
 
+            let dm = self.dm.as_mut().unwrap();
             // Process timestep.
-            process_update(emu, &mut self.dm.as_mut().unwrap(), &mut self.tm);
+            process_update(emu, dm, &mut self.tm);
             handle_thread_event(emu);
 
+            let fill_color = dm
+                .main_display_target()
+                .read()
+                .unwrap()
+                .viewport_opts
+                .as_ref()
+                .and_then(|vo| vo.fill_color)
+                .and_then(|c| Some(MartyColor::from_u24(c).to_color32()));
+
+            let show_bezel = emu.gui.primary_video_has_bezel();
             // Draw the emulator GUI.
-            self.gui.show(&mut emu.gui, |ui| {
-                ui.allocate_ui(ui.available_size(), |ui| {
-                    let rect = ui.max_rect();
+            self.gui.show(
+                &mut emu.gui,
+                fill_color,
+                |ctx| {
+                    if let Some(DisplayTargetType::GuiWidget) = dm.display_type(DtHandle::MAIN) {
+                        let dtc = dm.main_display_target();
+                        let dtc_lock = dtc.read();
+                        let dtc_ref = dtc_lock.as_ref().unwrap();
 
-                    //log::debug!("in allocate_ui with response rect: {:?}", rect);
+                        let display_name = dtc_ref.name.clone();
+                        if let Some(scaler_geom) = dtc_ref.scaler_geometry() {
+                            // Draw the main display in a window.
+                            egui::Window::new(display_name).resizable(true).show(ctx, |ui| {
+                                let ui_size = egui::Vec2::new(scaler_geom.target_w as f32, scaler_geom.target_h as f32);
+                                let (rect, _) = ui.allocate_exact_size(ui_size, Sense::hover());
 
-                    if let Some(dm) = &self.dm {
-                        #[cfg(feature = "use_wgpu")]
-                        {
-                            let callback = dm.main_display_callback();
-                            let paint_callback = egui_wgpu::Callback::new_paint_callback(rect, callback);
-                            ui.painter().add(paint_callback);
+                                #[cfg(feature = "use_wgpu")]
+                                {
+                                    let callback = dm.main_display_callback();
+                                    let paint_callback = egui_wgpu::Callback::new_paint_callback(rect, callback);
+
+                                    ui.painter().add(paint_callback);
+
+                                    if show_bezel {
+                                        egui::Image::new(egui::include_image!("../../../../assets/bezel_trans_bg.png"))
+                                            .paint_at(ui, rect);
+                                    }
+                                }
+                            });
+                        }
+                        else {
+                            log::warn!("No scaler geometry for main display!");
                         }
                     }
-                });
-            });
+                },
+                |ui| {
+                    if let Some(DisplayTargetType::WindowBackground) = dm.display_type(DtHandle::MAIN) {
+                        ui.allocate_ui(ui.available_size(), |ui| {
+                            let rect = ui.max_rect();
+
+                            //log::debug!("in allocate_ui with response rect: {:?}", rect);
+
+                            #[cfg(feature = "use_wgpu")]
+                            {
+                                let callback = dm.main_display_callback();
+                                let paint_callback = egui_wgpu::Callback::new_paint_callback(rect, callback);
+                                ui.painter().add(paint_callback);
+                            }
+                        });
+                    }
+                },
+            );
         }
 
-        if let Some(dm) = &mut self.dm {
-            // Present the render targets (this will draw windows for any GuiWidget targets).
-            dm.for_each_surface(|backend, surface, scaler, gui| {
-                //_ = backend.present();
-            });
-        }
+        // if let Some(dm) = &mut self.dm {
+        //     // Present the render targets (this will draw windows for any GuiWidget targets).
+        //     dm.for_each_surface(|backend, surface, scaler, gui| {
+        //         //_ = backend.present();
+        //     });
+        // }
 
         // Pump the event loop by requesting a repaint every time.
         ctx.request_repaint();

@@ -40,12 +40,12 @@ pub struct SurfaceSize {
 }
 
 /// The default renderer that scales your frame to the screen size.
-pub struct NullScaler {
+pub struct MartyScaler {
     mode: ScalerMode,
     bilinear: bool,
 }
 
-impl NullScaler {
+impl MartyScaler {
     pub fn new() -> Self {
         Self {
             mode: ScalerMode::Fixed,
@@ -54,7 +54,7 @@ impl NullScaler {
     }
 }
 
-impl DisplayScaler<(), (), ()> for NullScaler {
+impl DisplayScaler<(), (), ()> for MartyScaler {
     type NativeRenderPass = ();
     type NativeTextureView = ();
     type NativeEncoder = ();

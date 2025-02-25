@@ -2,8 +2,6 @@
 members = [
     "crates/marty_core",
     "crates/marty_common",
-    "crates/lib/backend/display_backend_eframe",
-    "crates/lib/backend/display_backend_eframe_wgpu",
     "crates/lib/frontend/marty_frontend_common",
     "crates/lib/frontend/marty_videocard_renderer",
     "crates/lib/frontend/marty_scaler_wgpu",

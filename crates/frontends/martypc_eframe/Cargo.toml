@@ -33,13 +33,13 @@ winit = { workspace = true }
 #winit = { version = "0.30", default-features = false }
 egui = { workspace = true, default-features = false }
 eframe = { workspace = true, default-features = false }
-egui_extras = { version = "0.30", default-features = false, features = ["file", "image"] }
+egui_extras = { workspace = true, default-features = false, features = ["file", "image"] }
 web-time = { workspace = true }
-log = "0.4"
-serde = { version = "1", features = ["derive"] }
-crossbeam-channel = "0.5.13"
-anyhow = "1.0"
-strum = "0.26"
+log.workspace = true
+serde = { version = "1.0", features = ["derive"] }
+crossbeam-channel.workspace = true
+anyhow.workspace = true
+strum.workspace = true
 # url is used for the wasm build to be configured via url and fetch resources.
 # it is not optional as we may want to fetch things from the web from native, in the future.
 url = "2.5"
@@ -87,6 +87,7 @@ eframe = { workspace = true, default-features = false, features = [
     "default_fonts", # Embed the default egui fonts.
     "persistence",   # Enable restoring app state when restarting the app.
 ]}
+
 # Disable bpaf on web - no command line!
 marty_config = { path = "../../lib/frontend/marty_config", default-features = false }
 
@@ -96,7 +97,7 @@ marty_config = { path = "../../lib/frontend/marty_config", default-features = fa
 winres = "0.1"
 
 [features]
-default = ["all_video_cards", "sound", "use_winit", "use_glow", "markdown"]
+default = ["all_video_cards", "sound", "use_winit", "markdown"]
 all_video_cards = ["ega", "vga"]
 sound = ["dep:rodio", "rodio/wasm-bindgen", "marty_core/sound"]
 # Enable markdown support. This is used to show disk image metadata and documentation.
@@ -106,7 +107,7 @@ use_winit = ["dep:egui-winit"]
 # Use the wgpu backend
 use_wgpu = ["eframe/wgpu", "marty_frontend_common/use_wgpu", "display_manager_eframe/use_wgpu"]
 # Use the glow backend
-use_glow = ["eframe/glow"]
+use_glow = ["eframe/glow", "display_manager_eframe/use_glow"]
 # Use serialport
 use_serialport = ["marty_egui/use_serialport", "marty_egui_eframe/use_serialport"]
 devtools = []

@@ -1721,7 +1721,9 @@ name = "display_backend_trait"
 version = "0.3.0"
 dependencies = [
  "anyhow",
- "thiserror 1.0.69",
+ "egui 0.30.0",
+ "thiserror 2.0.11",
+ "wgpu 23.0.1",
 ]
 
 [[package]]
@@ -2042,6 +2044,7 @@ dependencies = [
  "enum-map",
  "image 0.25.5",
  "log",
+ "mime_guess2",
  "profiling",
 ]
 
@@ -3724,6 +3727,7 @@ dependencies = [
  "anyhow",
  "cfg-if",
  "display_backend_trait",
+ "egui 0.30.0",
  "fatfs 0.4.0 (git+https://github.com/dbalsom/fatfs_martypc.git?branch=master)",
  "log",
  "marty_common",
@@ -3894,7 +3898,7 @@ dependencies = [
  "egui 0.30.0",
  "egui-winit 0.30.0",
  "egui_commonmark",
- "egui_extras 0.30.0 (registry+https://github.com/rust-lang/crates.io-index)",
+ "egui_extras 0.30.0 (git+https://github.com/dbalsom/egui_martypc.git?branch=0.30.0_raw_winit_hook)",
  "env_logger 0.11.6",
  "fluxfox",
  "getrandom 0.3.1",

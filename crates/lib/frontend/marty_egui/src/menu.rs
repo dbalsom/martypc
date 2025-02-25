@@ -31,8 +31,8 @@
 */
 use crate::{state::GuiState, GuiBoolean, GuiEnum, GuiEvent, GuiVariable, GuiVariableContext, GuiWindow};
 use egui::RichText;
-
-use marty_frontend_common::display_manager::DtHandle;
+use marty_frontend_common::display_manager::{DisplayTargetType, DtHandle};
+use strum::IntoEnumIterator;
 //use egui_file_dialog::FileDialog;
 use marty_core::device_traits::videocard::VideoType;
 
@@ -635,23 +635,67 @@ impl GuiState {
         //       agnostic.
         let vctx = GuiVariableContext::Display(display);
 
-        ui.menu_button("Scaler Mode", |ui| {
-            for (_scaler_idx, mode) in self.scaler_modes.clone().iter().enumerate() {
-                if let Some(enum_mut) =
-                    self.get_option_enum_mut(GuiEnum::DisplayScalerMode(Default::default()), Some(vctx))
-                {
-                    let checked = *enum_mut == GuiEnum::DisplayScalerMode(*mode);
+        let mut dtype_opt = self
+            .get_option_enum_mut(GuiEnum::DisplayType(Default::default()), Some(vctx))
+            .and_then(|oe| {
+                if let GuiEnum::DisplayType(dt) = *oe {
+                    Some(dt)
+                }
+                else {
+                    None
+                }
+            });
 
-                    if ui.add(egui::RadioButton::new(checked, format!("{:?}", mode))).clicked() {
-                        *enum_mut = GuiEnum::DisplayScalerMode(*mode);
+        ui.menu_button("Display Type", |ui| {
+            for dtype in DisplayTargetType::iter() {
+                if let Some(enum_mut) = self.get_option_enum_mut(GuiEnum::DisplayType(Default::default()), Some(vctx)) {
+                    let checked = *enum_mut == GuiEnum::DisplayType(dtype);
+
+                    if ui.add(egui::RadioButton::new(checked, format!("{}", dtype))).clicked() {
+                        *enum_mut = GuiEnum::DisplayType(dtype);
                         self.event_queue.send(GuiEvent::VariableChanged(
                             GuiVariableContext::Display(display),
-                            GuiVariable::Enum(GuiEnum::DisplayScalerMode(*mode)),
+                            GuiVariable::Enum(GuiEnum::DisplayType(dtype)),
                         ));
                     }
                 }
             }
         });
+
+        if dtype_opt == Some(DisplayTargetType::WindowBackground) {
+            ui.menu_button("Scaler Mode", |ui| {
+                for (_scaler_idx, mode) in self.scaler_modes.clone().iter().enumerate() {
+                    if let Some(enum_mut) =
+                        self.get_option_enum_mut(GuiEnum::DisplayScalerMode(Default::default()), Some(vctx))
+                    {
+                        let checked = *enum_mut == GuiEnum::DisplayScalerMode(*mode);
+
+                        if ui.add(egui::RadioButton::new(checked, format!("{:?}", mode))).clicked() {
+                            *enum_mut = GuiEnum::DisplayScalerMode(*mode);
+                            self.event_queue.send(GuiEvent::VariableChanged(
+                                GuiVariableContext::Display(display),
+                                GuiVariable::Enum(GuiEnum::DisplayScalerMode(*mode)),
+                            ));
+                        }
+                    }
+                }
+            });
+        }
+        else {
+            ui.menu_button("Window Options", |ui| {
+                if let Some(enum_mut) = self.get_option_enum_mut(GuiEnum::WindowBezel(Default::default()), Some(vctx)) {
+                    let mut checked = *enum_mut == GuiEnum::WindowBezel(true);
+
+                    if ui.checkbox(&mut checked, "Bezel Overlay").changed() {
+                        *enum_mut = GuiEnum::WindowBezel(checked);
+                        self.event_queue.send(GuiEvent::VariableChanged(
+                            GuiVariableContext::Display(display),
+                            GuiVariable::Enum(GuiEnum::WindowBezel(checked)),
+                        ));
+                    }
+                }
+            });
+        }
 
         #[cfg(not(target_arch = "wasm32"))]
         ui.menu_button("Scaler Presets", |ui| {

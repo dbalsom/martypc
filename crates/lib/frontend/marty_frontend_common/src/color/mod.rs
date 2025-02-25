@@ -32,10 +32,13 @@
 
 */
 
+pub mod cga;
+
 #[cfg(feature = "use_wgpu")]
 use wgpu;
 
-pub mod cga;
+#[cfg(feature = "use_egui")]
+use egui;
 
 /// Define a universal color type that can be converted to and from implementation-defined types
 /// and other common color formats.
@@ -106,6 +109,31 @@ impl From<wgpu::Color> for MartyColor {
             b: color.b as f32,
             a: color.a as f32,
         }
+    }
+}
+
+#[cfg(feature = "use_egui")]
+impl From<egui::Color32> for MartyColor {
+    fn from(color: egui::Color32) -> MartyColor {
+        MartyColor {
+            r: color.r() as f32 / 255.0,
+            g: color.g() as f32 / 255.0,
+            b: color.b() as f32 / 255.0,
+            a: color.a() as f32 / 255.0,
+        }
+    }
+}
+
+#[cfg(feature = "use_egui")]
+/// Color conversions for egui::Color32.
+impl MartyColor {
+    pub fn to_color32(&self) -> egui::Color32 {
+        egui::Color32::from_rgba_premultiplied(
+            (self.r * 255.0) as u8,
+            (self.g * 255.0) as u8,
+            (self.b * 255.0) as u8,
+            (self.a * 255.0) as u8,
+        )
     }
 }
 

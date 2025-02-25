@@ -123,7 +123,7 @@ pub fn handle_egui_event(emu: &mut Emulator, elwt: &EventLoopWindowTarget<()>, g
                         }
 
                         // Update dependent GUI items
-                        if let Some(_scaler_params) = emu.dm.get_scaler_params(*d_idx) {
+                        if let Some(_scaler_params) = emu.dm.scaler_params(*d_idx) {
                             //emu.gui.set_option_enum(GuiEnum::DisplayComposite(scaler_params), GuiVariableContext::Display(*d_idx));
                         }
                         if let Some(renderer) = emu.dm.renderer_mut(*d_idx) {

@@ -41,6 +41,7 @@ pub enum ScalerMode {
     Integer,
     Fit,
     Stretch,
+    Windowed,
 }
 
 // This array is intended to represent modes to be displayed to the user. Since Null is an
@@ -116,6 +117,8 @@ pub struct ScalerPreset {
 pub struct ScalerGeometry {
     pub texture_w: u32,
     pub texture_h: u32,
+    pub target_w:  u32,
+    pub target_h:  u32,
     pub surface_w: u32,
     pub surface_h: u32,
 }
@@ -164,6 +167,18 @@ impl Default for ScalerMode {
         ScalerMode::Integer
     }
 }
+
+#[cfg(not(target_arch = "wasm32"))]
+pub trait ThreadSafe: Send + Sync {}
+
+#[cfg(target_arch = "wasm32")]
+pub trait ThreadSafe {}
+
+#[cfg(not(target_arch = "wasm32"))]
+impl<T> ThreadSafe for T where T: Send + Sync {} // Implement it for all Send + Sync types
+
+#[cfg(target_arch = "wasm32")]
+impl<T> ThreadSafe for T where T: Sized {} // Implement it for all types on WASM
 
 pub trait DisplayScaler<D, Q, T>: Send + Sync {
     type NativeRenderPass;

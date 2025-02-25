@@ -71,7 +71,7 @@ use marty_core::{
     machine::MachineState,
 };
 
-use marty_frontend_common::display_manager::DtHandle;
+use marty_frontend_common::display_manager::{DisplayTargetType, DtHandle};
 use marty_videocard_renderer::CompositeParams;
 use serde::{Deserialize, Serialize};
 use strum_macros::EnumIter;
@@ -147,21 +147,25 @@ impl Default for GuiVariableContext {
 
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub enum GuiEnum {
+    DisplayType(DisplayTargetType),
     DisplayAspectCorrect(bool),
     DisplayAperture(DisplayApertureType),
     DisplayScalerMode(ScalerMode),
     DisplayScalerPreset(String),
     DisplayComposite(bool),
+    WindowBezel(bool),
     SerialPortBridge(usize),
 }
 
 fn create_default_variant(ge: GuiEnum) -> GuiEnum {
     match ge {
+        GuiEnum::DisplayType(_) => GuiEnum::DisplayType(Default::default()),
         GuiEnum::DisplayAspectCorrect(_) => GuiEnum::DisplayAspectCorrect(Default::default()),
         GuiEnum::DisplayAperture(_) => GuiEnum::DisplayAperture(Default::default()),
         GuiEnum::DisplayScalerMode(_) => GuiEnum::DisplayAperture(Default::default()),
         GuiEnum::DisplayScalerPreset(_) => GuiEnum::DisplayScalerPreset(String::new()),
         GuiEnum::DisplayComposite(_) => GuiEnum::DisplayComposite(Default::default()),
+        GuiEnum::WindowBezel(_) => GuiEnum::WindowBezel(Default::default()),
         GuiEnum::SerialPortBridge(_) => GuiEnum::SerialPortBridge(Default::default()),
     }
 }

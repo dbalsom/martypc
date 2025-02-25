@@ -28,7 +28,7 @@
 
     EGUI Render context
 */
-use egui::Context;
+use egui::{Color32, Context};
 use egui_extras::install_image_loaders;
 use std::sync::Arc;
 
@@ -145,20 +145,34 @@ impl GuiRenderContext {
         &mut self.ctx
     }
 
-    pub fn show<F>(&mut self, state: &mut GuiState, mut custom_render: F)
-    where
-        F: FnMut(&mut egui::Ui),
+    pub fn show<Fw, Fm>(
+        &mut self,
+        state: &mut GuiState,
+        main_panel_fill: Option<Color32>,
+        mut window_render: Fw,
+        mut main_panel_render: Fm,
+    ) where
+        Fw: FnMut(&mut egui::Context),
+        Fm: FnMut(&mut egui::Ui),
     {
         self.ctx.set_visuals(self.menu_theme.visuals());
         egui::TopBottomPanel::top("martypc_top_panel").show(&self.ctx, |ui| {
             state.show_menu(ui);
         });
-
         self.ctx.set_visuals(self.main_theme.visuals());
+
         state.show_windows(&self.ctx);
+        window_render(&mut self.ctx);
+
+        // Override panel fill if requested.
+        if let Some(fill) = main_panel_fill {
+            let mut main_theme = self.main_theme.visuals();
+            main_theme.panel_fill = fill;
+            self.ctx.set_visuals(main_theme);
+        }
 
         egui::CentralPanel::default().show(&self.ctx, |ui| {
-            custom_render(ui);
+            main_panel_render(ui);
         });
     }
 }

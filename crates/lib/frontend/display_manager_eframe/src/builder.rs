@@ -40,8 +40,9 @@ use marty_frontend_common::{
 use super::EFrameBackend;
 
 use anyhow::{anyhow, Error};
-use display_backend_eframe_wgpu::DisplayTargetSurface;
+
 use egui::{Context, ViewportId};
+use marty_frontend_common::display_manager::DisplayTargetFlags;
 use winit::window::Icon;
 
 #[derive(Default)]
@@ -241,6 +242,9 @@ impl<'a> EFrameDisplayManagerBuilder<'a> {
         // Honor initial window size, but we may have to resize it later.
         viewport_opts.size = window_def.size.unwrap_or_default().into();
         viewport_opts.always_on_top = window_def.always_on_top;
+        // Set the viewport fill color. This is used to control the panel fill color, which will
+        // be the background color when rendering with a RenderCallback in eframe.
+        viewport_opts.fill_color = window_def.background_color;
 
         // If this is the main window, and we have a GUI...
         if main_window && gui_options.enabled {
@@ -266,21 +270,29 @@ impl<'a> EFrameDisplayManagerBuilder<'a> {
         // Construct window title.
         let window_title = format!("{}: {}", &window_def.name, card_string).to_string();
 
-        let dt_type = DisplayTargetType::WindowBackground {
-            main_window,
-            has_gui: main_window,
-            has_menu: main_window,
-        };
-
-        let dt_type = DisplayTargetType::GuiWidget {
-            main_window,
-            has_gui: main_window,
-            has_menu: main_window,
+        let (dt_type, dt_flags) = if window_def.background {
+            let dt_type = DisplayTargetType::WindowBackground;
+            let dt_flags = DisplayTargetFlags {
+                main_window,
+                has_gui: main_window,
+                has_menu: main_window,
+            };
+            (dt_type, dt_flags)
+        }
+        else {
+            let dt_type = DisplayTargetType::GuiWidget;
+            let dt_flags = DisplayTargetFlags {
+                main_window,
+                has_gui: main_window,
+                has_menu: main_window,
+            };
+            (dt_type, dt_flags)
         };
 
         dm.create_target(
             window_title,
             dt_type,
+            dt_flags,
             Some(&egui_ctx),
             if main_window { Some(ViewportId::ROOT) } else { None },
             Some(viewport_opts),

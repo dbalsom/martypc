@@ -37,6 +37,9 @@ pub struct WindowDefinition {
     #[serde(default)]
     pub enabled: bool,
     pub name: String,
+    pub background_color: Option<u32>,
+    #[serde(default)]
+    pub background: bool,
     pub size: Option<VideoDimensions>,
     #[serde(default)]
     pub resizable: bool,

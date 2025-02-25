@@ -50,7 +50,7 @@ use std::{
 };
 
 #[cfg(target_arch = "wasm32")]
-use crate::resource_manager::manifest::ResourceManifest;
+use crate::resource_manager::manifest::{ManifestFile, ResourceManifest};
 
 use crate::{resource_manager::archive_overlay::ArchiveOverlay, types::resource_location::ResourceLocation};
 

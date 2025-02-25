@@ -33,26 +33,25 @@
 compile_error!("Wrong backend was selected for use_wgpu feature!");
 
 mod display_window;
+mod surface;
 
-use crate::display_window::DisplayWindow;
+use std::sync::{Arc, RwLock};
+
 pub use display_backend_trait::{
     BufferDimensions,
     DisplayBackend,
     DisplayBackendBuilder,
+    DynDisplayTargetSurface,
     TextureDimensions,
     //DisplayBackendError
 };
+pub use surface::EFrameBackendSurface;
 
 use marty_scaler_null::DisplayScaler;
 
 use anyhow::{anyhow, Error};
 use display_backend_trait::DisplayTargetSurface;
 use egui;
-use egui_wgpu::wgpu;
-#[cfg(feature = "use_wgpu")]
-use egui_wgpu::wgpu;
-
-pub type DynDisplayTargetSurface = Box<dyn DisplayTargetSurface<NativeTexture = egui::TextureHandle>>;
 
 #[derive(Debug)]
 pub enum EFrameBackendType {
@@ -60,20 +59,9 @@ pub enum EFrameBackendType {
     EguiWindow,
 }
 
-pub struct EFrameBackendSurface {
-    pub buffer:  egui::TextureHandle,
-    pub surface: egui::TextureHandle,
-}
-
 pub struct EFrameBackend {
     be_type: EFrameBackendType,
     ctx: egui::Context,
-    cpu_buffer: Vec<u8>, // Virtual pixel buffer
-    buffer_dim: BufferDimensions,
-    surface_dim: TextureDimensions,
-    buffer_handle: Option<egui::TextureHandle>,  // Egui texture handle
-    surface_handle: Option<egui::TextureHandle>, // Egui texture handle
-    win: DisplayWindow,
 }
 
 impl EFrameBackend {
@@ -85,29 +73,7 @@ impl EFrameBackend {
         //wgpu_render_state: &eframe::RenderState,
         _adapter_info: Option<()>,
     ) -> Result<EFrameBackend, Error> {
-        //let adapter_info = wgpu_render_state.adapter_info.clone();
-
-        let cpu_buffer = vec![0; buffer_dim.w as usize * buffer_dim.h as usize * 4];
-
-        let buffer_image = egui::ColorImage {
-            size:   [buffer_dim.w as usize, buffer_dim.h as usize],
-            pixels: cpu_buffer
-                .chunks_exact(4)
-                .map(|rgba| egui::Color32::from_rgba_premultiplied(rgba[0], rgba[1], rgba[2], rgba[3]))
-                .collect(),
-        };
-        let buffer_handle = ctx.load_texture("marty_buffer_texture", buffer_image, egui::TextureOptions::default());
-
-        Ok(EFrameBackend {
-            be_type,
-            ctx,
-            cpu_buffer,
-            buffer_dim,
-            surface_dim,
-            buffer_handle: Some(buffer_handle),
-            surface_handle: None,
-            win: Default::default(),
-        })
+        Ok(EFrameBackend { be_type, ctx })
     }
 }
 
@@ -120,96 +86,87 @@ impl DisplayBackendBuilder for EFrameBackend {
     }
 }
 
-pub type EFrameScalerType = Box<dyn DisplayScaler<(), (), NativeTextureView = (), NativeEncoder = ()>>;
+pub type EFrameScalerType =
+    Box<dyn DisplayScaler<(), (), (), NativeTextureView = (), NativeEncoder = (), NativeRenderPass = ()>>;
 
 impl DisplayBackend<'_, '_, ()> for EFrameBackend {
     type NativeDevice = ();
     type NativeQueue = ();
-    type NativeTexture = ();
+    type NativeTexture = egui::TextureHandle;
+    type NativeTextureFormat = ();
     type NativeBackend = ();
     type NativeBackendAdapterInfo = ();
 
     type NativeScaler = EFrameScalerType;
 
-    fn device(&self) -> &() {
-        &()
-    }
-
-    fn queue(&self) -> &Self::NativeQueue {
-        &()
-    }
-
-    fn texture(&self) -> Option<wgpu::Texture> {
-        None
-    }
-
     fn adapter_info(&self) -> Option<Self::NativeBackendAdapterInfo> {
         None
     }
 
-    fn resize_surface_cpu_buffer(&mut self, new: BufferDimensions) -> Result<(), Error> {
-        self.cpu_buffer.resize((new.w * new.h * 4) as usize, 0);
-        self.buffer_dim = (new.w, new.h, new.w).into();
+    fn device(&self) -> Arc<Self::NativeDevice> {
+        Arc::new(())
+    }
+
+    fn queue(&self) -> Arc<Self::NativeQueue> {
+        Arc::new(())
+    }
+
+    fn create_surface(
+        &self,
+        buffer_dim: BufferDimensions,
+        surface_dim: TextureDimensions,
+    ) -> Result<DynDisplayTargetSurface, Error> {
+        let cpu_buffer = vec![0; buffer_dim.w as usize * buffer_dim.h as usize * 4];
+
+        let buffer_image = egui::ColorImage {
+            size:   [buffer_dim.w as usize, buffer_dim.h as usize],
+            pixels: cpu_buffer
+                .chunks_exact(4)
+                .map(|rgba| egui::Color32::from_rgba_premultiplied(rgba[0], rgba[1], rgba[2], rgba[3]))
+                .collect(),
+        };
+        let buffer_handle =
+            self.ctx
+                .load_texture("marty_buffer_texture", buffer_image, egui::TextureOptions::default());
+
+        Ok(Box::new(EFrameBackendSurface {
+            cpu_buffer,
+            buffer: buffer_handle,
+            buffer_dim,
+            surface_dim,
+        }))
+    }
+
+    fn resize_backing_texture(
+        &mut self,
+        surface: &mut DynDisplayTargetSurface,
+        new_dim: BufferDimensions,
+    ) -> Result<(), Error> {
+        surface.resize_backing(Arc::new(()), new_dim)?;
         Ok(())
     }
 
-    fn resize_surface(&mut self, new: TextureDimensions) -> Result<(), Error> {
+    fn resize_surface_texture(
+        &mut self,
+        surface: &mut DynDisplayTargetSurface,
+        new_dim: TextureDimensions,
+    ) -> Result<(), Error> {
         //self.pixels.resize_surface(new.w, new.h)?;
-        self.surface_dim = (new.w, new.h).into();
+        surface.resize_surface(Arc::new(()), Arc::new(()), new_dim)?;
         Ok(())
-    }
-
-    fn buf_dimensions(&self) -> BufferDimensions {
-        self.buffer_dim
-    }
-    fn surface_dimensions(&self) -> TextureDimensions {
-        self.surface_dim
-    }
-
-    fn buf(&self) -> &[u8] {
-        &self.cpu_buffer
-    }
-    fn buf_mut(&mut self) -> &mut [u8] {
-        &mut self.cpu_buffer
     }
 
     fn get_backend_raw(&mut self) -> Option<&mut Self::NativeBackend> {
         None
     }
 
-    fn render(&mut self, _scaler: Option<&mut Self::NativeScaler>, _gui: Option<&mut ()>) -> Result<(), Error> {
-        //log::trace!("Rendering eframe backend: {:?}", self.be_type);
-
-        // Update texture handle
-        if let Some(texture_handle) = &mut self.buffer_handle {
-            texture_handle.set(
-                egui::ColorImage {
-                    size:   [self.buffer_dim.w as usize, self.buffer_dim.h as usize],
-                    pixels: self
-                        .cpu_buffer
-                        .chunks_exact(4)
-                        .map(|rgba| egui::Color32::from_rgba_premultiplied(rgba[0], rgba[1], rgba[2], rgba[3]))
-                        .collect(),
-                },
-                egui::TextureOptions::default(),
-            );
-            Ok(())
-        }
-        else {
-            Err(anyhow!("No buffer handle"))
-        }
-    }
-
-    fn present(&mut self) -> Result<(), Error> {
-        match self.be_type {
-            EFrameBackendType::EguiWindow => {
-                self.win
-                    .show(&mut self.ctx, "Display", self.buffer_handle.as_ref().unwrap());
-            }
-            EFrameBackendType::RenderPass => {
-                todo!();
-            }
-        }
+    fn render(
+        &mut self,
+        surface: &mut DynDisplayTargetSurface,
+        _scaler: Option<&mut Self::NativeScaler>,
+        _gui: Option<&mut ()>,
+    ) -> Result<(), Error> {
+        // Update backing texture here if dirty.
         Ok(())
     }
 }

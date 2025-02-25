@@ -132,6 +132,12 @@ pub fn handle_egui_event(emu: &mut Emulator, dm: &mut EFrameDisplayManager, gui_
             },
             GuiVariable::Enum(op) => match ctx {
                 GuiVariableContext::Display(dth) => match op {
+                    GuiEnum::DisplayType(display_type) => {
+                        log::debug!("Got display type update event: {:?}", display_type);
+                        if let Err(e) = dm.set_display_type(*dth, *display_type) {
+                            log::error!("Failed to set display type for display target: {:?}", e);
+                        }
+                    }
                     GuiEnum::DisplayAperture(aperture) => {
                         if let Some(vid) = dm.set_display_aperture(*dth, *aperture).ok().flatten() {
                             if let Some(video_card) = emu.machine.bus().video(&vid) {
@@ -155,7 +161,7 @@ pub fn handle_egui_event(emu: &mut Emulator, dm: &mut EFrameDisplayManager, gui_
 
                         // Update the scaler adjustment window with the parameters from the preset,
                         // so we can adjust them from that base.
-                        if let Some(scaler_params) = dm.get_scaler_params(*dth) {
+                        if let Some(scaler_params) = dm.scaler_params(*dth) {
                             emu.gui.scaler_adjust.set_params(*dth, scaler_params);
                         }
 

@@ -43,8 +43,36 @@
     A DisplayBackend should be able to be instantiated multiple times, to
     support multiple windows/displays.
 */
+#![feature(trait_alias)]
+#[cfg(not(any(feature = "use_wgpu", feature = "use_glow")))]
+compile_error!("Either the 'use_wgpu' or 'use_glow' feature must be enabled.");
+
 use std::sync::{Arc, RwLock};
 use thiserror::Error;
+
+#[cfg(feature = "use_wgpu")]
+pub type DynDisplayTargetSurface = Arc<
+    RwLock<
+        dyn DisplayTargetSurface<
+            NativeTexture = wgpu::Texture,
+            NativeDevice = wgpu::Device,
+            NativeQueue = wgpu::Queue,
+            NativeTextureFormat = wgpu::TextureFormat,
+        >,
+    >,
+>;
+
+#[cfg(not(feature = "use_wgpu"))]
+use egui;
+#[cfg(not(feature = "use_wgpu"))]
+pub type DynDisplayTargetSurface = Box<
+    dyn DisplayTargetSurface<
+        NativeTexture = egui::TextureHandle,
+        NativeDevice = (),
+        NativeQueue = (),
+        NativeTextureFormat = (),
+    >,
+>;
 
 #[derive(Error, Debug)]
 pub enum DisplayBackendError {
@@ -106,6 +134,18 @@ impl From<(u32, u32)> for TextureDimensions {
 }
 
 use anyhow::Error;
+
+#[cfg(not(target_arch = "wasm32"))]
+pub trait ThreadSafe: Send + Sync {}
+
+#[cfg(target_arch = "wasm32")]
+pub trait ThreadSafe {}
+
+#[cfg(not(target_arch = "wasm32"))]
+impl<T> ThreadSafe for T where T: Send + Sync {} // Implement it for all Send + Sync types
+
+#[cfg(target_arch = "wasm32")]
+impl<T> ThreadSafe for T where T: Sized {} // Implement it for all types on WASM
 
 /// The [DisplayTargetSurface] trait defines an interface representing a display target surface
 /// for emulator rendering. Typically, this comprises three parts:
@@ -191,47 +231,17 @@ pub trait DisplayBackend<'p, 'win, G> {
         &self,
         buffer_size: BufferDimensions,
         surface_size: TextureDimensions,
-    ) -> Result<
-        Arc<
-            RwLock<
-                dyn DisplayTargetSurface<
-                    NativeTexture = Self::NativeTexture,
-                    NativeDevice = Self::NativeDevice,
-                    NativeQueue = Self::NativeQueue,
-                    NativeTextureFormat = Self::NativeTextureFormat,
-                >,
-            >,
-        >,
-        Error,
-    >;
+    ) -> Result<DynDisplayTargetSurface, Error>;
     /// Resize the cpu pixel buffer and backing texture to the specified dimensions, or return an error.
     fn resize_backing_texture(
         &mut self,
-        surface: &mut Arc<
-            RwLock<
-                dyn DisplayTargetSurface<
-                    NativeTexture = Self::NativeTexture,
-                    NativeDevice = Self::NativeDevice,
-                    NativeQueue = Self::NativeQueue,
-                    NativeTextureFormat = Self::NativeTextureFormat,
-                >,
-            >,
-        >,
+        surface: &mut DynDisplayTargetSurface,
         new_dim: BufferDimensions,
     ) -> Result<(), Error>;
     /// Resize the display surface to the specified dimensions, or return an error.
     fn resize_surface_texture(
         &mut self,
-        surface: &mut Arc<
-            RwLock<
-                dyn DisplayTargetSurface<
-                    NativeTexture = Self::NativeTexture,
-                    NativeDevice = Self::NativeDevice,
-                    NativeQueue = Self::NativeQueue,
-                    NativeTextureFormat = Self::NativeTextureFormat,
-                >,
-            >,
-        >,
+        surface: &mut DynDisplayTargetSurface,
         new_dim: TextureDimensions,
     ) -> Result<(), Error>;
 
@@ -243,16 +253,7 @@ pub trait DisplayBackend<'p, 'win, G> {
     /// depending on the backend implementation.
     fn render(
         &mut self,
-        surface: &mut Arc<
-            RwLock<
-                dyn DisplayTargetSurface<
-                    NativeTexture = Self::NativeTexture,
-                    NativeDevice = Self::NativeDevice,
-                    NativeQueue = Self::NativeQueue,
-                    NativeTextureFormat = Self::NativeTextureFormat,
-                >,
-            >,
-        >,
+        surface: &mut DynDisplayTargetSurface,
         scaler: Option<&mut Self::NativeScaler>,
         gui_renderer: Option<&mut G>,
     ) -> Result<(), Error>;

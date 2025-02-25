@@ -43,6 +43,8 @@
 //! - We do not create windows, we have no control over that. egui 'creates' windows with
 //!   immediate-mode drawing calls. This has yet to be implemented.
 //!
+#[cfg(not(any(feature = "use_wgpu", feature = "use_glow")))]
+compile_error!("You must select either the use_wgpu or use_glow features!");
 
 pub mod builder;
 
@@ -76,6 +78,7 @@ pub use display_backend_eframe_wgpu::{
     BufferDimensions,
     DisplayBackend,
     DisplayBackendBuilder,
+    DisplayTargetSurface,
     DynDisplayTargetSurface,
     EFrameBackend,
     EFrameBackendSurface,
@@ -85,17 +88,23 @@ pub use display_backend_eframe_wgpu::{
 
 pub use marty_frontend_common::{
     color::MartyColor,
-    display_manager::{DisplayManager, DisplayTargetDimensions, DisplayTargetType, DmGuiOptions, DmViewportOptions},
+    display_manager::{
+        DisplayManager,
+        DisplayTargetDimensions,
+        DisplayTargetFlags,
+        DisplayTargetType,
+        DmGuiOptions,
+        DmViewportOptions,
+    },
 };
 use marty_frontend_common::{
     constants::*,
-    display_manager::{DisplayTargetInfo, DtHandle},
-    display_scaler::{PhosphorType, ScalerFilter, ScalerOption, ScalerParams, ScalerPreset},
+    display_manager::{DisplayDimensions, DisplayTargetInfo, DtHandle},
+    display_scaler::{PhosphorType, ScalerFilter, ScalerGeometry, ScalerOption, ScalerParams, ScalerPreset},
     types::{display_target_margins::DisplayTargetMargins, window::WindowDefinition},
 };
 
 // Conditionally use the appropriate scaler per backend
-
 #[cfg(not(feature = "use_wgpu"))]
 use marty_scaler_null::{DisplayScaler, MartyScaler, ScalerMode};
 #[cfg(feature = "use_wgpu")]
@@ -110,13 +119,13 @@ use egui::{Context, ViewportId};
 use egui_wgpu::wgpu;
 
 use anyhow::{anyhow, Error};
-use display_backend_eframe_wgpu::DisplayTargetSurface;
-use marty_frontend_common::display_manager::DisplayDimensions;
-use winit::{
-    dpi::{LogicalSize, PhysicalSize},
-    event_loop::{ActiveEventLoop, ControlFlow, EventLoop},
-    window::{Icon, Window, WindowButtons, WindowId, WindowLevel},
-};
+
+// use winit::{
+//     dpi::{LogicalSize, PhysicalSize},
+//     event_loop::{ActiveEventLoop, ControlFlow, EventLoop},
+//     window::{Icon, Window, WindowButtons, WindowId, WindowLevel},
+// };
+
 // There are a few macros here designed to avoid boilerplate code, with the idea of making
 // it easier to copy and paste code from one implementation of DisplayManager to another,
 // and in general make the whole thing a bit easier to scan...
@@ -147,6 +156,20 @@ macro_rules! new_dtc {
     };
 }
 
+#[cfg(feature = "use_wgpu")]
+macro_rules! resolve_dyn {
+    ($expr:expr) => {
+        $expr.read().unwrap()
+    };
+}
+
+#[cfg(not(feature = "use_wgpu"))]
+macro_rules! resolve_dyn {
+    ($expr:expr) => {
+        $expr
+    };
+}
+
 /// Macro to acquire a read lock on a DisplayTargetContext instance.
 /// Eventually we can add error handling here.
 macro_rules! resolve_dtc {
@@ -169,16 +192,16 @@ macro_rules! resolve_dtc_ref_mut {
     };
 }
 
-macro_rules! resolve_handle {
-    ($handle:expr, $other:expr, $closure:expr) => {
-        if $handle.idx() < $other.len() {
-            $closure($other.get($handle.idx()).unwrap())
-        }
-        else {
-            return Err(anyhow::anyhow!("Handle out of range!"));
-        }
-    };
-}
+// macro_rules! resolve_handle_opt {
+//     ($handle:expr, $other:expr, $closure:expr) => {
+//         if $handle.idx() < $other.len() {
+//             Some($closure(&resolve_dtc!($other.get($handle.idx()).unwrap())))
+//         }
+//         else {
+//             None
+//         }
+//     };
+// }
 
 macro_rules! resolve_handle_mut {
     ($handle:expr, $other:expr, $closure:expr) => {
@@ -294,46 +317,30 @@ pub struct DisplayTargetContext {
     //pub(crate) event_loop: EventLoop<()>,
     pub name: String,
     pub dt_type: DisplayTargetType, // The type of display we are targeting
+    pub dt_flags: DisplayTargetFlags,
     pub initialized: bool,
     pub resolved_params: DisplayTargetParams,
     pub requested_params: Option<DisplayTargetParams>,
     pub viewport: Option<ViewportId>, // The EGUI ViewportId
     pub viewport_opts: Option<DmViewportOptions>,
     pub viewport_state: ViewportState,
+    pub(crate) fill_color: Option<u32>,
     pub(crate) gui_ctx: Option<GuiRenderContext>, // The egui render context, if any
     pub(crate) card_id: Option<VideoCardId>,      // The video card device id, if any
     pub(crate) renderer: Option<VideoRenderer>,   // The renderer
     pub(crate) aspect_ratio: AspectRatio,         // Aspect ratio configured for this display
     pub(crate) surface: Option<DynDisplayTargetSurface>, // The display target surface created by the backend
+    prev_scaler_mode: Option<ScalerMode>,         // The previous scaler mode
     pub(crate) scaler: Option<EFrameScalerType>,  // The scaler pipeline
     pub(crate) scaler_params: Option<ScalerParams>,
     pub(crate) card_scale: Option<f32>, // If Some, the card resolution is scaled by this factor
-}
-
-impl DisplayTargetContext {
-    pub fn destructure_surface<F>(&mut self, f: F)
-    where
-        F: FnOnce(&mut DynDisplayTargetSurface, &mut Option<EFrameScalerType>, &mut Option<GuiRenderContext>),
-    {
-        if let Some(surface) = &mut self.surface {
-            f(surface, &mut self.scaler, &mut self.gui_ctx);
-        }
-    }
-
-    pub fn destructure_gui<F>(&mut self, f: F)
-    where
-        F: FnOnce(&mut GuiRenderContext),
-    {
-        if let Some(gui_ctx) = &mut self.gui_ctx {
-            f(gui_ctx);
-        }
-    }
 }
 
 pub struct DisplayTargetCallback {
     pub lock: Arc<RwLock<DisplayTargetContext>>,
 }
 
+#[cfg(feature = "use_wgpu")]
 impl egui_wgpu::CallbackTrait for DisplayTargetCallback {
     // Required method
     fn paint(
@@ -432,6 +439,33 @@ impl DefaultResolver for WindowDefinition {
 }
 
 impl DisplayTargetContext {
+    pub fn destructure_surface<F>(&mut self, f: F)
+    where
+        F: FnOnce(&mut DynDisplayTargetSurface, &mut Option<EFrameScalerType>, &mut Option<GuiRenderContext>),
+    {
+        if let Some(surface) = &mut self.surface {
+            f(surface, &mut self.scaler, &mut self.gui_ctx);
+        }
+    }
+
+    pub fn destructure_gui<F>(&mut self, f: F)
+    where
+        F: FnOnce(&mut GuiRenderContext),
+    {
+        if let Some(gui_ctx) = &mut self.gui_ctx {
+            f(gui_ctx);
+        }
+    }
+
+    pub fn scaler_geometry(&self) -> Option<ScalerGeometry> {
+        if let Some(scaler) = &self.scaler {
+            Some(scaler.geometry())
+        }
+        else {
+            None
+        }
+    }
+
     /// Set the aspect mode of the target. If the aspect mode is changed, we may need to resize
     /// the backend and scaler.
     pub fn set_aspect_mode(&mut self, _mode: AspectCorrectionMode) {}
@@ -490,11 +524,14 @@ impl DisplayTargetContext {
         };
         let scaler = self.scaler.as_mut().unwrap();
 
-        scaler.set_mode(
-            &*backend.device(),
-            &*backend.queue(),
-            preset.mode.unwrap_or(scaler.mode()),
-        );
+        let mut mode = preset.mode.unwrap_or(scaler.mode());
+
+        if self.dt_type == DisplayTargetType::GuiWidget {
+            self.prev_scaler_mode = Some(mode);
+            mode = ScalerMode::Windowed;
+        }
+
+        scaler.set_mode(&*backend.device(), &*backend.queue(), mode);
         scaler.set_bilinear(bilinear);
         scaler.set_fill_color(MartyColor::from_u24(preset.border_color.unwrap_or(0)));
 
@@ -663,7 +700,7 @@ impl<'p> DisplayManager<EFrameBackend, GuiRenderContext, ViewportId, ViewportId,
     #[cfg(not(feature = "use_wgpu"))]
     type NativeEncoder = ();
 
-    type NativeEventLoop = ActiveEventLoop;
+    type NativeEventLoop = ();
     type ImplSurface = DynDisplayTargetSurface;
     type ImplScaler = EFrameScalerType;
     type ImplDisplayTarget = DisplayTargetContext;
@@ -672,6 +709,7 @@ impl<'p> DisplayManager<EFrameBackend, GuiRenderContext, ViewportId, ViewportId,
         &mut self,
         name: String,
         dt_type: DisplayTargetType,
+        dt_flags: DisplayTargetFlags,
         native_context: Option<&Context>,
         viewport: Option<ViewportId>,
         viewport_opts: Option<DmViewportOptions>,
@@ -681,21 +719,12 @@ impl<'p> DisplayManager<EFrameBackend, GuiRenderContext, ViewportId, ViewportId,
     ) -> Result<DtHandle, Error> {
         // For now, we only support creating new WindowBackground targets.
         match dt_type {
-            DisplayTargetType::GuiWidget {
-                main_window,
-                has_gui: _,
-                has_menu,
-            }
-            | DisplayTargetType::WindowBackground {
-                main_window,
-                has_gui: _,
-                has_menu,
-            } if main_window => {
+            DisplayTargetType::GuiWidget | DisplayTargetType::WindowBackground => {
                 // Create a display target for the main viewport.
                 // In this case, since we are using eframe, the main (root) viewport is already open.
 
                 // Attempt to resolve the specified scaler preset
-                let scaler_preset = match self.get_scaler_preset(scaler_preset) {
+                let scaler_preset = match self.scaler_preset(scaler_preset) {
                     Some(preset) => preset.clone(),
                     None => {
                         return Err(anyhow!("Couldn't load scaler preset!"));
@@ -721,7 +750,7 @@ impl<'p> DisplayManager<EFrameBackend, GuiRenderContext, ViewportId, ViewportId,
 
                 log::debug!(
                     "Creating WindowBackground display target, main window: {} idx: {} requested size: {}x{} scaled size: {}x{} (factor:) preset: {}",
-                    main_window,
+                    dt_flags.main_window,
                     dt_idx,
                     tw,
                     th,
@@ -765,13 +794,13 @@ impl<'p> DisplayManager<EFrameBackend, GuiRenderContext, ViewportId, ViewportId,
                 // let wid = window.id();
                 // let scale_factor = window.scale_factor();
 
-                let menubar_h = if has_menu {
-                    //(EGUI_MENU_BAR as f64 * scale_factor) as u32
-                    EGUI_MENU_BAR
-                }
-                else {
-                    0
-                };
+                // let menubar_h = if dt_flags.has_menu {
+                //     //(EGUI_MENU_BAR as f64 * scale_factor) as u32
+                //     EGUI_MENU_BAR
+                // }
+                // else {
+                //     0
+                // };
 
                 // Create the backend.
                 // let mut pb = EFrameBackend::new(
@@ -801,7 +830,7 @@ impl<'p> DisplayManager<EFrameBackend, GuiRenderContext, ViewportId, ViewportId,
                 )?;
 
                 // Create the scaler.
-                let _scale_mode = match main_window {
+                let _scale_mode = match dt_flags.main_window {
                     true => ScalerMode::Integer,
                     false => ScalerMode::Fixed,
                 };
@@ -809,11 +838,12 @@ impl<'p> DisplayManager<EFrameBackend, GuiRenderContext, ViewportId, ViewportId,
                 // The texture sizes specified initially aren't important. Since DisplayManager can't
                 // query video cards directly, the caller must resize all video cards after calling
                 // the Builder.
+                #[cfg(feature = "use_wgpu")]
                 let scaler = MartyScaler::new(
                     scaler_preset.mode.unwrap_or(ScalerMode::Integer),
                     &*self.backend.as_ref().unwrap().device(),
-                    &surface.read().unwrap().backing_texture(),
-                    surface.read().unwrap().backing_texture_format(),
+                    &resolve_dyn!(surface).backing_texture(),
+                    resolve_dyn!(surface).backing_texture_format(),
                     DEFAULT_RESOLUTION_W,
                     DEFAULT_RESOLUTION_H,
                     DEFAULT_RESOLUTION_W,
@@ -824,6 +854,8 @@ impl<'p> DisplayManager<EFrameBackend, GuiRenderContext, ViewportId, ViewportId,
                     true,
                     MartyColor::from_u24(scaler_preset.border_color.unwrap_or_default()),
                 );
+                #[cfg(not(feature = "use_wgpu"))]
+                let scaler = MartyScaler::new();
 
                 // If we have a video card id, we need to build a VideoRenderer to render the card.
                 let renderer = if let Some(card_id) = card_id {
@@ -873,6 +905,7 @@ impl<'p> DisplayManager<EFrameBackend, GuiRenderContext, ViewportId, ViewportId,
                 let mut dtc = DisplayTargetContext {
                     name,
                     dt_type,
+                    dt_flags,
                     initialized: false,
                     resolved_params: DisplayTargetParams {
                         buf_dim: DisplayTargetDimensions::new(tw, th),
@@ -884,12 +917,14 @@ impl<'p> DisplayManager<EFrameBackend, GuiRenderContext, ViewportId, ViewportId,
                     viewport: Some(viewport),
                     viewport_opts,
                     viewport_state,
+                    fill_color: None,
                     gui_ctx: None,
                     card_id,
                     renderer,
                     aspect_ratio: scaler_preset.renderer.aspect_ratio.unwrap_or_default(),
                     //backend: Some(pb), // The graphics backend instance
                     surface: Some(surface),
+                    prev_scaler_mode: None,
                     scaler: Some(Box::new(scaler)),
                     scaler_params: Some(ScalerParams::from(scaler_preset.clone())),
                     card_scale,
@@ -971,12 +1006,14 @@ impl<'p> DisplayManager<EFrameBackend, GuiRenderContext, ViewportId, ViewportId,
                 handle: DtHandle(i),
                 backend_name,
                 dtype: vtc.dt_type,
+                flags: vtc.dt_flags,
                 vtype,
                 vid: vtc.card_id,
                 name: vtc.name.clone(),
                 renderer: renderer_params,
                 render_time,
                 contains_gui: has_gui,
+                fill_color: vtc.fill_color,
                 gui_render_time,
                 scaler_mode,
                 scaler_params: vtc.scaler_params,
@@ -985,6 +1022,50 @@ impl<'p> DisplayManager<EFrameBackend, GuiRenderContext, ViewportId, ViewportId,
         }
 
         info_vec
+    }
+
+    fn display_type(&self, dt: DtHandle) -> Option<DisplayTargetType> {
+        resolve_handle_opt!(dt, self.targets, |vtc: &DisplayTargetContext| { Some(vtc.dt_type) })
+    }
+
+    fn set_display_type(&mut self, dt: DtHandle, dtype: DisplayTargetType) -> Result<(), Error> {
+        resolve_handle_mut!(dt, self.targets, |vtc: &mut DisplayTargetContext| {
+            match dtype {
+                DisplayTargetType::GuiWidget => {
+                    log::debug!("set_display_type(): Setting display target {} to GuiWidget.", dt.idx());
+
+                    vtc.dt_type = DisplayTargetType::GuiWidget;
+
+                    if let Some(scaler) = &mut vtc.scaler {
+                        vtc.prev_scaler_mode = Some(scaler.mode());
+                        scaler.set_mode(
+                            &*self.backend.as_ref().unwrap().device(),
+                            &*self.backend.as_ref().unwrap().queue(),
+                            ScalerMode::Stretch,
+                        );
+                    }
+                }
+                DisplayTargetType::WindowBackground => {
+                    log::debug!(
+                        "set_display_type(): Setting display target {} to WindowBackground.",
+                        dt.idx()
+                    );
+
+                    vtc.dt_type = DisplayTargetType::WindowBackground;
+
+                    if let Some(scaler) = &mut vtc.scaler {
+                        if let Some(prev_mode) = vtc.prev_scaler_mode {
+                            scaler.set_mode(
+                                &*self.backend.as_ref().unwrap().device(),
+                                &*self.backend.as_ref().unwrap().queue(),
+                                prev_mode,
+                            );
+                        }
+                    }
+                }
+            }
+            Ok(())
+        })
     }
 
     fn viewport_by_id(&self, _vid: ViewportId) -> Option<ViewportId> {
@@ -1250,7 +1331,7 @@ impl<'p> DisplayManager<EFrameBackend, GuiRenderContext, ViewportId, ViewportId,
                             //let surface_dimensions = surface.read().unwrap().surface_dimensions();
 
                             dtc.destructure_surface(|surface, scaler, gui| {
-                                let surface = surface.read().unwrap();
+                                let surface = resolve_dyn!(surface);
                                 let surface_dimensions = surface.surface_dimensions();
 
                                 // Resize the DisplayScaler if present. This closure is only called if we have a surface, so no need to check.
@@ -1462,7 +1543,7 @@ impl<'p> DisplayManager<EFrameBackend, GuiRenderContext, ViewportId, ViewportId,
     }
 
     #[rustfmt::skip]
-    fn for_each_surface<F>(&mut self, mut f: F)
+    fn for_each_surface<F>(&mut self, dt_type_filter: Option<DisplayTargetType>, mut f: F)
     where
         F: FnMut(
             &mut EFrameBackend,
@@ -1475,26 +1556,26 @@ impl<'p> DisplayManager<EFrameBackend, GuiRenderContext, ViewportId, ViewportId,
             for dtc in &mut self.targets {
                 let dtc = &mut resolve_dtc_mut!(dtc);
 
-                let dt_type = dtc.dt_type; // Copy enum value
-                                           // let gui_ctx = dtc.gui_ctx.as_mut(); // Extract before mutable borrow
-                                           // let scaler = dtc.scaler.as_mut();
+                let dt_type = dtc.dt_type;
+                let dt_type_match = dt_type_filter.is_none() || dt_type == dt_type_filter.unwrap();
 
-                //log::debug!("for_each_backend(): dt_type: {:?}", dtc.dt_type);
-                match dt_type {
-                    DisplayTargetType::WindowBackground { .. } => {
-                        // A WindowBackground target will have a Surface and Scaler
-                        dtc.destructure_surface(|surface, scaler, gui| {
-                            f(backend, surface, scaler.as_mut(), gui.as_mut())
-                        });
+                if dt_type_match {
+                    //log::debug!("for_each_backend(): dt_type: {:?}", dtc.dt_type);
+                    match dt_type {
+                        DisplayTargetType::WindowBackground { .. } => {
+                            // A WindowBackground target will have a Surface and Scaler
+                            dtc.destructure_surface(|surface, scaler, gui| {
+                                f(backend, surface, scaler.as_mut(), gui.as_mut())
+                            });
+                        }
+                        DisplayTargetType::GuiWidget { .. } => {
+                            // TODO: I think we can actually have scalers for GuiWidget targets...
+                            // A GuiWidget target will have a Surface but no Scaler.
+                            dtc.destructure_surface(|surface, scaler, gui| {
+                                f(backend, surface, scaler.as_mut(), gui.as_mut())
+                            });
+                        }
                     }
-                    DisplayTargetType::GuiWidget { .. } => {
-                        // TODO: I think we can actually have scalers for GuiWidget targets...
-                        // A GuiWidget target will have a Surface but no Scaler.
-                        dtc.destructure_surface(|surface, scaler, gui| {
-                            f(backend, surface, scaler.as_mut(), gui.as_mut())
-                        });
-                    }
-                    _ => {}
                 }
             }
         }
@@ -1573,13 +1654,13 @@ impl<'p> DisplayManager<EFrameBackend, GuiRenderContext, ViewportId, ViewportId,
     }
 
     /// Retrieve the scaler preset by name.
-    fn get_scaler_preset(&mut self, name: String) -> Option<&ScalerPreset> {
+    fn scaler_preset(&mut self, name: String) -> Option<&ScalerPreset> {
         self.scaler_presets.get(&name)
     }
 
     fn apply_scaler_preset(&mut self, dt: DtHandle, name: String) -> Result<(), Error> {
         if is_valid_handle!(dt, self.targets) {
-            let preset = self.get_scaler_preset(name).unwrap().clone();
+            let preset = self.scaler_preset(name).unwrap().clone();
             resolve_dtc_mut!(self.targets[dt.idx()]).apply_scaler_preset(self.backend.as_ref().unwrap(), &preset);
         }
         else {
@@ -1595,7 +1676,7 @@ impl<'p> DisplayManager<EFrameBackend, GuiRenderContext, ViewportId, ViewportId,
         Ok(())
     }
 
-    fn get_scaler_params(&self, dt: DtHandle) -> Option<ScalerParams> {
+    fn scaler_params(&self, dt: DtHandle) -> Option<ScalerParams> {
         resolve_handle_opt!(dt, self.targets, |dt: &DisplayTargetContext| {
             dt.scaler_params.clone()
         })
@@ -1636,6 +1717,11 @@ impl<'p> DisplayManager<EFrameBackend, GuiRenderContext, ViewportId, ViewportId,
 
         let dtc = &mut resolve_dtc_mut!(self.targets[dt.idx()]);
 
+        let mut mode = mode;
+        if dtc.dt_type == DisplayTargetType::GuiWidget {
+            dtc.prev_scaler_mode = Some(mode);
+            mode = ScalerMode::Stretch;
+        }
         if let Some(backend) = self.backend.as_mut() {
             if let Some(scaler) = &mut dtc.scaler {
                 log::debug!("Setting scaler mode to: {:?}", mode);

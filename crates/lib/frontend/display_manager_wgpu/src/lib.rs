@@ -644,7 +644,7 @@ impl<'p> DisplayManager<WgpuBackend<'p>, GuiRenderContext, WindowId, Window, Act
                 // TODO: return error here instead of panic
                 // Attempt to resolve the specified scaler preset
                 let scaler_preset = self
-                    .get_scaler_preset(scaler_preset)
+                    .scaler_preset(scaler_preset)
                     .expect("Couldn't load scaler preset!")
                     .clone();
 
@@ -1397,13 +1397,13 @@ impl<'p> DisplayManager<WgpuBackend<'p>, GuiRenderContext, WindowId, Window, Act
     }
 
     /// Retrieve the scaler preset by name.
-    fn get_scaler_preset(&mut self, name: String) -> Option<&ScalerPreset> {
+    fn scaler_preset(&mut self, name: String) -> Option<&ScalerPreset> {
         self.scaler_presets.get(&name)
     }
 
     fn apply_scaler_preset(&mut self, dt_idx: usize, name: String) -> Result<(), Error> {
         if dt_idx < self.targets.len() {
-            let preset = self.get_scaler_preset(name).unwrap().clone();
+            let preset = self.scaler_preset(name).unwrap().clone();
             self.targets[dt_idx].apply_scaler_preset(&preset);
         }
         else {
@@ -1422,7 +1422,7 @@ impl<'p> DisplayManager<WgpuBackend<'p>, GuiRenderContext, WindowId, Window, Act
         Ok(())
     }
 
-    fn get_scaler_params(&self, dt_idx: usize) -> Option<ScalerParams> {
+    fn scaler_params(&self, dt_idx: usize) -> Option<ScalerParams> {
         if dt_idx < self.targets.len() {
             self.targets[dt_idx].scaler_params.clone()
         }

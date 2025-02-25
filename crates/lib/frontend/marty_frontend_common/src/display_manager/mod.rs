@@ -55,6 +55,10 @@ use web_time::Duration;
 #[derive(Copy, Clone, Debug, Hash, PartialEq, Eq)]
 pub struct DtHandle(pub usize);
 
+impl DtHandle {
+    pub const MAIN: DtHandle = DtHandle(0);
+}
+
 impl Default for DtHandle {
     fn default() -> Self {
         DtHandle(0)
@@ -96,29 +100,25 @@ impl From<DisplayDimensions> for (u32, u32) {
     }
 }
 
-#[derive(Copy, Clone, Debug)]
+#[derive(Copy, Clone, Debug, Default, PartialEq, Eq, Hash, strum::EnumIter)]
 pub enum DisplayTargetType {
-    WindowBackground { main_window: bool, has_gui: bool, has_menu: bool },
-    GuiWidget { main_window: bool, has_gui: bool, has_menu: bool },
-    WgpuTexture,
+    #[default]
+    WindowBackground,
+    GuiWidget,
 }
 
-impl Default for DisplayTargetType {
-    fn default() -> Self {
-        DisplayTargetType::WindowBackground {
-            main_window: false,
-            has_gui: false,
-            has_menu: false,
-        }
-    }
+#[derive(Copy, Clone, Debug, Default)]
+pub struct DisplayTargetFlags {
+    pub main_window: bool,
+    pub has_gui: bool,
+    pub has_menu: bool,
 }
 
 impl Display for DisplayTargetType {
     fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
         match self {
-            DisplayTargetType::WindowBackground { .. } => write!(f, "Window"),
-            DisplayTargetType::GuiWidget { .. } => write!(f, "GUI Widget"),
-            DisplayTargetType::WgpuTexture => write!(f, "Wgpu Texture"),
+            DisplayTargetType::WindowBackground { .. } => write!(f, "Window Background"),
+            DisplayTargetType::GuiWidget { .. } => write!(f, "GUI Window"),
         }
     }
 }
@@ -130,12 +130,14 @@ pub struct DisplayTargetInfo {
     pub handle: DtHandle,
     pub backend_name: String,
     pub dtype: DisplayTargetType,
+    pub flags: DisplayTargetFlags,
     pub vtype: Option<VideoType>,
     pub vid: Option<VideoCardId>,
     pub name: String,
     pub renderer: Option<RendererConfigParams>,
     pub render_time: Duration,
     pub contains_gui: bool,
+    pub fill_color: Option<u32>,
     pub gui_render_time: Duration,
     pub scaler_mode: Option<ScalerMode>,
     pub scaler_params: Option<ScalerParams>,
@@ -164,6 +166,7 @@ pub struct DmViewportOptions {
     pub always_on_top: bool,
     pub is_on_top: bool,
     pub card_scale: Option<f32>,
+    pub fill_color: Option<u32>,
 }
 
 impl Default for DmViewportOptions {
@@ -178,6 +181,7 @@ impl Default for DmViewportOptions {
             always_on_top: false,
             is_on_top: false,
             card_scale: None,
+            fill_color: None,
         }
     }
 }
@@ -259,6 +263,7 @@ pub trait DisplayManager<B, G, Vh, V, C> {
         &mut self,
         name: String,
         dt_type: DisplayTargetType,
+        dt_flags: DisplayTargetFlags,
         native_context: Option<&C>,
         viewport: Option<Vh>,
         viewport_opts: Option<DmViewportOptions>,
@@ -282,6 +287,14 @@ pub trait DisplayManager<B, G, Vh, V, C> {
 
     /// Return the associated [Viewport] given a [DtHandle].
     fn viewport(&self, dt: DtHandle) -> Option<V>;
+
+    /// Return the [DisplayTargetType] for the specified [DtHandle].
+    fn display_type(&self, dt: DtHandle) -> Option<DisplayTargetType>;
+
+    /// Set the [DisplayTargetType] for the specified [DtHandle].
+    /// This method can be used to toggle a display target between a GUI widget and a window
+    /// background. The corresponding surface and scaler may be updated as needed.
+    fn set_display_type(&mut self, dt: DtHandle, new_type: DisplayTargetType) -> Result<(), Error>;
 
     /// Load and set the specified icon for the main viewport in the DisplayManager.
     /// If the viewport does not support icons, this method should do nothing.
@@ -353,8 +366,11 @@ pub trait DisplayManager<B, G, Vh, V, C> {
     where
         F: FnMut(&mut VideoRenderer, VideoCardId, &mut [u8]);
 
-    /// Execute a closure that is passed a mutable reference to the Surface of each Display Target in the manager.
-    fn for_each_surface<F>(&mut self, f: F)
+    /// Execute a closure that is passed a mutable reference to the Surface of each Display Target
+    /// in the manager.
+    /// If dt_type is Some, only surfaces corresponding to a display target of that type will be
+    /// passed to the closure.
+    fn for_each_surface<F>(&mut self, dt_type_filter: Option<DisplayTargetType>, f: F)
     //where F: FnMut(&mut B, &mut dyn DisplayScaler<B, NativeTextureView=Self::NativeTextureView, NativeEncoder=Self::NativeEncoder>, Option<&mut G>);
     where
         F: FnMut(&mut B, &mut Self::ImplSurface, Option<&mut Self::ImplScaler>, Option<&mut G>);
@@ -403,7 +419,7 @@ pub trait DisplayManager<B, G, Vh, V, C> {
     fn add_scaler_preset(&mut self, preset: ScalerPreset);
 
     /// Retrieve the scaler preset by name.
-    fn get_scaler_preset(&mut self, name: String) -> Option<&ScalerPreset>;
+    fn scaler_preset(&mut self, name: String) -> Option<&ScalerPreset>;
 
     /// Apply the named scaler preset to the specified display target.
     fn apply_scaler_preset(&mut self, dt: DtHandle, name: String) -> Result<(), Error>;
@@ -412,7 +428,7 @@ pub trait DisplayManager<B, G, Vh, V, C> {
     fn apply_scaler_params(&mut self, dt: DtHandle, params: &ScalerParams) -> Result<(), Error>;
 
     /// Get the scaler parameters for the specified display target.
-    fn get_scaler_params(&self, dt: DtHandle) -> Option<ScalerParams>;
+    fn scaler_params(&self, dt: DtHandle) -> Option<ScalerParams>;
 
     /// Set the desired Display Aperture for the specified display target.
     /// Returns the associated [VideoCardId], as the card will need to be resized when the aperture

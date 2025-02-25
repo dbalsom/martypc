@@ -94,7 +94,7 @@ pub fn render_frame(emu: &mut Emulator, dm: &mut EFrameDisplayManager) {
 
     // Finally, render each surface
 
-    dm.for_each_surface(|backend, surface, scaler, gui_opt| {
+    dm.for_each_surface(None, |backend, surface, scaler, gui_opt| {
         // log::debug!(
         //     "Rendering surface. Scaler? {} Gui? {}",
         //     scaler.is_some(),

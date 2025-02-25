@@ -76,6 +76,7 @@ use crate::{
     GuiEnumMap,
     GuiEvent,
     GuiEventQueue,
+    GuiVariable,
     GuiVariableContext,
     GuiWindow,
     MediaTrayState,
@@ -756,6 +757,18 @@ impl GuiState {
                 ));
             }
 
+            // Create GuiEnum for Display Type (windowed or background)
+            enum_vec.push((
+                GuiEnum::DisplayType(display.dtype),
+                Some(GuiVariableContext::Display(display.handle)),
+            ));
+
+            /// Create GuiEnum for Bezel status (true if bezel is enabled)
+            enum_vec.push((
+                GuiEnum::WindowBezel(false),
+                Some(GuiVariableContext::Display(display.handle)),
+            ));
+
             // Set the initial scaler params for the Scaler Adjustments window if we have them.
             if let Some(scaler_params) = &display.scaler_params {
                 self.scaler_adjust.set_params(DtHandle(idx), scaler_params.clone());
@@ -766,6 +779,19 @@ impl GuiState {
         for enum_item in enum_vec.iter() {
             self.set_option_enum(enum_item.0.clone(), enum_item.1);
         }
+    }
+
+    // This is a hack interface - figure out where to better expose this state
+    pub fn primary_video_has_bezel(&mut self) -> bool {
+        let vctx = GuiVariableContext::Display(DtHandle::MAIN);
+        if !self.display_info.is_empty() {
+            if let Some(enum_mut) = self.get_option_enum_mut(GuiEnum::WindowBezel(Default::default()), Some(vctx)) {
+                let mut checked = *enum_mut == GuiEnum::WindowBezel(true);
+
+                return checked;
+            }
+        }
+        false
     }
 
     #[allow(dead_code)]

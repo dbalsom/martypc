@@ -42,6 +42,7 @@
 //! - FloppyManager: Manages the loading and unloading of floppy disk images
 //! - VhdManager: Manages the loading and unloading of VHD disk images
 //! - CartridgeManager: Manages the loading and unloading of ROM cartridges (PCjr specific)
+#![feature(trait_alias)]
 
 use serde_derive::Deserialize;
 
