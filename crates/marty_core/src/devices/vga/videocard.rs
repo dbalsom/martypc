@@ -2,7 +2,7 @@
     MartyPC
     https://github.com/dbalsom/martypc
 
-    Copyright 2022-2024 Daniel Balsom
+    Copyright 2022-2025 Daniel Balsom
 
     Permission is hereby granted, free of charge, to any person obtaining a
     copy of this software and associated documentation files (the “Software”),
@@ -213,7 +213,7 @@ impl VideoCard for VGACard {
         self.crtc.maximum_scanline() + 1
     }
 
-    fn get_palette(&self) -> Option<Vec<[u8;4]>> {
+    fn get_palette(&self) -> Option<Vec<[u8; 4]>> {
         Some(self.ac.color_registers_rgba.to_vec())
     }
 
@@ -451,7 +451,7 @@ impl VideoCard for VGACard {
         }
 
         let mut chain4_buf = Vec::with_capacity(self.get_plane_slice(0).len() * 4);
-        
+
         // In addition to the four planar dumps, we can dump a chain4 representation.
         let iter1 = self.get_plane_slice(0).chunks_exact(4);
         let iter2 = self.get_plane_slice(1).chunks_exact(4);
@@ -475,8 +475,7 @@ impl VideoCard for VGACard {
             Err(e) => {
                 log::error!("Failed to write memory dump '{}': {}", &filename.display(), e)
             }
-        }        
-        
+        }
     }
 
     fn get_frame_count(&self) -> u64 {

@@ -2,7 +2,7 @@
     MartyPC
     https://github.com/dbalsom/martypc
 
-    Copyright 2022-2024 Daniel Balsom
+    Copyright 2022-2025 Daniel Balsom
 
     Permission is hereby granted, free of charge, to any person obtaining a
     copy of this software and associated documentation files (the “Software”),
@@ -151,8 +151,7 @@ impl VideoCard for CGACard {
                 for _ in 0..lchar_ticks {
                     if self.clock_divisor == 2 {
                         self.tick_lchar();
-                    }
-                    else {
+                    } else {
                         self.tick_hchar();
                         self.tick_hchar();
                     }
@@ -180,8 +179,7 @@ impl VideoCard for CGACard {
             // In highres mode, the color control register controls the foreground color, not overscan
             // so overscan must be black.
             0
-        }
-        else {
+        } else {
             self.cc_altcolor
         }
     }
@@ -283,14 +281,14 @@ impl VideoCard for CGACard {
         })
     }
 
-    fn get_palette(&self) -> Option<Vec<[u8;4]>> {
+    fn get_palette(&self) -> Option<Vec<[u8; 4]>> {
         None
     }
-    
+
     fn get_character_height(&self) -> u8 {
         self.crtc_maximum_scanline_address + 1
     }
-    
+
     #[rustfmt::skip]
     fn get_videocard_string_state(&self) -> HashMap<String, Vec<(String, VideoCardStateEntry)>> {
         let mut map = HashMap::new();
@@ -377,8 +375,7 @@ impl VideoCard for CGACard {
 
         let mut hdots = if let DeviceRunTimeUnit::SystemTicks(ticks) = time {
             ticks
-        }
-        else {
+        } else {
             panic!("CGA requires SystemTicks time unit.")
         };
 
@@ -477,8 +474,7 @@ impl VideoCard for CGACard {
 
                     if self.clock_divisor == 2 {
                         self.tick_lchar();
-                    }
-                    else {
+                    } else {
                         self.tick_hchar();
                     }
 

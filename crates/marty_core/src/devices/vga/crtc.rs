@@ -2,7 +2,7 @@
     MartyPC
     https://github.com/dbalsom/martypc
 
-    Copyright 2022-2024 Daniel Balsom
+    Copyright 2022-2025 Daniel Balsom
 
     Permission is hereby granted, free of charge, to any person obtaining a
     copy of this software and associated documentation files (the “Software”),
@@ -229,7 +229,7 @@ pub struct CrtcStatus {
 pub struct VgaCrtc {
     // CRTC registers
     register_select_byte: u8,
-    register_selected:    CRTCRegister,
+    register_selected: CRTCRegister,
 
     crtc_horizontal_total: u8,                          // R(0) Horizontal Total
     crtc_horizontal_display_end: u8,                    // R(1) Horizontal Display End
@@ -299,7 +299,7 @@ impl Default for VgaCrtc {
     fn default() -> Self {
         Self {
             // CRTC registers
-            register_selected:    CRTCRegister::HorizontalTotal,
+            register_selected: CRTCRegister::HorizontalTotal,
             register_select_byte: 0,
 
             crtc_horizontal_total: DEFAULT_HORIZONTAL_TOTAL,
@@ -375,7 +375,7 @@ impl VgaCrtc {
     pub fn read_crtc_register_address(&self) -> u8 {
         self.register_select_byte
     }
-    
+
     pub fn write_crtc_register_address(&mut self, byte: u8) {
         //log::trace!("VGA: CRTC register {:02X} selected", byte);
         self.register_select_byte = byte & 0x1F;
@@ -435,7 +435,7 @@ impl VgaCrtc {
             CRTCRegister::EndHorizontalRetrace => {
                 // (R5)
                 self.crtc_end_horizontal_retrace.into_bytes()[0]
-    }
+            }
             CRTCRegister::VerticalTotal => {
                 // (R6) 9-bit - Vertical Total
                 // Bit 8 in overflow register. Return only lower 8 bits here.
@@ -529,7 +529,7 @@ impl VgaCrtc {
             }
         }
     }
-    
+
     /// Write to one of the CRT Controller registers.
     /// Returns a a tuple, a boolean representing whether the card should recalculate mode parameters after this write,
     /// and a boolean representing whether the current interrupt status should be cleared.
@@ -792,8 +792,7 @@ impl VgaCrtc {
             // Wrap at HT
             proposed_ehr = ehr;
             self.crtc_retrace_width = self.crtc_horizontal_total - self.crtc_start_horizontal_retrace + ehr;
-        }
-        else {
+        } else {
             self.crtc_retrace_width = proposed_ehr - self.crtc_start_horizontal_retrace;
         }
         self.crtc_end_horizontal_retrace_norm = proposed_ehr;
@@ -848,8 +847,7 @@ impl VgaCrtc {
             for i in self.crtc_cursor_start..=self.crtc_cursor_end.cursor_end().saturating_sub(1) {
                 self.cursor_data[i as usize] = true;
             }
-        }
-        else {
+        } else {
             // The EGA will draw a single scanline instead of a split cursor if (end % 16) == start
             // https://www.pcjs.org/blog/2018/03/20/
             if (self.crtc_cursor_end.cursor_end() & 0x0F) == self.crtc_cursor_start {
@@ -945,8 +943,7 @@ impl VgaCrtc {
                 self.in_hrd = false;
                 self.hrdc = 0;
                 self.hsc = 0;
-            }
-            else {
+            } else {
                 self.hrdc = self.hrdc.wrapping_add(1);
             }
         }
@@ -1139,8 +1136,7 @@ impl VgaCrtc {
                 self.status.hborder = false;
                 self.status.den = true;
                 self.dsc = 0;
-            }
-            else {
+            } else {
                 self.dsc = self.dsc.wrapping_add(1);
             }
         }
@@ -1151,8 +1147,7 @@ impl VgaCrtc {
                 self.status.den_skew = false;
                 self.status.hborder = true;
                 self.dsc = 0;
-            }
-            else {
+            } else {
                 self.status.den_skew = true;
                 self.dsc = self.dsc.wrapping_add(1);
             }
@@ -1168,14 +1163,13 @@ impl VgaCrtc {
 
         if self.crtc_underline_location.double_word_mode() != 0 {
             // Doubleword mode selected. Typically used in mode13h.
-            
+
             // The documentation surrounding this bit is poor. Many references state that the address 
             // is shifted by two, but this is an incomplete description. The low order bits are replaced
             // by MA12 and MA13 as well. This is only mentioned in the official IBM documentation.
             let ma12_13 = (self.vma & (0x3 << 12)) >> 12;
             output_addr = (output_addr << 2) | ma12_13;
-        }
-        else if let WordOrByteMode::Word = self.crtc_mode_control.word_or_byte_mode() {
+        } else if let WordOrByteMode::Word = self.crtc_mode_control.word_or_byte_mode() {
             // Word mode selected
             let bit = match self.crtc_mode_control.address_wrap() {
                 0 => (self.vma & (1 << 13)) >> 13,
