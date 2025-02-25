@@ -43,6 +43,9 @@ In May 2023, MartyPC became the first PC emulator capable of emulating every eff
 
 The WebAssembly build of MartyPC can run both [8088MPH](https://dbalsom.github.io/martypc/web/player.html?title=8088mph) and [Area 5150](https://dbalsom.github.io/martypc/web/player.html?title=area5150) in your web browser!
 
+***Note:*** The above links are very outdated - try the [new online version of MartyPC](https://martypc.net), with includes ready-made diskettes
+with both demos.
+
 ## Features
 
 Currently, MartyPC can emulate an original IBM 5150 PC, 5160 XT, or a generic XT clone machine.
@@ -60,11 +63,14 @@ MartyPC emulates the following devices:
     * **CGA** - A dynamic, cycle-or-character clocked implementation of the IBM CGA including the Motorola MC6845 CRTC controller allows MartyPC to run demanding PC demos like 8088MPH and Area5150. MartyPC takes a unique approach to PC video card emulation by simulating the entire display field - including overscan. Composite output and monitor simulation is supported, via reenigne's excellent composite conversion code (also used by DOSBox and 86Box) 
     * **TGA** - A character-clocked implementation of the PCJr and Tandy Graphics Video Gate Array. Work in progress.
     * **MDA** - A character-clocked implementation of the IBM MDA card built on the Motorola MC6845 CRTC controller. An MDA adapter can be installed alongside a CGA or EGA card for multi-monitor operation.
-        * **Hercules** - The MDA device optionally supports emulation of the Hercules Graphics Adapter.
+    * **Hercules** - The MDA device optionally supports emulation of the Hercules Graphics Adapter.
     * **EGA** - A character-clocked implementation of the IBM EGA builds on the techniques used developing the CGA. It is structured to replicate the logical functions of each of the LSI chips on the original hardware. It supports redefinable fonts, vsync interrupts and per-scanline pel-panning for smooth scrolling.  
 
 * ### Storage Devices:
-    * **µPD765 FDC** - Currently robust enough to support both DOS and Minix operating systems, although floppy image emulation is limited to raw sector images.
+    * **µPD765 FDC** - Currently robust enough to support both DOS and Minix operating systems. MartyPC uses my disk 
+                       image library, [fluxfox](https://github.com/dbalsom/fluxfox/), which allows it to support a wide variety of PC disk image formats.
+                       MartyPC's FDC emulation is still not as accurate as I'd like it to be, but it can support a number
+                       of copy-protected titles, given a disk image of the appropriate format.
     * **IBM/Xebec 20MB HDC** - Emulated with basic VHD support. MartyPC currently supports a single disk geometry of 20MB.
     * **PCJr Cartridges** - PCJr cartridge ROMs are supported, in JrRipCart (.JRC) format
 
@@ -81,7 +87,7 @@ MartyPC emulates the following devices:
     * **LoTech 2MB EMS Card** - 2MB of EMS memory is made available via the [LoTech EMS board](https://www.lo-tech.co.uk/wiki/Lo-tech_2MB_EMS_Board).  
 
 * ### Input Devices:
-    * **Keyboard Support** - IBM Model F and Tandy 1000 keyboards are emulated.
+    * **Keyboard Support** - IBM Model F, Tandy 1000, and PCjr keyboards are emulated.
     * **Serial Mouse** - A standard Microsoft serial mouse can be connected to the COM port of your choice.
     * **Joystick** - Game port joysticks are emulated via configurable keyboard controls.
 
@@ -97,16 +103,12 @@ and various peripheral states. Code and memory breakpoints are supported. MartyP
 
 ![debugger01](./doc/img/martypc_debugger_01.png)
 
-### Multi-window support
-
-Run two video cards in separate windows, or the same video card in 'accurate' and 'debug' views - or with different shaders!
-
 ### Shader support
 
 A basic, configurable CRT shader is included with more to come 
 ([LibraShader](https://github.com/SnowflakePowered/librashader) support is planned)
 
-![multimon01](./doc/img/martypc_multimon_01.png)
+![shaders01](./doc/img/windowed_shaders_01.png)
 
 ## Screenshots
 
