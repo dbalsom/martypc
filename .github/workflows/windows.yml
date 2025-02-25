@@ -34,7 +34,8 @@ jobs:
           export CARGO_HOME=$HOME/.cargo
           mkdir -p $CARGO_HOME
           curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs | sh -s -- -y --default-toolchain nightly
-          source $CARGO_HOME/env
+          MSYS_ENV="$(cygpath -u "C:/msys64/home/runneradmin/.cargo/env")"
+          source "$MSYS_ENV"
           rustc --version
           cargo --version
           rustup show active-toolchain
