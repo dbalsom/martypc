@@ -31,12 +31,17 @@ jobs:
           update: true
           msystem: ${{ matrix.environment.msystem }}
           pacboy: >-
-            rust-nightly:p
+            rust:p
 
       - name: Checkout repository
         uses: actions/checkout@v4
         with:
           fetch-depth: 0
+
+      - name: Install nightly Rust
+        run: |
+          rustup toolchain install nightly
+          rustup default nightly
 
       - name: Cargo build
         run: cargo build --profile release-lto --features use_winit,use_wgpu,devtools,sound,opl
