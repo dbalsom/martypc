@@ -35,7 +35,7 @@ jobs:
       - name: Install rustup and nightly Rust
         run: |
           curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs | sh -s -- -y
-          source $HOME/.cargo/env
+          export PATH="$USERPROFILE/.cargo/bin:$PATH"
           rustup override set nightly
           rustup show active-toolchain
 
