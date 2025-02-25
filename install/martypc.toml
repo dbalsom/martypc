@@ -3,7 +3,7 @@
 #
 [meta]
 file_type = "main_config"
-config_version = "0.2"
+config_version = "0.4"
 
 # ----------------------------------------------------------------------------
 # Machine Options
@@ -14,11 +14,16 @@ config_version = "0.2"
 # General emulator options are given in [emulator] below.
 # ----------------------------------------------------------------------------
 [machine]
-# Specify the name of a machine configuration to load. Valid config_names
-# are defined via machine configuration profiles in the /configs/machines
-# directory.
+# `config_name`: The name of the machine configuration to load.
+# Machine configurations are defined in the various machine configuration
+# definition files in /configs/machines.
+
+# This is not a filename reference.
+# Only one `config_name` should be uncommented at a time.
+#
+# If you just want to enable the hard drive, change config_name to
+# "ibm5160_hdd"
 config_name = "ibm5160"
-#config_name = "ibm5160_hdd"
 
 # Specify configuration overlays to load on top of machine configuration.
 # Config overlays are a convenient way to swap or add to a base config. 
@@ -277,6 +282,8 @@ breakpoint_notify = true
 [[emulator.window]]
 # Provide a name for this window. (Required)
 name = "Main GUI"
+
+background_color = 0x323338 # Medium gray.
 
 # If this parameter is provided, the window will be created at *at least* 
 # this size, or the video aperture resolution, whichever is higher.
