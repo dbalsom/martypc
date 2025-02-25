@@ -1,9 +1,10 @@
 name: Windows
 
 on:
-  pull_request:
+  push:
     branches:
-      - version_0_4_0
+      - version_0_2_0
+  pull_request:
 
 env:
   CARGO_TERM_COLOR: always
@@ -13,69 +14,41 @@ jobs:
     name: martypc
     runs-on: windows-2022
 
+    defaults:
+      run:
+        shell: msys2 {0}
+
+    strategy:
+      matrix:
+        environment:
+          - msystem: MINGW64
+            prefix: mingw-w64-x86_64
     steps:
       - name: Prepare MSYS2 environment
         uses: msys2/setup-msys2@v2
         with:
           release: false
           update: true
-          msystem: MINGW64
-          install: >-
-            mingw-w64-x86_64-gcc
-            mingw-w64-x86_64-make
-            mingw-w64-x86_64-pkgconf
-            git
-            base-devel
-
-      - name: Install Rustup + Nightly in MSYS2
-        shell: msys2 {0}
-        run: |
-          export HOME=/home/runneradmin
-          export CARGO_HOME=$HOME/.cargo
-          mkdir -p $CARGO_HOME
-          curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs | sh -s -- -y --default-toolchain nightly
-          MSYS_ENV="$(cygpath -u "C:/msys64/home/runneradmin/.cargo/env")"
-          source "$MSYS_ENV"
-          rustc --version
-          cargo --version
-          rustup show active-toolchain
+          msystem: ${{ matrix.environment.msystem }}
+          pacboy: >-
+            rust-nightly:p
 
       - name: Checkout repository
         uses: actions/checkout@v4
         with:
           fetch-depth: 0
 
-      - name: Cache Cargo Registry and Build Artifacts
-        uses: actions/cache@v4
-        with:
-          path: |
-            /home/runneradmin/.cargo/registry
-            /home/runneradmin/.cargo/git
-            target
-          key: cargo-${{ runner.os }}-${{ hashFiles('**/Cargo.lock') }}
-          restore-keys: |
-            cargo-${{ runner.os }}-
+      - name: Cargo build
+        run: cargo build --profile release-lto --features use_winit,use_wgpu,devtools,sound,opl
 
-      - name: Build
-        shell: msys2 {0}
-        run: |
-          source /home/runneradmin/.cargo/env
-          cargo build --profile release-lto --features use_winit,use_wgpu,devtools,sound,opl
-
-      - name: Prepare install dir
-        shell: msys2 {0}
-        run: mkdir -p install
-
-      - name: Copy files
-        shell: msys2 {0}
-        run: cp LICENSE README.md CHANGELOG.md CREDITS.md target/release-lto/martypc install/
+      - name: Copy files into install dir
+        run: cp LICENSE README.md CHANGELOG.md CREDITS.md target/release-lto/martypc install
 
       - name: Rename install directory
-        shell: msys2 {0}
         run: mv install martypc
 
       - name: Upload artifact
         uses: actions/upload-artifact@v4
         with:
-          name: martypc-windows-gha
+          name: 'martypc-windows-gha${{ github.run_number }}'
           path: martypc
