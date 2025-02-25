@@ -1,0 +1,21 @@
+[package]
+name = "display_backend_trait"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+
+[lib]
+name = "display_backend_trait"
+path = "src/lib.rs"
+crate-type = ["lib"]
+
+[dependencies]
+thiserror = "2.0"
+anyhow = "1.0"
+egui = { workspace = true, optional = true }
+wgpu = { workspace = true, default-features = false, optional = true}
+
+
+[features]
+use_wgpu = ["dep:wgpu"]
+use_glow = ["dep:egui"]

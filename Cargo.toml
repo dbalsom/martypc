@@ -1,16 +1,22 @@
 [workspace]
 members = [
-    "core",
-    "lib/common",
-    "lib/frontend/frontend_common",
-    "lib/frontend/videocard_renderer",
-    "lib/frontend/marty_scaler_wgpu",
-    "lib/frontend/display_manager_wgpu",
-    "lib/frontend/marty_egui",
-    "lib/frontend/config_toml_bpaf",
-    "frontends/martypc_web_player_wgpu",
-    "frontends/martypc_desktop_wgpu"
+    "crates/marty_core",
+    "crates/marty_common",
+    "crates/lib/frontend/marty_frontend_common",
+    "crates/lib/frontend/marty_videocard_renderer",
+    "crates/lib/frontend/marty_scaler_wgpu",
+    "crates/lib/frontend/display_manager_wgpu",
+    "crates/lib/frontend/marty_egui",
+    "crates/lib/frontend/marty_egui_wgpu",
+    "crates/lib/frontend/marty_config",
+    "crates/lib/frontend/marty_web_helpers",
+    "crates/frontends/martypc_headless",
+    "crates/frontends/martypc_eframe",
+    "crates/frontends/martypc_web_player_wgpu",
+    "crates/frontends/martypc_desktop_wgpu"
 ]
+resolver = "2"
+default-members = ["crates/frontends/martypc_eframe"]
 
 [workspace.package]
 version = "0.3.0"
@@ -19,71 +25,113 @@ rust-version = "1.76"
 license = "MIT"
 authors = ["Daniel Balsom"]
 
-[package]
-name = "martypc"
-version.workspace = true
-edition.workspace = true
-license.workspace = true
-authors.workspace = true
-
-[[bin]]
-name = "martypc"
-path = "frontends/martypc_desktop_wgpu/src/main.rs"
-
-[dependencies]
-marty_core = { path = "core"}
-videocard_renderer = { path = "lib/frontend/videocard_renderer" }
-marty_egui = { path = "lib/frontend/marty_egui" }
-frontend_common = { path = "lib/frontend/frontend_common" }
-martypc_desktop_wgpu = { path = "frontends/martypc_desktop_wgpu" }
-
 [workspace.dependencies]
-winit = "0.29.4"
-wgpu = "0.20.0"
+winit = "0.30"
+wgpu = "23.0"
 bytemuck = "1.14"
 raw-window-handle = "0.5.0"
-thiserror = "1.0.37"
+thiserror = "2.0"
 anyhow = "1.0"
 log = "0.4.20"
 serde = { version = "1.0", features = ["derive"] }
 serde_derive = "1.0"
 serialport = { git = "https://github.com/dbalsom/serialport-rs", branch = "arduino-fix" }
-web-time = "0.2.4"
+web-time = "1.1.0"
 toml = "0.8"
 fxhash = "0.2.1"
 enum_dispatch = "0.3.13"
 indexmap = "2.2.6"
 crossbeam-channel = "0.5.13"
 crossbeam-utils = "0.8.5"
-zip = {  version = "2.1.3", default-features = false, features = ["bzip2", "deflate", "deflate64", "lzma", "time", "zstd"] }
+zip = { version = "2.1.3", default-features = false }
+strum = "0.26"
+strum_macros = "0.26"
+url = "2.5"
+egui_commonmark = { version = "0.19" }
+rand = "0.9"
+getrandom = "0.3"
+regex = "1.5"
+cfg-if = "1.0"
 
-egui = "0.28.1"
-egui-wgpu = "0.28.1"
-egui_plot = "0.28"
+# wasm workspace dependencies
+# ---------------------------------------------------------------------------------------------------------------------
+
+# Match the exact version of wasm-bindgen bundled with Trunk. This changes from time to time
+wasm-bindgen = "=0.2.100"
+wasm-bindgen-futures = "0.4"
+wasm-bindgen-rayon = "1.3"
+[workspace.dependencies.web-sys]
+version = "=0.3.72"
+features = [
+    "DedicatedWorkerGlobalScope",
+    "WorkerOptions",
+    "WorkerType",
+    "Url",
+    "Blob",
+    "BlobPropertyBag",
+    "Window",
+    "Document",
+    "HtmlAnchorElement",
+    "Event",
+    "FileReader",
+    "HtmlInputElement"
+]
 
 [workspace.dependencies.fluxfox]
 git = "https://github.com/dbalsom/fluxfox.git"
-branch = "main"
+branch = "martypc_consumer"
+default-features = false
+
+[workspace.dependencies.fluxfox_egui]
+git = "https://github.com/dbalsom/fluxfox.git"
+branch = "martypc_consumer"
+
+[workspace.dependencies.egui]
+#git = "https://github.com/dbalsom/egui_martypc.git"
+#branch = "0.30.0_raw_winit_hook"
+version = "0.30.0"
+default-features = false
+
+[workspace.dependencies.eframe]
+git = "https://github.com/dbalsom/egui_martypc.git"
+branch = "0.30.0_raw_winit_hook"
+#version = "0.30.0"
+default-features = false
 
 [workspace.dependencies.egui-winit]
-version = "0.28.1"
-#branch = "0_24_2_winit_0_29_15"
+git = "https://github.com/dbalsom/egui_martypc.git"
+branch = "0.30.0_raw_winit_hook"
 default-features = false
-features = ["clipboard", "wayland", "x11"]
+#version = "0.30.0"
+#branch = "0_24_2_winit_0_29_15"
+#features = ["clipboard", "wayland", "x11"]
+
+[workspace.dependencies.egui-wgpu]
+#git = "https://github.com/dbalsom/egui_martypc.git"
+#branch = "0.30.0_raw_winit_hook"
+version = "0.30.0"
 
 [workspace.dependencies.egui_extras]
-version = "0.28.1"
+git = "https://github.com/dbalsom/egui_martypc.git"
+branch = "0.30.0_raw_winit_hook"
+default-features = false
 #branch = "0_24_2_winit_0_29_15"
 features = ["image"]
 
+[workspace.dependencies.egui_plot]
+version = "0.30.0"
+#default-features = false
+
 [workspace.dependencies.image]
-version = "0.24"
+version = "0.25"
 default-features = false
 features = ["png"]
 
-[workspace.dependencies.pixels]
-git = "https://github.com/dbalsom/pixels_martypc.git"
-branch = "marty_update_deps4"
+#[workspace.dependencies.pixels]
+#git = "https://github.com/mattjuk/pixels.git"
+#branch = "update-wgpu-22-winit-0.30"
+#git = "https://github.com/dbalsom/pixels_martypc.git"
+#branch = "marty_update_deps4"
 
 [workspace.dependencies.rodio]
 git = "https://github.com/dbalsom/rodio_martypc.git"
@@ -112,6 +160,8 @@ branch = "buffer_size"
 #git = "https://github.com/dbalsom/egui_martypc.git"
 #branch = "0_24_2_winit_0_29_15"
 
+
+
 [profile.release]
 opt-level = 3
 
@@ -124,29 +174,7 @@ opt-level = 3
 [profile.dev.package."*"]
 opt-level = 3
 
-[features]
-default = ["ega", "vga", "opl"]
-devtools = ["martypc_desktop_wgpu/devtools"]
-arduino_validator = ["marty_core/arduino_validator", "martypc_desktop_wgpu/arduino_validator"]
-cpu_validator = ["marty_core/cpu_validator", "martypc_desktop_wgpu/cpu_validator"]
-ega = ["marty_core/ega", "frontend_common/ega", "videocard_renderer/ega"]
-vga = ["marty_core/vga", "frontend_common/vga", "videocard_renderer/vga"]
-opl = ["marty_core/opl"]
 
-[build-dependencies]
-winres = "0.1"
 
-[package.metadata.appimage]
-assets = [
-    "install/martypc.toml",
-    "install/configs",
-    "install/media",
-    "install/output",
-]
-auto_link = true
-auto_link_exclude_list = [
-    "libc.so*",
-    "libdl.so*",
-    "libpthread.so*",
-]
+
 

@@ -1,0 +1,40 @@
+[package]
+name = "display_manager_eframe"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+authors.workspace = true
+
+[lib]
+name = "display_manager_eframe"
+path = "src/lib.rs"
+crate-type = ["lib"]
+
+[dependencies]
+marty_common = { path = "../../../marty_common" }
+marty_core = { path = "../../../marty_core", default-features = false }
+marty_egui = { path = "../marty_egui" }
+marty_egui_eframe = { path = "../../frontend/marty_egui_eframe" }
+
+marty_frontend_common =  { path = "../marty_frontend_common", features = ["use_wgpu"] }
+
+marty_videocard_renderer = { path = "../marty_videocard_renderer" }
+egui.workspace = true
+egui-wgpu = { workspace = true, optional = true }
+winit.workspace = true
+anyhow.workspace = true
+image.workspace = true
+log.workspace = true
+
+marty_scaler_null = { path = "../marty_scaler_null" }
+
+# Optional Dependencies
+# ---------------------------------------------------------------------------------------------------------------------
+display_backend_eframe = { path = "../../backend/display_backend_eframe", optional = true }
+display_backend_eframe_wgpu = { path = "../../backend/display_backend_eframe_wgpu", optional = true }
+marty_scaler_wgpu = { path = "../marty_scaler_wgpu", optional = true }
+
+[features]
+default = []
+use_wgpu = ["dep:egui-wgpu", "marty_scaler_wgpu", "dep:display_backend_eframe_wgpu"]
+use_glow = ["dep:display_backend_eframe"]

@@ -1,0 +1,55 @@
+[package]
+name = "marty_egui"
+description = "A library crate providing the egui interface for MartyPC"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+
+[lib]
+name = "marty_egui"
+path = "src/lib.rs"
+crate-type = ["lib"]
+
+[dependencies]
+marty_frontend_common = { path = "../marty_frontend_common" }
+marty_common = { path = "../../../marty_common" }
+marty_core = { path = "../../../marty_core", default-features = false }
+marty_videocard_renderer = { path = "../marty_videocard_renderer" }
+bytemuck = { workspace=true, features = ["derive"] }
+image = { workspace = true, default-features = false, features = ["png"] }
+web-time.workspace = true
+serde = { workspace = true, features = ["derive"] }
+strum.workspace = true
+strum_macros.workspace = true
+toml.workspace = true
+anyhow.workspace = true
+# We request the tiny_skia feature to enable rendering of disk images.
+# Eventually this dependency will be removed from fluxfox's core.
+fluxfox = { workspace = true, features = ["tiny_skia"] }
+fluxfox_egui.workspace = true
+crossbeam-channel.workspace = true
+crossbeam-utils.workspace = true
+lazy_static = "1.4"
+regex = "1.10"
+log = "0.4"
+tiny-skia = "0.11"
+egui_commonmark = { workspace = true, optional = true }
+
+egui = { workspace = true, default-features = false, features = ["serde"] }
+egui_extras.workspace = true
+egui_plot.workspace = true
+
+#egui-file-dialog = "0.6.1"
+#egui_file = {  git = "https://github.com/Barugon/egui_file", rev="f08fe3f9ea22de0312d062384544c5d2af5b76a1" }
+#egui-notify = { git = "https://github.com/dbalsom/egui-notify_martypc.git", branch = "egui_0_28_1"}
+egui_file = "0.20.0"
+egui-notify = "0.18"
+
+# Optional dependencies
+# ---------------------------------------------------------------------------------------------------------------------
+wgpu = {  workspace = true, optional = true }
+serialport = { workspace = true, optional = true }
+
+[features]
+use_serialport = ["serialport"]
+markdown = ["dep:egui_commonmark"]

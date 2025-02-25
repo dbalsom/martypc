@@ -1,0 +1,237 @@
+# machine_config_overlays.toml
+# Main Machine Configuration Overlay file for MartyPC.
+
+
+# Upgrade the CPU of the system to an NECV20. 
+# Base machine type must have a compatible CPU (Intel 8088)
+[[overlay]]
+name = "cpu_v20"
+    [overlay.cpu]
+    upgrade_type = "NecV20"
+    
+[[overlay]]
+name = "lotech_ems"
+    [overlay.ems]
+    ems_type = "LoTech2MB"
+    # EMS Window
+    # Valid values for LoTech card are:
+    #  0xC000
+    #  0xD000
+    #  0xE000
+    window = 0xE000
+    # Base IO address
+    # Valid values for LoTech card are:
+    #  0x260h
+    #  0x264h
+    #  0x268h
+    #  0x26Ch
+    io_base = 0x260
+    # Memory size = 2MB. Do not modify.
+    size = 0x200000
+
+[[overlay]]
+name = "adlib"
+    [[overlay.sound]]
+    type = "AdLib"
+    # Don't modify. All AdLib cards are at 0x388.
+    io_base = 0x388
+
+[[overlay]]
+name = "pcxt_640k_conventional"
+    [overlay.memory]
+    # A0000 = 640K of conventional memory
+    conventional.size = 0xA0000
+    conventional.wait_states = 0
+
+[[overlay]]
+name = "us_modelf_keyboard"
+    [overlay.keyboard]
+    # Valid options for keyboard_type are:
+    # ModelF - This was the original 83-key keyboard shipped with the PC/XT
+    #          (More keyboard types yet to be implemented)
+    type = "ModelF"
+    # Keyboard layout. Used to load the appropriate keyboard translation file. 
+    # MartyPC will look for the file keyboard_XX.toml in the ./keyboard/ directory
+    # where XX is the string specified by keyboard_layout.
+    #
+    # Certain scancodes have changed their meaning since the 1980's. Your help
+    # would be appreciated in developing new translation files.
+    layout = "US"
+    # Enable typematic repeat for the emulated keyboard. Host repeat is ignored.
+    typematic = true
+    # Delay in milliseconds before typematic repeat begins.
+    typematic_delay = 500.0
+    # Delay in milliseconds between each scancode during typematic repeat.
+    typematic_rate= 50.0
+    
+[[overlay]]
+name = "pcxt_2_serial_ports"
+    # Serial card
+    [[overlay.serial]]
+    bus_type = "ISA"
+    type = "IbmAsync"
+        [[overlay.serial.port]]
+        io_base = 0x3F8
+        irq = 4
+        [[overlay.serial.port]]
+        io_base = 0x2F8
+        irq = 3
+
+
+[[overlay]]
+name = "ibm_xebec"
+    # Hard disk controller
+    [overlay.hdc]
+    bus_type = "ISA"
+    type = "IbmXebec"
+        [[overlay.hdc.drive]]
+        format = "Mfm"
+        vhd = "xebec20MB.vhd"
+
+[[overlay]]
+name = "ibm_cga"
+    # Video card
+    [[overlay.video]]
+    bus_type = "ISA"
+    type = "CGA"
+    
+    # Clocking mode for video card. Default values are:
+    # Default   - Choose the best mode per card. (Recommended)
+    # Dynamic   - Switch between supported clocking modes as required.
+    # Cycle     - Clock by cycle. Accurate but slow. Only really useful for debugging.
+    #             Only valid for CGA.
+    # Character - Clock by character. Faster but may not be able to emulate certain effects.
+    #             Valid for MDA, CGA and EGA.
+    # Scanline  - Clock by scanline. Fastest but unable to emulate certain effects.
+    #             (Unimplemented)
+    clocking_mode = "Default"
+    
+    # Request line doubling for 15Khz (200 scanline) modes during rendering. 
+    # Recommended.
+    # This occurs before aspect correction, so reduces blur. Not applicable
+    # to VGA as VGA double-scans such modes in hardware.
+    line_double = true
+    snow = false
+
+[[overlay]]
+name = "ibm_mda"
+    # Video card
+    [[overlay.video]]
+    bus_type = "ISA"
+    type = "MDA"
+    clock_mode = "Default"
+    
+[[overlay]]
+name = "hercules"
+    # Video card
+    [[overlay.video]]
+    bus_type = "ISA"
+    type = "MDA"
+    subtype = "Hercules"
+    clock_mode = "Default"    
+
+[[overlay]]
+name = "ibm_ega"
+    # Video card
+    [[overlay.video]]
+    bus_type = "ISA"
+    type = "EGA"
+    clock_mode = "Default"
+    dip_switch = 0b1001
+    
+[[overlay]]
+name = "ibm_ega_on_cga"
+    # Video card
+    [[overlay.video]]
+    bus_type = "ISA"
+    type = "EGA"
+    clock_mode = "Default"
+    # 0111 = EGA on CGA monitor.
+    dip_switch = 0b0111
+
+[[overlay]]
+name = "ibm_cga_and_mda"
+    # Video card
+    [[overlay.video]]
+    bus_type = "ISA"
+    type = "CGA"
+    clock_mode = "Default"
+    # Video card
+    [[overlay.video]]
+    bus_type = "ISA"
+    type = "MDA"
+    clock_mode = "Default"
+    
+[[overlay]]
+name = "ibm_vga"
+    # Video card
+    [[overlay.video]]
+    bus_type = "ISA"
+    type = "VGA"
+    clock_mode = "Default"
+    
+#[[overlay]]
+#name = "ram_expansion"
+#    [[overlay.ram_expansion]]
+#    type = "Conventional"
+#    size = 0x60000  # 394K
+#    speed_ns = 200
+#    wait_states = 0
+
+
+[[overlay]]
+name = "pcxt_2_720k_floppies"
+    # Floppy disk controller
+    [overlay.fdc]
+    bus_type = "ISA"
+    type = "IbmNec"
+        # Drives connected to controller. Maximum of 4.
+        [[overlay.fdc.drive]]
+        type  = "720k"
+        [[overlay.fdc.drive]]
+        type  = "720k"
+
+[[overlay]]
+name = "pcxt_2_360k_floppies"
+# Floppy disk controller
+    [overlay.fdc]
+    bus_type = "ISA"
+    type = "IbmNec"
+        # Drives connected to controller. Maximum of 4.
+        [[overlay.fdc.drive]]
+        type  = "360k"
+        [[overlay.fdc.drive]]
+        type  = "360k"
+
+[[overlay]]
+name = "pcxt_4_360k_floppies"
+    # Floppy disk controller
+    [overlay.fdc]
+    bus_type = "ISA"
+    type = "IbmNec"
+        # Drives connected to controller. Maximum of 4.
+        [[overlay.fdc.drive]]
+        type  = "360k"
+        [[overlay.fdc.drive]]
+        type  = "360k"   
+        [[overlay.fdc.drive]]
+        type  = "360k"
+        [[overlay.fdc.drive]]
+        type  = "360k"       
+        
+[[overlay]]
+name = "microsoft_serial_mouse"
+    [overlay.serial_mouse]
+    type = "Microsoft"
+    # Port 0 - COM1
+    # Port 1 - COM2
+    port = 1
+    
+[[overlay]]
+name = "game_port"
+    [overlay.game_port]
+    # Don't change this unless you know what you are doing.
+    # Everything expects the game port to be at 0x201.
+    io_base = 0x201
+    
+    

@@ -134,9 +134,18 @@
 alias = "supersoft_diags"
 desc = "SuperSoft Diagnostic ROM for PC/XT"
 priority = 0
-provides = ["bios", "ibm5150v64k", "ibm5150v256k", "ibm5160", "diag"]
+provides = ["bios", "ibm5150v64k", "ibm5150v256k", "ibm5160", "ibm_basic", "diag"]
 rom = [
     { md5 = "3a0eacac07f1020b95ce06043982dfd1", addr = 0xFE000 }
+]
+
+[[romset]]
+alias = "rudds_diags"
+desc = "Rudd's Diagnostics v5.4 for XT"
+priority = 0
+provides = ["bios", "ibm5160", "ibm_basic", "diag"]
+rom = [
+    { filename = "ruuds_diagnostic_rom_v5.4_32kb.bin", addr = 0xF8000 }
 ]
 
 # ----------------------------------------------------------------------------

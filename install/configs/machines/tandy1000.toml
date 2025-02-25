@@ -59,12 +59,12 @@ type = "Tandy1000"
 rom_set = "tandy1000hx"
 speaker = true
 overlays = [
-    "pcxt_2_360k_floppies",
+    "pcxt_2_720k_floppies",
 ]
 
     [machine.memory]
     #conventional.size = 0x20000 # 128KB max. Install additional RAM via expansion cards
-    conventional.size = 0x20000
+    conventional.size = 0x40000 # Tandy 1000 HX came with 256kb RAM default
     conventional.wait_states = 0
 
     [machine.keyboard]
