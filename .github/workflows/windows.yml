@@ -45,7 +45,6 @@ jobs:
           fetch-depth: 0
 
       - name: Cache Cargo Registry and Build Artifacts
-        shell: msys2 {0}
         uses: actions/cache@v4
         with:
           path: |
