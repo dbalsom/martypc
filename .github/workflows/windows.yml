@@ -13,34 +13,41 @@ jobs:
     name: martypc
     runs-on: windows-2022
 
-    defaults:
-      run:
-        shell: msys2 {0}
-
     strategy:
       matrix:
         environment:
           - msystem: MINGW64
             prefix: mingw-w64-x86_64
     steps:
-      - name: Prepare MSYS2 environment
-        uses: msys2/setup-msys2@v2
-        with:
-          update: true
-          msystem: ${{ matrix.environment.msystem }}
-          install: >-
-            curl
-            git
-
       - name: Install Rust (GitHub Actions Native)
         uses: dtolnay/rust-toolchain@nightly
 
-      - name: Export Rust path
+      - name: Prepare MSYS2 environment
+        uses: msys2/setup-msys2@v2
+        with:
+          release: false
+          update: true
+          msystem: MINGW64
+          # Note: Do NOT install mingw-w64-x86_64-rust
+          install: >-
+            mingw-w64-x86_64-gcc
+            mingw-w64-x86_64-make
+            mingw-w64-x86_64-pkgconf
+            git
+            base-devel
+
+      - name: Verify Rust in MSYS2
+        shell: msys2 {0}
         run: |
           export PATH="$USERPROFILE/.cargo/bin:$PATH"
-          rustup show active-toolchain
-          cargo --version
           rustc --version
+          cargo --version
+          rustup show active-toolchain
+
+      - name: Checkout repository
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
 
       - name: Cache Cargo Registry and Build Artifacts
         uses: actions/cache@v4
@@ -53,10 +60,11 @@ jobs:
           restore-keys: |
             cargo-${{ runner.os }}-
 
-      - name: Checkout repository
-        uses: actions/checkout@v4
-        with:
-          fetch-depth: 0
+      - name: Build inside MSYS2
+        shell: msys2 {0}
+        run: |
+          export PATH="$USERPROFILE/.cargo/bin:$PATH"
+          cargo build --profile release-lto --features use_winit,use_wgpu,devtools,sound,opl
 
       - name: Cargo build
         run: cargo +nightly build --profile release-lto --features use_winit,use_wgpu,devtools,sound,opl
@@ -70,5 +78,5 @@ jobs:
       - name: Upload artifact
         uses: actions/upload-artifact@v4
         with:
-          name: 'martypc-windows-gha'
+          name: martypc-windows-gha
           path: martypc
