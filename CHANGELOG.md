@@ -1,5 +1,31 @@
 
-## [0.3.0](https://github.com/dbalsom/martypc/releases/tag/0.2.3) (2024-XX-XX)
+## [0.4.0](https://github.com/dbalsom/martypc/releases/tag/0.4.0) (2025-03-XX)
+
+## New eframe Frontend
+
+Some dependency API changes prompted me to switch window frameworks. The active Desktop frontend for MartyPC is now
+based on a customized fork of [eframe](https://github.com/emilk/egui/tree/master/crates/eframe).
+
+This provides a few nice things:
+ - WASM support. The full MartyPC GUI and debugger can now be hosted in a browser, and you can try that out right now
+   at [martypc.net](https://martypc.net)
+ - App state serialization.  This means parts of MartyPC's internal state can be persisted between sessions - things 
+   like which windows you had open and their positions, for example. This feature will be expanded upon.
+
+### Frontend Bug Fixes / Improvements
+ - You can now toggle the display between the window background and a GUI widget window. Shaders are also available
+   in windowed mode!
+ - When in windowed mode, you can apply a bezel overlay. This works best with a shader preset that applies curvature,
+   and the 'accurate' aperture selected.
+
+### Core Bug Fixes / Improvements
+ - Improved accuracy of the Programmable Interrupt Timer (PIT)
+ - Fixed a bug the CPU's DRAM refresh DMA scheduler. Many tests in Acid88 now pass.
+ - Reworked wait state calculations
+ - The timer hack for Area 5150 is no longer required and has been removed. MartyPC is now accurate enough to run
+   Area 5150 without any hacks or modificatons.
+
+## 0.3.0 (Unreleased)
 
 ## Fluxfox is here!
 
