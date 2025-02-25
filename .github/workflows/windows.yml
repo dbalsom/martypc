@@ -33,7 +33,8 @@ jobs:
           update: true
           msystem: ${{ matrix.environment.msystem }}
           pacboy: >-
-            toolchain:p base-devel:p git:p curl:p
+            git
+            msys2-devel
 
       - name: Install rustup and nightly Rust
         run: |
