@@ -13,7 +13,7 @@ crate-type = ["lib"]
 thiserror = "2.0"
 anyhow = "1.0"
 egui = { workspace = true, optional = true }
-wgpu = { workspace = true, default-features = false, optional = true}
+wgpu = { workspace = true, optional = true}
 
 
 [features]
