@@ -49,6 +49,8 @@ strum.workspace = true
 # url is used for the wasm build to be configured via url and fetch resources.
 # it is not optional as we may want to fetch things from the web from native, in the future.
 url = "2.5"
+thiserror.workspace = true
+rfd.workspace = true
 
 # Optional Dependencies
 # ---------------------------------------------------------------------------------------------------------------------

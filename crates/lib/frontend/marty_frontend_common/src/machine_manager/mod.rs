@@ -174,7 +174,17 @@ impl MachineManager {
             println!("Reading machine configuration file: {:?}", config.location);
 
             let toml_str = rm.read_string_from_path(&config.location).await?;
-            let mut loaded_config = self.parse_config_file(&toml_str)?;
+
+            let mut loaded_config = match self.parse_config_file(&toml_str) {
+                Ok(config) => config,
+                Err(e) => {
+                    return Err(anyhow::anyhow!(
+                        "Error parsing machine configuration file '{:?}':\n{}",
+                        config.location,
+                        e
+                    ))
+                }
+            };
 
             if let Some(machine_vec) = loaded_config.machine.as_mut() {
                 machine_configs.append(machine_vec);

@@ -1,28 +1,51 @@
 
 ## [0.4.0](https://github.com/dbalsom/martypc/releases/tag/0.4.0) (2025-03-XX)
 
-## New eframe Frontend
+## New `eframe` Frontend
 
 Some dependency API changes prompted me to switch window frameworks. The active Desktop frontend for MartyPC is now
 based on a customized fork of [eframe](https://github.com/emilk/egui/tree/master/crates/eframe).
 
 This provides a few nice things:
+ - Alternate backend support. We can now compile MartyPC for either:
+   - [wgpu](https://github.com/gfx-rs/wgpu) (the old default)
+   - [glow](https://github.com/grovesNL/glow) - OpenGL bindings for Rust
+
+   It is my hope that the`glow` backend may be more performant on older machines. We'll see, I suppose. Unfortunately,
+   the glow backend will not support MartyPC's scaler or shaders until I rewrite them for OpenGL.
+
+
  - WASM support. The full MartyPC GUI and debugger can now be hosted in a browser, and you can try that out right now
-   at [martypc.net](https://martypc.net)
+   at [martypc.net](https://martypc.net)!
  - App state serialization.  This means parts of MartyPC's internal state can be persisted between sessions - things 
    like which windows you had open and their positions, for example. This feature will be expanded upon.
 
+## Rusty File Dialogs
+ - The RFD crate provides access to native file dialogs for your particular OS.  Besides file open and file save pickers,
+   we can also use MessageBox(es).
+ - Initialization errors are now described in hopefully helpful detail via an error MessageBox. You should no longer 
+   have to rely on the command line output to tell why MartyPC didn't start.
+
+## XTIDE Hard Disk Controller
+ - 0.4.0 adds a new type of Hard Disk Controller - we can now emulate an XTIDE Rev 2. Since this BIOS is open-source,
+   a machine configuration that includes hard drive support is now the default: `ibm5160_xtide`.
+ - If you want the 'authentic retro' experience, the IBM/Xebec controller is still available as `ibm5160_hdd` as usual.
+ - The VHD creator has been updated to support the wide selection of common hard drive geometries that the XTIDE can 
+   support. You'll need to be running a machine with the XTIDE configured to see them.
+ - It is now possible to take a VHD file from 86Box (assuming you created it as a 'fixed' VHD) and use it in MartyPC
+   (and vice-versa!).
+
 ### Frontend Bug Fixes / Improvements
  - You can now toggle the display between the window background and a GUI widget window. Shaders are also available
-   in windowed mode!
+   in windowed mode (With the wgpu backend)!
  - When in windowed mode, you can apply a bezel overlay. This works best with a shader preset that applies curvature,
-   and the 'accurate' aperture selected.
+   and the 'accurate' aperture selected. This isn't really a shader effect, just a GUI trick. But it's kinda cool.
 
 ### Core Bug Fixes / Improvements
  - Improved accuracy of the Programmable Interrupt Timer (PIT)
  - Fixed a bug the CPU's DRAM refresh DMA scheduler. Many tests in Acid88 now pass.
  - Reworked wait state calculations
- - The timer hack for Area 5150 is no longer required and has been removed. MartyPC is now accurate enough to run
+ - The timer hack for Area 5150 is no longer required and has been removed. MartyPC is now finally accurate enough to run
    Area 5150 without any hacks or modificatons.
 
 ## 0.3.0 (Unreleased)

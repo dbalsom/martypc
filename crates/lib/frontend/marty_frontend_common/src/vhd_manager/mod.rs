@@ -45,7 +45,7 @@ use std::{
     ffi::OsString,
     fmt::Display,
     fs::File,
-    path::{Path, PathBuf},
+    path::PathBuf,
 };
 
 #[derive(Debug)]

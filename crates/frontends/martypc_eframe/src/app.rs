@@ -59,6 +59,7 @@ use crossbeam_channel::{Receiver, Sender};
 
 use egui::{Context, RawInput, Sense, ViewportId};
 
+use crate::emulator_builder::builder::EmuBuilderError;
 #[cfg(target_arch = "wasm32")]
 use crate::wasm::*;
 use marty_frontend_common::{
@@ -170,10 +171,74 @@ impl MartyApp {
             emu_result = emu_builder.build(&mut std::io::stdout(), &mut std::io::stderr()).await;
         }
 
+        // When the user runs our eframe app from a file browser, they typically will not get a
+        // console window. So use rfd here to show some message boxes to tell them what failed.
         let mut emu = match emu_result {
             Ok(emu) => emu,
             Err(e) => {
                 log::error!("Failed to build emulator: {}", e);
+                let mut dialog = rfd::MessageDialog::new()
+                    .set_title("Error initializing MartyPC!")
+                    .set_level(rfd::MessageLevel::Error);
+
+                let desc = match e {
+                    EmuBuilderError::ConfigNotFound(filename) => {
+                        format!("MartyPC couldn't find its main configuration file, '{filename}'!\n\
+                        Marty typically looks for this file in the current directory, unless you have specified a location with the '--configfile' argument.\n\
+                        If have built from source, make sure you are running MartyPC from the /install directory in the source tree.\n\
+                        MartyPC needs various configuration files from there to run!")
+                    }
+                    EmuBuilderError::ConfigIOError(filename, e) => {
+                        format!("MartyPC encountered an I/O error while trying to read its main configuration file, '{filename}]'\n\
+                        Make sure it isn't open in another program, and that you have permission to read it.\n\n\
+                        The error reported was:\n{e}")
+                    }
+                    EmuBuilderError::ConfigParseError(filename, e) => {
+                        format!("MartyPC encountered an error while trying to parse the TOML of its main configuration file, '{filename}'!\n\
+                        It is likely that you made a typo in the file, it is corrupted, or you used --configfile with the wrong file.\n\n\
+                        The error reported was:\n{e}")
+                    }
+                    EmuBuilderError::UnsupportedPlatform(_) => e.to_string(),
+                    EmuBuilderError::AudioDeviceError(e) => {
+                        format!("MartyPC failed to initialize an audio device!\n\
+                        This could be due to another program or process using your audio device in exclusive mode, or the device did not support the requested parameters.\n\
+                        If you are unable to use a sound device, you can still run MartyPC by passing the --no_sound argument to MartyPC.\n\n\
+                        The error reported was:\n{e}")
+                    }
+                    EmuBuilderError::AudioStreamError(e) => {
+                        format!("MartyPC was able to open your audio device, but failed to initialize an audio stream!\n\
+                        This could be due to another program or process using your audio device in exclusive mode, or the device did not support the requested parameters.\n\
+                        If you are unable to use a sound device, you can still run MartyPC by passing the --no_sound argument to MartyPC.\n\n\
+                        The error reported was:\n{e}")
+                    }
+                    EmuBuilderError::ValidatorNotSpecified => e.to_string(),
+                    EmuBuilderError::NoResourcePaths => {
+                        "MartyPC was unable to get all resource paths from the main configuration!\n\
+                        If you have modified the configuration, please make sure you have defined all the necessary resource paths.".to_string()
+                    }
+                    EmuBuilderError::ResourceError(e) => {
+                        format!("MartyPC encountered an error while trying to scan resource paths!\n\
+                        MartyPC uses resource paths specified in the main configuration file to know where to look for machine configurations, \
+                        ROMs, disk images, and other required resources.\n\
+                        Make sure you are running MartyPC from within a valid distribution directory, or check your configuration.\n\n\
+                        The error reported was:\n{e}")
+                    }
+                    EmuBuilderError::MachineConfigError(e) => {
+                        format!("MartyPC encountered an error scanning for Machine Configuration files!\n\
+                        At least one valid machine configuration TOML file must be present in /configs/machines for MartyPC to run.\n\n\
+                        The error reported was:\n{e}")
+                    }
+                    EmuBuilderError::BadMachineConfig(e) =>{
+                        format!("MartyPC encountered an error reading its Machine Configuration files!\n\
+                        At least one machine configuration TOML file in /configs/machines appears to be invalid or corrupt.\n\n\
+                        The error reported was:\n{e}")
+                    }
+                    EmuBuilderError::IOError(e) => e.to_string(),
+                    EmuBuilderError::Other(e) => e.to_string(),
+                };
+
+                dialog.set_description(desc).show();
+
                 return MartyApp::default();
             }
         };
