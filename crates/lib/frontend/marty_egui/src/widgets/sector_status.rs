@@ -36,6 +36,7 @@ use fluxfox::SectorMapEntry;
 const COLOR_SECTOR_OK: Color32 = Color32::from_rgb(0, 255, 0);
 const COLOR_BAD_CRC: Color32 = Color32::from_rgb(0xef, 0x7d, 0x57);
 const COLOR_DELETED_DATA: Color32 = Color32::from_rgb(0x25, 0x71, 0x79);
+#[allow(dead_code)]
 const COLOR_BAD_DELETED_DATA: Color32 = Color32::from_rgb(0xb1, 0x3e, 0x53);
 const COLOR_BAD_HEADER: Color32 = Color32::RED;
 const COLOR_NO_DAM: Color32 = Color32::GRAY;

@@ -11,3 +11,6 @@ target_wasm
 
 # https://github.com/lycheeverse/lychee
 .lycheecache
+
+# wasm build assets
+assets/marty_web.vhd

@@ -43,6 +43,7 @@ impl MartyTabGroup {
         }
     }
 
+    #[allow(dead_code)]
     pub fn with_tab(mut self, label: &str) -> Self {
         self.add_tab(label);
         self
@@ -82,6 +83,7 @@ impl MartyTabGroup {
         self.tab_labels.push(label.to_string());
     }
 
+    #[allow(dead_code)]
     pub fn select_tab(&mut self, index: usize) {
         if index < self.tab_labels.len() {
             self.selected_tab = index;

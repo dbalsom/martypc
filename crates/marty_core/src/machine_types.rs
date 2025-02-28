@@ -217,6 +217,7 @@ pub enum FdcType {
 #[derive(Copy, Clone, Debug, Deserialize, Eq, PartialEq)]
 pub enum HardDiskControllerType {
     IbmXebec,
+    XtIde,
 }
 
 impl FromStr for HardDiskControllerType {

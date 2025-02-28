@@ -29,8 +29,8 @@
     Implements DisplayBackend for the Pixels backend
 */
 
-#[cfg(feature = "use_wgpu")]
-compile_error!("Wrong backend was selected for use_wgpu feature!");
+#[cfg(not(feature = "use_egui_backend"))]
+compile_error!("'use_egui_backend' feature is required!");
 
 mod display_window;
 mod surface;
@@ -53,41 +53,19 @@ use anyhow::{anyhow, Error};
 use display_backend_trait::DisplayTargetSurface;
 use egui;
 
-#[derive(Debug)]
-pub enum EFrameBackendType {
-    RenderPass,
-    EguiWindow,
-}
-
 pub struct EFrameBackend {
-    be_type: EFrameBackendType,
     ctx: egui::Context,
 }
 
 impl EFrameBackend {
-    pub fn new(
-        be_type: EFrameBackendType,
-        ctx: egui::Context,
-        buffer_dim: BufferDimensions,
-        surface_dim: TextureDimensions,
-        //wgpu_render_state: &eframe::RenderState,
-        _adapter_info: Option<()>,
-    ) -> Result<EFrameBackend, Error> {
-        Ok(EFrameBackend { be_type, ctx })
+    pub fn new(ctx: egui::Context) -> Result<EFrameBackend, Error> {
+        Ok(EFrameBackend { ctx })
     }
 }
 
-impl DisplayBackendBuilder for EFrameBackend {
-    fn build(_buffer_size: BufferDimensions, _surface_size: TextureDimensions) -> Self
-    where
-        Self: Sized,
-    {
-        todo!()
-    }
-}
-
-pub type EFrameScalerType =
-    Box<dyn DisplayScaler<(), (), (), NativeTextureView = (), NativeEncoder = (), NativeRenderPass = ()>>;
+pub type EFrameScalerType = Box<
+    dyn DisplayScaler<(), (), egui::TextureHandle, NativeTextureView = (), NativeEncoder = (), NativeRenderPass = ()>,
+>;
 
 impl DisplayBackend<'_, '_, ()> for EFrameBackend {
     type NativeDevice = ();
@@ -116,11 +94,11 @@ impl DisplayBackend<'_, '_, ()> for EFrameBackend {
         buffer_dim: BufferDimensions,
         surface_dim: TextureDimensions,
     ) -> Result<DynDisplayTargetSurface, Error> {
-        let cpu_buffer = vec![0; buffer_dim.w as usize * buffer_dim.h as usize * 4];
+        let pixels = vec![0; buffer_dim.w as usize * buffer_dim.h as usize * 4];
 
         let buffer_image = egui::ColorImage {
             size:   [buffer_dim.w as usize, buffer_dim.h as usize],
-            pixels: cpu_buffer
+            pixels: pixels
                 .chunks_exact(4)
                 .map(|rgba| egui::Color32::from_rgba_premultiplied(rgba[0], rgba[1], rgba[2], rgba[3]))
                 .collect(),
@@ -129,12 +107,14 @@ impl DisplayBackend<'_, '_, ()> for EFrameBackend {
             self.ctx
                 .load_texture("marty_buffer_texture", buffer_image, egui::TextureOptions::default());
 
-        Ok(Box::new(EFrameBackendSurface {
-            cpu_buffer,
+        Ok(Arc::new(RwLock::new(EFrameBackendSurface {
+            ctx: self.ctx.clone(),
+            pixels,
             buffer: buffer_handle,
             buffer_dim,
             surface_dim,
-        }))
+            dirty: false,
+        })))
     }
 
     fn resize_backing_texture(
@@ -142,7 +122,7 @@ impl DisplayBackend<'_, '_, ()> for EFrameBackend {
         surface: &mut DynDisplayTargetSurface,
         new_dim: BufferDimensions,
     ) -> Result<(), Error> {
-        surface.resize_backing(Arc::new(()), new_dim)?;
+        surface.write().unwrap().resize_backing(Arc::new(()), new_dim)?;
         Ok(())
     }
 
@@ -152,7 +132,10 @@ impl DisplayBackend<'_, '_, ()> for EFrameBackend {
         new_dim: TextureDimensions,
     ) -> Result<(), Error> {
         //self.pixels.resize_surface(new.w, new.h)?;
-        surface.resize_surface(Arc::new(()), Arc::new(()), new_dim)?;
+        surface
+            .write()
+            .unwrap()
+            .resize_surface(Arc::new(()), Arc::new(()), new_dim)?;
         Ok(())
     }
 

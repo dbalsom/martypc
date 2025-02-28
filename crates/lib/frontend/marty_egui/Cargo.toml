@@ -47,9 +47,11 @@ egui-notify = "0.18"
 
 # Optional dependencies
 # ---------------------------------------------------------------------------------------------------------------------
-wgpu = {  workspace = true, optional = true }
+#wgpu = {  workspace = true, optional = true }
 serialport = { workspace = true, optional = true }
 
 [features]
+devtools = []
+scaler_ui = []
 use_serialport = ["serialport"]
 markdown = ["dep:egui_commonmark"]

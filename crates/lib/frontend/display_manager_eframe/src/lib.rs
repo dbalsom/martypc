@@ -49,7 +49,6 @@ compile_error!("You must select either the use_wgpu or use_glow features!");
 pub mod builder;
 
 use std::{
-    collections::HashMap,
     path::PathBuf,
     sync::{Arc, RwLock},
     time::Duration,
@@ -98,17 +97,16 @@ pub use marty_frontend_common::{
     },
 };
 use marty_frontend_common::{
-    constants::*,
     display_manager::{DisplayDimensions, DisplayTargetInfo, DtHandle},
     display_scaler::{PhosphorType, ScalerFilter, ScalerGeometry, ScalerOption, ScalerParams, ScalerPreset},
-    types::{display_target_margins::DisplayTargetMargins, window::WindowDefinition},
+    types::window::WindowDefinition,
 };
 
 // Conditionally use the appropriate scaler per backend
 #[cfg(not(feature = "use_wgpu"))]
 use marty_scaler_null::{DisplayScaler, MartyScaler, ScalerMode};
 #[cfg(feature = "use_wgpu")]
-use marty_scaler_wgpu::{DisplayScaler, MartyScaler, ScalerMode};
+use marty_scaler_wgpu::{MartyScaler, ScalerMode};
 
 use marty_egui_eframe::context::GuiRenderContext;
 use marty_videocard_renderer::{AspectCorrectionMode, AspectRatio, VideoRenderer};
@@ -166,7 +164,7 @@ macro_rules! resolve_dyn {
 #[cfg(not(feature = "use_wgpu"))]
 macro_rules! resolve_dyn {
     ($expr:expr) => {
-        $expr
+        $expr.read().unwrap()
     };
 }
 
@@ -186,6 +184,7 @@ macro_rules! resolve_dtc_mut {
     };
 }
 
+#[allow(unused_macros)]
 macro_rules! resolve_dtc_ref_mut {
     ($expr:expr) => {
         $expr.write().as_mut().unwrap()
@@ -214,6 +213,7 @@ macro_rules! resolve_handle_mut {
     };
 }
 
+#[allow(unused_macros)]
 macro_rules! resolve_handle_result {
     ($handle:expr, $other:expr, $closure:expr) => {
         if $handle.idx() < $other.len() {
@@ -250,7 +250,9 @@ macro_rules! resolve_handle_opt {
 pub const DEFAULT_RESOLUTION_W: u32 = 640;
 pub const DEFAULT_RESOLUTION_H: u32 = 480;
 
-const EGUI_MENU_BAR: u32 = 24;
+// Unnecessary for the eframe Display Manager as our "screen" is always rendered beneath the
+// menu bar with the appropriate dimensions.
+//const EGUI_MENU_BAR: u32 = 24;
 
 /*
 pub(crate) const WINDOW_MIN_WIDTH: u32 = 640;
@@ -345,7 +347,7 @@ impl egui_wgpu::CallbackTrait for DisplayTargetCallback {
     // Required method
     fn paint(
         &self,
-        info: egui::PaintCallbackInfo,
+        _info: egui::PaintCallbackInfo,
         render_pass: &mut wgpu::RenderPass<'static>,
         _callback_resources: &egui_wgpu::CallbackResources,
     ) {
@@ -368,7 +370,7 @@ impl egui_wgpu::CallbackTrait for DisplayTargetCallback {
             return;
         }
 
-        if let (Some(surface), Some(scaler)) = (&dtc.surface, &dtc.scaler) {
+        if let (Some(_surface), Some(scaler)) = (&dtc.surface, &dtc.scaler) {
             // log::debug!(
             //     "DisplayTargetCallback::paint(): Rendering with scaler! viewport rect: {:?} clip rect: {:?}",
             //     info.viewport,
@@ -439,6 +441,10 @@ impl DefaultResolver for WindowDefinition {
 }
 
 impl DisplayTargetContext {
+    pub fn surface(&self) -> Option<&DynDisplayTargetSurface> {
+        self.surface.as_ref()
+    }
+
     pub fn destructure_surface<F>(&mut self, f: F)
     where
         F: FnOnce(&mut DynDisplayTargetSurface, &mut Option<EFrameScalerType>, &mut Option<GuiRenderContext>),
@@ -474,7 +480,7 @@ impl DisplayTargetContext {
         self.card_id
     }
 
-    pub fn set_scale_factor(&mut self, factor: f64) {
+    pub fn set_scale_factor(&mut self, _factor: f64) {
         // if let Some(gui_ctx) = &mut self.gui_ctx {
         //     gui_ctx.scale_factor(factor);
         // }
@@ -710,14 +716,15 @@ impl<'p> DisplayManager<EFrameBackend, GuiRenderContext, ViewportId, ViewportId,
         name: String,
         dt_type: DisplayTargetType,
         dt_flags: DisplayTargetFlags,
-        native_context: Option<&Context>,
+        _native_context: Option<&Context>,
         viewport: Option<ViewportId>,
         viewport_opts: Option<DmViewportOptions>,
         card_id: Option<VideoCardId>,
         scaler_preset: String,
-        gui_options: &DmGuiOptions,
+        _gui_options: &DmGuiOptions,
     ) -> Result<DtHandle, Error> {
         // For now, we only support creating new WindowBackground targets.
+        #[allow(unreachable_patterns)]
         match dt_type {
             DisplayTargetType::GuiWidget | DisplayTargetType::WindowBackground => {
                 // Create a display target for the main viewport.
@@ -732,7 +739,7 @@ impl<'p> DisplayManager<EFrameBackend, GuiRenderContext, ViewportId, ViewportId,
                 };
 
                 // Use the dimensions specified in window options, if supplied, otherwise fall back to default
-                let ((tw, th), resizable) = if let Some(ref window_opts) = viewport_opts {
+                let ((tw, th), _resizable) = if let Some(ref window_opts) = viewport_opts {
                     (window_opts.size.into(), window_opts.resizable)
                 }
                 else {
@@ -981,14 +988,14 @@ impl<'p> DisplayManager<EFrameBackend, GuiRenderContext, ViewportId, ViewportId,
                 scaler_geometry = Some(scaler.geometry());
             }
 
-            let mut has_gui = false;
-            let mut gui_render_time = Duration::ZERO;
+            let has_gui = false;
+            let gui_render_time = Duration::ZERO;
             // if let Some(gui_ctx) = &vt.gui_ctx {
             //     has_gui = true;
             //     gui_render_time = gui_ctx.get_render_time();
             // }
 
-            let mut backend_name = String::new();
+            let backend_name = String::new();
 
             // TODO: A display target doesn't have a backend anymore,
             //       so if we want the adapter name we'll have to either set it,
@@ -1234,7 +1241,7 @@ impl<'p> DisplayManager<EFrameBackend, GuiRenderContext, ViewportId, ViewportId,
                     // First we need to see if the viewport needs resizing. If the renderer increased
                     // resolution, we may need to make the viewport bigger to fit. We don't support
                     // scaling downwards.
-                    if let Some(viewport) = &mut dtc.viewport {
+                    if let Some(_viewport) = &mut dtc.viewport {
                         log::debug!("on_card_resized(): handling viewport");
                         // TODO: fix all this for eframe viewports
 
@@ -1292,7 +1299,7 @@ impl<'p> DisplayManager<EFrameBackend, GuiRenderContext, ViewportId, ViewportId,
                         }
 
                         log::debug!("on_card_resized(): resizing viewport currently stubbed.");
-                        resize_surface = true;
+                        //resize_surface = true;
                     }
 
                     // TODO: Fix this stuff for eframe viewports
@@ -1330,7 +1337,7 @@ impl<'p> DisplayManager<EFrameBackend, GuiRenderContext, ViewportId, ViewportId,
 
                             //let surface_dimensions = surface.read().unwrap().surface_dimensions();
 
-                            dtc.destructure_surface(|surface, scaler, gui| {
+                            dtc.destructure_surface(|surface, scaler, _gui| {
                                 let surface = resolve_dyn!(surface);
                                 let surface_dimensions = surface.surface_dimensions();
 
@@ -1430,7 +1437,7 @@ impl<'p> DisplayManager<EFrameBackend, GuiRenderContext, ViewportId, ViewportId,
                 rt.h
             );
             if let Some(backend) = &mut self.backend {
-                if let Some(viewport) = &dtc.viewport {
+                if let Some(_viewport) = &dtc.viewport {
                     // TODO: Fix this stuff for eframe viewports
 
                     // let scale_factor = viewport.scale_factor();
@@ -1454,7 +1461,7 @@ impl<'p> DisplayManager<EFrameBackend, GuiRenderContext, ViewportId, ViewportId,
                         let aspect_dimensions = renderer.get_display_dimensions();
 
                         // Resize the DisplayScaler if present.
-                        dtc.destructure_surface(|surface, scaler, gui| {
+                        dtc.destructure_surface(|surface, scaler, _gui| {
                             if let Some(scaler) = scaler {
                                 log::debug!("resize_viewports(): dt{}: resizing scaler to {}", *idx, resize_string);
 
@@ -1474,7 +1481,7 @@ impl<'p> DisplayManager<EFrameBackend, GuiRenderContext, ViewportId, ViewportId,
                     }
                     else {
                         // Resize the DisplayScaler if present.
-                        dtc.destructure_surface(|surface, scaler, gui| {
+                        dtc.destructure_surface(|surface, scaler, _gui| {
                             if let Some(scaler) = scaler {
                                 log::debug!("resize_windows(): dt{}: resizing scaler to {}", *idx, resize_string);
                                 scaler.resize_surface(
@@ -1542,6 +1549,20 @@ impl<'p> DisplayManager<EFrameBackend, GuiRenderContext, ViewportId, ViewportId,
         }
     }
 
+    fn with_surface_mut<F>(&mut self, dt: DtHandle, f: F) -> Result<(), Error>
+    where
+        F: FnOnce(&mut EFrameBackend, &mut Self::ImplSurface),
+    {
+        if let Some(backend) = &mut self.backend {
+            resolve_handle_mut!(dt, self.targets, |dtc: &mut DisplayTargetContext| {
+                dtc.destructure_surface(|surface, _, _| {
+                    f(backend, &mut *surface);
+                });
+            });
+        }
+        Ok(())
+    }
+
     #[rustfmt::skip]
     fn for_each_surface<F>(&mut self, dt_type_filter: Option<DisplayTargetType>, mut f: F)
     where
@@ -1590,7 +1611,7 @@ impl<'p> DisplayManager<EFrameBackend, GuiRenderContext, ViewportId, ViewportId,
         }
     }
 
-    fn for_each_gui<F>(&mut self, mut f: F)
+    fn for_each_gui<F>(&mut self, _f: F)
     where
         F: FnMut(&mut GuiRenderContext, &ViewportId),
     {
@@ -1607,7 +1628,7 @@ impl<'p> DisplayManager<EFrameBackend, GuiRenderContext, ViewportId, ViewportId,
         // }
     }
 
-    fn for_each_viewport<F>(&mut self, mut f: F)
+    fn for_each_viewport<F>(&mut self, _f: F)
     where
         F: FnMut(&ViewportId, bool) -> Option<bool>,
     {

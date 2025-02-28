@@ -50,32 +50,40 @@ use crossbeam_channel::unbounded;
 
 use crate::{
     bytequeue::*,
+    cpu_common::{CpuType, LogicAnalyzer},
     device_traits::videocard::{
         ClockingMode,
         VideoCard,
         VideoCardDispatch,
         VideoCardId,
         VideoCardInterface,
+        VideoCardSubType,
         VideoType,
     },
     devices::{
+        a0::A0Register,
+        cartridge_slots::CartridgeSlot,
         cga::CGACard,
         dma::*,
         fdc::FloppyController,
-        hdc::*,
+        game_port::GamePort,
+        hdc::xtide::XtIdeController,
         keyboard::{KeyboardType, *},
+        lotech_ems::LotechEmsCard,
+        lpt_card::ParallelController,
         mda::MDACard,
         mouse::*,
         pic::*,
         pit::Pit,
         ppi::*,
         serial::*,
+        tga::TGACard,
     },
     machine::{KeybufferEntry, MachineCheckpoint, MachinePatch},
     machine_config::{normalize_conventional_memory, MachineConfiguration, MachineDescriptor},
-    machine_types::{HardDiskControllerType, SerialControllerType, SerialMouseType},
+    machine_types::{EmsType, FdcType, HardDiskControllerType, MachineType, SerialControllerType, SerialMouseType},
     memerror::MemError,
-    syntax_token::SyntaxToken,
+    syntax_token::{SyntaxFormatType, SyntaxToken},
     tracelogger::TraceLogger,
 };
 
@@ -83,27 +91,13 @@ use crate::{
 use crate::devices::adlib::AdLibCard;
 #[cfg(feature = "ega")]
 use crate::devices::ega::EGACard;
+use crate::devices::hdc::xebec::{HardDiskController, DRIVE_TYPE2_DIP};
 #[cfg(feature = "vga")]
 use crate::devices::vga::VGACard;
 #[cfg(feature = "sound")]
 use crate::machine_types::SoundType;
 #[cfg(feature = "sound")]
 use crate::sound::{SoundOutputConfig, SoundSourceDescriptor};
-
-use crate::{
-    cpu_common::{CpuType, LogicAnalyzer},
-    device_traits::videocard::VideoCardSubType,
-    devices::{
-        a0::A0Register,
-        cartridge_slots::CartridgeSlot,
-        game_port::GamePort,
-        lotech_ems::LotechEmsCard,
-        lpt_card::ParallelController,
-        tga::TGACard,
-    },
-    machine_types::{EmsType, FdcType, MachineType},
-    syntax_token::SyntaxFormatType,
-};
 
 pub const NO_IO_BYTE: u8 = 0xFF; // This is the byte read from an unconnected IO address.
 pub const OPEN_BUS_BYTE: u8 = 0xFF; // This is the byte read from an unmapped memory address.
@@ -432,6 +426,7 @@ pub struct BusInterface {
     parallel: Option<ParallelController>,
     fdc: Option<FloppyController>,
     hdc: Option<HardDiskController>,
+    xtide: Option<XtIdeController>,
     mouse: Option<Mouse>,
     ems: Option<LotechEmsCard>,
     cart_slot: Option<CartridgeSlot>,
@@ -611,6 +606,7 @@ impl Default for BusInterface {
             parallel: None,
             fdc: None,
             hdc: None,
+            xtide: None,
             mouse: None,
             ems: None,
             cart_slot: None,
@@ -1965,6 +1961,11 @@ impl BusInterface {
                     add_io_device!(self, hdc, IoDeviceType::HardDiskController);
                     self.hdc = Some(hdc);
                 }
+                HardDiskControllerType::XtIde => {
+                    let xtide = XtIdeController::new(None, 2);
+                    add_io_device!(self, xtide, IoDeviceType::HardDiskController);
+                    self.xtide = Some(xtide);
+                }
             }
         }
 
@@ -2319,6 +2320,11 @@ impl BusInterface {
             hdc.run(&mut dma1, self, us);
             self.hdc = Some(hdc);
         }
+        // Run the XT-IDE controller, passing it DMA controller while DMA is still unattached.
+        if let Some(mut xtide) = self.xtide.take() {
+            xtide.run(&mut dma1, self, us);
+            self.xtide = Some(xtide);
+        }
 
         // Run the DMA controller.
         dma1.run(self);
@@ -2591,6 +2597,9 @@ impl BusInterface {
                     if let Some(hdc) = &mut self.hdc {
                         byte = Some(hdc.read_u8(port, nul_delta));
                     }
+                    else if let Some(xtide) = &mut self.xtide {
+                        byte = Some(xtide.read_u8(port, nul_delta));
+                    }
                 }
                 IoDeviceType::Serial => {
                     if let Some(serial) = &mut self.serial {
@@ -2756,6 +2765,11 @@ impl BusInterface {
                         resolved = true;
                         self.hdc = Some(hdc);
                     }
+                    else if let Some(mut xtide) = self.xtide.take() {
+                        xtide.write_u8(port, data, Some(self), nul_delta, analyzer);
+                        resolved = true;
+                        self.xtide = Some(xtide);
+                    }
                 }
                 IoDeviceType::Serial => {
                     if let Some(serial) = &mut self.serial {
@@ -2900,6 +2914,10 @@ impl BusInterface {
         &mut self.hdc
     }
 
+    pub fn xtide_mut(&mut self) -> &mut Option<XtIdeController> {
+        &mut self.xtide
+    }
+
     pub fn cart_slot_mut(&mut self) -> &mut Option<CartridgeSlot> {
         &mut self.cart_slot
     }
@@ -3025,6 +3043,9 @@ impl BusInterface {
     pub fn hdd_ct(&self) -> usize {
         if let Some(hdc) = &self.hdc {
             hdc.drive_ct()
+        }
+        else if let Some(xtide) = &self.xtide {
+            xtide.drive_ct()
         }
         else {
             0

@@ -110,7 +110,7 @@ impl PpiViewerControl {
             egui::CollapsingHeader::new(group_name)
                 .default_open(true)
                 .show(ui, |ui| {
-                    for (map) in group.iter() {
+                    for map in group.iter() {
                         MartyLayout::new(layouts::Layout::KeyValue, &format!("ppi-viewer-grid{}", i))
                             .min_col_width(200.0)
                             .show(ui, |ui| {

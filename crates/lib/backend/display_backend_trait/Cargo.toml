@@ -19,3 +19,4 @@ wgpu = { workspace = true, optional = true}
 [features]
 use_wgpu = ["dep:wgpu"]
 use_glow = ["dep:egui"]
+use_egui_backend = ["dep:egui"]

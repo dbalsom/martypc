@@ -44,8 +44,10 @@
     support multiple windows/displays.
 */
 #![feature(trait_alias)]
-#[cfg(not(any(feature = "use_wgpu", feature = "use_glow")))]
-compile_error!("Either the 'use_wgpu' or 'use_glow' feature must be enabled.");
+#[cfg(not(any(feature = "use_wgpu", feature = "use_egui_backend")))]
+compile_error!("Either the 'use_wgpu' or 'use_egui_backend' feature must be enabled.");
+#[cfg(all(feature = "use_wgpu", feature = "use_egui_backend"))]
+compile_error!("Only one of the 'use_wgpu' or 'use_egui_backend' features can be enabled.");
 
 use std::sync::{Arc, RwLock};
 use thiserror::Error;
@@ -62,15 +64,17 @@ pub type DynDisplayTargetSurface = Arc<
     >,
 >;
 
-#[cfg(not(feature = "use_wgpu"))]
+#[cfg(feature = "use_egui_backend")]
 use egui;
 #[cfg(not(feature = "use_wgpu"))]
-pub type DynDisplayTargetSurface = Box<
-    dyn DisplayTargetSurface<
-        NativeTexture = egui::TextureHandle,
-        NativeDevice = (),
-        NativeQueue = (),
-        NativeTextureFormat = (),
+pub type DynDisplayTargetSurface = Arc<
+    RwLock<
+        dyn DisplayTargetSurface<
+            NativeTexture = egui::TextureHandle,
+            NativeDevice = (),
+            NativeQueue = (),
+            NativeTextureFormat = (),
+        >,
     >,
 >;
 

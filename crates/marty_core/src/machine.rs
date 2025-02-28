@@ -59,7 +59,8 @@ use crate::{
     devices::{
         dma::DMAControllerStringState,
         fdc::FloppyController,
-        hdc::HardDiskController,
+        hdc::xebec::HardDiskController,
+        hdc::xtide::XtIdeController,
         keyboard::KeyboardModifiers,
         mouse::Mouse,
         pic::PicStringState,
@@ -996,8 +997,12 @@ impl Machine {
         self.cpu.bus_mut().fdc_mut()
     }
 
-    pub fn hdc(&mut self) -> &mut Option<HardDiskController> {
+    pub fn hdc_mut(&mut self) -> &mut Option<HardDiskController> {
         self.cpu.bus_mut().hdc_mut()
+    }
+
+    pub fn xtide_mut(&mut self) -> &mut Option<XtIdeController> {
+        self.cpu.bus_mut().xtide_mut()
     }
 
     pub fn cart_slot(&mut self) -> &mut Option<CartridgeSlot> { self.cpu.bus_mut().cart_slot_mut() }

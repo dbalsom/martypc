@@ -32,20 +32,16 @@
 use crate::{
     emulator::Emulator,
     event_loop::winit_keyboard::{handle_modifiers, handle_winit_key_event},
-    input::{button_from_id, MouseButton},
 };
 use display_manager_eframe::EFrameDisplayManager;
-use marty_frontend_common::{display_manager::DisplayManager, timestep_manager::TimestepManager};
-use std::time::Instant;
-use winit::{
-    event::{DeviceEvent, ElementState, Event, StartCause, WindowEvent},
-    window::{WindowId, WindowLevel},
-};
+use marty_frontend_common::timestep_manager::TimestepManager;
+
+use winit::{event::WindowEvent, window::WindowId};
 
 pub fn handle_window_event(
     emu: &mut Emulator,
     dm: &mut EFrameDisplayManager,
-    tm: &mut TimestepManager,
+    _tm: &mut TimestepManager,
     window_id: WindowId,
     event: WindowEvent,
     gui_has_focus: bool,

@@ -31,12 +31,10 @@ use crate::{
     timestep_update::process_update,
     MARTY_ICON,
 };
-use std::sync::Arc;
 
 use display_manager_eframe::{
     builder::EFrameDisplayManagerBuilder,
     BufferDimensions,
-    DisplayBackend,
     EFrameBackend,
     EFrameDisplayManager,
     TextureDimensions,
@@ -50,17 +48,17 @@ use marty_web_helpers::FetchResult;
 
 #[cfg(feature = "use_winit")]
 use crate::event_loop::winit_events::handle_window_event;
-#[cfg(feature = "use_winit")]
-use winit::event::ElementState;
+
+#[cfg(feature = "use_wgpu")]
+use eframe::egui_wgpu;
 
 #[cfg(not(feature = "use_winit"))]
 use crate::event_loop::web_keyboard::handle_web_key_event;
 
 use crossbeam_channel::{Receiver, Sender};
-use eframe::egui_wgpu;
-use egui::{Color32, Context, RawInput, Sense, ViewportId};
 
-use crate::input::TranslateKey;
+use egui::{Context, RawInput, Sense, ViewportId};
+
 #[cfg(target_arch = "wasm32")]
 use crate::wasm::*;
 use marty_frontend_common::{
@@ -72,7 +70,6 @@ use marty_videocard_renderer::AspectCorrectionMode;
 use marty_web_helpers::console_writer::ConsoleWriter;
 #[cfg(target_arch = "wasm32")]
 use url::Url;
-use winit::{event::WindowEvent, window::WindowId};
 
 #[derive(Clone, Debug)]
 pub enum FileOpenContext {
@@ -132,14 +129,20 @@ impl Default for MartyApp {
     }
 }
 
+#[cfg(not(target_arch = "wasm32"))]
+type MartyAppNewOptions = eframe::NativeOptions;
+
+#[cfg(target_arch = "wasm32")]
+type MartyAppNewOptions = ();
+
 impl MartyApp {
     /// We split app initialization into two parts, since we can't make the callback eframe passes
     /// the creation context to async. So we first create the app, then let eframe call `init` with
     /// the partially initialized app - it should have the emulator built by then.
-    pub async fn new(native_options: &mut eframe::NativeOptions) -> Self {
+    pub async fn new(_native_options: &mut MartyAppNewOptions) -> Self {
         // Build the emulator.
         let mut emu_builder = EmulatorBuilder::default();
-        let mut emu_result;
+        let emu_result;
 
         // Create the emulator immediately on native as we don't need to await anything
         #[cfg(not(target_arch = "wasm32"))]
@@ -276,6 +279,21 @@ impl MartyApp {
                 panic!("init(): use_wgpu feature enabled, but failed to get wgpu render state from eframe creation context");
             }
         }
+        #[cfg(not(feature = "use_wgpu"))]
+        {
+            let egui_backend = match EFrameBackend::new(cc.egui_ctx.clone()) {
+                Ok(backend) => {
+                    log::debug!("init(): Created egui backend");
+                    backend
+                }
+                Err(e) => {
+                    log::error!("init(): Failed to create egui backend: {}", e);
+                    return MartyApp::default();
+                }
+            };
+            log::debug!("init(): Installing generic egui backend");
+            dm_builder = dm_builder.with_backend(egui_backend);
+        }
 
         dm_builder = dm_builder
             .with_egui_ctx(cc.egui_ctx.clone())
@@ -378,7 +396,7 @@ impl MartyApp {
         };
 
         // Create our GUI rendering context.
-        let mut gui = GuiRenderContext::new(cc.egui_ctx.clone(), 0, 640, 480, 1.0, &gui_options);
+        let gui = GuiRenderContext::new(cc.egui_ctx.clone(), 0, 640, 480, 1.0, &gui_options);
 
         Self {
             gui,
@@ -502,6 +520,27 @@ impl eframe::App for MartyApp {
                                         egui::Image::new(egui::include_image!("../../../../assets/bezel_trans_bg.png"))
                                             .paint_at(ui, rect);
                                     }
+                                }
+                                #[cfg(feature = "use_glow")]
+                                {
+                                    let dtc_lock = dm.main_display_target();
+                                    let dtc = dtc_lock.read().unwrap();
+                                    let surface = dtc.surface().unwrap();
+                                    let texture = surface.read().unwrap().backing_texture();
+                                    let uv_rect = egui::Rect::from_min_max(egui::pos2(0.0, 0.0), egui::pos2(1.0, 1.0));
+                                    log::debug!(
+                                        "Drawing main display with glow: {}x{}",
+                                        texture.size()[0],
+                                        texture.size()[1]
+                                    );
+                                    ui.painter().image(texture.id(), rect, uv_rect, egui::Color32::WHITE);
+
+                                    // let _ = dm.with_surface_mut(DtHandle::MAIN, |backend, surface| {
+                                    //     let texture = surface.read().unwrap().backing_texture();
+                                    //     let uv_rect =
+                                    //         egui::Rect::from_min_max(egui::pos2(0.0, 0.0), egui::pos2(1.0, 1.0));
+                                    //     ui.painter().image(texture.id(), rect, uv_rect, Color32::WHITE);
+                                    // });
                                 }
                             });
                         }

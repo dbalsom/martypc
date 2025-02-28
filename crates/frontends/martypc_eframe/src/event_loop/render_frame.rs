@@ -29,9 +29,7 @@
     Handle rendering of video targets at the end of event processing.
 */
 use crate::emulator::Emulator;
-use std::sync::Arc;
 
-//use display_backend_eframe::DisplayBackend;
 use display_manager_eframe::{DisplayBackend, DisplayManager, EFrameDisplayManager};
 use marty_core::{device_traits::videocard::BufferSelect, machine::ExecutionState};
 use marty_egui::GuiBoolean;
@@ -94,7 +92,7 @@ pub fn render_frame(emu: &mut Emulator, dm: &mut EFrameDisplayManager) {
 
     // Finally, render each surface
 
-    dm.for_each_surface(None, |backend, surface, scaler, gui_opt| {
+    dm.for_each_surface(None, |backend, surface, _scaler, _gui_opt| {
         // log::debug!(
         //     "Rendering surface. Scaler? {} Gui? {}",
         //     scaler.is_some(),

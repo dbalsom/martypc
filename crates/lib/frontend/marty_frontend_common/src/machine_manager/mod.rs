@@ -63,10 +63,10 @@ pub struct MachineConfigFile {
     overlay: Option<Vec<MachineConfigFileOverlayEntry>>,
 }
 
-pub struct MachineConfigContext<'a> {
-    config: &'a MachineConfiguration,
-    roms_required: Vec<String>,
-}
+// pub struct MachineConfigContext<'a> {
+//     config: &'a MachineConfiguration,
+//     roms_required: Vec<String>,
+// }
 
 #[derive(Clone, Debug, Deserialize)]
 pub struct MachineConfigFileEntry {
@@ -80,7 +80,7 @@ pub struct MachineConfigFileEntry {
     ems: Option<EmsMemoryConfig>,
     #[serde(default)]
     speaker: bool,
-    ppi_turbo: Option<bool>, // This bool is an option so that it is three state - missing means no turbo feature, true means ppi high = turbo, false means ppi low = turbo.
+    ppi_turbo: Option<bool>, // This bool is an option so that it is tri-state - missing means no turbo feature, true means ppi high = turbo, false means ppi low = turbo.
     fdc: Option<FloppyControllerConfig>,
     hdc: Option<HardDriveControllerConfig>,
     serial: Option<Vec<SerialControllerConfig>>,
@@ -106,6 +106,8 @@ pub struct MachineConfigFileOverlayEntry {
     keyboard: Option<KeyboardConfig>,
     serial_mouse: Option<SerialMouseConfig>,
     game_port: Option<GamePortConfig>,
+    // TODO: Support media in overlay?
+    #[allow(unused)]
     media: Option<MediaConfig>,
 }
 
@@ -318,6 +320,14 @@ impl MachineConfigFileEntry {
                     }
                     if req_set.insert(String::from("ibm_xebec")) {
                         req_vec.push(String::from("ibm_xebec"));
+                    }
+                }
+                HardDiskControllerType::XtIde => {
+                    if req_set.insert(String::from("expansion")) {
+                        req_vec.push(String::from("expansion"));
+                    }
+                    if req_set.insert(String::from("xtide")) {
+                        req_vec.push(String::from("xtide"));
                     }
                 }
             }

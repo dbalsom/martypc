@@ -196,10 +196,13 @@ pub fn handle_egui_event(emu: &mut Emulator, dm: &mut EFrameDisplayManager, gui_
                     }
                     _ => {}
                 },
-                #[cfg(feature = "serial")]
+                #[cfg(feature = "use_serialport")]
                 GuiVariableContext::SerialPort(serial_id) => match op {
                     GuiEnum::SerialPortBridge(host_id) => {
-                        match emu.machine.bridge_serial_port(*serial_id, host_id.clone()) {
+                        match emu
+                            .machine
+                            .bridge_serial_port(*serial_id, "DUMMY".to_string(), host_id.clone())
+                        {
                             Ok(_) => {
                                 emu.gui
                                     .toasts()
@@ -229,9 +232,29 @@ pub fn handle_egui_event(emu: &mut Emulator, dm: &mut EFrameDisplayManager, gui_
             let mut error_str = None;
 
             match emu.vhd_manager.load_vhd_file(*drive_idx, *image_idx) {
-                Ok(vhd_file) => match VirtualHardDisk::from_file(vhd_file) {
+                Ok(vhd_file) => match VirtualHardDisk::parse(Box::new(vhd_file), false) {
                     Ok(vhd) => {
-                        if let Some(hdc) = emu.machine.hdc() {
+                        if let Some(hdc) = emu.machine.hdc_mut() {
+                            match hdc.set_vhd(*drive_idx, vhd) {
+                                Ok(_) => {
+                                    let vhd_name = emu.vhd_manager.get_vhd_name(*image_idx).unwrap();
+                                    log::info!(
+                                        "VHD image {:?} successfully loaded into virtual drive: {}",
+                                        vhd_name,
+                                        *drive_idx
+                                    );
+
+                                    emu.gui
+                                        .toasts()
+                                        .info(format!("VHD loaded: {:?}", vhd_name))
+                                        .duration(Some(NORMAL_NOTIFICATION_TIME));
+                                }
+                                Err(err) => {
+                                    error_str = Some(format!("Error mounting VHD: {}", err));
+                                }
+                            }
+                        }
+                        else if let Some(hdc) = emu.machine.xtide_mut() {
                             match hdc.set_vhd(*drive_idx, vhd) {
                                 Ok(_) => {
                                     let vhd_name = emu.vhd_manager.get_vhd_name(*image_idx).unwrap();
@@ -271,16 +294,19 @@ pub fn handle_egui_event(emu: &mut Emulator, dm: &mut EFrameDisplayManager, gui_
             }
         }
         GuiEvent::CreateVHD(filename, fmt) => {
+            // The user requested that a new VHD be created, with the given filename and format.
             log::info!("Got CreateVHD event: {:?}, {:?}", filename, fmt);
 
             let mut vhd_path = emu.rm.resource_path("hdd").unwrap();
             vhd_path.push(filename);
 
+            // TODO: Factor out VHD support into a separate library.
+            //       The emulator core should not be writing files.
             match vhd::create_vhd(
                 vhd_path.into_os_string(),
-                fmt.max_cylinders,
-                fmt.max_heads,
-                fmt.max_sectors,
+                fmt.geometry.c(),
+                fmt.geometry.h(),
+                fmt.geometry.s(),
             ) {
                 Ok(_) => {
                     // We don't actually do anything with the newly created file
@@ -305,6 +331,8 @@ pub fn handle_egui_event(emu: &mut Emulator, dm: &mut EFrameDisplayManager, gui_
             }
         }
         GuiEvent::RescanMediaFolders => {
+            // User requested to rescan media folders (ie, when a new disk image was copied into
+            // the /media resource directory)
             if let Err(e) = emu.floppy_manager.scan_resource(&mut emu.rm) {
                 log::error!("Error scanning floppy directory: {}", e);
             }
@@ -342,6 +370,8 @@ pub fn handle_egui_event(emu: &mut Emulator, dm: &mut EFrameDisplayManager, gui_
             }
         }
         GuiEvent::InsertCartridge(slot_select, item_idx) => {
+            // User requested to insert a PCjr cartridge into the indicated slot, from the quick access menu.
+            // This will reboot the machine.
             log::debug!("Insert Cart image: {:?} into drive: {}", item_idx, slot_select);
 
             let mut reboot = false;
@@ -400,6 +430,7 @@ pub fn handle_egui_event(emu: &mut Emulator, dm: &mut EFrameDisplayManager, gui_
             }
         }
         GuiEvent::RemoveCartridge(slot_select) => {
+            // User requested to remove a PCjr cartridge from the indicated slot. This will reboot the machine.
             log::info!("Removing cartridge from slot: {}", slot_select);
 
             let mut reboot = false;
@@ -418,6 +449,7 @@ pub fn handle_egui_event(emu: &mut Emulator, dm: &mut EFrameDisplayManager, gui_
             }
         }
         GuiEvent::RequestLoadFloppyDialog(drive_select) => {
+            // User requested a file dialog to load a floppy image into the indicated drive slot.
             log::debug!("Requesting floppy load dialog for drive: {}", drive_select);
             #[cfg(target_arch = "wasm32")]
             {
@@ -429,10 +461,13 @@ pub fn handle_egui_event(emu: &mut Emulator, dm: &mut EFrameDisplayManager, gui_
             }
         }
         GuiEvent::LoadQuickFloppy(drive_select, item_idx) => {
+            // User selected a floppy image from the quick access menu.
             log::debug!("Load floppy quick image: {:?} into drive: {}", item_idx, drive_select);
             handle_load_floppy(emu, *drive_select, FileSelectionContext::Index(*item_idx));
         }
         GuiEvent::LoadFloppyAs(drive_select, path) => {
+            // User selected a floppy image by path
+            // TODO: This should be a thread event as file dialog is asynchronous
             log::debug!(
                 "Load floppy image: {} into drive: {}",
                 path.to_string_lossy(),
@@ -591,6 +626,7 @@ pub fn handle_egui_event(emu: &mut Emulator, dm: &mut EFrameDisplayManager, gui_
             }
         }
         GuiEvent::EjectFloppy(drive_select) => {
+            // User ejected the floppy from the drive slot 'drive_select'
             log::info!("Ejecting floppy in drive: {}", drive_select);
             if let Some(fdc) = emu.machine.fdc() {
                 fdc.unload_image(*drive_select);
@@ -609,6 +645,7 @@ pub fn handle_egui_event(emu: &mut Emulator, dm: &mut EFrameDisplayManager, gui_
             }
         }
         GuiEvent::CreateNewFloppy(drive_select, format, formatted) => {
+            // User requested to create a new floppy image in of 'format' in the drive slot 'drive_select'
             log::info!(
                 "Creating new floppy image in drive: {} of format {:?}, formatted: {}",
                 drive_select,
@@ -668,7 +705,7 @@ pub fn handle_egui_event(emu: &mut Emulator, dm: &mut EFrameDisplayManager, gui_
                 fdc.write_protect(*drive_select, *state);
             }
         }
-        #[cfg(feature = "serial")]
+        #[cfg(feature = "use_serialport")]
         GuiEvent::BridgeSerialPort(guest_port_id, host_port_name, host_port_id) => {
             log::info!("Bridging serial port: {}, id: {}", host_port_name, host_port_id);
             if let Err(err) = emu
@@ -824,8 +861,8 @@ pub fn handle_egui_event(emu: &mut Emulator, dm: &mut EFrameDisplayManager, gui_
             let debug = emu.machine.bus_mut().get_memory_debug(cpu_type, *addr);
             emu.gui.memory_viewer.set_hover_text(format!("{}", debug));
         }
+        // Request to flush trac
         GuiEvent::FlushLogs => {
-            // Request to flush trace logs.
             emu.machine.flush_trace_logs();
         }
         GuiEvent::DelayAdjust => {
@@ -849,6 +886,7 @@ pub fn handle_egui_event(emu: &mut Emulator, dm: &mut EFrameDisplayManager, gui_
                 }
             }
         }
+        // User changed the machine's operational state.
         GuiEvent::MachineStateChange(state) => {
             match state {
                 MachineState::Off | MachineState::Rebooting => {
@@ -873,6 +911,7 @@ pub fn handle_egui_event(emu: &mut Emulator, dm: &mut EFrameDisplayManager, gui_
             emu.machine.change_state(*state);
         }
         GuiEvent::TakeScreenshot(dt_idx) => {
+            // User requested to take a screenshot
             let screenshot_path = emu.rm.resource_path("screenshot").unwrap();
 
             // TODO: Fix this (2024)
@@ -886,6 +925,8 @@ pub fn handle_egui_event(emu: &mut Emulator, dm: &mut EFrameDisplayManager, gui_
             // }
         }
         GuiEvent::ToggleFullscreen(dt_idx) => {
+            // User requested to toggle fullscreen mode
+
             // if let Some(window) = emu.dm.get_window(*dt_idx) {
             //     match window.fullscreen() {
             //         Some(_) => {
@@ -900,32 +941,38 @@ pub fn handle_egui_event(emu: &mut Emulator, dm: &mut EFrameDisplayManager, gui_
             // }
         }
         GuiEvent::CtrlAltDel => {
+            // User requested to send CTRL + ALT + DEL keyboard combination
             emu.machine.emit_ctrl_alt_del();
         }
         GuiEvent::CompositeAdjust(dt, params) => {
-            //log::warn!("got composite params: {:?}", params);
+            // User adjusted the composite video parameters
             dm.with_renderer(*dt, |renderer| {
                 renderer.cga_direct_param_update(params);
             });
         }
         GuiEvent::ScalerAdjust(dt_idx, params) => {
-            // //log::warn!("Received ScalerAdjust event: {:?}", params);
+            // User adjusted the scaler parameters
             if let Err(err) = dm.apply_scaler_params(DtHandle::from(*dt_idx), params) {
                 log::error!("Failed to apply scaler params: {}", err);
             }
         }
         GuiEvent::ZoomChanged(zoom) => {
+            // User changed the global zoom level
+
             // emu.dm.for_each_gui(|gui, _window| {
             //     gui.set_zoom_factor(*zoom);
             // });
         }
         GuiEvent::ResetIOStats => {
+            // User reset the IO monitor statistics
             emu.machine.bus_mut().reset_io_stats();
         }
         GuiEvent::StartRecordingDisassembly => {
+            // User started recording disassembly
             emu.machine.set_option(MachineOption::RecordListing(true));
         }
         GuiEvent::StopRecordingDisassembly => {
+            // User stopped recording disassembly
             emu.machine.set_option(MachineOption::RecordListing(false));
         }
         _ => {

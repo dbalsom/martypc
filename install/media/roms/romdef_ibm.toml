@@ -326,23 +326,6 @@ checkpoint = [
 # ----------------------------------------------------------------------------
 
 [[romset]]
-alias = "ibm_xebec"
-priority = 1
-provides = ["ibm_xebec"]
-oem = true
-requires = ["expansion"]
-rom = [
-    { md5 = "66631d1a095d8d0d54cc917fbdece684", addr = 0xC8000, size = 4096 }
-]
-checkpoint = [
-    { addr = 0xC8003, lvl = 3, desc = "HDC Expansion Init" },
-    { addr = 0xC8117, lvl = 3, desc = "HDC Disk Reset" },
-    { addr = 0xC8596, lvl = 3, desc = "HDC Status Timeout" },
-    { addr = 0xC8192, lvl = 3, desc = "HDC Bootstrap Loader" },
-    { addr = 0xC81FF, lvl = 3, desc = "HDC Boot From Fixed Disk" },
-]
-
-[[romset]]
 alias = "ibm_ega"
 priority = 1
 provides = ["ibm_ega"]

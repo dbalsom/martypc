@@ -208,9 +208,24 @@ impl ResourceManager {
         false
     }
 
-    /// Reads the contents of a resource from a specified file system path into a byte vector, or returns an error.
-    pub fn read_resource_from_path_blocking(&self, path: impl AsRef<Path>) -> Result<Vec<u8>, Error> {
-        Err(anyhow::anyhow!("Not implemented for wasm target"))
+    /// On wasm, a blocking read is only possible if the file is in the overlay. Otherwise, we
+    /// return an error.
+    pub fn read_resource_from_path_blocking(&mut self, path: impl AsRef<Path>) -> Result<Vec<u8>, Error> {
+        let path = path.as_ref();
+
+        // Attempt to read the file from the overlay.
+        for overlay in &mut self.overlays {
+            log::debug!("Attempting to read file {:?} from fs overlay...", path.display());
+            return match overlay.read(path) {
+                Ok(buf) => Ok(buf),
+                Err(e) => {
+                    log::warn!("Failed to read file {:?} from fs overlay: {}", path.display(), e);
+                    Err(anyhow::anyhow!("Failed to read file from overlay: {}", e))
+                }
+            };
+        }
+
+        Err(anyhow::anyhow!("File not found in overlay: {}", path.display()))
     }
 
     /// Mount an ArchiveOverlay from a specified path, or return an error.

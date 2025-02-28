@@ -74,6 +74,7 @@ pub(crate) fn create_texture(
 
 /// Return whether the texture format requires a color swap from RGBA to BGRA. We can
 /// accomplish this by swizzling in the shader.
+#[allow(dead_code)] // We might want to use this function in the future
 #[inline]
 pub const fn texture_format_color_swap(texture_format: wgpu::TextureFormat) -> bool {
     use wgpu::TextureFormat::*;

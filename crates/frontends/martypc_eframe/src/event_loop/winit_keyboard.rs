@@ -29,15 +29,11 @@
     Handle keyboard events.
 
 */
-use std::str::FromStr;
 
 use crate::{emulator::Emulator, input::TranslateKey};
 
 use display_manager_eframe::{DisplayManager, EFrameDisplayManager};
-use marty_core::{
-    keys::MartyKey,
-    machine::{ExecutionOperation, MachineState},
-};
+use marty_core::machine::{ExecutionOperation, MachineState};
 use marty_frontend_common::{
     constants::LONG_NOTIFICATION_TIME,
     display_manager::DtHandle,
@@ -45,7 +41,6 @@ use marty_frontend_common::{
     HotkeyEvent,
 };
 
-use eframe::WebKeyboardEvent;
 use winit::{
     event::{ElementState, KeyEvent, Modifiers, WindowEvent},
     keyboard::{KeyCode, PhysicalKey},
@@ -175,7 +170,7 @@ pub fn process_hotkeys(
     dm: &mut EFrameDisplayManager,
     keycode: KeyCode,
     pressed: bool,
-    window_id: WindowId,
+    _window_id: WindowId,
     gui_focus: bool,
 ) {
     let mut event_opt = None;

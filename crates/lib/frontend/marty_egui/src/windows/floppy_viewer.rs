@@ -30,17 +30,11 @@
 
 */
 
-use std::sync::{Arc, Mutex, RwLock};
+use std::sync::{Arc, RwLock};
 
 use crate::{
-    constants::*,
     layouts::{Layout::KeyValue, MartyLayout},
-    widgets::{
-        pixel_canvas::{PixelCanvas, PixelCanvasDepth, PixelCanvasZoom},
-        sector_status::sector_status,
-        tab_group::MartyTabGroup,
-    },
-    windows::data_visualizer::ZOOM_LUT,
+    widgets::{sector_status::sector_status, tab_group::MartyTabGroup},
     *,
 };
 
@@ -49,11 +43,7 @@ use fluxfox_egui::controls::disk_visualization::{DiskVisualization, VizEvent};
 
 use marty_core::devices::floppy_drive::FloppyImageState;
 
-use crossbeam_channel as channel;
-use crossbeam_utils::thread;
-use egui::{Label, Sense};
-use fluxfox::visualization::rasterize_disk::rasterize_track_metadata_quadrant;
-use tiny_skia::{Color, Pixmap, PixmapPaint, Transform};
+use crossbeam_channel;
 
 pub const SECTOR_ROW_SIZE: usize = 9;
 pub const VIZ_RESOLUTION: u32 = 512;

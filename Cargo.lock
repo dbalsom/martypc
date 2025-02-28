@@ -3623,6 +3623,7 @@ version = "0.4.0"
 dependencies = [
  "anyhow",
  "arraydeque",
+ "binrw",
  "bytemuck",
  "cfg-if",
  "const_format",
@@ -3685,7 +3686,6 @@ dependencies = [
  "tiny-skia",
  "toml 0.8.19",
  "web-time 1.1.0",
- "wgpu 23.0.1",
 ]
 
 [[package]]
@@ -3788,6 +3788,7 @@ dependencies = [
 name = "marty_scaler_null"
 version = "0.4.0"
 dependencies = [
+ "egui 0.30.0",
  "marty_frontend_common",
 ]
 

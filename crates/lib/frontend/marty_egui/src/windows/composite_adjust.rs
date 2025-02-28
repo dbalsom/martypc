@@ -56,7 +56,7 @@ impl CompositeAdjustControl {
         if self.dt_idx < self.dt_descs.len() {
             MartyLayout::new(layouts::Layout::KeyValue, "composite-adjust-card-grid").show(ui, |ui| {
                 MartyLayout::kv_row(ui, "Card", None, |ui| {
-                    egui::ComboBox::from_id_source("composite-adjust-card-select")
+                    egui::ComboBox::from_id_salt("composite-adjust-card-select")
                         .selected_text(format!("{}", self.dt_descs[self.dt_idx]))
                         .show_ui(ui, |ui| {
                             for (i, desc) in self.dt_descs.iter_mut().enumerate() {

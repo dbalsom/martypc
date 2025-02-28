@@ -123,11 +123,11 @@ pub struct RomSetDefinition {
     checkpoint: Option<Vec<RomCheckpoint>>,
 }
 
-pub struct RomSet {
-    def: RomSetDefinition,
-    roms: Vec<String>, // Key to rom hashmap
-    complete: bool,
-}
+// pub struct RomSet {
+//     def: RomSetDefinition,
+//     roms: Vec<String>, // Key to rom hashmap
+//     complete: bool,
+// }
 
 #[derive(Clone, Debug, Default)]
 pub struct RomFileCandidate {

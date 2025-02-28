@@ -34,11 +34,12 @@
 
 #![allow(dead_code)]
 
+use std::collections::HashMap;
+
 use crate::{state::GuiState, GuiWindow, WORKSPACE_WINDOWS};
+
 use anyhow::Error;
 use egui::{Context, Ui};
-use marty_core::device_traits::videocard::VideoCardId;
-use std::collections::HashMap;
 
 pub struct GuiWorkspaceConfig {}
 

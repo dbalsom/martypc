@@ -50,6 +50,7 @@ pub struct TokenListView {
     pub max_rows: usize,
     row_span: usize,
     pub contents: Vec<Vec<SyntaxToken>>,
+    #[allow(unused)]
     pub visible_rect: Rect,
 
     pub l_margin: f32,
@@ -297,7 +298,7 @@ impl TokenListView {
 
             for (i, row) in self.contents[0..show_rows].iter().enumerate() {
                 let x = ui.min_rect().left() + self.l_margin;
-                let width = ui.min_rect().right() - ui.min_rect().left();
+                //let width = ui.min_rect().right() - ui.min_rect().left();
                 let y = start_y + ((i as f32) * row_height) + self.t_margin;
 
                 let mut token_x = x;
@@ -317,6 +318,7 @@ impl TokenListView {
                                 drawn = true;
                             }
                             SyntaxFormatType::HighlightLine(hilight) => {
+                                #[allow(unreachable_patterns)]
                                 let color = match hilight {
                                     HighlightType::Alert => Color32::from_rgb(64, 0, 0),
                                     HighlightType::Warning => Color32::from_rgb(64, 64, 0),

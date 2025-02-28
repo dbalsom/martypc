@@ -137,7 +137,7 @@ fn main() {
 
             // Initialize the app
             let web_options = eframe::WebOptions::default();
-            let app = MartyApp::new().await;
+            let app = MartyApp::new(&mut ()).await;
             log::debug!("App created, emu is Some?: {}", app.emu.is_some());
 
             if app.emu.is_none() {

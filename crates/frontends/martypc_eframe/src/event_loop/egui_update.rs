@@ -79,7 +79,10 @@ pub fn update_egui(emu: &mut Emulator, dm: &mut EFrameDisplayManager, tm: &Times
 
     // -- Update VHD Creator window
     if emu.gui.is_window_open(GuiWindow::VHDCreator) {
-        if let Some(hdc) = emu.machine.hdc() {
+        if let Some(hdc) = emu.machine.hdc_mut() {
+            emu.gui.vhd_creator.set_formats(hdc.get_supported_formats());
+        }
+        else if let Some(hdc) = emu.machine.xtide_mut() {
             emu.gui.vhd_creator.set_formats(hdc.get_supported_formats());
         }
         else {

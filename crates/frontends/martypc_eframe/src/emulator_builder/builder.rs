@@ -32,7 +32,7 @@
 
 use std::{
     cell::RefCell,
-    io::{Stderr, Write},
+    io::Write,
     path::{Path, PathBuf},
     rc::Rc,
 };
@@ -53,7 +53,7 @@ use anyhow::{anyhow, Error};
 use marty_config::ConfigFileParams;
 
 // This module will export either a rodio or null sound interface depending on the `sound` feature.
-use crate::sound::{SoundInterface, SoundSourceDescriptor};
+use crate::sound::SoundInterface;
 
 #[cfg(feature = "cpu_validator")]
 use marty_core::cpu_validator::ValidatorType;
@@ -64,7 +64,6 @@ use marty_core::{
 use marty_egui::state::GuiState;
 use marty_frontend_common::{
     cartridge_manager::CartridgeManager,
-    display_manager::DmGuiOptions,
     floppy_manager::FloppyManager,
     machine_manager::MachineManager,
     resource_manager::ResourceManager,
@@ -73,7 +72,6 @@ use marty_frontend_common::{
     vhd_manager::VhdManager,
 };
 
-use crossbeam_channel::Sender;
 use url::Url;
 
 #[derive(Default, Debug)]
@@ -227,7 +225,8 @@ impl EmulatorBuilder {
                 }
                 #[cfg(not(target_arch = "wasm32"))]
                 {
-                    return Err(anyhow!("URL configuration not supported in native builds"));
+                    _ = url;
+                    Err(anyhow!("URL configuration not supported in native builds"))
                 }
             }
         }
@@ -693,7 +692,7 @@ impl EmulatorBuilder {
         gui.set_cart_slots(machine.bus().cart_ct());
 
         // Set autofloppy paths
-        #[cfg(not(arch = "wasm32"))]
+        #[cfg(not(target_arch = "wasm32"))]
         {
             gui.set_autofloppy_paths(floppy_manager.get_autofloppy_paths());
         }

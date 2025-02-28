@@ -32,11 +32,12 @@ pub mod joystick_state;
 pub mod keyboard_state;
 pub mod mouse_state;
 
-//use display_manager_wgpu::DisplayManager;
-//use display_manager_wgpu::WgpuDisplayManager;
-
 use display_manager_eframe::EFrameDisplayManager;
-use std::{cell::RefCell, ffi::OsString, rc::Rc};
+use std::{
+    cell::RefCell,
+    ffi::{OsStr, OsString},
+    rc::Rc,
+};
 
 use anyhow::Error;
 use marty_config::ConfigFileParams;
@@ -54,13 +55,9 @@ use crate::{
 use marty_core::{
     cpu_common::{Cpu, CpuOption},
     machine::{ExecutionControl, Machine, MachineEvent, MachineState},
-    vhd::VirtualHardDisk,
+    vhd::{VhdIO, VirtualHardDisk},
 };
-use marty_egui::{
-    state::{FloppyDriveSelection, GuiState},
-    GuiBoolean,
-    GuiWindow,
-};
+use marty_egui::{state::GuiState, GuiBoolean, GuiWindow};
 use marty_frontend_common::{
     cartridge_manager::CartridgeManager,
     display_scaler::SCALER_MODES,
@@ -70,7 +67,6 @@ use marty_frontend_common::{
     timestep_manager::PerfSnapshot,
     vhd_manager::VhdManager,
 };
-use marty_videocard_renderer::AspectCorrectionMode;
 
 /// Define flags to be used by emulator.
 pub struct EmuFlags {
@@ -355,44 +351,92 @@ impl Emulator {
             }
         }
 
-        let mut config_drive_idx: usize = 0;
+        let mut drive_idx: usize = 0;
         for vhd_name in vhd_names.into_iter().filter_map(|x| x) {
             let vhd_os_name: OsString = vhd_name.into();
-            match self.vhd_manager.load_vhd_file_by_name(config_drive_idx, &vhd_os_name) {
-                Ok((vhd_file, vhd_idx)) => match VirtualHardDisk::from_file(vhd_file) {
-                    Ok(vhd) => {
-                        if let Some(hdc) = self.machine.hdc() {
-                            match hdc.set_vhd(config_drive_idx, vhd) {
-                                Ok(_) => {
-                                    log::info!(
-                                        "VHD image {:?} successfully loaded into virtual drive: {}",
-                                        vhd_os_name,
-                                        config_drive_idx
-                                    );
 
-                                    if let Some(selection) = self.vhd_manager.get_vhd_path(vhd_idx) {
-                                        self.gui
-                                            .set_hdd_selection(config_drive_idx, Some(vhd_idx), Some(selection));
-                                    }
-                                }
-                                Err(err) => {
-                                    log::error!("Error mounting VHD: {}", err);
-                                }
-                            }
-                        }
-                        else {
-                            log::error!("Couldn't load VHD: No Hard Disk Controller present!");
-                        }
-                    }
-                    Err(err) => {
-                        log::error!("Error loading VHD: {}", err);
-                    }
-                },
+            #[cfg(not(target_arch = "wasm32"))]
+            match self.vhd_manager.load_vhd_file_by_name(drive_idx, &vhd_os_name) {
+                Ok((vhd_file, vhd_idx)) => {
+                    self.load_vhd(Box::new(vhd_file), drive_idx, &vhd_os_name, Some(vhd_idx))?;
+                }
                 Err(err) => {
                     log::error!("Failed to load VHD image {:?}: {}", vhd_os_name, err);
                 }
             }
-            config_drive_idx += 1;
+            #[cfg(target_arch = "wasm32")]
+            match self
+                .vhd_manager
+                .load_vhd_file_by_name(&mut self.rm, drive_idx, &vhd_os_name)
+            {
+                Ok(vhd_data) => {
+                    self.load_vhd(Box::new(std::io::Cursor::new(vhd_data)), drive_idx, &vhd_os_name, None)?;
+                }
+                Err(err) => {
+                    log::error!("Failed to load VHD image {:?}: {}", vhd_os_name, err);
+                }
+            }
+            drive_idx += 1;
+        }
+        Ok(())
+    }
+
+    pub fn load_vhd(
+        &mut self,
+        vhd_file: Box<dyn VhdIO>,
+        drive_idx: usize,
+        vhd_os_name: &OsStr,
+        vhd_idx: Option<usize>,
+    ) -> Result<(), Error> {
+        match VirtualHardDisk::parse(Box::new(vhd_file), false) {
+            Ok(vhd) => {
+                if let Some(hdc) = self.machine.hdc_mut() {
+                    match hdc.set_vhd(drive_idx, vhd) {
+                        Ok(_) => {
+                            log::info!(
+                                "VHD image {:?} successfully loaded into virtual drive: {}",
+                                vhd_os_name,
+                                drive_idx
+                            );
+
+                            if let Some(idx) = vhd_idx {
+                                if let Some(selection) = self.vhd_manager.get_vhd_path(idx) {
+                                    self.gui.set_hdd_selection(drive_idx, Some(idx), Some(selection));
+                                }
+                            }
+                        }
+                        Err(err) => {
+                            log::error!("Error mounting VHD: {}", err);
+                        }
+                    }
+                }
+                else if let Some(hdc) = self.machine.xtide_mut() {
+                    match hdc.set_vhd(drive_idx, vhd) {
+                        Ok(_) => {
+                            log::info!(
+                                "VHD image {:?} successfully loaded into virtual drive: {}",
+                                vhd_os_name,
+                                drive_idx
+                            );
+
+                            if let Some(idx) = vhd_idx {
+                                if let Some(selection) = self.vhd_manager.get_vhd_path(idx) {
+                                    self.gui.set_hdd_selection(drive_idx, Some(idx), Some(selection));
+                                }
+                            }
+                        }
+                        Err(err) => {
+                            log::error!("Error mounting VHD: {}", err);
+                        }
+                    }
+                }
+                else {
+                    log::error!("Couldn't load VHD: No Hard Disk Controller present!");
+                }
+            }
+            Err(err) => {
+                log::error!("Error loading VHD: {}", err);
+            }
         }
         Ok(())
     }
