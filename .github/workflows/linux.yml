@@ -44,6 +44,9 @@ jobs:
           restore-keys: |
             rust-cache-${{ runner.os }}-
 
+      - name: Override rust-toolchain for native build
+        run: rustup component remove rust-src || echo "rust-src not installed"
+
       - name: Cargo build
         run: cargo build --profile release-lto --features ega
 
