@@ -400,7 +400,8 @@ pub trait Cpu {
 
     fn in_rep(&self) -> bool;
     fn get_type(&self) -> CpuType;
-
+    /// Flush the processor instruction queue. Associated registers may be updated.
+    fn flush_piq(&mut self);
     fn get_ip(&mut self) -> u16;
     fn get_register16(&self, reg: Register16) -> u16;
     fn set_register16(&mut self, reg: Register16, value: u16);

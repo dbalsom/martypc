@@ -108,6 +108,11 @@ impl Cpu for Intel808x {
     }
 
     #[inline]
+    fn flush_piq(&mut self) {
+        self.flush_piq();
+    }
+
+    #[inline]
     fn get_ip(&mut self) -> u16 {
         self.ip()
     }

@@ -37,10 +37,13 @@
 use crate::{token_listview::*, *};
 use marty_core::syntax_token::*;
 
+pub const DEFAULT_VIEWER_ROWS: usize = 25;
+
 pub struct MemoryViewerControl {
     pub address_input: String,
     pub address: String,
     pub address_source: InputFieldChangeSource,
+    pub visible_rows: usize,
     pub row: usize,
     pub row_span: usize,
     pub prev_row: usize,
@@ -55,6 +58,7 @@ impl MemoryViewerControl {
             address_input: format!("{:05X}", 0),
             address: format!("{:05X}", 0),
             address_source: InputFieldChangeSource::None,
+            visible_rows: DEFAULT_VIEWER_ROWS,
             row: 0,
             row_span: 16,
             prev_row: 0,
@@ -71,6 +75,9 @@ impl MemoryViewerControl {
                 self.address = self.address_input.clone();
                 self.address_source = InputFieldChangeSource::UserInput;
             }
+            ui.label("Rows:");
+            ui.add(egui::Slider::new(&mut self.visible_rows, 16..=64).text(""));
+
             // if ui.text_edit_singleline(&mut self.address_input).lost_focus() {
             //     log::debug!("text edit changed to {}", self.address_input);
             //     let new_address_res = usize::from_str_radix(&self.address_input, 16);
@@ -91,7 +98,7 @@ impl MemoryViewerControl {
         ui.separator();
 
         self.tlv.set_capacity(0x10000);
-        self.tlv.set_visible(16);
+        self.tlv.set_visible(self.visible_rows);
 
         let mut new_row = self.row;
         let mut scrolled_to_opt = None;
@@ -148,6 +155,10 @@ impl MemoryViewerControl {
 
     pub fn get_address(&mut self) -> (&str, InputFieldChangeSource) {
         (&self.address, self.address_source)
+    }
+
+    pub fn viewport_len(&self) -> usize {
+        self.visible_rows * self.row_span
     }
 
     pub fn set_memory(&mut self, mem: Vec<Vec<SyntaxToken>>) {

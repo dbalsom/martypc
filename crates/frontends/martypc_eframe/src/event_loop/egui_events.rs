@@ -855,6 +855,25 @@ pub fn handle_egui_event(emu: &mut Emulator, dm: &mut EFrameDisplayManager, gui_
                 emu.gui.memory_viewer.set_address(mem_dump_addr as usize);
             }
         }
+        GuiEvent::MemoryByteUpdate(addr, val) => {
+            // The user has changed a memory value in the memory viewer.
+            // We need to update the memory contents in the emulator.
+            _ = emu.machine.bus_mut().write_u8(*addr, *val, 0);
+        }
+        GuiEvent::Register16Update(reg, val) => {
+            // The user has changed a 16-bit register value in the register viewer.
+            // We need to update the register contents in the emulator.
+            emu.machine.cpu_mut().set_register16(*reg, *val);
+        }
+        GuiEvent::CpuFlagsUpdate(flags) => {
+            // The user has changed the CPU flags in the register viewer.
+            // We need to update the flags in the emulator.
+            emu.machine.cpu_mut().set_flags(*flags);
+        }
+        GuiEvent::CpuFlushQueue => {
+            // The user has requested to clear the CPU instruction queue.
+            emu.machine.cpu_mut().flush_piq();
+        }
         GuiEvent::TokenHover(addr) => {
             // Hovered over a token in a TokenListView.
             let cpu_type = emu.machine.cpu().get_type();

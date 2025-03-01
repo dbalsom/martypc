@@ -71,6 +71,7 @@ use marty_core::{
     machine::MachineState,
 };
 
+use marty_core::cpu_common::Register16;
 use marty_frontend_common::display_manager::{DisplayTargetType, DtHandle};
 use marty_videocard_renderer::CompositeParams;
 use serde::{Deserialize, Serialize};
@@ -193,6 +194,10 @@ pub enum GuiEvent {
     DumpAllMem,
     EditBreakpoint,
     MemoryUpdate,
+    MemoryByteUpdate(usize, u8),
+    CpuFlagsUpdate(u16),
+    CpuFlushQueue,
+    Register16Update(Register16, u16),
     TokenHover(usize),
     VariableChanged(GuiVariableContext, GuiVariable),
     CompositeAdjust(DtHandle, CompositeParams),

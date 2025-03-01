@@ -1018,6 +1018,12 @@ impl Intel808x {
         self.instruction_count
     }
 
+    pub fn flush_piq(&mut self) {
+        // Rewind PC to the start of the instruction before flushing, so we will re-fetch it
+        self.pc = self.pc.wrapping_sub(self.queue.len_p() as u16);
+        self.queue.flush();
+    }
+
     /// Calculate the value of IP as needed. The IP register on the 808X is not a physical register,
     /// but produced on demand by adjusting PC by the size of the queue.
     #[inline]
@@ -1342,6 +1348,11 @@ impl Intel808x {
             Register16::PC => self.pc = value,
             _ => panic!("bad register16"),
         }
+    }
+
+    #[inline]
+    pub fn set_pc(&mut self, value: u16) {
+        self.pc = value;
     }
 
     /// Converts a Register8 into a Register16.

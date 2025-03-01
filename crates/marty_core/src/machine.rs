@@ -932,6 +932,10 @@ impl Machine {
         &self.cpu
     }
 
+    pub fn cpu_mut(&mut self) -> &mut CpuDispatch {
+        &mut self.cpu
+    }
+
     pub fn config(&self) -> &MachineConfiguration {
         &self.machine_config
     }

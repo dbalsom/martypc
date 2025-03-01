@@ -44,6 +44,7 @@ pub fn handle_window_event(
     _tm: &mut TimestepManager,
     window_id: WindowId,
     event: WindowEvent,
+    window_has_focus: bool,
     gui_has_focus: bool,
 ) {
     let mut pass_to_egui = false;
@@ -108,6 +109,9 @@ pub fn handle_window_event(
         WindowEvent::KeyboardInput {
             event: ref key_event, ..
         } => {
+            if !window_has_focus {
+                return;
+            }
             pass_to_egui = !handle_winit_key_event(emu, dm, window_id, key_event, gui_has_focus);
         }
         WindowEvent::Focused(state) => match state {

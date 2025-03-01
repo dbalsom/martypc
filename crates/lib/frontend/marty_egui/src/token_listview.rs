@@ -53,6 +53,13 @@ pub struct TokenListView {
     #[allow(unused)]
     pub visible_rect: Rect,
 
+    pub edit_requested_focus: bool,
+    pub edit_len: usize,
+    pub edit_mode: bool,
+    pub edit_cursor: usize,
+    pub edit_buffer: Option<String>,
+    pub edit_hint_buffer: Option<String>,
+
     pub l_margin: f32,
     pub t_margin: f32,
 
@@ -70,6 +77,13 @@ impl TokenListView {
             row_span: 1,
             contents: Vec::new(),
             visible_rect: Rect::NOTHING,
+
+            edit_requested_focus: false,
+            edit_len: 0,
+            edit_mode: false,
+            edit_cursor: 0,
+            edit_buffer: None,
+            edit_hint_buffer: None,
 
             l_margin: 5.0,
             t_margin: 3.0,
@@ -355,28 +369,114 @@ impl TokenListView {
                             drawn = true;
                         }
                         SyntaxToken::MemoryByteHexValue(addr, _, s, cursor, age) => {
-                            if ui
-                                .put(
-                                    Rect {
-                                        min: egui::pos2(token_x, y),
-                                        max: egui::pos2(token_x + label_rect.max.x + 1.0, y + label_rect.max.y),
-                                    },
-                                    egui::Label::new(
-                                        egui::RichText::new(s)
-                                            .text_style(egui::TextStyle::Monospace)
-                                            .color(fade_c32(Color32::GRAY, Color32::from_rgb(0, 255, 255), 255 - *age)),
-                                    ),
-                                )
-                                .on_hover_ui(|ui| {
-                                    ui.add(egui::Label::new(
-                                        egui::RichText::new(&self.hover_text).text_style(egui::TextStyle::Monospace),
-                                    ));
-                                })
-                                .hovered()
-                            {
-                                column_select = j;
-                                events.send(GuiEvent::TokenHover(*addr as usize));
-                            }
+                            let response = match self.edit_mode {
+                                true if *addr as usize == self.edit_cursor => {
+                                    // Initialize the edit buffer with the current byte value.
+                                    // We need to do this to support moving from cell to cell.
+                                    if self.edit_buffer.is_none() {
+                                        self.edit_buffer = Some(String::new());
+                                    }
+                                    self.edit_hint_buffer = Some(s.clone());
+
+                                    let edit_response = ui.put(
+                                        Rect {
+                                            min: pos2(token_x, y),
+                                            max: pos2(token_x + label_rect.max.x + 1.0, y + label_rect.max.y),
+                                        },
+                                        TextEdit::singleline(self.edit_buffer.as_mut().unwrap())
+                                            .font(TextStyle::Monospace)
+                                            .char_limit(2)
+                                            .hint_text(self.edit_hint_buffer.as_ref().unwrap())
+                                            .margin(0.0),
+                                    );
+
+                                    if !self.edit_requested_focus {
+                                        ui.memory_mut(|mem| {
+                                            mem.request_focus(edit_response.id);
+                                        });
+                                        self.edit_requested_focus = true;
+                                    }
+
+                                    if edit_response.clicked_elsewhere() {
+                                        // User can cancel the edit by clicking outside the text edit box.
+                                        self.edit_mode = false;
+                                        self.edit_len = 0;
+                                        self.edit_cursor = 0;
+                                        self.edit_buffer = None;
+                                        self.edit_hint_buffer = None;
+                                        self.edit_requested_focus = false;
+                                    }
+                                    else if edit_response.lost_focus() {
+                                        // A TextEdit "loses focus" on tab or enter.
+                                        // We will consider that a completion of a data entry, and update the current byte.
+                                        // We will stay in edit mode, and advance the cursor to the next byte.
+                                        self.edit_mode = true;
+                                        self.edit_cursor = self.edit_cursor.wrapping_add(1);
+                                        self.edit_len = 0;
+                                        self.edit_hint_buffer = None;
+                                        self.edit_requested_focus = false;
+
+                                        if let Ok(val) = u8::from_str_radix(&self.edit_buffer.as_ref().unwrap(), 16) {
+                                            events.send(GuiEvent::MemoryByteUpdate(*addr as usize, val));
+                                        }
+                                        self.edit_buffer = None;
+                                    }
+                                    else if edit_response.changed() {
+                                        if let Some(edit_buffer) = &self.edit_buffer {
+                                            let current_edit_len = edit_buffer.len();
+
+                                            if self.edit_len == 1 && current_edit_len == 2 {
+                                                // User just completed a byte entry.
+                                                self.edit_mode = true;
+                                                self.edit_cursor = self.edit_cursor.wrapping_add(1);
+                                                self.edit_len = 0;
+                                                self.edit_hint_buffer = None;
+                                                self.edit_requested_focus = false;
+
+                                                if let Ok(val) =
+                                                    u8::from_str_radix(&self.edit_buffer.as_ref().unwrap(), 16)
+                                                {
+                                                    events.send(GuiEvent::MemoryByteUpdate(*addr as usize, val));
+                                                }
+                                                self.edit_buffer = None;
+                                            }
+                                            self.edit_len = current_edit_len;
+                                        }
+                                    }
+                                }
+                                _ => {
+                                    let label_response = ui
+                                        .put(
+                                            Rect {
+                                                min: pos2(token_x, y),
+                                                max: pos2(token_x + label_rect.max.x + 1.0, y + label_rect.max.y),
+                                            },
+                                            Label::new(RichText::new(s).text_style(TextStyle::Monospace).color(
+                                                fade_c32(Color32::GRAY, Color32::from_rgb(0, 255, 255), 255 - *age),
+                                            )),
+                                        )
+                                        .on_hover_ui(|ui| {
+                                            ui.add(Label::new(
+                                                RichText::new(&self.hover_text).text_style(TextStyle::Monospace),
+                                            ));
+                                        });
+
+                                    if label_response.hovered() {
+                                        column_select = j;
+                                        events.send(GuiEvent::TokenHover(*addr as usize));
+                                    }
+                                    if label_response.double_clicked() {
+                                        log::warn!("Double clicked on token: {} at addr: {:05X}", s, addr);
+                                        self.edit_mode = true;
+                                        self.edit_cursor = *addr as usize;
+                                        if self.edit_buffer.is_none() {
+                                            self.edit_len = 0;
+                                            self.edit_buffer = None;
+                                            self.edit_hint_buffer = None;
+                                        }
+                                    }
+                                }
+                            };
 
                             if *cursor {
                                 ui.painter().rect(

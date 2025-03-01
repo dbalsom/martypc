@@ -20,7 +20,7 @@ This provides a few nice things:
  - App state serialization.  This means parts of MartyPC's internal state can be persisted between sessions - things 
    like which windows you had open and their positions, for example. This feature will be expanded upon.
 
-## Rusty File Dialogs
+## Native File Dialogs
  - The RFD crate provides access to native file dialogs for your particular OS.  Besides file open and file save pickers,
    we can also use MessageBox(es).
  - Initialization errors are now described in hopefully helpful detail via an error MessageBox. You should no longer 
@@ -35,11 +35,19 @@ This provides a few nice things:
  - It is now possible to take a VHD file from 86Box (assuming you created it as a 'fixed' VHD) and use it in MartyPC
    (and vice-versa!).
 
+## New Debugger Features
+- You can now edit memory, at last! Double clicking on byte in the hex view will enter edit mode. Hit enter to accept
+  the current value and go to the next byte. Click outside of the edit box to cancel.
+- You can now edit the CPU registers and flags when the machine is paused from the CPU State debug window.
+    - You can also flush the CPU's instructon queue by clicking the 'flush' button.
+    - To take a manual jump, first, flush the queue, then edit PC to the value of IP you'd like to jump to.
+
 ### Frontend Bug Fixes / Improvements
  - You can now toggle the display between the window background and a GUI widget window. Shaders are also available
    in windowed mode (With the wgpu backend)!
  - When in windowed mode, you can apply a bezel overlay. This works best with a shader preset that applies curvature,
    and the 'accurate' aperture selected. This isn't really a shader effect, just a GUI trick. But it's kinda cool.
+ - Fixed an issue where MartyPC would receive keyboard events even though it didn't have keyboard focus (weird)
 
 ### Core Bug Fixes / Improvements
  - Improved accuracy of the Programmable Interrupt Timer (PIT)

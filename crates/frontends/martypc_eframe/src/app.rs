@@ -83,8 +83,8 @@ pub enum FileOpenContext {
 #[serde(default)] // if we add new fields, give them default values when deserializing old state
 pub struct MartyApp {
     current_size: egui::Vec2,
-    last_size:    egui::Vec2,
-
+    last_size: egui::Vec2,
+    focused: bool,
     #[serde(skip)]
     gui: GuiRenderContext,
     #[serde(skip)]
@@ -114,6 +114,7 @@ impl Default for MartyApp {
         Self {
             current_size: egui::Vec2::ZERO,
             last_size: egui::Vec2::INFINITY,
+            focused: false,
             // Example stuff:
             gui: GuiRenderContext::default(),
             emu_loading: false,
@@ -498,6 +499,21 @@ impl eframe::App for MartyApp {
     /// Called each time the UI needs repainting, which may be many times per second.
     /// A display manager must be created before this is called.
     fn update(&mut self, ctx: &Context, _frame: &mut eframe::Frame) {
+        // Get current viewport focus state.
+        let vi = ctx.input(|i| {
+            let vi = i.viewport();
+            if let Some(focus) = vi.focused {
+                if self.focused && !focus {
+                    log::debug!("MartyApp::update(): Main viewport lost focus");
+                    self.focused = false;
+                }
+                else if !self.focused && focus {
+                    log::debug!("MartyApp::update(): Main viewport gained focus");
+                    self.focused = true;
+                }
+            }
+        });
+
         if let Some(emu) = &mut self.emu {
             self.current_size = ctx.screen_rect().size(); // Get window size
 
@@ -522,6 +538,7 @@ impl eframe::App for MartyApp {
                         &mut self.tm,
                         event.0,
                         event.1,
+                        self.focused,
                         ctx.memory(|mem| mem.focused()).is_some(),
                     );
                 }
