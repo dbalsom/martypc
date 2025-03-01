@@ -35,15 +35,16 @@
 */
 
 use crate::*;
-use core::fmt;
-use egui::CollapsingHeader;
-use egui_plot::{GridMark, Line, Plot, PlotPoints};
+
 use marty_common::util::format_duration;
 use marty_frontend_common::{
     timestep_manager::{FrameEntry, PerfSnapshot},
     types::sound::SoundSourceInfo,
 };
 use marty_videocard_renderer::VideoParams;
+
+use egui::CollapsingHeader;
+use egui_plot::{GridMark, Line, Plot, PlotPoints};
 
 pub struct PerformanceViewerControl {
     dti: Vec<DisplayTargetInfo>,
@@ -53,16 +54,16 @@ pub struct PerformanceViewerControl {
     frame_history: Vec<FrameEntry>,
 }
 
-struct DisplayOption<T>(Option<T>);
-
-impl<T: fmt::Debug> fmt::Debug for DisplayOption<T> {
-    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        match &self.0 {
-            Some(value) => write!(f, "{:?}", value),
-            None => write!(f, "None"),
-        }
-    }
-}
+// struct DisplayOption<T>(Option<T>);
+//
+// impl<T: fmt::Debug> fmt::Debug for DisplayOption<T> {
+//     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+//         match &self.0 {
+//             Some(value) => write!(f, "{:?}", value),
+//             None => write!(f, "None"),
+//         }
+//     }
+// }
 
 pub fn format_freq_counter(ct: u32) -> String {
     let mut ct = ct as f64;

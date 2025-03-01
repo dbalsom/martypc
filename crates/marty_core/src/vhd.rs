@@ -40,13 +40,18 @@ use std::{
     str,
 };
 
-use anyhow::{bail, Context, Result};
+pub const SECTOR_SIZE: usize = 512;
+
+use anyhow::{bail, Result};
 use uuid::Uuid;
 
-use crate::{
-    bytebuf::{ByteBuf, ByteBufWriter},
-    devices::hdc::SECTOR_SIZE,
-};
+use crate::bytebuf::{ByteBuf, ByteBufWriter};
+
+/// A trait alias for objects that support reading, writing, and seeking.
+pub trait VhdIO: Read + Write + Seek {}
+
+/// Implement VhdIO for all types that satisfy Read + Write + Seek.
+impl<T: Read + Write + Seek> VhdIO for T {}
 
 pub const VHD_FOOTER_LEN: usize = 512;
 pub const VHD_SECTOR_SIZE: usize = 512;
@@ -56,6 +61,7 @@ pub const VHD_FEATURE_RESERVED: u32 = 0x02;
 pub const VHD_CHECKSUM_OFFSET: usize = 64;
 pub const VHD_DISK_TYPE: u32 = 0x02;
 
+// TODO: Refactor this with thiserror
 #[derive(Debug)]
 pub enum VirtualHardDiskError {
     FileExists,
@@ -64,6 +70,7 @@ pub enum VirtualHardDiskError {
     InvalidVersion,
     InvalidType,
     InvalidSeek,
+    WriteFailure,
 }
 impl Error for VirtualHardDiskError {}
 impl Display for VirtualHardDiskError {
@@ -84,14 +91,18 @@ impl Display for VirtualHardDiskError {
             VirtualHardDiskError::InvalidSeek => {
                 write!(f, "An IO operation was requested out of bounds.")
             }
+            VirtualHardDiskError::WriteFailure => {
+                write!(f, "An error occurred while writing to the VHD file.")
+            }
         }
     }
 }
 
 #[allow(dead_code)]
 pub struct VirtualHardDisk {
-    vhd_file: File,
-    footer:   VHDFileFooter,
+    vhd_file:  Box<dyn VhdIO>,
+    read_only: bool,
+    footer:    VHDFileFooter,
 
     size: u64,
     checksum: u32,
@@ -105,13 +116,14 @@ pub struct VirtualHardDisk {
     cur_sector: u32,
 }
 
-#[derive(Default)]
+#[derive(Clone, Debug, Default)]
 pub struct VHDGeometry {
-    c: u16,
-    h: u8,
-    s: u8,
+    pub c: u16,
+    pub h: u8,
+    pub s: u8,
 }
 
+// TODO: Refactor this with binrw
 #[derive(Default)]
 pub struct VHDFileFooter {
     cookie: [u8; 8],
@@ -287,14 +299,19 @@ impl VHDFileFooter {
         // Return one's compliment of sum
         !sum
     }
+
+    fn geometry(&self) -> VHDGeometry {
+        self.geometry.clone()
+    }
 }
 
 impl VirtualHardDisk {
-    pub fn from_file(mut vhd_file: File) -> Result<VirtualHardDisk, anyhow::Error> {
-        let metadata = vhd_file.metadata().context("Failed to read VHD file metadata")?;
+    pub fn parse(mut vhd_file: Box<dyn VhdIO>, read_only: bool) -> Result<VirtualHardDisk, anyhow::Error> {
+        let vhd_file_size = vhd_file.seek(SeekFrom::End(0))?;
+
         // Check that the file is long enough to even read the footer in. Such a small file will fail
         // for other reasons later such as not containing the proper chs
-        if metadata.len() <= VHD_FOOTER_LEN as u64 {
+        if vhd_file_size <= VHD_FOOTER_LEN as u64 {
             bail!(VirtualHardDiskError::InvalidLength);
         }
 
@@ -308,8 +325,9 @@ impl VirtualHardDisk {
 
         Ok(VirtualHardDisk {
             vhd_file,
+            read_only,
 
-            size: metadata.len(),
+            size: vhd_file_size,
             checksum: 0,
 
             max_cylinders: footer.geometry.c as u32,
@@ -324,50 +342,56 @@ impl VirtualHardDisk {
         })
     }
 
+    pub fn size(&mut self) -> Result<u64, anyhow::Error> {
+        // Get the size of the VHD reader, restore the stream position after
+        let pos = self.vhd_file.stream_position()?;
+        let size = self.vhd_file.seek(SeekFrom::End(0))?;
+        self.vhd_file.seek(SeekFrom::Start(pos))?;
+        Ok(size)
+    }
+
     /// Return a byte offset given a CHS (Cylinder, Head, Sector) address
     ///
     /// Hard drive sectors are allowed to start at 0
-    pub fn get_chs_offset(&self, cylinder: u16, head: u8, sector: u8) -> usize {
-        let lba: usize =
-            ((cylinder as u32 * self.max_heads + (head as u32)) * self.max_sectors + (sector as u32)) as usize;
+    pub fn get_chs_offset(&self, cylinder: u16, head: u8, sector: u8) -> u64 {
+        let lba: u64 = ((cylinder as u32 * self.max_heads + (head as u32)) * self.max_sectors + (sector as u32)) as u64;
 
         //log::trace!(">>>>>>>>>> Computed offset for c: {} h: {} s: {} of {:08X}", cylinder, head, sector, lba * SECTOR_SIZE);
-        lba * SECTOR_SIZE
+        lba * SECTOR_SIZE as u64
     }
 
     pub fn read_sector(&mut self, buf: &mut [u8], cylinder: u16, head: u8, sector: u8) -> Result<(), anyhow::Error> {
         let read_offset = self.get_chs_offset(cylinder, head, sector);
-
-        let metadata = self.vhd_file.metadata().context("Couldn't get VHD file metadata")?;
-        if read_offset as u64 > metadata.len() - VHD_FOOTER_LEN as u64 - VHD_SECTOR_SIZE as u64 {
+        if read_offset > self.size()? - VHD_FOOTER_LEN as u64 - VHD_SECTOR_SIZE as u64 {
             // Read requested past last sector in file
             bail!(VirtualHardDiskError::InvalidSeek);
         }
-
         self.vhd_file.seek(SeekFrom::Start(read_offset as u64))?;
+        self.vhd_file.read_exact(buf)?;
 
-        self.vhd_file.read_exact(buf).context("Error reading sector from VHD")?;
-
+        //log::debug!("Read sector from VHD at offset: {} read buf: {:X?}", read_offset, buf);
         Ok(())
     }
 
     pub fn write_sector(&mut self, buf: &[u8], cylinder: u16, head: u8, sector: u8) -> Result<(), anyhow::Error> {
         let write_offset = self.get_chs_offset(cylinder, head, sector);
-
-        let metadata = self.vhd_file.metadata().context("Couldn't get VHD file metadata")?;
-        if write_offset as u64 > metadata.len() - VHD_FOOTER_LEN as u64 - VHD_SECTOR_SIZE as u64 {
+        if write_offset > self.size()? - VHD_FOOTER_LEN as u64 - VHD_SECTOR_SIZE as u64 {
             // Write requested past last sector in file
             bail!(VirtualHardDiskError::InvalidSeek);
         }
 
-        self.vhd_file.seek(SeekFrom::Start(write_offset as u64))?;
+        self.vhd_file.seek(SeekFrom::Start(write_offset))?;
 
         let write_len = self.vhd_file.write(buf)?;
         if write_len != VHD_SECTOR_SIZE {
-            log::error!("Incomplete VHD Sector Write!");
+            bail!(VirtualHardDiskError::WriteFailure);
         }
 
         Ok(())
+    }
+
+    pub fn geometry(&self) -> VHDGeometry {
+        self.footer.geometry()
     }
 }
 
@@ -381,7 +405,7 @@ pub fn create_vhd(filename: OsString, c: u16, h: u8, s: u8) -> Result<File, anyh
     }
 
     // Create the requested file
-    let mut vhd_file = File::create(filename).context("Failed to create the requested VHD")?;
+    let mut vhd_file = File::create(filename)?;
 
     // Generate a new UUID for our VHD
     let uuid = Uuid::new_v4();
@@ -392,7 +416,7 @@ pub fn create_vhd(filename: OsString, c: u16, h: u8, s: u8) -> Result<File, anyh
     let n_sectors = c as u32 * h as u32 * s as u32;
 
     for _ in 0..n_sectors {
-        vhd_file.write(&write_buf).context("Error writing VHD file to disk.")?;
+        vhd_file.write(&write_buf)?;
     }
 
     let footer = VHDFileFooter::new(c, h, s, uuid);
@@ -400,9 +424,7 @@ pub fn create_vhd(filename: OsString, c: u16, h: u8, s: u8) -> Result<File, anyh
     // Since the length of a VHD footer == a sector size, re-use sector buf
     VHDFileFooter::make_vhd_footer_bytes(&mut write_buf, footer);
 
-    vhd_file
-        .write(&write_buf)
-        .context("Error writing VHD footer to disk.")?;
+    vhd_file.write(&write_buf)?;
 
     Ok(vhd_file)
 }

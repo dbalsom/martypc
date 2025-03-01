@@ -112,47 +112,43 @@ pub fn handle_load_floppy(emu: &mut Emulator, drive_select: usize, context: File
 
         if let Some(floppy_result) = floppy_result {
             match floppy_result {
-                Ok(FloppyImageSource::ZipArchive(zip_vec, path)) => {
-                    let mut image_type = None;
-                    image_type = Some(fdc.drive(drive_select).get_largest_supported_image_format());
+                Ok(FloppyImageSource::ZipArchive(zip_vec, _path)) => {
+                    // TODO: Move autofloppy image building to fluxfox
+                    //let mut image_type = Some(fdc.drive(drive_select).get_largest_supported_image_format());
                     match emu.floppy_manager.build_autofloppy_image_from_zip(
                         zip_vec,
                         Some(FloppyImageType::Image360K),
                         &mut emu.rm,
                     ) {
-                        Ok(vec) => {
-                            if let Some(fdc) = emu.machine.fdc() {
-                                match fdc.load_image_from(drive_select, vec, None, true) {
-                                    Ok(image_lock) => {
-                                        log::info!("Floppy image successfully loaded into virtual drive.");
+                        Ok(vec) => match fdc.load_image_from(drive_select, vec, None, true) {
+                            Ok(image_lock) => {
+                                log::info!("Floppy image successfully loaded into virtual drive.");
 
-                                        let image = image_lock.read().unwrap();
-                                        let compat_formats = image.compatible_formats(true);
+                                let image = image_lock.read().unwrap();
+                                let compat_formats = image.compatible_formats(true);
 
-                                        let name = floppy_name.unwrap_or_else(|| OsString::from("Unknown"));
+                                let name = floppy_name.unwrap_or_else(|| OsString::from("Unknown"));
 
-                                        emu.gui.set_floppy_selection(
-                                            drive_select,
-                                            None,
-                                            FloppyDriveSelection::ZipArchive(name.into()),
-                                            image.source_format(),
-                                            compat_formats,
-                                            None,
-                                        );
+                                emu.gui.set_floppy_selection(
+                                    drive_select,
+                                    None,
+                                    FloppyDriveSelection::ZipArchive(name.into()),
+                                    image.source_format(),
+                                    compat_formats,
+                                    None,
+                                );
 
-                                        emu.gui.set_floppy_write_protected(drive_select, true);
+                                emu.gui.set_floppy_write_protected(drive_select, true);
 
-                                        emu.gui
-                                            .toasts()
-                                            .info("Directory successfully mounted!".to_string())
-                                            .duration(Some(NORMAL_NOTIFICATION_TIME));
-                                    }
-                                    Err(err) => {
-                                        log::warn!("Floppy image failed to load: {}", err);
-                                    }
-                                }
+                                emu.gui
+                                    .toasts()
+                                    .info("Directory successfully mounted!".to_string())
+                                    .duration(Some(NORMAL_NOTIFICATION_TIME));
                             }
-                        }
+                            Err(err) => {
+                                log::warn!("Floppy image failed to load: {}", err);
+                            }
+                        },
                         Err(err) => {
                             log::error!("Failed to build autofloppy image. Error: {}", err);
                             emu.gui

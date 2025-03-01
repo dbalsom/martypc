@@ -38,9 +38,8 @@
     to know whether it is operating on an in-memory image or file.
 */
 
-const DRIVE_MAX: usize = 4;
-
 use crate::resource_manager::{PathTreeNode, ResourceItem, ResourceManager};
+use anyhow::Error;
 use std::{
     collections::{BTreeMap, BTreeSet, HashMap},
     ffi::OsString,
@@ -48,8 +47,6 @@ use std::{
     fs::File,
     path::PathBuf,
 };
-
-use anyhow::Error;
 
 #[derive(Debug)]
 pub enum VhdManagerError {
@@ -84,9 +81,9 @@ impl Display for VhdManagerError {
 
 #[derive(Clone, Debug)]
 pub struct VhdFile {
-    idx:  usize,
     name: OsString,
     path: PathBuf,
+    #[allow(unused)]
     size: u64,
 }
 
@@ -134,10 +131,9 @@ impl VhdManager {
         for item in floppy_items.iter() {
             let idx = self.image_vec.len();
             self.image_vec.push(VhdFile {
-                idx,
                 name: item.location.file_name().unwrap().to_os_string(),
                 path: item.location.clone(),
-                size: item.location.metadata().unwrap().len(),
+                size: item.size.unwrap_or(0),
             });
 
             self.image_map.insert(item.location.clone(), idx);
@@ -218,6 +214,8 @@ impl VhdManager {
     //     Err(VhdManagerError::FileNotFound)
     // }
 
+    /// Load a VHD file by its resource name and return a rust File handle.
+    #[cfg(not(target_arch = "wasm32"))]
     pub fn load_vhd_file_by_name(&mut self, drive: usize, name: &OsString) -> Result<(File, usize), VhdManagerError> {
         if let Some(path) = self.find_first_name(name.clone()) {
             let img_idx;
@@ -242,6 +240,42 @@ impl VhdManager {
         Err(VhdManagerError::FileNotFound)
     }
 
+    /// Load a VHD file by its resource name and return a Vec<u8>.
+    #[cfg(target_arch = "wasm32")]
+    pub fn load_vhd_file_by_name(
+        &mut self,
+        rm: &mut ResourceManager,
+        drive: usize,
+        name: &OsString,
+    ) -> Result<Vec<u8>, VhdManagerError> {
+        if let Some(path) = self.find_first_name(name.clone()) {
+            match rm.read_resource_from_path_blocking(path.clone()) {
+                Ok(file) => {
+                    if self.is_drive_loaded(drive) {
+                        log::error!("VHD drive slot {} not empty!", drive);
+                        return Err(VhdManagerError::DriveAlreadyLoaded);
+                    }
+
+                    if self.is_vhd_loaded(&path) {
+                        log::error!("VHD already associated with drive! Release drive first.");
+                        return Err(VhdManagerError::DriveAlreadyLoaded);
+                    }
+
+                    self.drives_loaded.insert(drive, path.clone());
+                    self.images_loaded.insert(path.clone());
+                    Ok(file)
+                }
+                Err(e) => {
+                    log::error!("Error loading VHD file: {}", e);
+                    Err(VhdManagerError::FileReadError)
+                }
+            }
+        }
+        else {
+            Err(VhdManagerError::FileNotFound)
+        }
+    }
+
     pub fn find_first_name(&mut self, name: OsString) -> Option<PathBuf> {
         for path in self.image_map.keys() {
             if let Some(filename) = path.file_name() {
@@ -257,7 +291,7 @@ impl VhdManager {
         if let Some(vhd) = self.image_vec.get(idx) {
             let vhd_file_result = File::options().read(true).write(true).open(&vhd.path);
 
-            match vhd_file_result {
+            return match vhd_file_result {
                 Ok(file) => {
                     log::debug!("Associating vhd: {} to drive: {}", vhd.name.to_string_lossy(), drive);
 
@@ -274,12 +308,13 @@ impl VhdManager {
                     self.drives_loaded.insert(drive, vhd.path.clone());
                     self.images_loaded.insert(vhd.path.clone());
 
-                    return Ok(file);
+                    Ok(file)
                 }
-                Err(_e) => {
-                    return Err(VhdManagerError::FileReadError);
+                Err(e) => {
+                    log::error!("load_vhd_file(): error opening file: {}", e);
+                    Err(VhdManagerError::FileReadError)
                 }
-            }
+            };
         }
         Err(VhdManagerError::FileNotFound)
     }

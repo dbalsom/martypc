@@ -3,7 +3,9 @@ name: Windows
 on:
   push:
     branches:
-      - version_0_4_0
+      - master
+    paths-ignore:
+      - '**/*.md'
   pull_request:
 
 env:
@@ -46,7 +48,7 @@ jobs:
 
       - name: Cargo build
         run: |
-          $USERPROFILE/.cargo/bin/cargo build --profile release-lto --features use_winit,use_wgpu,devtools,sound,opl
+          $USERPROFILE/.cargo/bin/cargo build --profile release-lto --features use_winit,use_wgpu,sound,opl
 
       - name: Copy files into install dir
         run: cp LICENSE README.md CHANGELOG.md CREDITS.md target/release-lto/martypc install

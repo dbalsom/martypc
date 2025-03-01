@@ -29,7 +29,6 @@
     Implements DisplayBackend for the Pixels backend
 */
 
-mod display_window;
 mod gui;
 pub mod surface;
 mod util;
@@ -48,11 +47,12 @@ use std::sync::{Arc, RwLock};
 
 use marty_scaler_null::DisplayScaler;
 
-use anyhow::{anyhow, Error};
+use anyhow::Error;
 use egui;
 use egui_wgpu::wgpu;
 
 pub struct EFrameBackend {
+    #[allow(unused)]
     ctx: egui::Context,
     adapter_info: Option<wgpu::AdapterInfo>, // Adapter information
     device: Arc<wgpu::Device>,               // Wgpu device. Cloneable handle to the GPU device instance.
@@ -188,7 +188,7 @@ impl DisplayBackend<'_, '_, ()> for EFrameBackend {
 
     fn render(
         &mut self,
-        surface: &mut DynDisplayTargetSurface,
+        _surface: &mut DynDisplayTargetSurface,
         _scaler: Option<&mut Self::NativeScaler>,
         _gui: Option<&mut ()>,
     ) -> Result<(), Error> {

@@ -32,17 +32,25 @@ pub use marty_frontend_common::{
     display_scaler::{DisplayScaler, ScalerEffect, ScalerFilter, ScalerMode, ScalerOption},
 };
 
+#[cfg(feature = "use_egui_backend")]
+use egui::TextureHandle;
+
 /// A logical texture size for a window surface.
-#[derive(Debug)]
+#[derive(Debug, Default)]
 pub struct SurfaceSize {
     pub width:  u32,
     pub height: u32,
 }
 
 /// The default renderer that scales your frame to the screen size.
+#[derive(Default)]
 pub struct MartyScaler {
     mode: ScalerMode,
     bilinear: bool,
+
+    pub texture_size: SurfaceSize,
+    pub target_size:  SurfaceSize,
+    pub screen_size:  SurfaceSize,
 }
 
 impl MartyScaler {
@@ -50,11 +58,17 @@ impl MartyScaler {
         Self {
             mode: ScalerMode::Fixed,
             bilinear: true,
+            ..Default::default()
         }
     }
 }
 
-impl DisplayScaler<(), (), ()> for MartyScaler {
+#[cfg(feature = "use_egui_backend")]
+type Texture = TextureHandle;
+#[cfg(not(feature = "use_egui_backend"))]
+type Texture = ();
+
+impl DisplayScaler<(), (), Texture> for MartyScaler {
     type NativeRenderPass = ();
     type NativeTextureView = ();
     type NativeEncoder = ();
@@ -69,17 +83,34 @@ impl DisplayScaler<(), (), ()> for MartyScaler {
         &mut self,
         _device: &(),
         _queue: &(),
-        _texture: &(),
-        _texture_width: u32,
-        _texture_height: u32,
-        _target_width: u32,
-        _target_height: u32,
-        _screen_width: u32,
-        _screen_height: u32,
+        _texture: &Texture,
+        texture_width: u32,
+        texture_height: u32,
+        target_width: u32,
+        target_height: u32,
+        screen_width: u32,
+        screen_height: u32,
     ) {
+        self.texture_size = SurfaceSize {
+            width:  texture_width,
+            height: texture_height,
+        };
+        self.target_size = SurfaceSize {
+            width:  target_width,
+            height: target_height,
+        };
+        self.screen_size = SurfaceSize {
+            width:  screen_width,
+            height: screen_height,
+        };
     }
 
-    fn resize_surface(&mut self, _device: &(), _queue: &(), _texture: &(), _screen_width: u32, _screen_height: u32) {}
+    fn resize_surface(&mut self, _device: &(), _queue: &(), _texture: &Texture, screen_width: u32, screen_height: u32) {
+        self.screen_size = SurfaceSize {
+            width:  screen_width,
+            height: screen_height,
+        };
+    }
 
     fn mode(&self) -> ScalerMode {
         self.mode
@@ -88,7 +119,14 @@ impl DisplayScaler<(), (), ()> for MartyScaler {
     fn set_mode(&mut self, _device: &(), _queue: &(), _new_mode: ScalerMode) {}
 
     fn geometry(&self) -> ScalerGeometry {
-        ScalerGeometry::default()
+        ScalerGeometry {
+            texture_w: self.texture_size.width,
+            texture_h: self.texture_size.height,
+            target_w:  self.target_size.width,
+            target_h:  self.target_size.height,
+            surface_w: self.target_size.width,
+            surface_h: self.target_size.height,
+        }
     }
 
     fn set_margins(&mut self, _l: u32, _r: u32, _t: u32, _b: u32) {}

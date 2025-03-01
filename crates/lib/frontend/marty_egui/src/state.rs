@@ -403,7 +403,7 @@ impl GuiState {
 
             about_dialog: AboutDialog::new(),
             cpu_control: CpuControl::new(exec_control.clone()),
-            cpu_viewer: CpuViewerControl::new(),
+            cpu_viewer: CpuViewerControl::new(exec_control.clone()),
             cycle_trace_viewer: CycleTraceViewerControl::new(),
             memory_viewer: MemoryViewerControl::new(),
             data_visualizer: DataVisualizerControl::new(),

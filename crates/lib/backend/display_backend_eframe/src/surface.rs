@@ -24,15 +24,20 @@
 
     ---------------------------------------------------------------------------
 */
-use anyhow::Error;
-use display_backend_trait::{BufferDimensions, DisplayTargetSurface, TextureDimensions};
+
 use std::sync::Arc;
 
+use display_backend_trait::{BufferDimensions, DisplayTargetSurface, TextureDimensions};
+
+use anyhow::Error;
+
 pub struct EFrameBackendSurface {
-    pub cpu_buffer: Vec<u8>, // Virtual pixel buffer
+    pub ctx: egui::Context,
+    pub pixels: Vec<u8>, // Virtual pixel buffer
     pub buffer: egui::TextureHandle,
     pub buffer_dim: BufferDimensions,
     pub surface_dim: TextureDimensions,
+    pub dirty: bool,
 }
 
 impl DisplayTargetSurface for EFrameBackendSurface {
@@ -42,48 +47,83 @@ impl DisplayTargetSurface for EFrameBackendSurface {
     type NativeTextureFormat = ();
 
     fn buf_dimensions(&self) -> BufferDimensions {
-        todo!()
+        self.buffer_dim
     }
 
     fn backing_dimensions(&self) -> TextureDimensions {
-        todo!()
+        TextureDimensions {
+            w: self.buffer.size()[0] as u32,
+            h: self.buffer.size()[1] as u32,
+        }
     }
 
-    fn resize_backing(&mut self, device: Arc<Self::NativeDevice>, new_dim: BufferDimensions) -> Result<(), Error> {
-        todo!()
+    fn resize_backing(&mut self, _device: Arc<Self::NativeDevice>, new_dim: BufferDimensions) -> Result<(), Error> {
+        self.pixels.resize(new_dim.w as usize * new_dim.h as usize * 4, 0);
+        let buffer_image = egui::ColorImage {
+            size:   [new_dim.w as usize, new_dim.h as usize],
+            pixels: self
+                .pixels
+                .chunks_exact(4)
+                .map(|rgba| egui::Color32::from_rgba_premultiplied(rgba[0], rgba[1], rgba[2], rgba[3]))
+                .collect(),
+        };
+
+        self.buffer_dim = new_dim;
+        self.buffer = self
+            .ctx
+            .load_texture("marty_buffer_texture", buffer_image, egui::TextureOptions::default());
+
+        Ok(())
     }
 
     fn update_backing(&mut self, device: Arc<Self::NativeDevice>, queue: Arc<Self::NativeQueue>) -> Result<(), Error> {
-        todo!()
+        let texture_manager = self.ctx.tex_manager();
+        let buffer_image = egui::ColorImage {
+            size:   [self.buffer_dim.w as usize, self.buffer_dim.h as usize],
+            pixels: self
+                .pixels
+                .chunks_exact(4)
+                .map(|rgba| egui::Color32::from_rgba_premultiplied(rgba[0], rgba[1], rgba[2], rgba[3]))
+                .collect(),
+        };
+
+        let image_delta = egui::epaint::ImageDelta {
+            image: buffer_image.into(),
+            options: Default::default(),
+            pos: None,
+        };
+        texture_manager.write().set(self.buffer.id(), image_delta);
+        Ok(())
     }
 
     fn surface_dimensions(&self) -> TextureDimensions {
-        todo!()
+        self.surface_dim
     }
 
     fn resize_surface(
         &mut self,
-        device: Arc<Self::NativeDevice>,
-        queue: Arc<Self::NativeQueue>,
+        _device: Arc<Self::NativeDevice>,
+        _queue: Arc<Self::NativeQueue>,
         new_dim: TextureDimensions,
     ) -> Result<(), Error> {
-        todo!()
+        self.surface_dim = new_dim;
+        Ok(())
     }
 
     fn buf(&self) -> &[u8] {
-        todo!()
+        &self.pixels
     }
 
     fn buf_mut(&mut self) -> &mut [u8] {
-        todo!()
+        &mut self.pixels
     }
 
     fn backing_texture(&self) -> Arc<Self::NativeTexture> {
-        todo!()
+        Arc::new(self.buffer.clone())
     }
 
     fn backing_texture_format(&self) -> Self::NativeTextureFormat {
-        todo!()
+        ()
     }
 
     fn surface_texture(&self) -> Arc<Self::NativeTexture> {
@@ -91,10 +131,10 @@ impl DisplayTargetSurface for EFrameBackendSurface {
     }
 
     fn dirty(&self) -> bool {
-        todo!()
+        self.dirty
     }
 
     fn set_dirty(&mut self, dirty: bool) {
-        todo!()
+        self.dirty = dirty;
     }
 }

@@ -30,8 +30,7 @@
 
 */
 use crate::{GuiEvent, GuiEventQueue, PathBuf};
-use egui::Pos2;
-use egui_file::{FileDialog, Filter};
+use egui_file::FileDialog;
 use fluxfox::DiskImageFileFormat;
 
 pub enum ModalContext {

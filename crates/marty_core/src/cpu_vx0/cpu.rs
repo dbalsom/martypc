@@ -273,6 +273,12 @@ impl Cpu for NecVx0 {
         self.cpu_type
     }
 
+    fn flush_piq(&mut self) {
+        // Rewind PC to the start of the instruction before flushing, so we will re-fetch it
+        self.pc = self.pc.wrapping_sub(self.queue.len() as u16);
+        self.queue.flush();
+    }
+
     #[inline]
     fn get_ip(&mut self) -> u16 {
         self.ip()

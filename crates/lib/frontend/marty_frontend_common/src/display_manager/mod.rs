@@ -366,6 +366,12 @@ pub trait DisplayManager<B, G, Vh, V, C> {
     where
         F: FnMut(&mut VideoRenderer, VideoCardId, &mut [u8]);
 
+    /// Execute a closure that is passed a mutable reference to the Surface of the specified display
+    /// target.
+    fn with_surface_mut<F>(&mut self, dt: DtHandle, f: F) -> Result<(), Error>
+    where
+        F: FnOnce(&mut B, &mut Self::ImplSurface);
+
     /// Execute a closure that is passed a mutable reference to the Surface of each Display Target
     /// in the manager.
     /// If dt_type is Some, only surfaces corresponding to a display target of that type will be

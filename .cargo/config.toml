@@ -6,6 +6,3 @@ rustflags = [
     "-C", "link-arg=--max-memory=4294967296",
     "--cfg", "getrandom_backend=\"wasm_js\""
 ]
-
-[unstable]
-build-std = ["panic_abort", "std"]

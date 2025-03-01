@@ -16,7 +16,7 @@ marty_core = { path = "../../../marty_core", default-features = false }
 marty_egui = { path = "../marty_egui" }
 marty_egui_eframe = { path = "../../frontend/marty_egui_eframe" }
 
-marty_frontend_common =  { path = "../marty_frontend_common", features = ["use_wgpu"] }
+marty_frontend_common =  { path = "../marty_frontend_common" }
 
 marty_videocard_renderer = { path = "../marty_videocard_renderer" }
 egui.workspace = true
@@ -36,5 +36,5 @@ marty_scaler_wgpu = { path = "../marty_scaler_wgpu", optional = true }
 
 [features]
 default = []
-use_wgpu = ["dep:egui-wgpu", "marty_scaler_wgpu", "dep:display_backend_eframe_wgpu"]
-use_glow = ["dep:display_backend_eframe"]
+use_wgpu = ["dep:egui-wgpu", "marty_scaler_wgpu", "dep:display_backend_eframe_wgpu", "marty_frontend_common/use_wgpu"]
+use_glow = ["dep:display_backend_eframe", "display_backend_eframe/use_egui_backend"]

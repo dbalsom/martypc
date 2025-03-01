@@ -32,7 +32,7 @@
 
 use std::{
     cell::RefCell,
-    io::{Stderr, Write},
+    io::Write,
     path::{Path, PathBuf},
     rc::Rc,
 };
@@ -49,11 +49,10 @@ use crate::{
     input::HotkeyManager,
 };
 
-use anyhow::{anyhow, Error};
 use marty_config::ConfigFileParams;
 
 // This module will export either a rodio or null sound interface depending on the `sound` feature.
-use crate::sound::{SoundInterface, SoundSourceDescriptor};
+use crate::sound::SoundInterface;
 
 #[cfg(feature = "cpu_validator")]
 use marty_core::cpu_validator::ValidatorType;
@@ -64,7 +63,6 @@ use marty_core::{
 use marty_egui::state::GuiState;
 use marty_frontend_common::{
     cartridge_manager::CartridgeManager,
-    display_manager::DmGuiOptions,
     floppy_manager::FloppyManager,
     machine_manager::MachineManager,
     resource_manager::ResourceManager,
@@ -73,8 +71,40 @@ use marty_frontend_common::{
     vhd_manager::VhdManager,
 };
 
-use crossbeam_channel::Sender;
+use anyhow::{anyhow, Error};
 use url::Url;
+
+#[derive(thiserror::Error, Debug)]
+pub enum EmuBuilderError {
+    #[error("Configuration file '{0}' could not be found")]
+    ConfigNotFound(String),
+    #[error("IO Error reading configuration file '{0}': {1}")]
+    ConfigIOError(String, String),
+    #[error("Error parsing configuration file '{0}': {1}")]
+    ConfigParseError(String, String),
+    #[error("An operation was attempted that was not supported on the current platform: {0}")]
+    UnsupportedPlatform(String),
+    #[error("Failed to open sound device: {0}")]
+    AudioDeviceError(String),
+    #[error("Failed to open sound stream: {0}")]
+    AudioStreamError(String),
+    #[error(
+        "MartyPC was compiled with CPU validation enabled, but no validator type was specified in the configuration."
+    )]
+    ValidatorNotSpecified,
+    #[error("No Resource paths found")]
+    NoResourcePaths,
+    #[error("An error occurred reading or scanning emulator resources: {0}")]
+    ResourceError(String),
+    #[error("An error occurred reading Machine Configuration files: {0}")]
+    MachineConfigError(String),
+    #[error("No Machine Configuration was found for the specified name: {0}")]
+    BadMachineConfig(String),
+    #[error(transparent)]
+    IOError(#[from] std::io::Error),
+    #[error(transparent)]
+    Other(#[from] anyhow::Error), // source and Display delegate to anyhow::Error
+}
 
 #[derive(Default, Debug)]
 pub enum BuildPlatform {
@@ -179,14 +209,17 @@ impl EmulatorBuilder {
         self
     }
 
-    async fn resolve_config(&self) -> Result<ConfigFileParams, Error> {
+    /// Load and resolve the configuration. This uses the `marty_config` crate to parse TOML,
+    /// and merge with either command line arguments (native) or query parameters (web).
+    /// The result is a [ConfigFileParams] struct that can be used to build the emulator.
+    async fn resolve_config(&self) -> Result<ConfigFileParams, EmuBuilderError> {
         // One of toml_config_path or toml_config_url must be set, but not both.
         if self.toml_config_path.is_none() && self.toml_config_url.is_none() {
-            return Err(anyhow::anyhow!("No configuration file specified"));
+            panic!("No configuration file specified");
         }
 
         if self.toml_config_path.is_some() && self.toml_config_url.is_some() {
-            return Err(anyhow::anyhow!("Do not specify both file and url config paths"));
+            panic!("Do not specify both file and url config paths");
         }
 
         let config_location = if self.toml_config_path.is_some() {
@@ -196,38 +229,45 @@ impl EmulatorBuilder {
             ResourceLocation::Url(self.toml_config_url.as_ref().unwrap().clone())
         };
 
+        use EmuBuilderError::*;
         match config_location {
             ResourceLocation::FilePath(path) => match marty_config::read_config_file(&path) {
                 Ok(config) => Ok(config),
                 Err(e) => match e.downcast_ref::<std::io::Error>() {
-                    Some(e) if e.kind() == std::io::ErrorKind::NotFound => Err(anyhow!(
-                        "Configuration file not found! Please create martypc.toml in the emulator directory \
-                               or provide the path to configuration file with --configfile."
+                    Some(e) if e.kind() == std::io::ErrorKind::NotFound => {
+                        Err(ConfigNotFound(path.to_string_lossy().as_ref().to_string()))
+                    }
+                    Some(e) => Err(ConfigIOError(
+                        path.to_string_lossy().as_ref().to_string(),
+                        e.to_string(),
                     )),
-                    Some(e) => Err(anyhow!("Unknown IO error reading configuration file:\n{}", e)),
-                    None => Err(anyhow!(
-                        "Failed to parse configuration file. There may be a typo or otherwise invalid toml:\n{}",
-                        e
+                    None => Err(ConfigParseError(
+                        path.to_string_lossy().as_ref().to_string(),
+                        e.to_string(),
                     )),
                 },
             },
             ResourceLocation::Url(url) => {
                 #[cfg(target_arch = "wasm32")]
                 {
+                    let url_string = url.as_str().to_string();
                     let config = marty_web_helpers::fetch_file(url.as_str())
                         .await
-                        .map_err(|e| anyhow!(e))?;
+                        .map_err(|e| ConfigIOError(url_string.clone(), e.to_string()))?;
 
                     match marty_config::read_config_string(
                         &std::str::from_utf8(&config).expect("TOML contained invalid UTF-8"),
                     ) {
                         Ok(config) => return Ok(config),
-                        Err(e) => return Err(anyhow!("Failed to parse configuration file from URL: {}", e)),
+                        Err(e) => return Err(ConfigParseError(url.as_str().to_string(), e.to_string())),
                     }
                 }
                 #[cfg(not(target_arch = "wasm32"))]
                 {
-                    return Err(anyhow!("URL configuration not supported in native builds"));
+                    _ = url;
+                    Err(UnsupportedPlatform(
+                        "URL configuration not supported in native builds".to_string(),
+                    ))
                 }
             }
         }
@@ -237,16 +277,25 @@ impl EmulatorBuilder {
     /// This function will return an [Emulator] instance if successful, or an [Error] if
     /// something went wrong.
     ///
+    /// Since it performs async operations, this function is async, but it does not
+    /// return a future.
+    ///
+    /// This function may print debug info that could be useful to the user. We provide two Write
+    /// streams for this purpose: one for normal output, and one for error output. This can be
+    /// regular stdout and stderr, or we could capture into a Cursor or file.
+    ///
     /// # Arguments
     /// - `stdout` - A mutable reference to an implementation of `Write` that will be used to log
     ///     normal startup messages. This is typically a file or stdout.
     /// - `stderr` - A mutable reference to an implementation of `Write` that will be used to log
     ///     error messages. This is typically a file or stderr.
-    pub async fn build<W, WE>(self, stdout: &mut W, stderr: &mut WE) -> Result<Emulator, Error>
+    pub async fn build<W, WE>(self, stdout: &mut W, stderr: &mut WE) -> Result<Emulator, EmuBuilderError>
     where
         W: Write,
         WE: Write,
     {
+        use EmuBuilderError::*;
+
         // First we need to resolve a configuration. On native this typically comes from a TOML file.
         let config = self.resolve_config().await?;
 
@@ -261,7 +310,7 @@ impl EmulatorBuilder {
                     stdout.write_fmt(format_args!("Opened audio device: {}", sound_player.device_name()))?;
                 }
                 Err(e) => {
-                    return Err(anyhow!("Failed to open audio device: {:?}", e));
+                    return Err(AudioDeviceError(e.to_string()));
                 }
             }
 
@@ -270,7 +319,7 @@ impl EmulatorBuilder {
                     stdout.write_fmt(format_args!("Opened audio stream."))?;
                 }
                 Err(e) => {
-                    return Err(anyhow!("Failed to open audio stream: {:?}", e));
+                    return Err(AudioStreamError(e.to_string()));
                 }
             }
 
@@ -285,7 +334,7 @@ impl EmulatorBuilder {
         #[cfg(feature = "cpu_validator")]
         match config.validator.vtype {
             Some(ValidatorType::None) | None => {
-                return Err(anyhow!("Compiled with validator but no validator specified"));
+                return Err(ValidatorNotSpecified);
             }
             _ => {}
         }
@@ -293,7 +342,12 @@ impl EmulatorBuilder {
         log::debug!("Creating ResourceManager...");
         // Now that we have our configuration, we can instantiate a ResourceManager.
         let mut resource_manager =
-            ResourceManager::from_config(config.emulator.basedir.clone(), &config.emulator.paths)?;
+            match ResourceManager::from_config(config.emulator.basedir.clone(), &config.emulator.paths) {
+                Ok(rm) => rm,
+                Err(e) => {
+                    return Err(ResourceError(e.to_string()));
+                }
+            };
 
         // Set the base url for resources loaded by the resource manager
         if let Some(base_url) = self.base_url {
@@ -322,7 +376,7 @@ impl EmulatorBuilder {
 
         let resolved_paths = resource_manager.pm.dump_paths();
         if resolved_paths.is_empty() {
-            return Err(anyhow!("No resource paths found!"));
+            return Err(NoResourcePaths);
         }
         for path in &resolved_paths {
             log::debug!("Resolved resource path: {:?}", path);
@@ -338,10 +392,10 @@ impl EmulatorBuilder {
         // Instantiate the new machine manager to load Machine configurations.
         log::debug!("Creating MachineManager...");
         let mut machine_manager = MachineManager::new();
-        if let Err(err) = machine_manager.load_configs(&mut resource_manager).await {
-            let err_str = format!("Error loading Machine configuration files: {}", err);
+        if let Err(e) = machine_manager.load_configs(&mut resource_manager).await {
+            let err_str = format!("Error loading Machine configuration files: {}", e);
             stderr.write(err_str.as_bytes())?;
-            return Err(anyhow!(err_str));
+            return Err(MachineConfigError(e.to_string()));
         }
 
         // Initialize machine configuration name, options and prefer_oem flag.
@@ -398,10 +452,10 @@ impl EmulatorBuilder {
         if !have_machine_config {
             let err_str = format!(
                 "No machine configuration for specified config name: {}",
-                init_config_name
+                &init_config_name
             );
             stderr.write(err_str.as_bytes())?;
-            return Err(anyhow!(err_str));
+            return Err(BadMachineConfig(init_config_name));
         }
 
         // Instantiate the ROM Manager
@@ -538,7 +592,7 @@ impl EmulatorBuilder {
         // A true headless mode is probably best implemented as a separate front-end.
         if config.emulator.headless {
             let err_str = "Headless mode requested, but not implemented".to_string();
-            return Err(anyhow!(err_str));
+            return Err(UnsupportedPlatform(err_str));
         }
 
         // ----------------------------------------------------------------------------------------
@@ -693,7 +747,7 @@ impl EmulatorBuilder {
         gui.set_cart_slots(machine.bus().cart_ct());
 
         // Set autofloppy paths
-        #[cfg(not(arch = "wasm32"))]
+        #[cfg(not(target_arch = "wasm32"))]
         {
             gui.set_autofloppy_paths(floppy_manager.get_autofloppy_paths());
         }

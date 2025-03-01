@@ -38,6 +38,7 @@ enum_dispatch.workspace = true
 crossbeam-channel.workspace = true
 web-time.workspace = true
 cfg-if.workspace = true
+binrw.workspace = true
 
 [dependencies.opl3-rs]
 git = "https://github.com/dbalsom/opl3-rs.git"

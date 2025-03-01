@@ -41,7 +41,12 @@ use crate::{
     devices::dma,
 };
 //use crate::fdc::Operation;
-use crate::{bus::IoDevice, cpu_common::LogicAnalyzer, device_types::hdc::HardDiskFormat, vhd::VirtualHardDisk};
+use crate::{
+    bus::IoDevice,
+    cpu_common::LogicAnalyzer,
+    device_types::{geometry::DriveGeometry, hdc::HardDiskFormat},
+    vhd::VirtualHardDisk,
+};
 
 // Public consts
 pub const HDC_IRQ: u8 = 0x05;
@@ -326,9 +331,7 @@ impl Default for HardDiskController {
             drive_ct: 1,
             drive_select: 0,
             supported_formats: vec![HardDiskFormat {
-                max_cylinders: 615,
-                max_heads: 4,
-                max_sectors: 17,
+                geometry: DriveGeometry::new(615, 4, 17, 0, 512),
                 wpc: Some(300),
                 desc: "20MB, Type 2".to_string(),
             }],
@@ -406,9 +409,9 @@ impl HardDiskController {
         // (Currently there is only one supported format but that might change)
         let mut supported = false;
         for format in &self.supported_formats {
-            if vhd.max_cylinders as u16 == format.max_cylinders
-                && vhd.max_heads as u8 == format.max_heads
-                && vhd.max_sectors as u8 == format.max_sectors
+            if vhd.max_cylinders as u16 == format.geometry.c
+                && vhd.max_heads as u8 == format.geometry.h
+                && vhd.max_sectors as u8 == format.geometry.s
             {
                 supported = true;
                 break;

@@ -26,7 +26,7 @@ marty_core = { path = "../../marty_core", default-features = false, features = [
 marty_config = { path = "../../lib/frontend/marty_config", default-features = false }
 display_manager_eframe = { path = "../../lib/frontend/display_manager_eframe" }
 marty_videocard_renderer = { path = "../../lib/frontend/marty_videocard_renderer" }
-marty_egui = { path = "../../lib/frontend/marty_egui" }
+marty_egui = { path = "../../lib/frontend/marty_egui", default-features = false }
 marty_egui_eframe = { path = "../../lib/frontend/marty_egui_eframe" }
 marty_frontend_common =  { path = "../../lib/frontend/marty_frontend_common" }
 marty_web_helpers = { path = "../../lib/frontend/marty_web_helpers" }
@@ -49,6 +49,8 @@ strum.workspace = true
 # url is used for the wasm build to be configured via url and fetch resources.
 # it is not optional as we may want to fetch things from the web from native, in the future.
 url = "2.5"
+thiserror.workspace = true
+rfd.workspace = true
 
 # Optional Dependencies
 # ---------------------------------------------------------------------------------------------------------------------
@@ -103,7 +105,8 @@ marty_config = { path = "../../lib/frontend/marty_config", default-features = fa
 winres = "0.1"
 
 [features]
-default = ["all_video_cards", "sound", "use_winit", "markdown"]
+default = ["all_video_cards", "use_winit", "use_wgpu", "sound", "opl"]
+shader_ui = ["marty_egui/scaler_ui"]
 all_video_cards = ["ega", "vga"]
 sound = ["dep:rodio", "rodio/wasm-bindgen", "marty_core/sound"]
 # Enable markdown support. This is used to show disk image metadata and documentation.
@@ -116,13 +119,13 @@ use_wgpu = ["eframe/wgpu", "marty_frontend_common/use_wgpu", "display_manager_ef
 use_glow = ["eframe/glow", "display_manager_eframe/use_glow"]
 # Use serialport
 use_serialport = ["marty_egui/use_serialport", "marty_egui_eframe/use_serialport"]
-devtools = []
+# Enable UI for internal development tooling. This is not intended for end-users. No support!
+devtools = ["marty_egui/devtools"]
 arduino_validator = ["marty_core/arduino_validator"]
 cpu_validator = ["marty_core/cpu_validator"]
 ega = ["marty_core/ega", "marty_frontend_common/ega", "marty_videocard_renderer/ega"]
 vga = ["marty_core/vga", "marty_frontend_common/vga", "marty_videocard_renderer/vga"]
 opl = ["marty_core/opl"]
-
 # enable dev stuff, including logging in release.
 # !! Warning, may be unstable or completely broken !!
 devmode = []

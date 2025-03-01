@@ -31,12 +31,10 @@ use crate::{
     timestep_update::process_update,
     MARTY_ICON,
 };
-use std::sync::Arc;
 
 use display_manager_eframe::{
     builder::EFrameDisplayManagerBuilder,
     BufferDimensions,
-    DisplayBackend,
     EFrameBackend,
     EFrameDisplayManager,
     TextureDimensions,
@@ -50,17 +48,18 @@ use marty_web_helpers::FetchResult;
 
 #[cfg(feature = "use_winit")]
 use crate::event_loop::winit_events::handle_window_event;
-#[cfg(feature = "use_winit")]
-use winit::event::ElementState;
+
+#[cfg(feature = "use_wgpu")]
+use eframe::egui_wgpu;
 
 #[cfg(not(feature = "use_winit"))]
 use crate::event_loop::web_keyboard::handle_web_key_event;
 
 use crossbeam_channel::{Receiver, Sender};
-use eframe::egui_wgpu;
-use egui::{Color32, Context, RawInput, Sense, ViewportId};
 
-use crate::input::TranslateKey;
+use egui::{Context, RawInput, Sense, ViewportId};
+
+use crate::emulator_builder::builder::EmuBuilderError;
 #[cfg(target_arch = "wasm32")]
 use crate::wasm::*;
 use marty_frontend_common::{
@@ -72,7 +71,6 @@ use marty_videocard_renderer::AspectCorrectionMode;
 use marty_web_helpers::console_writer::ConsoleWriter;
 #[cfg(target_arch = "wasm32")]
 use url::Url;
-use winit::{event::WindowEvent, window::WindowId};
 
 #[derive(Clone, Debug)]
 pub enum FileOpenContext {
@@ -85,8 +83,8 @@ pub enum FileOpenContext {
 #[serde(default)] // if we add new fields, give them default values when deserializing old state
 pub struct MartyApp {
     current_size: egui::Vec2,
-    last_size:    egui::Vec2,
-
+    last_size: egui::Vec2,
+    focused: bool,
     #[serde(skip)]
     gui: GuiRenderContext,
     #[serde(skip)]
@@ -116,6 +114,7 @@ impl Default for MartyApp {
         Self {
             current_size: egui::Vec2::ZERO,
             last_size: egui::Vec2::INFINITY,
+            focused: false,
             // Example stuff:
             gui: GuiRenderContext::default(),
             emu_loading: false,
@@ -132,14 +131,20 @@ impl Default for MartyApp {
     }
 }
 
+#[cfg(not(target_arch = "wasm32"))]
+type MartyAppNewOptions = eframe::NativeOptions;
+
+#[cfg(target_arch = "wasm32")]
+type MartyAppNewOptions = ();
+
 impl MartyApp {
     /// We split app initialization into two parts, since we can't make the callback eframe passes
     /// the creation context to async. So we first create the app, then let eframe call `init` with
     /// the partially initialized app - it should have the emulator built by then.
-    pub async fn new(native_options: &mut eframe::NativeOptions) -> Self {
+    pub async fn new(_native_options: &mut MartyAppNewOptions) -> Self {
         // Build the emulator.
         let mut emu_builder = EmulatorBuilder::default();
-        let mut emu_result;
+        let emu_result;
 
         // Create the emulator immediately on native as we don't need to await anything
         #[cfg(not(target_arch = "wasm32"))]
@@ -167,10 +172,74 @@ impl MartyApp {
             emu_result = emu_builder.build(&mut std::io::stdout(), &mut std::io::stderr()).await;
         }
 
+        // When the user runs our eframe app from a file browser, they typically will not get a
+        // console window. So use rfd here to show some message boxes to tell them what failed.
         let mut emu = match emu_result {
             Ok(emu) => emu,
             Err(e) => {
                 log::error!("Failed to build emulator: {}", e);
+                let mut dialog = rfd::MessageDialog::new()
+                    .set_title("Error initializing MartyPC!")
+                    .set_level(rfd::MessageLevel::Error);
+
+                let desc = match e {
+                    EmuBuilderError::ConfigNotFound(filename) => {
+                        format!("MartyPC couldn't find its main configuration file, '{filename}'!\n\
+                        Marty typically looks for this file in the current directory, unless you have specified a location with the '--configfile' argument.\n\
+                        If have built from source, make sure you are running MartyPC from the /install directory in the source tree.\n\
+                        MartyPC needs various configuration files from there to run!")
+                    }
+                    EmuBuilderError::ConfigIOError(filename, e) => {
+                        format!("MartyPC encountered an I/O error while trying to read its main configuration file, '{filename}]'\n\
+                        Make sure it isn't open in another program, and that you have permission to read it.\n\n\
+                        The error reported was:\n{e}")
+                    }
+                    EmuBuilderError::ConfigParseError(filename, e) => {
+                        format!("MartyPC encountered an error while trying to parse the TOML of its main configuration file, '{filename}'!\n\
+                        It is likely that you made a typo in the file, it is corrupted, or you used --configfile with the wrong file.\n\n\
+                        The error reported was:\n{e}")
+                    }
+                    EmuBuilderError::UnsupportedPlatform(_) => e.to_string(),
+                    EmuBuilderError::AudioDeviceError(e) => {
+                        format!("MartyPC failed to initialize an audio device!\n\
+                        This could be due to another program or process using your audio device in exclusive mode, or the device did not support the requested parameters.\n\
+                        If you are unable to use a sound device, you can still run MartyPC by passing the --no_sound argument to MartyPC.\n\n\
+                        The error reported was:\n{e}")
+                    }
+                    EmuBuilderError::AudioStreamError(e) => {
+                        format!("MartyPC was able to open your audio device, but failed to initialize an audio stream!\n\
+                        This could be due to another program or process using your audio device in exclusive mode, or the device did not support the requested parameters.\n\
+                        If you are unable to use a sound device, you can still run MartyPC by passing the --no_sound argument to MartyPC.\n\n\
+                        The error reported was:\n{e}")
+                    }
+                    EmuBuilderError::ValidatorNotSpecified => e.to_string(),
+                    EmuBuilderError::NoResourcePaths => {
+                        "MartyPC was unable to get all resource paths from the main configuration!\n\
+                        If you have modified the configuration, please make sure you have defined all the necessary resource paths.".to_string()
+                    }
+                    EmuBuilderError::ResourceError(e) => {
+                        format!("MartyPC encountered an error while trying to scan resource paths!\n\
+                        MartyPC uses resource paths specified in the main configuration file to know where to look for machine configurations, \
+                        ROMs, disk images, and other required resources.\n\
+                        Make sure you are running MartyPC from within a valid distribution directory, or check your configuration.\n\n\
+                        The error reported was:\n{e}")
+                    }
+                    EmuBuilderError::MachineConfigError(e) => {
+                        format!("MartyPC encountered an error scanning for Machine Configuration files!\n\
+                        At least one valid machine configuration TOML file must be present in /configs/machines for MartyPC to run.\n\n\
+                        The error reported was:\n{e}")
+                    }
+                    EmuBuilderError::BadMachineConfig(e) =>{
+                        format!("MartyPC encountered an error reading its Machine Configuration files!\n\
+                        At least one machine configuration TOML file in /configs/machines appears to be invalid or corrupt.\n\n\
+                        The error reported was:\n{e}")
+                    }
+                    EmuBuilderError::IOError(e) => e.to_string(),
+                    EmuBuilderError::Other(e) => e.to_string(),
+                };
+
+                dialog.set_description(desc).show();
+
                 return MartyApp::default();
             }
         };
@@ -276,6 +345,21 @@ impl MartyApp {
                 panic!("init(): use_wgpu feature enabled, but failed to get wgpu render state from eframe creation context");
             }
         }
+        #[cfg(not(feature = "use_wgpu"))]
+        {
+            let egui_backend = match EFrameBackend::new(cc.egui_ctx.clone()) {
+                Ok(backend) => {
+                    log::debug!("init(): Created egui backend");
+                    backend
+                }
+                Err(e) => {
+                    log::error!("init(): Failed to create egui backend: {}", e);
+                    return MartyApp::default();
+                }
+            };
+            log::debug!("init(): Installing generic egui backend");
+            dm_builder = dm_builder.with_backend(egui_backend);
+        }
 
         dm_builder = dm_builder
             .with_egui_ctx(cc.egui_ctx.clone())
@@ -378,7 +462,7 @@ impl MartyApp {
         };
 
         // Create our GUI rendering context.
-        let mut gui = GuiRenderContext::new(cc.egui_ctx.clone(), 0, 640, 480, 1.0, &gui_options);
+        let gui = GuiRenderContext::new(cc.egui_ctx.clone(), 0, 640, 480, 1.0, &gui_options);
 
         Self {
             gui,
@@ -415,6 +499,21 @@ impl eframe::App for MartyApp {
     /// Called each time the UI needs repainting, which may be many times per second.
     /// A display manager must be created before this is called.
     fn update(&mut self, ctx: &Context, _frame: &mut eframe::Frame) {
+        // Get current viewport focus state.
+        let vi = ctx.input(|i| {
+            let vi = i.viewport();
+            if let Some(focus) = vi.focused {
+                if self.focused && !focus {
+                    log::debug!("MartyApp::update(): Main viewport lost focus");
+                    self.focused = false;
+                }
+                else if !self.focused && focus {
+                    log::debug!("MartyApp::update(): Main viewport gained focus");
+                    self.focused = true;
+                }
+            }
+        });
+
         if let Some(emu) = &mut self.emu {
             self.current_size = ctx.screen_rect().size(); // Get window size
 
@@ -439,6 +538,7 @@ impl eframe::App for MartyApp {
                         &mut self.tm,
                         event.0,
                         event.1,
+                        self.focused,
                         ctx.memory(|mem| mem.focused()).is_some(),
                     );
                 }
@@ -502,6 +602,27 @@ impl eframe::App for MartyApp {
                                         egui::Image::new(egui::include_image!("../../../../assets/bezel_trans_bg.png"))
                                             .paint_at(ui, rect);
                                     }
+                                }
+                                #[cfg(feature = "use_glow")]
+                                {
+                                    let dtc_lock = dm.main_display_target();
+                                    let dtc = dtc_lock.read().unwrap();
+                                    let surface = dtc.surface().unwrap();
+                                    let texture = surface.read().unwrap().backing_texture();
+                                    let uv_rect = egui::Rect::from_min_max(egui::pos2(0.0, 0.0), egui::pos2(1.0, 1.0));
+                                    log::debug!(
+                                        "Drawing main display with glow: {}x{}",
+                                        texture.size()[0],
+                                        texture.size()[1]
+                                    );
+                                    ui.painter().image(texture.id(), rect, uv_rect, egui::Color32::WHITE);
+
+                                    // let _ = dm.with_surface_mut(DtHandle::MAIN, |backend, surface| {
+                                    //     let texture = surface.read().unwrap().backing_texture();
+                                    //     let uv_rect =
+                                    //         egui::Rect::from_min_max(egui::pos2(0.0, 0.0), egui::pos2(1.0, 1.0));
+                                    //     ui.painter().image(texture.id(), rect, uv_rect, Color32::WHITE);
+                                    // });
                                 }
                             });
                         }

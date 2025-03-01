@@ -56,7 +56,7 @@ impl TextModeViewer {
                     ui.label(self.updates[self.card_idx].to_string());
                 });
                 MartyLayout::kv_row(ui, "Card", None, |ui| {
-                    egui::ComboBox::from_id_source("text-mode-card-select")
+                    egui::ComboBox::from_id_salt("text-mode-card-select")
                         .selected_text(format!("{}", self.card_descs[self.card_idx]))
                         .show_ui(ui, |ui| {
                             for (i, desc) in self.card_descs.iter_mut().enumerate() {

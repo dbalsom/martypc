@@ -27,7 +27,7 @@
 
 use std::path::PathBuf;
 
-use crate::{DefaultResolver, DisplayBackend, EFrameDisplayManager};
+use crate::{DefaultResolver, EFrameDisplayManager};
 
 use marty_core::device_traits::videocard::VideoCardId;
 use marty_frontend_common::{
@@ -215,7 +215,7 @@ impl<'a> EFrameDisplayManagerBuilder<'a> {
         window_def: &WindowDefinition,
         cards: &Vec<VideoCardId>,
         gui_options: &DmGuiOptions,
-        icon: Option<Icon>,
+        _icon: Option<Icon>,
     ) -> Result<(), Error> {
         let resolved_def = window_def.resolve_with_defaults();
         log::debug!("{:?}", window_def);
@@ -302,9 +302,8 @@ impl<'a> EFrameDisplayManagerBuilder<'a> {
         )
         .expect("Failed to create window target!");
 
-        let last_idx = dm.targets.len() - 1;
-
         // TODO: figure out how to set icon here
+        //let last_idx = dm.targets.len() - 1;
         //dm.targets[last_idx].window.as_mut().unwrap().set_window_icon(icon);
 
         Ok(())

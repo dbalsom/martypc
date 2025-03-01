@@ -66,6 +66,7 @@ icon.png
 
 # Files to include for distribution
 !/install/media/roms/readme.md
+!/install/media/roms/XUB
 !/install/media/roms/GLaBIOS
 !/install/media/roms/*.toml
 !/install/martypc.toml

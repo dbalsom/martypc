@@ -21,4 +21,9 @@ marty_scaler_null = { path = "../../frontend/marty_scaler_null" }
 # ---------------------------------------------------------------------------------------------------------------------
 
 [features]
-default = []
+default = ["use_egui_backend"]
+use_egui_backend = [
+    "display_backend_trait/use_glow",
+    "display_backend_trait/use_egui_backend",
+    "marty_scaler_null/use_egui_backend"
+]

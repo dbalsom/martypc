@@ -31,7 +31,6 @@
 */
 
 use crate::constants::*;
-use std::cmp::max;
 
 use crate::types::display_target_margins::DisplayTargetMargins;
 use display_backend_trait::BufferDimensions;
@@ -55,19 +54,6 @@ impl Default for DisplayTargetDimensions {
 impl DisplayTargetDimensions {
     pub fn new(w: u32, h: u32) -> Self {
         Self { w, h }
-    }
-}
-
-trait ExpandToFit<T = Self> {
-    fn expand_to_fit(&self, other: T) -> Self;
-}
-
-impl ExpandToFit for DisplayTargetDimensions {
-    fn expand_to_fit(&self, other: Self) -> Self {
-        Self {
-            w: max(self.w, other.w),
-            h: max(self.h, other.h),
-        }
     }
 }
 

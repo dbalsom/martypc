@@ -79,7 +79,10 @@ pub fn update_egui(emu: &mut Emulator, dm: &mut EFrameDisplayManager, tm: &Times
 
     // -- Update VHD Creator window
     if emu.gui.is_window_open(GuiWindow::VHDCreator) {
-        if let Some(hdc) = emu.machine.hdc() {
+        if let Some(hdc) = emu.machine.hdc_mut() {
+            emu.gui.vhd_creator.set_formats(hdc.get_supported_formats());
+        }
+        else if let Some(hdc) = emu.machine.xtide_mut() {
             emu.gui.vhd_creator.set_formats(hdc.get_supported_formats());
         }
         else {
@@ -91,7 +94,7 @@ pub fn update_egui(emu: &mut Emulator, dm: &mut EFrameDisplayManager, tm: &Times
     // Update the various debug windows
     // --------------------------------------------------------------------------------------------
 
-    // Update CPU Control
+    // -- Update CPU Control
     if emu.gui.is_window_open(GuiWindow::CpuControl) {
         let step_over_target = emu.machine.cpu().get_step_over_breakpoint();
         emu.gui.cpu_control.set_step_over_target(step_over_target);
@@ -101,7 +104,13 @@ pub fn update_egui(emu: &mut Emulator, dm: &mut EFrameDisplayManager, tm: &Times
         emu.gui.cpu_control.set_stopwatch_data(stopwatch_data);
     }
 
-    // Update performance viewer
+    // -- Update CPU state viewer
+    if emu.gui.is_window_open(GuiWindow::CpuStateViewer) {
+        let cpu_state = emu.machine.cpu().get_string_state();
+        emu.gui.cpu_viewer.update_state(cpu_state);
+    }
+
+    // -- Update performance viewer
     if emu.gui.is_window_open(GuiWindow::PerfViewer) {
         dm.with_primary_renderer_mut(|renderer| {
             emu.gui.perf_viewer.update_video_data(renderer.get_params());
@@ -122,8 +131,8 @@ pub fn update_egui(emu: &mut Emulator, dm: &mut EFrameDisplayManager, tm: &Times
 
     // -- Update memory viewer window if open
     if emu.gui.is_window_open(GuiWindow::MemoryViewer) {
+        let vewport_len = emu.gui.memory_viewer.viewport_len();
         let (mem_dump_addr_str, _source) = emu.gui.memory_viewer.get_address();
-
         let (addr, mem_dump_addr) = match emu.machine.cpu().eval_address(&mem_dump_addr_str) {
             Some(i) => {
                 let addr: u32 = i.into();
@@ -139,7 +148,7 @@ pub fn update_egui(emu: &mut Emulator, dm: &mut EFrameDisplayManager, tm: &Times
         let mem_dump_vec = emu
             .machine
             .bus()
-            .dump_flat_tokens_ex(mem_dump_addr as usize, addr as usize, 256);
+            .dump_flat_tokens_ex(mem_dump_addr as usize, addr as usize, vewport_len);
 
         //framework.gui.memory_viewer.set_row(mem_dump_addr as usize);
 
@@ -189,12 +198,6 @@ pub fn update_egui(emu: &mut Emulator, dm: &mut EFrameDisplayManager, tm: &Times
     if emu.gui.is_window_open(GuiWindow::IoStatsViewer) {
         let vec = emu.machine.bus_mut().dump_io_stats();
         emu.gui.io_stats_viewer.set_content(vec);
-    }
-
-    // -- Update register viewer window
-    if emu.gui.is_window_open(GuiWindow::CpuStateViewer) {
-        let cpu_state = emu.machine.cpu().get_string_state();
-        emu.gui.cpu_viewer.update_state(cpu_state);
     }
 
     // -- Update PIT viewer window

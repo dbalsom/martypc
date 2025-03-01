@@ -52,7 +52,7 @@ impl ScalerAdjustControl {
         if self.dt_idx < self.dt_descs.len() {
             MartyLayout::new(layouts::Layout::KeyValue, "composite-adjust-card-grid").show(ui, |ui| {
                 MartyLayout::kv_row(ui, "Card", None, |ui| {
-                    egui::ComboBox::from_id_source("composite-adjust-card-select")
+                    egui::ComboBox::from_id_salt("composite-adjust-card-select")
                         .selected_text(format!("{}", self.dt_descs[self.dt_idx]))
                         .show_ui(ui, |ui| {
                             for (i, desc) in self.dt_descs.iter_mut().enumerate() {
@@ -80,7 +80,7 @@ impl ScalerAdjustControl {
                 ui.label(egui::RichText::new("Filtering Mode:").text_style(egui::TextStyle::Monospace));
                 let previous_filter_selection = self.params[self.dt_idx].filter.clone();
 
-                egui::ComboBox::from_id_source("filter_select")
+                egui::ComboBox::from_id_salt("filter_select")
                     .selected_text(format!("{:?}", self.params[self.dt_idx].filter))
                     .show_ui(ui, |ui| {
                         ui.selectable_value(&mut self.params[self.dt_idx].filter, ScalerFilter::Nearest, "Nearest");
@@ -96,7 +96,7 @@ impl ScalerAdjustControl {
 
                 let previous_phosphor_selection = self.params[self.dt_idx].crt_phosphor_type.clone();
 
-                egui::ComboBox::from_id_source("scaler_mono_select")
+                egui::ComboBox::from_id_salt("scaler_mono_select")
                     .selected_text(format!("{:?}", self.params[self.dt_idx].crt_phosphor_type))
                     .show_ui(ui, |ui| {
                         ui.selectable_value(

@@ -93,7 +93,7 @@ impl<R: Read + Seek> ArchiveOverlay<R> {
                 #[cfg(target_arch = "wasm32")]
                 let mut base_path = PathBuf::new();
                 #[cfg(not(target_arch = "wasm32"))]
-                let mut base_path = PathBuf::from("./"); // Start with a relative path
+                let base_path = PathBuf::from("./"); // Start with a relative path
 
                 let zip_path = PathBuf::from(file.name()); // Zip paths are relative
                 let path = base_path.join(zip_path.clone());

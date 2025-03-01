@@ -88,6 +88,7 @@ pub struct ResourceItem {
     pub(crate) relative_path: Option<PathBuf>,
     pub(crate) filename_only: Option<OsString>,
     pub(crate) size: Option<u64>,
+    #[allow(unused)]
     flags: u32,
 }
 

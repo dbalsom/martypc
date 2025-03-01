@@ -68,11 +68,11 @@ impl VhdCreator {
         if !self.vhd_formats.is_empty() {
             MartyLayout::new(layouts::Layout::KeyValue, "vhd-grid").show(ui, |ui| {
                 MartyLayout::kv_row(ui, "Disk Geometry", None, |ui| {
-                    egui::ComboBox::from_id_source("vhd-formats")
-                        .selected_text(format!("{}", self.vhd_formats[self.selected_format_idx].desc))
+                    egui::ComboBox::from_id_salt("vhd-formats")
+                        .selected_text(format!("{}", self.vhd_formats[self.selected_format_idx].to_string()))
                         .show_ui(ui, |ui| {
                             for (i, fmt) in self.vhd_formats.iter_mut().enumerate() {
-                                ui.selectable_value(&mut self.selected_format_idx, i, fmt.desc.to_string());
+                                ui.selectable_value(&mut self.selected_format_idx, i, fmt.to_string());
                             }
                         });
                 });

@@ -32,4 +32,5 @@
 
 pub mod chs;
 pub mod fdc;
+pub mod geometry;
 pub mod hdc;

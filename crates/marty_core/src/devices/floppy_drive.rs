@@ -41,6 +41,34 @@ use std::{
     sync::{Arc, RwLock},
 };
 
+#[allow(unused)]
+macro_rules! read_lock {
+    ($arc_lock:expr) => {{
+        match $arc_lock.try_read() {
+            Ok(guard) => guard,
+            Err(_) => anyhow::bail!("Failed to acquire read lock"),
+        }
+    }};
+}
+
+macro_rules! read_lock_opt {
+    ($arc_lock:expr) => {{
+        match $arc_lock.try_read() {
+            Ok(guard) => guard,
+            Err(_) => return None,
+        }
+    }};
+}
+
+macro_rules! write_lock {
+    ($arc_lock:expr) => {{
+        match $arc_lock.try_write() {
+            Ok(guard) => guard,
+            Err(_) => anyhow::bail!("Failed to acquire write lock"),
+        }
+    }};
+}
+
 #[derive(Copy, Clone, Debug, Default)]
 pub enum FloppyDriveOperation {
     #[default]
@@ -270,11 +298,10 @@ impl FloppyDiskDrive {
     }
 
     pub fn get_image(&mut self) -> (Option<Arc<RwLock<DiskImage>>>, u64) {
-        self.ref_write = self
-            .disk_image
-            .as_mut()
-            .map_or(0, |image| image.read().unwrap().write_ct());
-        //log::trace!("get_image(): ref_write: {}", self.ref_write);
+        self.ref_write = self.disk_image.as_mut().map_or(0, |image| match image.try_read() {
+            Ok(image) => image.write_ct(),
+            Err(_) => 0,
+        });
         (self.disk_image.clone(), self.ref_write)
     }
 
@@ -349,7 +376,7 @@ impl FloppyDiskDrive {
         }
 
         let image_lock = self.disk_image.as_ref().unwrap();
-        let mut image = image_lock.write().unwrap();
+        let mut image = write_lock!(image_lock);
         let chsn = DiskChsn::from((id_chs, n));
 
         let sector_data_size = chsn.n_size();
@@ -444,7 +471,7 @@ impl FloppyDiskDrive {
         );
 
         let image_lock = self.disk_image.as_ref().unwrap();
-        let mut image = image_lock.write().unwrap();
+        let mut image = write_lock!(image_lock);
 
         let sector_size = DiskChsn::n_to_bytes(n);
 
@@ -568,7 +595,7 @@ impl FloppyDiskDrive {
         }
 
         let image_lock = self.disk_image.as_ref().unwrap();
-        let mut image = image_lock.write().unwrap();
+        let mut image = write_lock!(image_lock);
 
         self.operation_status.sector_not_found = false;
         self.operation_status.address_crc_error = false;
@@ -620,7 +647,7 @@ impl FloppyDiskDrive {
         }
 
         let image_lock = self.disk_image.as_ref().unwrap();
-        let mut image = image_lock.write().unwrap();
+        let mut image = write_lock!(image_lock);
 
         let mut fox_format_buffer = Vec::new();
         for buf_entry in format_buffer.chunks_exact(4) {
@@ -730,7 +757,7 @@ impl FloppyDiskDrive {
 
     pub fn get_next_sector(&self, chs: DiskChs) -> Option<DiskChsn> {
         if let Some(image_lock) = &self.disk_image {
-            if let Some(chsn) = image_lock.read().unwrap().get_next_id(chs) {
+            if let Some(chsn) = read_lock_opt!(image_lock).get_next_id(chs) {
                 return Some(chsn);
             }
             else {
@@ -760,7 +787,7 @@ impl FloppyDiskDrive {
 
     pub fn image_state(&self) -> Option<FloppyImageState> {
         if let Some(image_lock) = &self.disk_image {
-            let image = image_lock.read().unwrap();
+            let image = read_lock_opt!(image_lock);
             let sector_map = image.sector_map();
 
             Some(FloppyImageState {

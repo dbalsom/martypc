@@ -30,17 +30,21 @@
 
 */
 use crate::{state::GuiState, GuiBoolean, GuiEnum, GuiEvent, GuiVariable, GuiVariableContext, GuiWindow};
-use egui::RichText;
-use marty_frontend_common::display_manager::{DisplayTargetType, DtHandle};
-use strum::IntoEnumIterator;
+
+use marty_frontend_common::display_manager::DtHandle;
+
 //use egui_file_dialog::FileDialog;
-use marty_core::device_traits::videocard::VideoType;
+use marty_core::{device_traits::videocard::VideoType, machine::MachineState};
+
+#[cfg(feature = "scaler_ui")]
+use marty_frontend_common::display_manager::DisplayTargetType;
 
 #[cfg(feature = "use_serialport")]
 use marty_core::devices::serial::SerialPortDescriptor;
 
 use crate::modal::ModalContext;
-use marty_core::machine::MachineState;
+
+use egui::RichText;
 
 impl GuiState {
     pub fn show_menu(&mut self, ui: &mut egui::Ui) {
@@ -216,10 +220,13 @@ impl GuiState {
                     self.draw_cart_menu(ui, i);
                 }
 
-                if ui.button("🖹 Create new VHD...").clicked() {
-                    *self.window_flag(GuiWindow::VHDCreator) = true;
-                    ui.close_menu();
-                };
+                #[cfg(not(target_arch = "wasm32"))]
+                {
+                    if ui.button("🖹 Create new VHD...").clicked() {
+                        *self.window_flag(GuiWindow::VHDCreator) = true;
+                        ui.close_menu();
+                    };
+                }
             });
 
             ui.menu_button("Sound", |ui| {
@@ -322,16 +329,21 @@ impl GuiState {
                     self.workspace_window_open_button(ui, GuiWindow::CallStack, true, true);
                     self.workspace_window_open_button(ui, GuiWindow::DisassemblyViewer, true, true);
 
-                    ui.menu_button("Disassembly Listing", |ui| {
-                        if ui.button("⏺ Start Recording").clicked() {
-                            self.event_queue.send(GuiEvent::StartRecordingDisassembly);
-                            ui.close_menu();
-                        }
-                        if ui.button("⏹ Stop Recording and Save").clicked() {
-                            self.event_queue.send(GuiEvent::StopRecordingDisassembly);
-                            ui.close_menu();
-                        }
-                    });
+                    // Don't show disassembly listing recording options on web.
+                    // There's no place for the recording to go...
+                    #[cfg(not(target_arch = "wasm32"))]
+                    {
+                        ui.menu_button("Disassembly Listing", |ui| {
+                            if ui.button("⏺ Start Recording").clicked() {
+                                self.event_queue.send(GuiEvent::StartRecordingDisassembly);
+                                ui.close_menu();
+                            }
+                            if ui.button("⏹ Stop Recording and Save").clicked() {
+                                self.event_queue.send(GuiEvent::StopRecordingDisassembly);
+                                ui.close_menu();
+                            }
+                        });
+                    }
                 });
 
                 ui.menu_button("Memory", |ui| {
@@ -463,6 +475,7 @@ impl GuiState {
                     ui.close_menu();
                 };
 
+                #[cfg(not(target_arch = "wasm32"))]
                 if !self.autofloppy_paths.is_empty() {
                     ui.menu_button("🗐 Create from Directory", |ui| {
                         for path in self.autofloppy_paths.iter() {
@@ -635,87 +648,92 @@ impl GuiState {
         //       agnostic.
         let vctx = GuiVariableContext::Display(display);
 
-        let mut dtype_opt = self
-            .get_option_enum_mut(GuiEnum::DisplayType(Default::default()), Some(vctx))
-            .and_then(|oe| {
-                if let GuiEnum::DisplayType(dt) = *oe {
-                    Some(dt)
-                }
-                else {
-                    None
-                }
-            });
-
-        ui.menu_button("Display Type", |ui| {
-            for dtype in DisplayTargetType::iter() {
-                if let Some(enum_mut) = self.get_option_enum_mut(GuiEnum::DisplayType(Default::default()), Some(vctx)) {
-                    let checked = *enum_mut == GuiEnum::DisplayType(dtype);
-
-                    if ui.add(egui::RadioButton::new(checked, format!("{}", dtype))).clicked() {
-                        *enum_mut = GuiEnum::DisplayType(dtype);
-                        self.event_queue.send(GuiEvent::VariableChanged(
-                            GuiVariableContext::Display(display),
-                            GuiVariable::Enum(GuiEnum::DisplayType(dtype)),
-                        ));
+        #[cfg(feature = "scaler_ui")]
+        {
+            let mut dtype_opt = self
+                .get_option_enum_mut(GuiEnum::DisplayType(Default::default()), Some(vctx))
+                .and_then(|oe| {
+                    if let GuiEnum::DisplayType(dt) = *oe {
+                        Some(dt)
                     }
-                }
-            }
-        });
+                    else {
+                        None
+                    }
+                });
 
-        if dtype_opt == Some(DisplayTargetType::WindowBackground) {
-            ui.menu_button("Scaler Mode", |ui| {
-                for (_scaler_idx, mode) in self.scaler_modes.clone().iter().enumerate() {
+            ui.menu_button("Display Type", |ui| {
+                for dtype in DisplayTargetType::iter() {
                     if let Some(enum_mut) =
-                        self.get_option_enum_mut(GuiEnum::DisplayScalerMode(Default::default()), Some(vctx))
+                        self.get_option_enum_mut(GuiEnum::DisplayType(Default::default()), Some(vctx))
                     {
-                        let checked = *enum_mut == GuiEnum::DisplayScalerMode(*mode);
+                        let checked = *enum_mut == GuiEnum::DisplayType(dtype);
 
-                        if ui.add(egui::RadioButton::new(checked, format!("{:?}", mode))).clicked() {
-                            *enum_mut = GuiEnum::DisplayScalerMode(*mode);
+                        if ui.add(egui::RadioButton::new(checked, format!("{}", dtype))).clicked() {
+                            *enum_mut = GuiEnum::DisplayType(dtype);
                             self.event_queue.send(GuiEvent::VariableChanged(
                                 GuiVariableContext::Display(display),
-                                GuiVariable::Enum(GuiEnum::DisplayScalerMode(*mode)),
+                                GuiVariable::Enum(GuiEnum::DisplayType(dtype)),
                             ));
                         }
                     }
                 }
             });
-        }
-        else {
-            ui.menu_button("Window Options", |ui| {
-                if let Some(enum_mut) = self.get_option_enum_mut(GuiEnum::WindowBezel(Default::default()), Some(vctx)) {
-                    let mut checked = *enum_mut == GuiEnum::WindowBezel(true);
 
-                    if ui.checkbox(&mut checked, "Bezel Overlay").changed() {
-                        *enum_mut = GuiEnum::WindowBezel(checked);
+            if dtype_opt == Some(DisplayTargetType::WindowBackground) {
+                ui.menu_button("Scaler Mode", |ui| {
+                    for (_scaler_idx, mode) in self.scaler_modes.clone().iter().enumerate() {
+                        if let Some(enum_mut) =
+                            self.get_option_enum_mut(GuiEnum::DisplayScalerMode(Default::default()), Some(vctx))
+                        {
+                            let checked = *enum_mut == GuiEnum::DisplayScalerMode(*mode);
+
+                            if ui.add(egui::RadioButton::new(checked, format!("{:?}", mode))).clicked() {
+                                *enum_mut = GuiEnum::DisplayScalerMode(*mode);
+                                self.event_queue.send(GuiEvent::VariableChanged(
+                                    GuiVariableContext::Display(display),
+                                    GuiVariable::Enum(GuiEnum::DisplayScalerMode(*mode)),
+                                ));
+                            }
+                        }
+                    }
+                });
+            }
+            else {
+                ui.menu_button("Window Options", |ui| {
+                    if let Some(enum_mut) =
+                        self.get_option_enum_mut(GuiEnum::WindowBezel(Default::default()), Some(vctx))
+                    {
+                        let mut checked = *enum_mut == GuiEnum::WindowBezel(true);
+
+                        if ui.checkbox(&mut checked, "Bezel Overlay").changed() {
+                            *enum_mut = GuiEnum::WindowBezel(checked);
+                            self.event_queue.send(GuiEvent::VariableChanged(
+                                GuiVariableContext::Display(display),
+                                GuiVariable::Enum(GuiEnum::WindowBezel(checked)),
+                            ));
+                        }
+                    }
+                });
+            }
+
+            ui.menu_button("Scaler Presets", |ui| {
+                for (_preset_idx, preset) in self.scaler_presets.clone().iter().enumerate() {
+                    if ui.button(preset).clicked() {
+                        self.set_option_enum(GuiEnum::DisplayScalerPreset(preset.clone()), Some(vctx));
                         self.event_queue.send(GuiEvent::VariableChanged(
                             GuiVariableContext::Display(display),
-                            GuiVariable::Enum(GuiEnum::WindowBezel(checked)),
+                            GuiVariable::Enum(GuiEnum::DisplayScalerPreset(preset.clone())),
                         ));
+                        ui.close_menu();
                     }
                 }
             });
-        }
 
-        #[cfg(not(target_arch = "wasm32"))]
-        ui.menu_button("Scaler Presets", |ui| {
-            for (_preset_idx, preset) in self.scaler_presets.clone().iter().enumerate() {
-                if ui.button(preset).clicked() {
-                    self.set_option_enum(GuiEnum::DisplayScalerPreset(preset.clone()), Some(vctx));
-                    self.event_queue.send(GuiEvent::VariableChanged(
-                        GuiVariableContext::Display(display),
-                        GuiVariable::Enum(GuiEnum::DisplayScalerPreset(preset.clone())),
-                    ));
-                    ui.close_menu();
-                }
+            if ui.button("Scaler Adjustments...").clicked() {
+                *self.window_flag(GuiWindow::ScalerAdjust) = true;
+                self.scaler_adjust.select_card(display.into());
+                ui.close_menu();
             }
-        });
-
-        #[cfg(not(target_arch = "wasm32"))]
-        if ui.button("Scaler Adjustments...").clicked() {
-            *self.window_flag(GuiWindow::ScalerAdjust) = true;
-            self.scaler_adjust.select_card(display.into());
-            ui.close_menu();
         }
 
         ui.menu_button("Display Aperture", |ui| {

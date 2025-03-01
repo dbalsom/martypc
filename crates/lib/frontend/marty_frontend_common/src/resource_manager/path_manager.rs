@@ -74,10 +74,11 @@ impl PathManager {
                 ResourceManager::create_path(&resolved_path)?;
             }
             else {
-                return Err(anyhow::anyhow!(
-                    "Path is not a directory: {}",
+                return Err(anyhow::anyhow!(format!(
+                    "Failed to find resource path for '{resource_name}'!\n\
+                    Configured path does not exist or is not a directory: {}",
                     resolved_path.to_str().unwrap_or_default()
-                ));
+                )));
             }
         }
 
