@@ -19,7 +19,8 @@ jobs:
         run: |
           curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs -o rustup-init.sh
           sh rustup-init.sh -y --default-host x86_64-unknown-linux-gnu --default-toolchain nightly --profile complete
-          $USERPROFILE/.cargo/bin/cargo version
+          . "$HOME/.cargo/env"
+          $HOME/.cargo/bin/cargo version
 
       - name: Checkout repository
         uses: actions/checkout@v4
