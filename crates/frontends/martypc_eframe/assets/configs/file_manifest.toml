@@ -1,0 +1,35 @@
+# file_manifest.toml
+version = "0.3.0"
+
+# An inline array of tables for the files and directories we want to expose to the wasm build via ResourceManager
+entries = [
+    { path = "configs",                                     type = "Directory" },
+    { path = "configs/machines",                            type = "Directory" },
+    { path = "configs/keyboard_layouts",                    type = "Directory" },
+
+    { path = "configs/keyboard_layouts/keyboard_IT.toml",   type = "File" },
+    { path = "configs/keyboard_layouts/keyboard_UK.toml",   type = "File" },
+    { path = "configs/keyboard_layouts/keyboard_US.toml",   type = "File" },
+
+    { path = "configs/machines/ibm5160.toml",               type = "File" },
+    { path = "configs/machines/config_overlays.toml",       type = "File" },
+
+    { path = "media",                                       type = "Directory" },
+    { path = "media/roms",                                  type = "Directory" },
+    { path = "media/roms/romdef_glabios.toml",              type = "File" },
+
+    { path = "media/roms/GLaBIOS",                          type = "Directory" },
+    { path = "media/roms/GlaBIOS/GLABIOS_0.2.6_8P.ROM",     type = "File"},
+    { path = "media/roms/GlaBIOS/GLABIOS_0.2.6_8PC.ROM",    type = "File"},
+    { path = "media/roms/GlaBIOS/GLABIOS_0.2.6_8T.ROM",     type = "File"},
+    { path = "media/roms/GlaBIOS/GLABIOS_0.2.6_8TC.ROM",    type = "File"},
+    { path = "media/roms/GlaBIOS/GLABIOS_0.2.6_8X.ROM",     type = "File"},
+    { path = "media/roms/GlaBIOS/GLABIOS_0.2.6_8XC.ROM",    type = "File"},
+
+    { path = "media/floppies",                              type = "Directory" },
+    { path = "media/floppies/MartyPC Boot Disk v2.0 (PC_XT) 360k.img",   type = "File",          size = 368640 },
+
+    { path = "media/floppies/Demos",                        type = "Directory" },
+    { path = "media/floppies/8088MPH (Final Version).img",  type = "File",          size = 737280 },
+    { path = "media/floppies/Area 5150 (Compo Version).img", type = "File",         size = 737280 },
+]

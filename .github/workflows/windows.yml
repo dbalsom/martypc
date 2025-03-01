@@ -3,7 +3,9 @@ name: Windows
 on:
   push:
     branches:
-      - version_0_2_0
+      - main
+    paths-ignore:
+      - '**/*.md'
   pull_request:
 
 env:
@@ -31,7 +33,13 @@ jobs:
           update: true
           msystem: ${{ matrix.environment.msystem }}
           pacboy: >-
-            rust:p
+            toolchain:p
+
+      - name: Install nightly Rust
+        run: |
+          curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs -o rustup-init.sh
+          sh rustup-init.sh -y --default-host x86_64-pc-windows-gnu --default-toolchain nightly --profile complete
+          $USERPROFILE/.cargo/bin/cargo version
 
       - name: Checkout repository
         uses: actions/checkout@v4
@@ -39,7 +47,8 @@ jobs:
           fetch-depth: 0
 
       - name: Cargo build
-        run: cargo build --profile release-lto --features ega
+        run: |
+          $USERPROFILE/.cargo/bin/cargo build --profile release-lto --features use_winit,use_wgpu,sound,opl
 
       - name: Copy files into install dir
         run: cp LICENSE README.md CHANGELOG.md CREDITS.md target/release-lto/martypc install
@@ -50,5 +59,5 @@ jobs:
       - name: Upload artifact
         uses: actions/upload-artifact@v4
         with:
-          name: 'martypc-windows-gha${{ github.run_number }}'
+          name: martypc-windows-gha
           path: martypc

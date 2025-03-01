@@ -1,0 +1,38 @@
+[package]
+name = "marty_videocard_renderer"
+description = "An interface for rendering a MartyPC video device to a graphics Backend"
+authors = ["Daniel Balsom", "Andrew Jenner (reenigne)"]
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+
+[lib]
+name = "marty_videocard_renderer"
+path = "src/lib.rs"
+crate-type = ["lib"]
+
+[dependencies]
+marty_common = { path = "../../../marty_common" }
+display_backend_trait = { path = "../../backend/display_backend_trait" }
+marty_core = { path = "../../../marty_core" }
+bytemuck = { workspace=true, features = ["derive"] }
+glam = "0.29"
+fast_image_resize = "2.7.3"
+image = { workspace = true, default-features = false, features = ["png"] }
+rand.workspace = true
+log.workspace = true
+serde = { workspace = true, features = ["derive"] }
+web-time.workspace = true
+
+[dev-dependencies]
+criterion = "0.5"
+bytemuck = { workspace = true, features = ["derive"] }
+
+[features]
+default = ["ega", "vga"]
+ega = []
+vga = []
+
+[[bench]]
+name = "render_bench"
+harness = false

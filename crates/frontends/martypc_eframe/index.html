@@ -1,0 +1,262 @@
+<!DOCTYPE html>
+<html>
+<meta http-equiv="Content-Type" content="text/html; charset=utf-8"/>
+
+<!-- Disable zooming: -->
+<meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no">
+
+<head>
+    <!-- change this to your project name -->
+    <title>MartyPC Web Edition 0.3.0</title>
+
+    <meta property="og:title" content="MartyPC Web Edition">
+    <meta property="og:description" content="An IBM PC/XT emulator written in Rust - Now compiled for the web!">
+    <meta property="og:url" content="https://martypc.net">
+    <meta property="og:image" content="https://martypc.net/assets/marty_logo_about.png">
+    <meta property="og:type" content="website">
+    <meta property="og:site_name" content="MartyPC">
+    <meta property="og:image:width" content="755">
+    <meta property="og:image:height" content="270">
+    <meta property="og:locale" content="en_US">
+
+    <meta name="twitter:card" content="summary_large_image">
+    <meta name="twitter:title" content="MartyPC Web Edition">
+    <meta name="twitter:description" content="An IBM PC/XT emulator written in Rust - Now compiled for the web!">
+    <meta name="twitter:image" content="https://martypc.net/assets/marty_logo_about.png">
+
+    <!-- use nightly toolchain for atomics, webworker shared memory, etc. -->
+    <meta data-trunk-toolchain="+nightly">
+    <!-- config for our rust wasm binary. go to https://trunkrs.dev/assets/#rust for more customization -->
+    <link data-trunk rel="rust" data-wasm-opt="2"/>
+    <!-- this is the base url relative to which other urls will be constructed. trunk will insert this from the public-url option -->
+    <base data-trunk-public-url/>
+
+    <link data-trunk rel="icon" href="../../../assets/favicon.ico">
+    <link data-trunk rel="copy-file" href="../../../assets/marty_logo_about.png"
+          data-target-path="assets"/>
+
+    <link data-trunk rel="copy-file" href="../../../install/media/floppies/MartyPC Boot Disk v2.0 (PC_XT) 360k.img"
+          data-target-path="media/floppies"/>
+
+    <link data-trunk rel="copy-file" href="../../../install/media/floppies/Demos/8088MPH (Final Version).img"
+          data-target-path="media/floppies"/>
+    <link data-trunk rel="copy-file" href="../../../install/media/floppies/Demos/Area 5150 (Compo Version).img"
+          data-target-path="media/floppies"/>
+
+    <link data-trunk rel="copy-file" href="assets/martypc_data.dat" data-target-path="assets"/>
+    <link data-trunk rel="copy-file" href="assets/_headers"/>
+    <link data-trunk rel="copy-file" href="assets/worker.js"/>
+    <link data-trunk rel="copy-file" href="assets/manifest.json"/>
+    <link data-trunk rel="copy-file" href="assets/martypc_logo_small.png" data-target-path="assets"/>
+    <link data-trunk rel="copy-file" href="assets/martypc_logo_off_small.png" data-target-path="assets"/>
+    <link data-trunk rel="copy-file" href="assets/icon-1024.png" data-target-path="assets"/>
+    <link data-trunk rel="copy-file" href="assets/icon-256.png" data-target-path="assets"/>
+    <link data-trunk rel="copy-file" href="assets/icon_ios_touch_192.png" data-target-path="assets"/>
+    <link data-trunk rel="copy-file" href="assets/maskable_icon_x512.png" data-target-path="assets"/>
+    <link data-trunk rel="copy-file" href="assets/configs/martypc.toml" data-target-path="configs"/>
+    <link data-trunk rel="copy-file" href="assets/configs/file_manifest.toml" data-target-path="configs"/>
+    <link data-trunk rel="copy-file" href="assets/configs/machines/ibm5160.toml" data-target-path="configs/machines"/>
+    <link data-trunk rel="copy-file" href="assets/configs/machines/config_overlays.toml"
+          data-target-path="configs/machines"/>
+    <link data-trunk rel="copy-file" href="assets/media/roms/romdef_glabios.toml" data-target-path="media/roms">
+    <link data-trunk rel="copy-file" href="assets/configs/keyboard_layouts/keyboard_US.toml"
+          data-target-path="configs/keyboard_layouts">
+    <link data-trunk rel="copy-file" href="assets/configs/keyboard_layouts/keyboard_UK.toml"
+          data-target-path="configs/keyboard_layouts">
+    <link data-trunk rel="copy-file" href="assets/configs/keyboard_layouts/keyboard_IT.toml"
+          data-target-path="configs/keyboard_layouts">
+    <link data-trunk rel="copy-file" href="assets/media/roms/GlaBIOS/GLABIOS_0.2.6_8P.ROM"
+          data-target-path="media/roms/GlaBIOS">
+    <link data-trunk rel="copy-file" href="assets/media/roms/GlaBIOS/GLABIOS_0.2.6_8PC.ROM"
+          data-target-path="media/roms/GlaBIOS">
+    <link data-trunk rel="copy-file" href="assets/media/roms/GlaBIOS/GLABIOS_0.2.6_8T.ROM"
+          data-target-path="media/roms/GlaBIOS">
+    <link data-trunk rel="copy-file" href="assets/media/roms/GlaBIOS/GLABIOS_0.2.6_8TC.ROM"
+          data-target-path="media/roms/GlaBIOS">
+    <link data-trunk rel="copy-file" href="assets/media/roms/GlaBIOS/GLABIOS_0.2.6_8X.ROM"
+          data-target-path="media/roms/GlaBIOS">
+    <link data-trunk rel="copy-file" href="assets/media/roms/GlaBIOS/GLABIOS_0.2.6_8XC.ROM"
+          data-target-path="media/roms/GlaBIOS">
+
+    <link rel="manifest" href="manifest.json">
+    <link rel="apple-touch-icon" href="assets/icon_ios_touch_192.png">
+    <meta name="theme-color" media="(prefers-color-scheme: light)" content="white">
+    <meta name="theme-color" media="(prefers-color-scheme: dark)" content="#404040">
+
+    <style>
+        html {
+            /* Remove touch delay: */
+            touch-action: manipulation;
+        }
+
+        body {
+            /* Light mode background color for what is not covered by the egui canvas,
+            or where the egui canvas is translucent. */
+            background: #909090;
+        }
+
+        @media (prefers-color-scheme: dark) {
+            body {
+                /* Dark mode background color for what is not covered by the egui canvas,
+                or where the egui canvas is translucent. */
+                background: #404040;
+            }
+        }
+
+        /* Allow canvas to fill entire web page: */
+        html,
+        body {
+            overflow: hidden;
+            margin: 0 !important;
+            padding: 0 !important;
+            height: 100%;
+            width: 100%;
+        }
+
+        /* Make canvas fill entire document: */
+        canvas {
+            margin-right: auto;
+            margin-left: auto;
+            display: block;
+            position: absolute;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+        }
+
+        .centered {
+            margin-right: auto;
+            margin-left: auto;
+            display: block;
+            position: absolute;
+            top: 50%;
+            left: 50%;
+            transform: translate(-50%, -50%);
+            color: #f0f0f0;
+            font-size: 24px;
+            font-family: Ubuntu-Light, Helvetica, sans-serif;
+            text-align: center;
+        }
+
+        /* ---------------------------------------------- */
+        /* Loading animation from https://loading.io/css/ */
+        .lds-dual-ring {
+            display: inline-block;
+            width: 24px;
+            height: 24px;
+        }
+
+        .lds-dual-ring:after {
+            content: " ";
+            display: block;
+            width: 24px;
+            height: 24px;
+            margin: 0px;
+            border-radius: 50%;
+            border: 3px solid #fff;
+            border-color: #fff transparent #fff transparent;
+            animation: lds-dual-ring 1.2s linear infinite;
+        }
+
+        @keyframes lds-dual-ring {
+            0% {
+                transform: rotate(0deg);
+            }
+
+            100% {
+                transform: rotate(360deg);
+            }
+        }
+
+        /* Start overlay styling */
+        .start-overlay {
+            position: fixed;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            background-color: rgba(100, 100, 100, 1.0); /* Solid gray with slight transparency */
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            z-index: 1000;
+        }
+
+        .start-clickme-wrapper {
+            display: grid;
+            grid-template-rows: auto auto;
+            grid-template-columns: 1fr;
+            place-items: center;
+        }
+
+        .start-clickme-wrapper .top {
+            grid-row: 1;
+        }
+
+        .start-clickme-wrapper .bottom {
+            grid-row: 2;
+            margin-top: 10px;
+        }
+
+        .start-logo-wrapper {
+            display: inline-block; /* Ensure the wrapper only wraps around the image */
+            transform-origin: bottom center; /* Anchor transformations to the bottom edge */
+        }
+
+        .start-logo {
+            display: block; /* Ensure the image doesn't have extra margins */
+            cursor: pointer; /* Indicate it's clickable */
+            filter: drop-shadow(0px 4px 8px rgba(0, 0, 0, 0.6)); /* Drop shadow respects transparency */
+            content: url("assets/martypc_logo_off_small.png"); /* Default PNG */
+        }
+
+        .start-logo-wrapper:hover {
+            animation: bounce-stretch 0.8s infinite; /* Apply the bounce animation */
+            content: url("assets/martypc_logo_small.png"); /* Default PNG */
+        }
+
+        /* Keyframes for bounce with stretch and squash */
+        @keyframes bounce-stretch {
+            0%, 100% {
+                transform: translateY(0) scale(1, 1); /* Original size at rest */
+            }
+            20% {
+                transform: translateY(0) scale(0.90, 1.05); /* Stretch upward */
+            }
+            50% {
+                transform: translateY(-2px) scale(1.2, 0.75); /* Squash on landing */
+            }
+            80% {
+                transform: translateY(0) scale(0.98, 1.02); /* Smaller stretch before settling */
+            }
+        }
+    </style>
+</head>
+
+<body>
+
+<!-- The WASM code will resize the canvas dynamically -->
+<!-- the id is hardcoded in main.rs . so, make sure both match. -->
+<canvas id="the_canvas_id"></canvas>
+
+<!-- Initial screen with "Click to start" -->
+<div class="start-overlay" id="start_screen">
+    <div class="start-clickme-wrapper">
+        <div class="start-logo-wrapper top" id="start_logo" style="text-align: center;">
+            <link rel="prefetch" href="assets/martypc_logo_small.png"/>
+            <img src="assets/martypc_logo_off_small.png" alt="Start MartyPC" class="start-logo">
+        </div>
+        <div class="bottom">Click Me!</div>
+    </div>
+</div>
+
+<!-- the loading spinner will be removed in main.rs -->
+<div class="centered" id="loading_text">
+    <p style="font-size:16px">
+        Loading…
+    </p>
+    <div class="lds-dual-ring"></div>
+</div>
+</body>
+</html>

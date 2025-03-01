@@ -31,6 +31,29 @@
 # optimizations. I recommend specifying a value in 0x10000 increments.
 # ----------------------------------------------------------------------------
 
+# The lowest possible memory configuration, just for fun
+[[machine]]
+name = "ibm5150_16k"
+type = "Ibm5150v64K"
+rom_set = "ibm5150_81_v1" # The '82 BIOS doesn't support <64KB of RAM.
+speaker = true
+overlays = [
+    "pcxt_2_360k_floppies",
+    "pcxt_2_serial_ports",
+    "us_modelf_keyboard",
+    "game_port",
+]
+
+    [machine.memory]
+    conventional.size = 0x4000 # A whopping 16K of RAM
+    conventional.wait_states = 0
+    
+    # Video cards
+    [[machine.video]]
+    bus_type = "ISA"
+    type = "MDA"
+    clock_mode = "Character"
+
 [[machine]]
 name = "ibm5150_64k"
 type = "Ibm5150v64K"
@@ -40,6 +63,7 @@ overlays = [
     "pcxt_2_360k_floppies",
     "pcxt_2_serial_ports",
     "us_modelf_keyboard",
+    "game_port",
 ]
 
     [machine.memory]
@@ -61,6 +85,7 @@ overlays = [
     "pcxt_2_360k_floppies",
     "pcxt_2_serial_ports",
     "us_modelf_keyboard",
+    "game_port",
 ]
 
     [machine.memory]
@@ -97,6 +122,7 @@ overlays = [
     "pcxt_2_360k_floppies",
     "pcxt_2_serial_ports",
     "us_modelf_keyboard",
+    "game_port",
 ]
 
     [machine.memory]
@@ -118,6 +144,7 @@ overlays = [
     "pcxt_2_360k_floppies",
     "pcxt_2_serial_ports",
     "us_modelf_keyboard",
+    "game_port",
 ]
 
     [machine.memory]

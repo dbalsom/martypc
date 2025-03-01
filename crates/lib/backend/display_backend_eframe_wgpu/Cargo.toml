@@ -1,0 +1,22 @@
+[package]
+name = "display_backend_eframe_wgpu"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+
+[lib]
+name = "display_backend_eframe_wgpu"
+path = "src/lib.rs"
+crate-type = ["lib"]
+
+[dependencies]
+display_backend_trait = { path = "../display_backend_trait", features = ["use_wgpu"]}
+egui.workspace = true
+egui-wgpu.workspace = true
+anyhow.workspace = true
+log.workspace = true
+
+marty_scaler_null = { path = "../../frontend/marty_scaler_null" }
+
+# Optional Dependencies
+# ---------------------------------------------------------------------------------------------------------------------

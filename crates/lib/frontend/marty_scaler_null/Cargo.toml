@@ -1,0 +1,18 @@
+[package]
+name = "marty_scaler_null"
+description = "A stub scaler for MartyPC render backends that do not support shaders."
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+
+[lib]
+name = "marty_scaler_null"
+path = "src/lib.rs"
+crate-type = ["lib"]
+
+[dependencies]
+marty_frontend_common =  { path = "../marty_frontend_common" }
+egui = { workspace = true, optional = true }
+
+[features]
+use_egui_backend = ["dep:egui"]

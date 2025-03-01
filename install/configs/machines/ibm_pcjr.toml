@@ -1,0 +1,91 @@
+# ibmpcjr.toml
+# Machine Configurations for the IBM PCJR
+
+# MartyPC will search all *.toml files in 'machine' directories for machine
+# configurations, so if you create a custom machine configuration, you can 
+# put it in a separate file.
+#
+# ----------------------------------------------------------------------------
+# Defining a Machine Configuration  
+# Valid Machine types:
+#  "Ibm5150v64K"
+#  "Ibm5150v256K"
+#  "Ibm5160"
+#
+# Valid Floppy Disk Controller types:
+#  "IbmNec"
+#
+# Valid floppy Drive Types:
+#  "360k"
+#  "720k"
+#  "1.2m"
+#  "1.44m"
+
+# Valid Hard Disk Controller Types:
+#  "IbmXebec"
+#
+# Valid Serial Controller Types:
+#  "IbmAsync"
+#
+# Conventional memory amount may be different from value specified due to MMIO
+# optimizations. I recommend specifying a value in 0x10000 increments.
+# ----------------------------------------------------------------------------
+
+[[machine]]
+name = "ibm_pcjr"
+type = "IbmPCJr"
+rom_set = "ibm_pcjr"
+speaker = true
+overlays = [
+    "microsoft_serial_mouse",
+]
+
+    [machine.keyboard]
+    # Valid options for keyboard_type are:
+    # ModelF - This was the original 83-key keyboard shipped with the PC/XT
+    #          (More keyboard types yet to be implemented)
+    #
+    # TODO: Replace this with a 'PCJr' keyboard type as there are scancode differences
+    type = "ModelF"
+    # Keyboard layout. Used to load the appropriate keyboard translation file. 
+    # MartyPC will look for the file keyboard_XX.toml in the ./keyboard/ directory
+    # where XX is the string specified by keyboard_layout.
+    #
+    # Certain scancodes have changed their meaning since the 1980's. Your help
+    # would be appreciated in developing new translation files.
+    layout = "US"
+    # Enable typematic repeat for the emulated keyboard. Host repeat is ignored.
+    typematic = true
+    # Delay in milliseconds before typematic repeat begins.
+    typematic_delay = 500.0
+    # Delay in milliseconds between each scancode during typematic repeat.
+    typematic_rate= 50.0
+
+    [machine.memory]
+    conventional.size = 0x20000 # 128KB max. Install additional RAM via sidecars
+    conventional.wait_states = 3
+
+    # Video cards - Maximum of 1.
+    [[machine.video]]
+    bus_type = "Onboard"
+    type = "TGA"
+    subtype = "IbmPCJr"
+    clock_mode = "Default"
+
+    # Floppy disk controller
+    [machine.fdc]
+        bus_type = "Onboard"
+        type = "IbmPCJrNec"
+            # Drives connected to controller. Maximum of 1.
+            [[machine.fdc.drive]]
+            type  = "360k"
+
+    [[machine.serial]]
+        bus_type = "Onboard"
+        type = "IbmAsync"
+            [[machine.serial.port]]
+            io_base = 0x2F8
+            irq = 3
+            # Required for PCjr to avoid boot errors.
+            out2_suppresses_int = false
+            

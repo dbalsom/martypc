@@ -1,0 +1,21 @@
+<component name="ProjectRunConfigurationManager">
+  <configuration default="false" name="Run martypc [DEBUG] [RUN V20 CPU TESTS]" type="CargoCommandRunConfiguration" factoryName="Cargo Command" folderName="DEV [DEBUG]">
+    <option name="command" value="run --features devtools,cpu_validator -- --configfile martypc-run_cpu_tests.toml --test-cpu-type NecV20 --test-path &quot;T:/json_tests/v20/processed&quot;" />
+    <option name="workingDirectory" value="file://$PROJECT_DIR$/install" />
+    <envs>
+      <env name="RUST_LOG" value="warn,naga=error,wgpu_core=error,marty_core=warn" />
+    </envs>
+    <option name="emulateTerminal" value="true" />
+    <option name="channel" value="DEFAULT" />
+    <option name="requiredFeatures" value="true" />
+    <option name="allFeatures" value="false" />
+    <option name="withSudo" value="false" />
+    <option name="buildTarget" value="REMOTE" />
+    <option name="backtrace" value="SHORT" />
+    <option name="isRedirectInput" value="false" />
+    <option name="redirectInputPath" value="" />
+    <method v="2">
+      <option name="CARGO.BUILD_TASK_PROVIDER" enabled="true" />
+    </method>
+  </configuration>
+</component>

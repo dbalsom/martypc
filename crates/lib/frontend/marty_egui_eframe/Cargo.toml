@@ -1,0 +1,31 @@
+[package]
+name = "marty_egui_eframe"
+description = "A library crate for MartyPC that interfaces marty_egui with eframe."
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+
+[lib]
+name = "marty_egui_eframe"
+path = "src/lib.rs"
+crate-type = ["lib"]
+
+[dependencies]
+marty_frontend_common =  { path = "../marty_frontend_common" }
+marty_egui = { path = "../marty_egui" }
+log.workspace = true
+web-time.workspace = true
+
+# EGUI dependencies
+# ---------------------------------------------------------------------------------------------------------------------
+egui = { workspace = true, default-features = false, features = ["serde"] }
+egui_extras.workspace = true
+
+# Optional dependencies
+# ---------------------------------------------------------------------------------------------------------------------
+serialport = { workspace = true, optional = true }
+wgpu = { workspace = true, optional = true }
+
+[features]
+use_wgpu = ["wgpu"]
+use_serialport = ["dep:serialport", "marty_egui/use_serialport"]

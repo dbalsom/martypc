@@ -3,7 +3,7 @@
 #
 [meta]
 file_type = "main_config"
-config_version = "0.2"
+config_version = "0.4"
 
 # ----------------------------------------------------------------------------
 # Machine Options
@@ -14,11 +14,16 @@ config_version = "0.2"
 # General emulator options are given in [emulator] below.
 # ----------------------------------------------------------------------------
 [machine]
-# Specify the name of a machine configuration to load. Valid config_names
-# are defined via machine configuration profiles in the /configs/machines
-# directory.
+# `config_name`: The name of the machine configuration to load.
+# Machine configurations are defined in the various machine configuration
+# definition files in /configs/machines.
+
+# This is not a filename reference.
+# Only one `config_name` should be uncommented at a time.
+#
+# If you just want to enable the hard drive, change config_name to
+# "ibm5160_hdd"
 config_name = "ibm5160"
-#config_name = "ibm5160_hdd"
 
 # Specify configuration overlays to load on top of machine configuration.
 # Config overlays are a convenient way to swap or add to a base config. 
@@ -40,6 +45,19 @@ patch_roms = true
 
 # Don't load any ROMs if true. Default: false
 #no_roms = true
+
+# Enable disassembly recording. This is similar to CPU instruction history,
+# but records the disassembly of each instruction executed, sorted by
+# address. This builds a disassembly listing of the program as it runs.
+disassembly_recording = false
+
+# Filename to save diassembly recording to.
+# This will be saved in the 'traces' directory
+disassembly_file = "disassembly.lst"
+
+# Enable a console debugging port. Writes to this port will be printed to the
+# host terminal. ESC bytes (0x1B) will be filtered to avoid terminal abuse.
+#terminal_port = 0xE9
 
 # Turbo Button
 # ----------------------------------------------------------------------------
@@ -140,9 +158,13 @@ trace_file = "cycle_trace.log"
 basedir = "."
 paths = [
     { resource = "machine", path = "$basedir$/configs/machines", recurse = true },
+    { resource = "keyboard_layout", path = "$basedir$/configs/keyboard_layouts", recurse = false },
     { resource = "rom", path = "$basedir$/media/roms", recurse = true },
     { resource = "hdd", path = "$basedir$/media/hdds", recurse = true },
-    { resource = "floppy", path = "$basedir$/media/floppies", recurse = true },
+    { resource = "autofloppy", path = "$basedir$/mount/floppy", create = true, recurse = false },
+    { resource = "floppy", path = "$basedir$/media/floppies", recurse = true, create = true },
+    { resource = "cartridge", path = "$basedir$/media/cartridges", recurse = true, create = true },
+    { resource = "cassette", path = "$basedir$/media/cassettes", recurse = true, create = true },
     { resource = "dump", path = "$basedir$/output/dumps", create = true },
     { resource = "trace", path = "$basedir$/output/traces", create = true },
     { resource = "screenshot", path = "$basedir$/output/screenshots", create = true },
@@ -185,23 +207,33 @@ debug_mode = false
 # do so and don't want the nag.
 debug_warn = true
 
-# Run the specified program instead of booting BIOS. The CPU reset vector will
-# be set to 'run_bin_seg:run_bin_ofs'
+# Run the specified program instead of booting BIOS.
 #run_bin = "./program/a_effect.bin"
 run_bin_seg = 0x1000
 run_bin_ofs = 0x0000
+# The CPU reset vector will be set to 'vreset_bin_seg:vreset_bin_ofs'.
+vreset_bin_seg = 0x1000
+vreset_bin_ofs = 0x0000
 
 [emulator.backend]
 # Enable vsync. For wgpu frontend, I would recommend leaving this off. FIFO
 # presentation mode increase latency and causes window resizing issues.
 vsync = false
 
+# There appears to be a bug in the wgpu backend that causes vertical stripes when
+# running fullscreen under Intel graphics. This is a workaround for that issue, setting
+# the surface size to one pixel less than fullscreen.
+macos_stripe_fix = false
+
 [emulator.audio]
 # Set this to false to disable sound system initialization.
 enabled = true
 
 [emulator.media]
-# Provide a list of file extensions to interpret as raw floppy sector images.
+
+# A list of file extensions to interpret as floppy raw sector images.
+# Files with these extensions will always be shown in the floppy image browser, regardless
+# of whether they can be mounted as a raw sector image.
 raw_sector_image_extensions = ["img", "ima", "dsk", "mnx"]
 
 # Default state of write protection for newly loaded floppy images.
@@ -250,6 +282,8 @@ breakpoint_notify = true
 [[emulator.window]]
 # Provide a name for this window. (Required)
 name = "Main GUI"
+
+background_color = 0x323338 # Medium gray.
 
 # If this parameter is provided, the window will be created at *at least* 
 # this size, or the video aperture resolution, whichever is higher.
@@ -490,6 +524,21 @@ hotkeys = [
     { event = "ToggleFullscreen", keys = ["ControlLeft", "Enter"], scope = "Any", capture_disable = false },
     { event = "DebugStepOver", keys = ["F10"], scope="Gui", capture_disable = false },
     { event = "DebugStep", keys = ["F11"], scope="Gui", capture_disable = false },
+    # Joystick hotkeys. Only enabled when joystick keyboard emulation is enabled.
+    { event = "JoyToggle", keys = ["ControlLeft", "F9"], scope="Any", capture_disable = false },
+]
+
+# Enable keyboard -> joystick emulation. This can be toggled via the JoyToggle hotkey
+# above, so it isn't necessary to set this to true unless you want it enabled by default.
+keyboard_joystick = false
+
+joystick_keys = [
+    { input = "JoyButton1", key = "AltRight" },
+    { input = "JoyButton2", key = "ControlRight" },
+    { input = "JoyUp", key = "ArrowUp" },
+    { input = "JoyLeft", key = "ArrowLeft"},
+    { input = "JoyRight", key = "ArrowRight"},
+    { input = "JoyDown", key = "ArrowDown" }
 ]
 
 # Help the developer debug any keyboard issues you may be having. With this
