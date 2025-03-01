@@ -15,8 +15,11 @@ jobs:
     runs-on: ubuntu-22.04
 
     steps:
-      - name: Intall Rust nightly toolchain
-        uses: dtolnay/rust-toolchain@nightly
+      - name: Install nightly Rust
+        run: |
+          curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs -o rustup-init.sh
+          sh rustup-init.sh -y --default-host x86_64-unknown-linux-gnu --default-toolchain nightly --profile complete
+          $USERPROFILE/.cargo/bin/cargo version
 
       - name: Checkout repository
         uses: actions/checkout@v4
@@ -48,7 +51,7 @@ jobs:
         run: rustup component remove rust-src || echo "rust-src not installed"
 
       - name: Cargo build
-        run: cargo build --profile release-lto --features ega
+        run: cargo build --profile release-lto --features use_winit,use_wgpu,sound,opl
 
       - name: Copy files into install dir
         run: cp LICENSE README.md CHANGELOG.md CREDITS.md target/release-lto/martypc install
