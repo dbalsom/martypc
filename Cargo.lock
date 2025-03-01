@@ -4763,8 +4763,8 @@ checksum = "b410bbe7e14ab526a0e86877eb47c6996a2bd7746f027ba551028c925390e4e9"
 
 [[package]]
 name = "opl3-rs"
-version = "0.2.1"
-source = "git+https://github.com/dbalsom/opl3-rs.git?branch=main#e4bb3f15a29b6863048c81b1c4ca10c7372b3edf"
+version = "0.2.2"
+source = "git+https://github.com/dbalsom/opl3-rs.git?branch=main#8a56a39917a7cb1d3a6399640012c7239161172b"
 dependencies = [
  "bindgen 0.69.5",
  "cc",
