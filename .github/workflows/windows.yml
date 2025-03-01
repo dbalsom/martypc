@@ -3,7 +3,7 @@ name: Windows
 on:
   push:
     branches:
-      - version_0_4_0_GHA
+      - version_0_4_0
   pull_request:
 
 env:
