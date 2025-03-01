@@ -31,20 +31,22 @@ jobs:
           update: true
           msystem: ${{ matrix.environment.msystem }}
           pacboy: >-
-            rust:p
+            toolchain:p
+
+      - name: Install nightly Rust
+        run: |
+          curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs -o rustup-init.sh
+          sh rustup-init.sh -y --default-host x86_64-pc-windows-gnu --default-toolchain nightly --profile complete
+          $USERPROFILE/.cargo/bin/cargo version
 
       - name: Checkout repository
         uses: actions/checkout@v4
         with:
           fetch-depth: 0
 
-      - name: Install nightly Rust
-        run: |
-          rustup toolchain install nightly
-          rustup default nightly
-
       - name: Cargo build
-        run: cargo build --profile release-lto --features use_winit,use_wgpu,sound,opl
+        run: |
+          $USERPROFILE/.cargo/bin/cargo build --profile release-lto --features use_winit,use_wgpu,sound,opl
 
       - name: Copy files into install dir
         run: cp LICENSE README.md CHANGELOG.md CREDITS.md target/release-lto/martypc install
