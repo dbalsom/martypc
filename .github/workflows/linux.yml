@@ -15,6 +15,9 @@ jobs:
     runs-on: ubuntu-22.04
 
     steps:
+      - name: Intall Rust nightly toolchain
+        uses: dtolnay/rust-toolchain@nightly
+
       - name: Checkout repository
         uses: actions/checkout@v4
         with:
@@ -23,8 +26,23 @@ jobs:
       - name: Install dependencies
         run: >-
           sudo apt update && sudo apt install
+          pkg-config
           libasound2-dev
           libudev-dev
+          libc-dev
+          libx11-dev
+          libclang-dev
+
+      - name: Cache cargo registry, index, and build artifacts
+        uses: actions/cache@v4
+        with:
+          path: |
+            ~/.cargo/registry
+            ~/.cargo/git
+            target
+          key: rust-cache-${{ runner.os }}-${{ hashFiles('**/Cargo.lock') }}
+          restore-keys: |
+            rust-cache-${{ runner.os }}-
 
       - name: Cargo build
         run: cargo build --profile release-lto --features ega
@@ -47,5 +65,5 @@ jobs:
       - name: Upload artifact
         uses: actions/upload-artifact@v4
         with:
-          name: 'martypc-linux-gha${{ github.run_number }}'
+          name: martypc-linux-gha
           path: artifacts/martypc.tar
