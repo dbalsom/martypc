@@ -52,6 +52,7 @@ mod color;
 mod constants;
 mod image;
 
+mod file_dialogs;
 mod glyphs;
 mod layouts;
 mod menu;
@@ -76,6 +77,22 @@ use marty_frontend_common::display_manager::{DisplayTargetType, DtHandle};
 use marty_videocard_renderer::CompositeParams;
 use serde::{Deserialize, Serialize};
 use strum_macros::EnumIter;
+
+#[derive(Copy, Clone, Debug)]
+pub enum DialogProvider {
+    #[cfg(feature = "use_rfd")]
+    Rfd,
+    EguiFileDialog,
+}
+
+impl Default for DialogProvider {
+    fn default() -> Self {
+        #[cfg(feature = "use_rfd")]
+        return DialogProvider::Rfd;
+        #[cfg(not(feature = "use_rfd"))]
+        return DialogProvider::EguiFileDialog;
+    }
+}
 
 #[derive(Clone, EnumIter, PartialEq, Eq, Hash, Serialize, Deserialize, Ord, PartialOrd, Debug)]
 pub enum GuiWindow {

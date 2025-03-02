@@ -27,7 +27,7 @@
 use crate::{
     emulator::Emulator,
     emulator_builder::EmulatorBuilder,
-    event_loop::{egui_events::FileSelectionContext, thread_events::handle_thread_event},
+    event_loop::thread_events::handle_thread_event,
     timestep_update::process_update,
     MARTY_ICON,
 };
@@ -42,6 +42,7 @@ use display_manager_eframe::{
 use marty_egui_eframe::{context::GuiRenderContext, EGUI_MENU_BAR_HEIGHT};
 use marty_frontend_common::{
     display_manager::{DisplayManager, DmGuiOptions},
+    thread_events::*,
     timestep_manager::TimestepManager,
 };
 use marty_web_helpers::FetchResult;
@@ -71,12 +72,6 @@ use marty_videocard_renderer::AspectCorrectionMode;
 use marty_web_helpers::console_writer::ConsoleWriter;
 #[cfg(target_arch = "wasm32")]
 use url::Url;
-
-#[derive(Clone, Debug)]
-pub enum FileOpenContext {
-    FloppyDiskImage { drive_select: usize, fsc: FileSelectionContext },
-    CartridgeImage { slot_select: usize, fsc: FileSelectionContext },
-}
 
 /// We derive Deserialize/Serialize so we can persist app state on shutdown.
 #[derive(serde::Deserialize, serde::Serialize)]

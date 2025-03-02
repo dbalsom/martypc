@@ -36,10 +36,8 @@ use std::{
     mem::discriminant,
     path::PathBuf,
     rc::Rc,
+    sync::Arc,
 };
-
-#[cfg(feature = "markdown")]
-use crate::windows::info_viewer::InfoViewer;
 
 use crate::{
     modal::ModalState,
@@ -71,6 +69,7 @@ use crate::{
         text_mode_viewer::TextModeViewer,
         vhd_creator::VhdCreator,
     },
+    DialogProvider,
     GuiBoolean,
     GuiEnum,
     GuiEnumMap,
@@ -82,10 +81,10 @@ use crate::{
     MediaTrayState,
     PerformanceStats,
 };
-use egui::ColorImage;
-use egui_file::FileDialog;
-use egui_notify::{Anchor, Toasts};
-use fluxfox::{DiskImageFileFormat, StandardFormat};
+
+#[cfg(feature = "markdown")]
+use crate::windows::info_viewer::InfoViewer;
+
 use marty_core::{
     device_traits::videocard::{DisplayApertureDesc, VideoCardState, VideoCardStateEntry},
     devices::{pit::PitDisplayState, serial::SerialPortDescriptor},
@@ -96,9 +95,14 @@ use marty_frontend_common::{
     display_manager::{DisplayTargetInfo, DtHandle},
     display_scaler::{ScalerMode, ScalerPreset},
     resource_manager::PathTreeNode,
+    thread_events::FrontendThreadEvent,
     types::sound::SoundSourceInfo,
     RelativeDirectory,
 };
+
+use egui::ColorImage;
+use egui_notify::{Anchor, Toasts};
+use fluxfox::{DiskImage, DiskImageFileFormat, StandardFormat};
 use serde::{Deserialize, Serialize};
 #[cfg(feature = "use_serialport")]
 use serialport::SerialPortInfo;
@@ -239,6 +243,8 @@ impl Default for WorkspaceWindowState {
 
 pub struct GuiState {
     pub(crate) event_queue: GuiEventQueue,
+    pub(crate) thread_sender: crossbeam_channel::Sender<FrontendThreadEvent<Arc<DiskImage>>>,
+    pub(crate) dialog_provider: DialogProvider,
 
     pub(crate) toasts: Toasts,
     media_tray: MediaTrayState,
@@ -331,7 +337,10 @@ pub struct GuiState {
 
 impl GuiState {
     /// Create a struct representing the state of the GUI.
-    pub fn new(exec_control: Rc<RefCell<ExecutionControl>>) -> Self {
+    pub fn new(
+        exec_control: Rc<RefCell<ExecutionControl>>,
+        thread_sender: crossbeam_channel::Sender<FrontendThreadEvent<Arc<DiskImage>>>,
+    ) -> Self {
         // Set default values for window open flags
 
         let mut window_open_flags = HashMap::new();
@@ -361,6 +370,8 @@ impl GuiState {
 
         Self {
             event_queue: GuiEventQueue::new(),
+            thread_sender,
+            dialog_provider: DialogProvider::default(),
             toasts: Toasts::new().with_anchor(Anchor::BottomRight),
             media_tray: Default::default(),
 

@@ -30,7 +30,11 @@
 
 */
 
-use crate::{layouts::MartyLayout, widgets::big_icon::IconType, *};
+use crate::{
+    layouts::MartyLayout,
+    widgets::big_icon::{BigIcon, IconType},
+    *,
+};
 use std::{ffi::OsString, path::PathBuf};
 
 pub struct VhdCreator {
@@ -52,11 +56,11 @@ impl VhdCreator {
 
     pub fn draw(&mut self, ui: &mut egui::Ui, events: &mut GuiEventQueue) {
         ui.horizontal(|ui| {
-            IconType::HardDisk.draw(ui, None);
+            ui.add(BigIcon::new(IconType::HardDisk, None));
             ui.label(
                 egui::RichText::new(
                     "Create a VHD (Virtual Hard Drive)\n\
-                        Currently only one disk geometry is supported.\n\
+                        Available formats are determined by the current Hard Disk Controller.\n\
                         Enter a filename and click Create.",
                 )
                 .font(egui::FontId::proportional(15.0)),

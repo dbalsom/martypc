@@ -720,8 +720,11 @@ impl EmulatorBuilder {
         // A DisplayManager is front-end specific, so we'll expect the front-end to create one
         // after we have built the emulator.
 
+        // Create a channel for receiving thread events (File open requests, etc.)
+        let (sender, receiver) = crossbeam_channel::unbounded();
+
         // Create a GUI state object
-        let mut gui = GuiState::new(exec_control.clone());
+        let mut gui = GuiState::new(exec_control.clone(), sender.clone());
 
         // Set list of virtual serial ports
         gui.set_serial_ports(machine.bus().enumerate_serial_ports());
@@ -758,9 +761,6 @@ impl EmulatorBuilder {
         // Create a queue for machine events.
         // TODO: This should probably be converted into a channel
         let machine_events = Vec::new();
-
-        // Create a channel for receiving background events
-        let (sender, receiver) = crossbeam_channel::unbounded();
 
         Ok(Emulator {
             rm: resource_manager,

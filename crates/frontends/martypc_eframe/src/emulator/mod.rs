@@ -32,23 +32,22 @@ pub mod joystick_state;
 pub mod keyboard_state;
 pub mod mouse_state;
 
+use anyhow::Error;
 use display_manager_eframe::EFrameDisplayManager;
+use fluxfox::DiskImage;
+use marty_config::ConfigFileParams;
 use std::{
     cell::RefCell,
     ffi::{OsStr, OsString},
     rc::Rc,
+    sync::Arc,
 };
-
-use anyhow::Error;
-use marty_config::ConfigFileParams;
 
 #[cfg(target_arch = "wasm32")]
 use crate::wasm::file_open;
 use crate::{
-    app::FileOpenContext,
     counter::Counter,
     emulator::{joystick_state::JoystickData, keyboard_state::KeyboardData, mouse_state::MouseData},
-    event_loop::{egui_events::FileSelectionContext, thread_events::FrontendThreadEvent},
     input::HotkeyManager,
     sound::SoundInterface,
 };
@@ -64,6 +63,7 @@ use marty_frontend_common::{
     floppy_manager::FloppyManager,
     resource_manager::ResourceManager,
     rom_manager::RomManager,
+    thread_events::{FileOpenContext, FileSelectionContext, FrontendThreadEvent},
     timestep_manager::PerfSnapshot,
     vhd_manager::VhdManager,
 };
@@ -98,8 +98,8 @@ pub struct Emulator {
     pub perf: PerfSnapshot,
     pub hkm: HotkeyManager,
     pub si: Option<SoundInterface>,
-    pub receiver: crossbeam_channel::Receiver<FrontendThreadEvent>,
-    pub sender: crossbeam_channel::Sender<FrontendThreadEvent>,
+    pub receiver: crossbeam_channel::Receiver<FrontendThreadEvent<Arc<DiskImage>>>,
+    pub sender: crossbeam_channel::Sender<FrontendThreadEvent<Arc<DiskImage>>>,
 }
 
 impl Emulator {
@@ -287,7 +287,10 @@ impl Emulator {
     }
 
     /// Insert floppy disks into floppy drives.
-    pub fn insert_floppies(&mut self, sender: crossbeam_channel::Sender<FrontendThreadEvent>) -> Result<(), Error> {
+    pub fn insert_floppies(
+        &mut self,
+        sender: crossbeam_channel::Sender<FrontendThreadEvent<Arc<DiskImage>>>,
+    ) -> Result<(), Error> {
         let floppy_max = self.machine.bus().floppy_drive_ct();
         let mut image_names: Vec<Option<String>> = vec![None; floppy_max];
 

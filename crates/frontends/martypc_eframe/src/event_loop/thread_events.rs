@@ -29,41 +29,38 @@
     Handle events received from background threads spawned by the frontend.
 */
 
-use std::path::PathBuf;
-
-use crate::{
-    app::FileOpenContext,
-    emulator::Emulator,
-    event_loop::egui_events::FileSelectionContext,
-    floppy::load_floppy::load_floppy_image,
-};
+use crate::{emulator::Emulator, floppy::load_floppy::load_floppy_image};
+use std::{path::PathBuf, sync::Arc};
 
 use fluxfox::DiskImage;
 use marty_egui::{modal::ModalContext, state::FloppyDriveSelection};
-use marty_frontend_common::constants::NORMAL_NOTIFICATION_TIME;
-
-pub enum FrontendThreadEvent {
-    FileOpenDialogComplete {
-        context: FileOpenContext,
-        path: Option<PathBuf>,
-        contents: Vec<u8>,
-    },
-    FloppyImageLoadError(String),
-    FloppyImageBeginLongLoad,
-    FloppyImageLoadProgress(String, f64),
-    FloppyImageLoadComplete {
-        drive_select: usize,
-        item: FileSelectionContext,
-        image: DiskImage,
-        path: Option<PathBuf>,
-    },
-    FloppyImageSaveError(String),
-    FloppyImageSaveComplete(PathBuf),
-}
+use marty_frontend_common::{
+    constants::{LONG_NOTIFICATION_TIME, NORMAL_NOTIFICATION_TIME},
+    thread_events::{FileOpenContext, FileSaveContext, FileSelectionContext, FrontendThreadEvent},
+};
 
 pub fn handle_thread_event(emu: &mut Emulator) {
     while let Ok(event) = emu.receiver.try_recv() {
         match event {
+            FrontendThreadEvent::FileDialogCancelled => {
+                emu.gui.modal.close();
+            }
+            FrontendThreadEvent::FileOpenError(context, error) => {
+                log::error!("File open error: {}", error);
+                emu.gui
+                    .toasts()
+                    .error(format!("File open error: {}", error))
+                    .duration(Some(LONG_NOTIFICATION_TIME));
+                emu.gui.modal.close();
+            }
+            FrontendThreadEvent::FileSaveError(error) => {
+                log::error!("File save error: {}", error);
+                emu.gui
+                    .toasts()
+                    .error(format!("File save error: {}", error))
+                    .duration(Some(LONG_NOTIFICATION_TIME));
+                emu.gui.modal.close();
+            }
             FrontendThreadEvent::FileOpenDialogComplete {
                 context,
                 path,
@@ -96,24 +93,84 @@ pub fn handle_thread_event(emu: &mut Emulator) {
                     FileOpenContext::CartridgeImage { .. } => {}
                 }
             }
+            FrontendThreadEvent::FileSaveDialogComplete(save_context) => {
+                let (drive_select, format, fsc) = match save_context {
+                    FileSaveContext::FloppyDiskImage {
+                        drive_select,
+                        format,
+                        fsc,
+                    } => (drive_select, format, fsc),
+                };
+
+                let path_buf = if let FileSelectionContext::Path(path) = fsc {
+                    path
+                }
+                else {
+                    log::error!("Failed to get file path from FileSaveDialogComplete event");
+                    emu.gui
+                        .toasts()
+                        .error("Failed to get file path!".to_string())
+                        .duration(Some(LONG_NOTIFICATION_TIME));
+                    return;
+                };
+
+                if let Some(fdc) = emu.machine.fdc() {
+                    let (disk_image_opt, _) = fdc.get_image(drive_select);
+                    if let Some(floppy_image) = disk_image_opt {
+                        let mut image = floppy_image.write().unwrap();
+                        match fluxfox::ImageWriter::new(&mut image)
+                            .with_format(format)
+                            .with_path(path_buf.clone())
+                            .write()
+                        {
+                            Ok(_) => {
+                                log::info!("Floppy image successfully saved: {:?}", path_buf);
+
+                                // emu.gui.set_floppy_selection(
+                                //     *drive_select,
+                                //     None,
+                                //     FloppyDriveSelection::Image(path_buf.clone()),
+                                //     Some(*format),
+                                //     image.compatible_formats(true),
+                                //     None,
+                                // );
+
+                                emu.gui
+                                    .toasts()
+                                    .info(format!("Floppy saved: {:?}", path_buf.file_name().unwrap_or_default()))
+                                    .duration(Some(NORMAL_NOTIFICATION_TIME));
+                            }
+                            Err(err) => {
+                                log::error!("Floppy image failed to save: {}", err);
+
+                                emu.gui
+                                    .toasts()
+                                    .error(format!("Failed to save: {}", err))
+                                    .duration(Some(NORMAL_NOTIFICATION_TIME));
+                            }
+                        }
+                    }
+                }
+                emu.gui.modal.close();
+            }
             FrontendThreadEvent::FloppyImageLoadError(err) => {
                 log::error!("Failed to load floppy image! Error: {}", err);
                 emu.gui
                     .toasts()
                     .error(format!("Floppy load failed: {}", err))
-                    .duration(Some(NORMAL_NOTIFICATION_TIME));
+                    .duration(Some(LONG_NOTIFICATION_TIME));
 
                 emu.gui.modal.close();
             }
             FrontendThreadEvent::FloppyImageBeginLongLoad => {
                 emu.gui
                     .modal
-                    .open(ModalContext::ProgressBar("Loading floppy image...".into(), 0.0), None);
+                    .open(ModalContext::ProgressBar("Loading floppy image...".into(), 0.0));
             }
             FrontendThreadEvent::FloppyImageLoadProgress(title, progress) => {
                 emu.gui
                     .modal
-                    .open(ModalContext::ProgressBar(title.into(), progress as f32), None);
+                    .open(ModalContext::ProgressBar(title.into(), progress as f32));
             }
             FrontendThreadEvent::FloppyImageLoadComplete {
                 drive_select,
@@ -129,7 +186,7 @@ pub fn handle_thread_event(emu: &mut Emulator) {
                 if let Some(fdc) = emu.machine.fdc() {
                     match fdc.attach_image(
                         drive_select,
-                        image,
+                        Arc::<DiskImage>::into_inner(image).unwrap(),
                         path.clone(),
                         emu.config.emulator.media.write_protect_default,
                     ) {

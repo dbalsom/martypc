@@ -38,18 +38,13 @@ use std::{
     time::Duration,
 };
 
-use crate::{
-    app::FileOpenContext,
-    emulator,
-    emulator::Emulator,
-    event_loop::thread_events::FrontendThreadEvent,
-    floppy::load_floppy::handle_load_floppy,
-};
+use crate::{emulator, emulator::Emulator, floppy::load_floppy::handle_load_floppy};
 use display_manager_eframe::EFrameDisplayManager;
 
 use marty_frontend_common::{
     constants::{LONG_NOTIFICATION_TIME, NORMAL_NOTIFICATION_TIME, SHORT_NOTIFICATION_TIME},
     floppy_manager::FloppyError,
+    thread_events::{FileSelectionContext, FrontendThreadEvent},
     types::floppy::FloppyImageSource,
 };
 
@@ -89,12 +84,6 @@ use std::thread::spawn;
 
 #[cfg(target_arch = "wasm32")]
 use crate::wasm::worker::spawn_closure_worker as spawn;
-
-#[derive(Clone, Debug)]
-pub enum FileSelectionContext {
-    Index(usize),
-    Path(PathBuf),
-}
 
 //noinspection RsBorrowChecker
 pub fn handle_egui_event(emu: &mut Emulator, dm: &mut EFrameDisplayManager, gui_event: &GuiEvent) {

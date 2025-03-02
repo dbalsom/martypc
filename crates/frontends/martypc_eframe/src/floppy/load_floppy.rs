@@ -35,16 +35,14 @@ use crate::app::FileOpenContext;
 #[cfg(target_arch = "wasm32")]
 use crate::wasm::{file_open::open_file, worker::spawn};
 
-use crate::{
-    emulator::Emulator,
-    event_loop::{egui_events::FileSelectionContext, thread_events::FrontendThreadEvent},
-};
+use crate::emulator::Emulator;
 use fluxfox::{DiskImage, LoadingStatus};
 use marty_core::device_types::fdc::FloppyImageType;
 use marty_egui::state::FloppyDriveSelection;
 use marty_frontend_common::{
     constants::NORMAL_NOTIFICATION_TIME,
     floppy_manager::FloppyError,
+    thread_events::{FileSelectionContext, FrontendThreadEvent},
     types::floppy::FloppyImageSource,
 };
 
@@ -107,6 +105,9 @@ pub fn handle_load_floppy(emu: &mut Emulator, drive_select: usize, context: File
 
                 log::info!("Loading floppy image by path: {:?} into drive: {}", path, drive_select);
                 //floppy_result = Some(emu.floppy_manager.load_floppy_by_path(path, &emu.rm).await);
+            }
+            _ => {
+                log::warn!("Invalid file selection context for floppy image load.");
             }
         }
 
@@ -181,7 +182,7 @@ pub fn handle_load_floppy(emu: &mut Emulator, drive_select: usize, context: File
                             Ok(disk_image) => {
                                 _ = sender.send(FrontendThreadEvent::FloppyImageLoadComplete {
                                     drive_select,
-                                    image: disk_image,
+                                    image: Arc::new(disk_image),
                                     item: context,
                                     path: Some(floppy_path),
                                 });
@@ -243,7 +244,7 @@ pub fn load_floppy_image(
             Ok(disk_image) => {
                 _ = inner_sender.send(FrontendThreadEvent::FloppyImageLoadComplete {
                     drive_select,
-                    image: disk_image,
+                    image: Arc::new(disk_image),
                     item: context,
                     path: inner_path,
                 });
