@@ -31,9 +31,9 @@ use std::{ffi::OsString, io::Cursor, path::Path, sync::Arc};
 use std::thread::spawn;
 
 #[cfg(target_arch = "wasm32")]
-use crate::app::FileOpenContext;
-#[cfg(target_arch = "wasm32")]
 use crate::wasm::{file_open::open_file, worker::spawn};
+#[cfg(target_arch = "wasm32")]
+use marty_frontend_common::thread_events::FileOpenContext;
 
 use crate::emulator::Emulator;
 use fluxfox::{DiskImage, LoadingStatus};

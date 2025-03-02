@@ -73,23 +73,45 @@ impl GuiState {
                     let mut resolved_context = context;
                     let rfd_handle = task.await;
 
-                    return if let Some(file_handle) = rfd_handle {
-                        let path_buf = file_handle.path().to_path_buf();
-                        resolved_context.set_fsc(FileSelectionContext::Path(path_buf.clone()));
+                    #[cfg(not(target_arch = "wasm32"))]
+                    {
+                        return if let Some(file_handle) = rfd_handle {
+                            let path_buf = file_handle.path().to_path_buf();
+                            resolved_context.set_fsc(FileSelectionContext::Path(path_buf.clone()));
 
-                        // Load the file
-                        match std::fs::read(&path_buf) {
-                            Ok(vec) => FrontendThreadEvent::FileOpenDialogComplete {
-                                context: resolved_context,
-                                path: Some(path_buf),
-                                contents: vec,
-                            },
-                            Err(e) => FrontendThreadEvent::FileOpenError(resolved_context, e.to_string()),
+                            // Load the file
+                            match std::fs::read(&path_buf) {
+                                Ok(vec) => FrontendThreadEvent::FileOpenDialogComplete {
+                                    context: resolved_context,
+                                    path: Some(path_buf),
+                                    contents: vec,
+                                },
+                                Err(e) => FrontendThreadEvent::FileOpenError(resolved_context, e.to_string()),
+                            }
                         }
+                        else {
+                            FrontendThreadEvent::FileDialogCancelled
+                        };
                     }
-                    else {
-                        FrontendThreadEvent::FileDialogCancelled
-                    };
+
+                    #[cfg(target_arch = "wasm32")]
+                    {
+                        use std::path::PathBuf;
+                        return if let Some(file_handle) = rfd_handle {
+                            let file_name = file_handle.file_name().to_string();
+                            resolved_context.set_fsc(FileSelectionContext::Path(PathBuf::from(file_name.clone())));
+
+                            // Read file contents asynchronously
+                            FrontendThreadEvent::FileOpenDialogComplete {
+                                context: resolved_context,
+                                path: None, // No path available on WASM
+                                contents: file_handle.read().await,
+                            }
+                        }
+                        else {
+                            FrontendThreadEvent::FileDialogCancelled
+                        };
+                    }
                 });
             }
         }
@@ -111,18 +133,38 @@ impl GuiState {
                 exec_async(self.thread_sender.clone(), async {
                     let rfd_handle = task.await;
 
-                    return if let Some(file_handle) = rfd_handle {
-                        let path_buf = file_handle.path().to_path_buf();
-                        let fsc = FileSelectionContext::Path(path_buf.clone());
+                    #[cfg(not(target_arch = "wasm32"))]
+                    {
+                        return if let Some(file_handle) = rfd_handle {
+                            let path_buf = file_handle.path().to_path_buf();
+                            let fsc = FileSelectionContext::Path(path_buf.clone());
 
-                        let mut new_context = context;
-                        new_context.set_fsc(fsc);
+                            let mut new_context = context;
+                            new_context.set_fsc(fsc);
 
-                        FrontendThreadEvent::FileSaveDialogComplete(new_context)
+                            FrontendThreadEvent::FileSaveDialogComplete(new_context)
+                        }
+                        else {
+                            FrontendThreadEvent::FileDialogCancelled
+                        };
                     }
-                    else {
-                        FrontendThreadEvent::FileDialogCancelled
-                    };
+
+                    #[cfg(target_arch = "wasm32")]
+                    {
+                        use std::path::PathBuf;
+                        return if let Some(file_handle) = rfd_handle {
+                            let file_name = file_handle.file_name().to_string();
+                            let fsc = FileSelectionContext::Path(PathBuf::from(file_name.clone()));
+
+                            let mut new_context = context;
+                            new_context.set_fsc(fsc);
+
+                            FrontendThreadEvent::FileSaveDialogComplete(new_context)
+                        }
+                        else {
+                            FrontendThreadEvent::FileDialogCancelled
+                        };
+                    }
                 });
             }
         }

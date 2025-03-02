@@ -24,9 +24,13 @@
 
     --------------------------------------------------------------------------
 */
-use crate::{app::FileOpenContext, event_loop::thread_events::FrontendThreadEvent};
 
-use crate::event_loop::egui_events::FileSelectionContext;
+use std::sync::Arc;
+
+use marty_frontend_common::thread_events::{FileOpenContext, FileSelectionContext, FrontendThreadEvent};
+
+use fluxfox::DiskImage;
+
 use anyhow::{anyhow, Error};
 use wasm_bindgen::JsCast;
 use wasm_bindgen_futures::{spawn_local, JsFuture};
@@ -34,12 +38,13 @@ use web_sys::{js_sys::Uint8Array, window, Event, FileReader, HtmlInputElement};
 
 pub fn open_file(
     context: FileOpenContext,
-    sender: crossbeam_channel::Sender<FrontendThreadEvent>,
+    sender: crossbeam_channel::Sender<FrontendThreadEvent<Arc<DiskImage>>>,
 ) -> Result<(), Error> {
     let path = match context {
         FileOpenContext::FloppyDiskImage { drive_select, ref fsc } => match fsc {
             FileSelectionContext::Path(path) => path,
             FileSelectionContext::Index(index) => return Err(anyhow!("Index context not supported on wasm")),
+            FileSelectionContext::Uninitialized => return Err(anyhow!("Uninitialized context!")),
         },
         FileOpenContext::CartridgeImage { slot_select, fsc } => {
             return Err(anyhow!("Cartridge image not supported on wasm"));
@@ -100,7 +105,10 @@ pub fn open_file(
 /// 3. Triggering `.click()`.
 ///
 /// This doesn't seem to work on Safari. Safari requires a user gesture to open the file dialog.
-pub fn open_file_dialog(context: FileOpenContext, sender: crossbeam_channel::Sender<FrontendThreadEvent>) {
+pub fn open_file_dialog(
+    context: FileOpenContext,
+    sender: crossbeam_channel::Sender<FrontendThreadEvent<Arc<DiskImage>>>,
+) {
     use wasm_bindgen::{closure::Closure, JsCast};
     use web_sys::{Event, HtmlInputElement};
 

@@ -605,11 +605,11 @@ impl eframe::App for MartyApp {
                                     let surface = dtc.surface().unwrap();
                                     let texture = surface.read().unwrap().backing_texture();
                                     let uv_rect = egui::Rect::from_min_max(egui::pos2(0.0, 0.0), egui::pos2(1.0, 1.0));
-                                    log::debug!(
-                                        "Drawing main display with glow: {}x{}",
-                                        texture.size()[0],
-                                        texture.size()[1]
-                                    );
+                                    // log::trace!(
+                                    //     "Drawing main display with glow: {}x{}",
+                                    //     texture.size()[0],
+                                    //     texture.size()[1]
+                                    // );
                                     ui.painter().image(texture.id(), rect, uv_rect, egui::Color32::WHITE);
 
                                     // let _ = dm.with_surface_mut(DtHandle::MAIN, |backend, surface| {

@@ -3759,6 +3759,7 @@ dependencies = [
  "strum_macros",
  "toml 0.8.19",
  "url",
+ "wasm-bindgen-futures",
  "web-time 1.1.0",
  "wgpu 23.0.1",
  "zip",

@@ -197,6 +197,7 @@ pub enum GuiEvent {
     CreateVHD(OsString, HardDiskFormat),
     LoadQuickFloppy(usize, usize),
     RequestLoadFloppyDialog(usize),
+    RequestSaveFloppyDialog(usize, DiskImageFileFormat),
     LoadFloppyAs(usize, PathBuf),
     LoadAutoFloppy(usize, PathBuf),
     SaveFloppy(usize, usize),                          // Drive index, disk index

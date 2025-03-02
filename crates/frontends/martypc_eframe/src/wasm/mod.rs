@@ -26,6 +26,7 @@
 */
 
 pub mod file_open;
+pub mod file_save;
 pub mod util;
 pub mod worker;
 

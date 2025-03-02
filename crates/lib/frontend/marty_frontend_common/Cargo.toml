@@ -44,6 +44,7 @@ zip = { workspace = true, default-features = false, features = ["bzip2", "deflat
 [target.'cfg(target_arch = "wasm32")'.dependencies]
 # wasm32 doesn't support bzip2 or zstd which are FFI bindings
 zip = { workspace = true, default-features = false, features = ["deflate", "deflate64", "lzma"] }
+wasm-bindgen-futures.workspace = true
 
 [dependencies.fatfs]
 git = "https://github.com/dbalsom/fatfs_martypc.git"

@@ -548,27 +548,32 @@ impl GuiState {
                     }
                 });
 
-                ui.horizontal(|ui| {
-                    if let Some(floppy_name) = &self.floppy_drives[drive_idx].filename() {
-                        ui.add_enabled_ui(self.floppy_drives[drive_idx].is_writeable(), |ui| {
-                            let type_str = self.floppy_drives[drive_idx].type_string();
-                            if ui.button(format!("💾 Save {}{}", type_str, floppy_name)).clicked() {
-                                if let Some(floppy_path) = self.floppy_drives[drive_idx].file_path() {
-                                    if let Some(fmt) = self.floppy_drives[drive_idx].source_format {
-                                        self.event_queue.send(GuiEvent::SaveFloppyAs(
-                                            drive_idx,
-                                            fmt,
-                                            floppy_path.clone(),
-                                        ));
+                // Add 'Save' option for native build to write back to the currently loaded disk image.
+                // This is disabled in the browser due since we can't write to the loaded image.
+                #[cfg(not(target_arch = "wasm32"))]
+                {
+                    ui.horizontal(|ui| {
+                        if let Some(floppy_name) = &self.floppy_drives[drive_idx].filename() {
+                            ui.add_enabled_ui(self.floppy_drives[drive_idx].is_writeable(), |ui| {
+                                let type_str = self.floppy_drives[drive_idx].type_string();
+                                if ui.button(format!("💾 Save {}{}", type_str, floppy_name)).clicked() {
+                                    if let Some(floppy_path) = self.floppy_drives[drive_idx].file_path() {
+                                        if let Some(fmt) = self.floppy_drives[drive_idx].source_format {
+                                            self.event_queue.send(GuiEvent::SaveFloppyAs(
+                                                drive_idx,
+                                                fmt,
+                                                floppy_path.clone(),
+                                            ));
+                                        }
                                     }
                                 }
-                            }
-                        });
-                    }
-                    else {
-                        ui.add_enabled(false, egui::Button::new("Save image: <No Image File>"));
-                    }
-                });
+                            });
+                        }
+                        else {
+                            ui.add_enabled(false, egui::Button::new("Save image: <No Image File>"));
+                        }
+                    });
+                }
 
                 // Add 'Save As' options for compatible formats.
                 for format_tuple in &self.floppy_drives[drive_idx].supported_formats {
@@ -581,23 +586,30 @@ impl GuiState {
                             .button(format!("Save As .{}...", extensions[0].to_uppercase()))
                             .clicked()
                         {
-                            let fc = FileSaveContext::FloppyDiskImage {
-                                drive_select: drive_idx,
-                                format: fmt,
-                                fsc: FileSelectionContext::Uninitialized,
-                            };
+                            #[cfg(target_arch = "wasm32")]
+                            {
+                                self.event_queue.send(GuiEvent::RequestSaveFloppyDialog(drive_idx, fmt));
+                            }
+                            #[cfg(not(target_arch = "wasm32"))]
+                            {
+                                let fc = FileSaveContext::FloppyDiskImage {
+                                    drive_select: drive_idx,
+                                    format: fmt,
+                                    fsc: FileSelectionContext::Uninitialized,
+                                };
 
-                            let mut filter_vec = Vec::new();
-                            let exts = fmt.extensions();
-                            filter_vec.push(FileDialogFilter::new(fmt_name, exts));
+                                let mut filter_vec = Vec::new();
+                                let exts = fmt.extensions();
+                                filter_vec.push(FileDialogFilter::new(fmt_name, exts));
 
-                            self.save_file_dialog(fc, "Save Floppy Disk Image", filter_vec);
+                                self.save_file_dialog(fc, "Save Floppy Disk Image", filter_vec);
 
-                            self.modal.open(ModalContext::Notice(
-                                "A native File Save dialog is open.\nPlease make a selection or cancel to continue."
-                                    .to_string(),
-                            ));
-                            ui.close_menu();
+                                self.modal.open(ModalContext::Notice(
+                                    "A native File Save dialog is open.\nPlease make a selection or cancel to continue."
+                                        .to_string(),
+                                ));
+                                ui.close_menu();
+                            }
                         }
                     }
                 }
@@ -667,9 +679,11 @@ impl GuiState {
             };
 
             ui.add_enabled_ui(have_cart, |ui| {
-                if ui.button(detatch_string).clicked() {
-                    self.event_queue.send(GuiEvent::RemoveCartridge(cart_idx));
-                }
+                ui.horizontal(|ui| {
+                    if ui.button(detatch_string).clicked() {
+                        self.event_queue.send(GuiEvent::RemoveCartridge(cart_idx));
+                    }
+                });
             });
         });
     }

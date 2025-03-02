@@ -39,6 +39,13 @@ pub fn exec_async<F: Future<Output = S> + Send + 'static, S: Send + 'static>(sen
 }
 
 #[cfg(target_arch = "wasm32")]
-pub fn exec_async<F: Future<Output = S> + 'static, S: 'static>(sender: Sender<S>, f: F) {
-    wasm_bindgen_futures::spawn_local(f);
+pub fn exec_async<F, S>(sender: Sender<S>, f: F)
+where
+    F: Future<Output = S> + 'static,
+    S: 'static,
+{
+    wasm_bindgen_futures::spawn_local(async move {
+        let result = f.await;
+        sender.send(result).expect("Failed to send result");
+    });
 }

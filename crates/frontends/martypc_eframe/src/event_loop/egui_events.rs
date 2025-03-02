@@ -369,41 +369,41 @@ pub fn handle_egui_event(emu: &mut Emulator, dm: &mut EFrameDisplayManager, gui_
                     Some(name) => {
                         log::info!("Loading cart image: {:?} into slot: {}", name, slot_select);
 
-                        // match emu.cart_manager.load_cart_data(*item_idx, &emu.rm).await {
-                        //     Ok(cart_image) => match cart_slot.insert_cart(*slot_select, cart_image) {
-                        //         Ok(()) => {
-                        //             log::info!("Cart image successfully loaded into slot: {}", slot_select);
-                        //
-                        //             emu.gui.set_cart_selection(
-                        //                 *slot_select,
-                        //                 Some(*item_idx),
-                        //                 Some(name.clone().into()),
-                        //             );
-                        //
-                        //             emu.gui
-                        //                 .toasts()
-                        //                 .info(format!("Cartridge inserted: {:?}", name.clone()))
-                        //                 .duration(Some(NORMAL_NOTIFICATION_TIME));
-                        //
-                        //             // Inserting a cartridge reboots the machine due to a switch in the cartridge slot.
-                        //             reboot = true;
-                        //         }
-                        //         Err(err) => {
-                        //             log::error!("Cart image failed to load into slot {}: {}", slot_select, err);
-                        //             emu.gui
-                        //                 .toasts()
-                        //                 .error(format!("Cartridge load failed: {}", err))
-                        //                 .duration(Some(NORMAL_NOTIFICATION_TIME));
-                        //         }
-                        //     },
-                        //     Err(err) => {
-                        //         log::error!("Failed to load cart image: {:?} Error: {}", item_idx, err);
-                        //         emu.gui
-                        //             .toasts()
-                        //             .error(format!("Cartridge load failed: {}", err))
-                        //             .duration(Some(NORMAL_NOTIFICATION_TIME));
-                        //     }
-                        // }
+                        match emu.cart_manager.load_cart_data(*item_idx, &mut emu.rm) {
+                            Ok(cart_image) => match cart_slot.insert_cart(*slot_select, cart_image) {
+                                Ok(()) => {
+                                    log::info!("Cart image successfully loaded into slot: {}", slot_select);
+
+                                    emu.gui.set_cart_selection(
+                                        *slot_select,
+                                        Some(*item_idx),
+                                        Some(name.clone().into()),
+                                    );
+
+                                    emu.gui
+                                        .toasts()
+                                        .info(format!("Cartridge inserted: {:?}", name.clone()))
+                                        .duration(Some(NORMAL_NOTIFICATION_TIME));
+
+                                    // Inserting a cartridge reboots the machine due to a switch in the cartridge slot.
+                                    reboot = true;
+                                }
+                                Err(err) => {
+                                    log::error!("Cart image failed to load into slot {}: {}", slot_select, err);
+                                    emu.gui
+                                        .toasts()
+                                        .error(format!("Cartridge load failed: {}", err))
+                                        .duration(Some(NORMAL_NOTIFICATION_TIME));
+                                }
+                            },
+                            Err(err) => {
+                                log::error!("Failed to load cart image: {:?} Error: {}", item_idx, err);
+                                emu.gui
+                                    .toasts()
+                                    .error(format!("Cartridge load failed: {}", err))
+                                    .duration(Some(NORMAL_NOTIFICATION_TIME));
+                            }
+                        }
                     }
                     None => {
                         emu.gui
@@ -442,11 +442,64 @@ pub fn handle_egui_event(emu: &mut Emulator, dm: &mut EFrameDisplayManager, gui_
             log::debug!("Requesting floppy load dialog for drive: {}", drive_select);
             #[cfg(target_arch = "wasm32")]
             {
+                use marty_frontend_common::thread_events::FileOpenContext;
                 let context = FileOpenContext::FloppyDiskImage {
                     drive_select: *drive_select,
                     fsc: FileSelectionContext::Path(PathBuf::new()),
                 };
                 file_open::open_file_dialog(context, emu.sender.clone());
+            }
+        }
+        GuiEvent::RequestSaveFloppyDialog(drive_select, format) => {
+            // User requested a file dialog to load a floppy image into the indicated drive slot.
+            log::debug!(
+                "Requesting floppy save dialog for drive: {}, format: {:?}",
+                drive_select,
+                format
+            );
+            // TODO: Implement save floppy image on web
+            //       ImageBuilder needs to be able to accept a Writer (`with_writer` perhaps?)
+            #[cfg(target_arch = "wasm32")]
+            {
+                // if let Some(fdc) = emu.machine.fdc() {
+                //     let (disk_image_opt, _) = fdc.get_image(*drive_select);
+                //     if let Some(floppy_image) = disk_image_opt {
+                //         let mut image = floppy_image.write().unwrap();
+                //         match fluxfox::ImageWriter::new(&mut image)
+                //             .with_format(*format)
+                //             .with_path(filepath.clone())
+                //             .write()
+                //         {
+                //             Ok(_) => {
+                //                 log::info!("Floppy image successfully saved: {:?}", filepath);
+                //
+                //                 emu.gui.set_floppy_selection(
+                //                     *drive_select,
+                //                     None,
+                //                     FloppyDriveSelection::Image(filepath.clone()),
+                //                     Some(*format),
+                //                     image.compatible_formats(true),
+                //                     None,
+                //                 );
+                //
+                //                 emu.gui
+                //                     .toasts()
+                //                     .info(format!("Floppy saved: {:?}", filepath.file_name().unwrap_or_default()))
+                //                     .duration(Some(NORMAL_NOTIFICATION_TIME));
+                //             }
+                //             Err(err) => {
+                //                 log::error!("Floppy image failed to save: {}", err);
+                //
+                //                 emu.gui
+                //                     .toasts()
+                //                     .error(format!("Failed to save: {}", err))
+                //                     .duration(Some(NORMAL_NOTIFICATION_TIME));
+                //             }
+                //         }
+                //     }
+                // }
+
+                //file_save::save_file_dialog(context, emu.sender.clone());
             }
         }
         GuiEvent::LoadQuickFloppy(drive_select, item_idx) => {

@@ -32,7 +32,6 @@
 
 use std::{
     ffi::{OsStr, OsString},
-    fs,
     io::Cursor,
     path::{Path, PathBuf},
 };
