@@ -57,6 +57,23 @@ pub enum FloppyViewerResolution {
     Sector = 3,
 }
 
+#[derive(Copy, Clone)]
+pub struct VizState {
+    pub unsupported: bool,
+    pub update_pending: bool,
+    pub write_ct: u64,
+}
+
+impl VizState {
+    pub fn default() -> Self {
+        Self {
+            unsupported: true,
+            update_pending: false,
+            write_ct: 0,
+        }
+    }
+}
+
 pub struct FloppyViewerControl {
     init: bool,
     drive_idx: usize,
@@ -69,13 +86,10 @@ pub struct FloppyViewerControl {
 
     viz: [DiskVisualization; 4],
 
-    palette: HashMap<GenericTrackElement, VizColor>,
-    viz_unsupported: bool,
-    viz_write_cts: Vec<u64>,
+    palette:   HashMap<GenericTrackElement, VizColor>,
+    viz_state: Vec<VizState>,
 
     rendered_disk: usize,
-    draw_deferred: bool,
-    deferred_ct:   u32,
 }
 
 impl FloppyViewerControl {
@@ -120,12 +134,9 @@ impl FloppyViewerControl {
                 (GenericTrackElement::Marker, vis_purple),
             ]),
 
-            viz_unsupported: true,
-            viz_write_cts: vec![0; 4],
+            viz_state: vec![VizState::default(); 4],
 
             rendered_disk: 0,
-            draw_deferred: false,
-            deferred_ct: 0,
         }
     }
 
@@ -146,9 +157,7 @@ impl FloppyViewerControl {
         self.head_idx = 0;
         self.track_idx = 0;
         self.sector_idx = 1;
-        self.viz_write_cts = vec![0; 4];
-        self.draw_deferred = false;
-        self.deferred_ct = 0;
+        self.viz_state = vec![VizState::default(); 4];
     }
 
     pub fn draw(&mut self, ui: &mut egui::Ui, _events: &mut GuiEventQueue) {
@@ -193,7 +202,7 @@ impl FloppyViewerControl {
                             if ui.selectable_value(&mut self.drive_idx, i, format!("{}", i)).clicked() {
                                 // Set write counter to 0 if drive is clicked so that we regen the visualization
                                 // on the next update.
-                                self.viz_write_cts[self.drive_idx] = 0;
+                                self.viz_state[self.drive_idx].write_ct = 0;
                             };
                         }
                     });
@@ -209,7 +218,7 @@ impl FloppyViewerControl {
                                     if ui.selectable_value(&mut self.head_idx, i, format!("{}", i)).clicked() {
                                         // Set write counter to 0 if head is clicked so that we regen the visualization
                                         // on the next update.
-                                        self.viz_write_cts[self.drive_idx] = 0;
+                                        self.viz_state[self.drive_idx].write_ct = 0;
                                     }
                                 }
                             })
@@ -303,6 +312,18 @@ impl FloppyViewerControl {
     fn draw_sector_data(&mut self, ui: &mut egui::Ui, _events: &mut GuiEventQueue) {}
 
     fn draw_disk_data(&mut self, ui: &mut egui::Ui, _events: &mut GuiEventQueue) {
+        // Render the visualization if it hasn't been rendered yet
+        // log::debug!(
+        //     "draw_disk_data(): drive_idx: {}, pending update: {}",
+        //     self.drive_idx,
+        //     self.viz_state[self.drive_idx].update_pending
+        // );
+        if self.viz_state[self.drive_idx].update_pending {
+            log::debug!("Rendering visualization for drive {}...", self.drive_idx);
+            self.render(self.drive_idx);
+            self.viz_state[self.drive_idx].update_pending = false;
+        }
+
         if self.viz[self.drive_idx].compatible {
             if let Some(new_event) = self.viz[self.drive_idx].show(ui) {
                 match new_event {
@@ -317,19 +338,20 @@ impl FloppyViewerControl {
         }
         else {
             ui.label("Current disk image not compatible with visualization.");
-            log::error!("Visualization not compatible with current disk image.");
+            //log::error!("Visualization not compatible with current disk image.");
         }
     }
 
     pub fn clear_visualization(&mut self, drive: usize) {
-        self.viz_unsupported = true;
         self.rendered_disk = 0xFF;
-        self.viz_write_cts[drive] = 0;
+        self.viz_state[drive] = VizState::default();
     }
 
     pub fn set_disk(&mut self, drive: usize, disk_lock: Arc<RwLock<DiskImage>>) {
-        self.viz[drive % 4].update_disk(disk_lock);
-        self.render(drive);
+        let drive = drive % 4;
+        self.viz[drive].update_disk(disk_lock);
+        log::warn!("set_disk: drive: {}, setting pending update", drive);
+        self.viz_state[drive].update_pending = true;
     }
 
     fn render(&mut self, drive: usize) {
@@ -338,14 +360,16 @@ impl FloppyViewerControl {
     }
 
     pub fn update_visualization(&mut self, drive: usize, write_ct: u64) {
-        if self.viz_write_cts[drive] < write_ct {
+        if self.viz_state[self.drive_idx].write_ct < write_ct {
             log::debug!(
                 "Updating visualization for drive {} (write_ct: {}, viz_write_ct:{})",
                 drive,
                 write_ct,
-                self.viz_write_cts[drive]
+                self.viz_state[self.drive_idx].write_ct
             );
-            self.viz_write_cts[drive] = write_ct;
+
+            self.viz_state[self.drive_idx].update_pending = true;
+            self.viz_state[self.drive_idx].write_ct = write_ct;
 
             // Render here
 
