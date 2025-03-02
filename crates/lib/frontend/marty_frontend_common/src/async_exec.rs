@@ -25,10 +25,27 @@
     --------------------------------------------------------------------------
 */
 
-pub mod file_open;
-pub mod file_save;
-pub mod util;
-pub mod worker;
+//! Async execution functions.
 
-pub use util::get_base_url;
-pub use worker::spawn;
+use crossbeam_channel::Sender;
+use std::future::Future;
+
+#[cfg(not(target_arch = "wasm32"))]
+pub fn exec_async<F: Future<Output = S> + Send + 'static, S: Send + 'static>(sender: Sender<S>, f: F) {
+    std::thread::spawn(move || {
+        let result = pollster::block_on(f);
+        sender.send(result).unwrap();
+    });
+}
+
+#[cfg(target_arch = "wasm32")]
+pub fn exec_async<F, S>(sender: Sender<S>, f: F)
+where
+    F: Future<Output = S> + 'static,
+    S: 'static,
+{
+    wasm_bindgen_futures::spawn_local(async move {
+        let result = f.await;
+        sender.send(result).expect("Failed to send result");
+    });
+}

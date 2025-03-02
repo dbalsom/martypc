@@ -114,7 +114,7 @@ markdown = ["dep:egui_commonmark", "marty_egui/markdown"]
 # Use winit (disabled for wasm builds)
 use_winit = ["dep:egui-winit"]
 # Use the wgpu backend
-use_wgpu = ["eframe/wgpu", "marty_frontend_common/use_wgpu", "display_manager_eframe/use_wgpu"]
+use_wgpu = ["eframe/wgpu", "marty_frontend_common/use_wgpu", "display_manager_eframe/use_wgpu", "marty_egui/scaler_ui"]
 # Use the glow backend
 use_glow = ["eframe/glow", "display_manager_eframe/use_glow"]
 # Use serialport

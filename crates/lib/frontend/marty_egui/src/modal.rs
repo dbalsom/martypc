@@ -30,10 +30,11 @@
 
 */
 use crate::{GuiEvent, GuiEventQueue, PathBuf};
-use egui_file::FileDialog;
+
 use fluxfox::DiskImageFileFormat;
 
 pub enum ModalContext {
+    Notice(String),                                           // Non-interactive dialog with message
     SaveFloppyImage(usize, DiskImageFileFormat, Vec<String>), // Index of the floppy drive, list of extensions
     OpenFloppyImage(usize, Vec<String>),                      // Index of the floppy drive, list of extensions
     ProgressBar(String, f32),                                 // Progress bar with message and progress
@@ -45,8 +46,9 @@ pub struct ProgressWindow {
 }
 
 pub enum ModalDialog {
-    Save(FileDialog),
-    Open(FileDialog),
+    Notice(String),
+    // Save(FileDialog),
+    // Open(FileDialog),
     ProgressBar(ProgressWindow),
 }
 
@@ -72,147 +74,13 @@ impl ModalState {
         self.context.is_some()
     }
 
-    pub fn open(&mut self, context: ModalContext, initial_path: Option<PathBuf>) {
-        // if self.context.is_some() {
-        //     log::warn!("open(): Modal context already open, close it first.");
-        // }
-
-        // let create_filters = move |extensions: Vec<String>| -> (Filter<&str>, Filter<PathBuf>) {
-        //     let select_filter: egui_file::Filter<&str> = Box::new(|path| {
-        //         if extensions.is_empty() {
-        //             return true;
-        //         }
-        //         for ext in &extensions {
-        //             if path.ends_with(ext) {
-        //                 return true;
-        //             }
-        //         }
-        //         false
-        //     });
-        //
-        //     let show_filter: egui_file::Filter<PathBuf> = Box::new(|path| {
-        //         if extensions.is_empty() {
-        //             return true;
-        //         }
-        //         for ext in &extensions {
-        //             let target_ext = path.extension().unwrap_or_default().to_str().unwrap_or_default();
-        //
-        //             if target_ext == ext {
-        //                 return true;
-        //             }
-        //         }
-        //         false
-        //     });
-        //
-        //     (select_filter, show_filter)
-        // };
-
-        // let (select_filter, show_filter) = match &context {
-        //     ModalContext::SaveFloppyImage(_, exts) | ModalContext::OpenFloppyImage(_, exts) => {
-        //         let select_filter: egui_file::Filter<&str> = Box::new(|path| {
-        //             if exts.is_empty() {
-        //                 return true;
-        //             }
-        //             for ext in exts {
-        //                 if path.ends_with(ext) {
-        //                     return true;
-        //                 }
-        //             }
-        //             false
-        //         });
-        //
-        //         let show_filter: egui_file::Filter<PathBuf> = Box::new(|path| {
-        //             if exts.is_empty() {
-        //                 return true;
-        //             }
-        //             for ext in exts {
-        //                 let target_ext = path.extension().unwrap_or_default().to_str().unwrap_or_default();
-        //
-        //                 if target_ext == ext {
-        //                     return true;
-        //                 }
-        //             }
-        //             false
-        //         });
-        //
-        //         (select_filter, show_filter)
-        //     }
-        // };
-
+    pub fn open(&mut self, context: ModalContext) {
         match &context {
-            ModalContext::SaveFloppyImage(_, _, exts) => {
-                let select_exts = exts.clone();
-                let show_exts = exts.clone();
-                let select_filter: egui_file::Filter<&str> = Box::new(move |path| {
-                    if select_exts.is_empty() {
-                        return true;
-                    }
-                    for ext in &select_exts {
-                        if path.ends_with(ext) {
-                            return true;
-                        }
-                    }
-                    false
-                });
-
-                let show_filter: egui_file::Filter<PathBuf> = Box::new(move |path| {
-                    if show_exts.is_empty() {
-                        return true;
-                    }
-                    for ext in &show_exts {
-                        let target_ext = path.extension().unwrap_or_default().to_str().unwrap_or_default();
-
-                        if target_ext == ext {
-                            return true;
-                        }
-                    }
-                    false
-                });
-
-                let mut dialog = FileDialog::save_file(initial_path)
-                    .title(&format!("Save Floppy Image (As {})...", exts.join(", ")))
-                    .default_pos((20.0, 40.0))
-                    .filename_filter(select_filter)
-                    .show_files_filter(show_filter);
-                dialog.open();
-                self.dialog = Some(ModalDialog::Save(dialog))
+            ModalContext::Notice(msg) => {
+                self.dialog = Some(ModalDialog::Notice(msg.clone()));
             }
-            ModalContext::OpenFloppyImage(_, exts) => {
-                let select_exts = exts.clone();
-                let show_exts = exts.clone();
-                let select_filter: egui_file::Filter<&str> = Box::new(move |path| {
-                    if select_exts.is_empty() {
-                        return true;
-                    }
-                    for ext in &select_exts {
-                        if path.ends_with(ext) {
-                            return true;
-                        }
-                    }
-                    false
-                });
-
-                let show_filter: egui_file::Filter<PathBuf> = Box::new(move |path| {
-                    if show_exts.is_empty() {
-                        return true;
-                    }
-                    for ext in &show_exts {
-                        let target_ext = path.extension().unwrap_or_default().to_str().unwrap_or_default();
-
-                        if target_ext == ext {
-                            return true;
-                        }
-                    }
-                    false
-                });
-                let mut dialog = FileDialog::open_file(initial_path)
-                    .title("Open Floppy Image")
-                    .default_pos((20.0, 40.0))
-                    .filename_filter(select_filter)
-                    .show_files_filter(show_filter);
-                dialog.open();
-                self.dialog = Some(ModalDialog::Open(dialog));
-            }
+            ModalContext::SaveFloppyImage(_, _, _exts) => {}
+            ModalContext::OpenFloppyImage(_, _exts) => {}
             ModalContext::ProgressBar(title, progress) => {
                 self.dialog = Some(ModalDialog::ProgressBar(ProgressWindow {
                     title:    title.clone(),
@@ -234,31 +102,40 @@ impl ModalState {
         let mut dialog_resolved = false;
 
         match &mut self.dialog {
-            Some(ModalDialog::Save(dialog)) | Some(ModalDialog::Open(dialog)) => {
-                if dialog.show(ctx).selected() {
-                    if let Some(path) = dialog.path() {
-                        self.selected_path = Some(path.to_path_buf());
-                        //log::warn!("Selected dialog path: {:?}", &self.selected_path.as_ref().unwrap());
-                        dialog_resolved = true;
-                    }
-                }
+            // Some(ModalDialog::Save(dialog)) | Some(ModalDialog::Open(dialog)) => {
+            //     if dialog.show(ctx).selected() {
+            //         if let Some(path) = dialog.path() {
+            //             self.selected_path = Some(path.to_path_buf());
+            //             //log::warn!("Selected dialog path: {:?}", &self.selected_path.as_ref().unwrap());
+            //             dialog_resolved = true;
+            //         }
+            //     }
+            //
+            //     if matches!(dialog.state(), egui_file::State::Cancelled | egui_file::State::Closed) {
+            //         self.selected_path = None;
+            //         dialog_resolved = true;
+            //     }
+            //
+            //     if dialog_resolved {
+            //         if let Some(path) = &self.selected_path {
+            //             log::warn!("Selected dialog path: {:?}", path);
+            //             self.resolve(events);
+            //         }
+            //
+            //         self.context = None;
+            //         self.dialog = None;
+            //         self.extensions.clear();
+            //     }
+            //     //log::warn!("dialog state: {:?}", dialog.state());
+            // }
+            Some(ModalDialog::Notice(msg)) => {
+                let id = egui::Id::new("modal_notice");
+                let mut modal = egui::Modal::new(id);
 
-                if matches!(dialog.state(), egui_file::State::Cancelled | egui_file::State::Closed) {
-                    self.selected_path = None;
-                    dialog_resolved = true;
-                }
-
-                if dialog_resolved {
-                    if let Some(path) = &self.selected_path {
-                        log::warn!("Selected dialog path: {:?}", path);
-                        self.resolve(events);
-                    }
-
-                    self.context = None;
-                    self.dialog = None;
-                    self.extensions.clear();
-                }
-                //log::warn!("dialog state: {:?}", dialog.state());
+                modal.show(ctx, |ui| {
+                    let label_text = msg.clone();
+                    ui.label(label_text);
+                });
             }
             Some(ModalDialog::ProgressBar(progress)) => {
                 egui::Window::new(progress.title.clone())
@@ -277,6 +154,9 @@ impl ModalState {
     fn resolve(&mut self, event_queue: &mut GuiEventQueue) {
         if let Some(context) = &self.context {
             match context {
+                ModalContext::Notice(_) => {
+                    // Nothing to do to resolve a Notice
+                }
                 ModalContext::SaveFloppyImage(drive_idx, format, _) => {
                     if let Some(path) = &self.selected_path {
                         log::debug!("ModalState::resolve(): Sending SaveFloppyAs event for drive {} with format {:?} and path {:?}", drive_idx, format, path);

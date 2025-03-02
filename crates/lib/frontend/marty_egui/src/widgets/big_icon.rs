@@ -29,7 +29,7 @@
     Displays a big icon designed to flow in-line with text.
 */
 
-use egui::Response;
+use egui::{Color32, Response, Ui, Widget};
 
 #[allow(dead_code)]
 pub enum IconType {
@@ -40,44 +40,77 @@ pub enum IconType {
     HardDisk,
 }
 
-impl IconType {
-    pub fn draw(&self, ui: &mut egui::Ui, color: Option<egui::Color32>) -> egui::InnerResponse<Response> {
-        let response = ui.horizontal(|ui| {
-            ui.add_space(6.0);
-            let response = ui.horizontal_centered(|ui| self.icon(ui, color)).response;
-            ui.add_space(6.0);
-            response
-        });
-        response
+pub struct BigIcon {
+    icon_type: IconType,
+    color: Option<Color32>,
+}
+
+impl BigIcon {
+    pub fn new(icon_type: IconType, color: Option<Color32>) -> Self {
+        Self { icon_type, color }
     }
 
-    fn icon(&self, ui: &mut egui::Ui, color: Option<egui::Color32>) -> Response {
-        match self {
+    pub fn show(&self, ui: &mut egui::Ui) -> Response {
+        match self.icon_type {
             IconType::Info => ui.label(
-                egui::RichText::new("🛈")
-                    .color(color.unwrap_or(ui.visuals().text_color()))
+                egui::RichText::new(self.icon_type.symbol())
+                    .color(self.color.unwrap_or(ui.visuals().text_color()))
                     .font(egui::FontId::proportional(40.0)),
             ),
             IconType::Warning => ui.label(
-                egui::RichText::new("⚠")
-                    .color(color.unwrap_or(ui.visuals().warn_fg_color))
+                egui::RichText::new(self.icon_type.symbol())
+                    .color(self.color.unwrap_or(ui.visuals().warn_fg_color))
                     .font(egui::FontId::proportional(40.0)),
             ),
             IconType::Error => ui.label(
-                egui::RichText::new("⛔")
-                    .color(color.unwrap_or(ui.visuals().error_fg_color))
+                egui::RichText::new(self.icon_type.symbol())
+                    .color(self.color.unwrap_or(ui.visuals().error_fg_color))
                     .font(egui::FontId::proportional(40.0)),
             ),
             IconType::Floppy => ui.label(
-                egui::RichText::new("💾")
-                    .color(color.unwrap_or(ui.visuals().text_color()))
+                egui::RichText::new(self.icon_type.symbol())
+                    .color(self.color.unwrap_or(ui.visuals().text_color()))
                     .font(egui::FontId::proportional(40.0)),
             ),
             IconType::HardDisk => ui.label(
-                egui::RichText::new("🖴")
-                    .color(color.unwrap_or(ui.visuals().text_color()))
+                egui::RichText::new(self.icon_type.symbol())
+                    .color(self.color.unwrap_or(ui.visuals().text_color()))
                     .font(egui::FontId::proportional(40.0)),
             ),
         }
+    }
+}
+
+impl IconType {
+    fn default_color(&self, ui: &mut egui::Ui) -> Color32 {
+        match self {
+            IconType::Info => ui.visuals().text_color(),
+            IconType::Warning => ui.visuals().warn_fg_color,
+            IconType::Error => ui.visuals().error_fg_color,
+            IconType::Floppy => ui.visuals().text_color(),
+            IconType::HardDisk => ui.visuals().text_color(),
+        }
+    }
+
+    fn symbol(&self) -> &str {
+        match self {
+            IconType::Info => "🛈",
+            IconType::Warning => "⚠",
+            IconType::Error => "⛔",
+            IconType::Floppy => "💾",
+            IconType::HardDisk => "🖴",
+        }
+    }
+}
+
+impl Widget for BigIcon {
+    fn ui(self, ui: &mut Ui) -> Response {
+        let response = ui.horizontal(|ui| {
+            ui.add_space(6.0);
+            let response = ui.horizontal_centered(|ui| self.show(ui)).response;
+            ui.add_space(6.0);
+            response
+        });
+        response.inner
     }
 }

@@ -2082,15 +2082,6 @@ dependencies = [
 ]
 
 [[package]]
-name = "egui_file"
-version = "0.20.0"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "f85395d17419a23ea2d133394b3a44c50e464d50fd68b1afa36a832105d4668b"
-dependencies = [
- "egui 0.30.0",
-]
-
-[[package]]
 name = "egui_glow"
 version = "0.30.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -3686,12 +3677,10 @@ dependencies = [
  "anyhow",
  "bytemuck",
  "crossbeam-channel",
- "crossbeam-utils",
  "egui 0.30.0",
  "egui-notify",
  "egui_commonmark",
  "egui_extras 0.30.0 (git+https://github.com/dbalsom/egui_martypc.git?branch=0.30.0_raw_winit_hook)",
- "egui_file",
  "egui_plot",
  "fluxfox",
  "fluxfox_egui",
@@ -3703,11 +3692,11 @@ dependencies = [
  "marty_frontend_common",
  "marty_videocard_renderer",
  "regex",
+ "rfd",
  "serde",
  "serialport 4.3.1-alpha.0",
  "strum",
  "strum_macros",
- "tiny-skia",
  "toml 0.8.19",
  "web-time 1.1.0",
 ]
@@ -3750,15 +3739,18 @@ version = "0.4.0"
 dependencies = [
  "anyhow",
  "cfg-if",
+ "crossbeam-channel",
  "display_backend_trait",
  "egui 0.30.0",
  "fatfs 0.4.0 (git+https://github.com/dbalsom/fatfs_martypc.git?branch=master)",
+ "fluxfox",
  "log",
  "marty_common",
  "marty_core",
  "marty_videocard_renderer",
  "marty_web_helpers",
  "md5",
+ "pollster 0.4.0",
  "regex",
  "ringbuf 0.3.3",
  "serde",
@@ -3767,6 +3759,7 @@ dependencies = [
  "strum_macros",
  "toml 0.8.19",
  "url",
+ "wasm-bindgen-futures",
  "web-time 1.1.0",
  "wgpu 23.0.1",
  "zip",

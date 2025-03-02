@@ -17,18 +17,20 @@ marty_web_helpers = { path = "../marty_web_helpers" }
 display_backend_trait = { path = "../../backend/display_backend_trait" }
 marty_videocard_renderer = { path = "../marty_videocard_renderer" }
 marty_core = { path = "../../../marty_core", default-features = false }
+fluxfox = { workspace = true, default-features = false }
 anyhow.workspace = true
 serde = { workspace = true, features = ["derive"] }
 serde_derive.workspace = true
 regex = "1.10"
 md5 = "0.7.0"
-log = "0.4.20"
+log.workspace = true
 toml = "0.8"
 web-time.workspace = true
-strum = "0.26"
-strum_macros = "0.26"
+strum.workspace = true
+strum_macros.workspace = true
 ringbuf = "0.3.3"
-
+crossbeam-channel.workspace = true
+pollster = "0.4"
 
 # Optional feature dependencies
 egui = { workspace = true, optional = true }
@@ -42,6 +44,7 @@ zip = { workspace = true, default-features = false, features = ["bzip2", "deflat
 [target.'cfg(target_arch = "wasm32")'.dependencies]
 # wasm32 doesn't support bzip2 or zstd which are FFI bindings
 zip = { workspace = true, default-features = false, features = ["deflate", "deflate64", "lzma"] }
+wasm-bindgen-futures.workspace = true
 
 [dependencies.fatfs]
 git = "https://github.com/dbalsom/fatfs_martypc.git"

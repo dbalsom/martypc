@@ -53,10 +53,12 @@ pub mod display_manager;
 
 pub mod display_scaler;
 //mod emulator_manager;
+pub mod async_exec;
 pub mod floppy_manager;
 pub mod machine_manager;
 pub mod resource_manager;
 pub mod rom_manager;
+pub mod thread_events;
 pub mod timestep_manager;
 pub mod types;
 pub mod vhd_manager;
@@ -68,6 +70,8 @@ pub type HotkeyScope = types::hotkeys::HotkeyScope;
 pub type HotkeyConfigEntry = types::hotkeys::HotkeyConfigEntry;
 pub type JoyKeyEntry = types::joykeys::JoyKeyEntry;
 pub type RelativeDirectory = types::floppy::RelativeDirectory;
+
+pub use async_exec::exec_async;
 
 #[derive(Copy, Clone, Debug, Default, PartialEq, Deserialize)]
 pub enum BenchmarkEndCondition {

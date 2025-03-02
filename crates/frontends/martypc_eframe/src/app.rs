@@ -27,7 +27,7 @@
 use crate::{
     emulator::Emulator,
     emulator_builder::EmulatorBuilder,
-    event_loop::{egui_events::FileSelectionContext, thread_events::handle_thread_event},
+    event_loop::thread_events::handle_thread_event,
     timestep_update::process_update,
     MARTY_ICON,
 };
@@ -42,6 +42,7 @@ use display_manager_eframe::{
 use marty_egui_eframe::{context::GuiRenderContext, EGUI_MENU_BAR_HEIGHT};
 use marty_frontend_common::{
     display_manager::{DisplayManager, DmGuiOptions},
+    thread_events::*,
     timestep_manager::TimestepManager,
 };
 use marty_web_helpers::FetchResult;
@@ -71,12 +72,6 @@ use marty_videocard_renderer::AspectCorrectionMode;
 use marty_web_helpers::console_writer::ConsoleWriter;
 #[cfg(target_arch = "wasm32")]
 use url::Url;
-
-#[derive(Clone, Debug)]
-pub enum FileOpenContext {
-    FloppyDiskImage { drive_select: usize, fsc: FileSelectionContext },
-    CartridgeImage { slot_select: usize, fsc: FileSelectionContext },
-}
 
 /// We derive Deserialize/Serialize so we can persist app state on shutdown.
 #[derive(serde::Deserialize, serde::Serialize)]
@@ -610,11 +605,11 @@ impl eframe::App for MartyApp {
                                     let surface = dtc.surface().unwrap();
                                     let texture = surface.read().unwrap().backing_texture();
                                     let uv_rect = egui::Rect::from_min_max(egui::pos2(0.0, 0.0), egui::pos2(1.0, 1.0));
-                                    log::debug!(
-                                        "Drawing main display with glow: {}x{}",
-                                        texture.size()[0],
-                                        texture.size()[1]
-                                    );
+                                    // log::trace!(
+                                    //     "Drawing main display with glow: {}x{}",
+                                    //     texture.size()[0],
+                                    //     texture.size()[1]
+                                    // );
                                     ui.painter().image(texture.id(), rect, uv_rect, egui::Color32::WHITE);
 
                                     // let _ = dm.with_surface_mut(DtHandle::MAIN, |backend, surface| {
