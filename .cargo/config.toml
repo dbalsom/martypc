@@ -6,3 +6,8 @@ rustflags = [
     "-C", "link-arg=--max-memory=4294967296",
     "--cfg", "getrandom_backend=\"wasm_js\""
 ]
+
+[target.x86_64-pc-windows-msvc]
+rustflags = [
+    "-C", "link-args=/STACK:8388608",
+]
