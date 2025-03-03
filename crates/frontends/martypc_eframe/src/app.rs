@@ -420,6 +420,12 @@ impl MartyApp {
             }
         });
 
+        // Initialize sound info
+        // -- Update sound sources
+        if let Some(si) = emu.si.as_ref() {
+            emu.gui.init_sound_info(si.info());
+        }
+
         // Insert floppies specified in config.
         match emu.insert_floppies(emu.sender.clone()) {
             Ok(_) => {

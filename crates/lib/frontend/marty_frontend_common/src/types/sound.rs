@@ -37,4 +37,5 @@ pub struct SoundSourceInfo {
     pub channels: u16,
     pub sample_ct: u64,
     pub volume: f32,
+    pub muted: bool,
 }

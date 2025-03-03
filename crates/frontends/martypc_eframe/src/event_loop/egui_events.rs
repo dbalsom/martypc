@@ -120,6 +120,19 @@ pub fn handle_egui_event(emu: &mut Emulator, dm: &mut EFrameDisplayManager, gui_
                 _ => {}
             },
             GuiVariable::Enum(op) => match ctx {
+                GuiVariableContext::SoundSource(s_idx) => match op {
+                    GuiEnum::AudioMuted(state) => {
+                        if let Some(si) = &mut emu.si {
+                            si.set_volume(*s_idx, None, Some(*state));
+                        }
+                    }
+                    GuiEnum::AudioVolume(vol) => {
+                        if let Some(si) = &mut emu.si {
+                            si.set_volume(*s_idx, Some(*vol), None);
+                        }
+                    }
+                    _ => {}
+                },
                 GuiVariableContext::Display(dth) => match op {
                     GuiEnum::DisplayType(display_type) => {
                         log::debug!("Got display type update event: {:?}", display_type);

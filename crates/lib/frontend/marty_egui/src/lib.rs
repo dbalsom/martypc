@@ -155,6 +155,7 @@ pub enum GuiBoolean {
 pub enum GuiVariableContext {
     Global,
     Display(DtHandle),
+    SoundSource(usize),
     SerialPort(usize),
 }
 impl Default for GuiVariableContext {
@@ -163,7 +164,7 @@ impl Default for GuiVariableContext {
     }
 }
 
-#[derive(Clone, Debug, PartialEq, Eq)]
+#[derive(Clone, Debug, PartialEq)]
 pub enum GuiEnum {
     DisplayType(DisplayTargetType),
     DisplayAspectCorrect(bool),
@@ -173,6 +174,8 @@ pub enum GuiEnum {
     DisplayComposite(bool),
     WindowBezel(bool),
     SerialPortBridge(usize),
+    AudioMuted(bool),
+    AudioVolume(f32),
 }
 
 fn create_default_variant(ge: GuiEnum) -> GuiEnum {
@@ -185,6 +188,8 @@ fn create_default_variant(ge: GuiEnum) -> GuiEnum {
         GuiEnum::DisplayComposite(_) => GuiEnum::DisplayComposite(Default::default()),
         GuiEnum::WindowBezel(_) => GuiEnum::WindowBezel(Default::default()),
         GuiEnum::SerialPortBridge(_) => GuiEnum::SerialPortBridge(Default::default()),
+        GuiEnum::AudioMuted(_) => GuiEnum::AudioMuted(false),
+        GuiEnum::AudioVolume(_) => GuiEnum::AudioVolume(0.5),
     }
 }
 

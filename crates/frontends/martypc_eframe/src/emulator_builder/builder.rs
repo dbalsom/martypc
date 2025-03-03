@@ -713,7 +713,7 @@ impl EmulatorBuilder {
                 }
 
                 // PC Speaker is always first sound source. Set its volume to 25%.
-                si.set_volume(0, 0.25);
+                si.set_volume(0, Some(0.25), None);
             }
         }
 

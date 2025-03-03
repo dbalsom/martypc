@@ -47,7 +47,10 @@ use marty_core::devices::serial::SerialPortDescriptor;
 
 use crate::modal::ModalContext;
 
-use crate::file_dialogs::FileDialogFilter;
+use crate::{
+    file_dialogs::FileDialogFilter,
+    widgets::big_icon::{BigIcon, IconType},
+};
 use egui::RichText;
 use fluxfox::ImageFormatParser;
 use marty_frontend_common::thread_events::{FileOpenContext, FileSaveContext, FileSelectionContext};
@@ -892,11 +895,58 @@ impl GuiState {
     }
 
     pub fn draw_sound_menu(&mut self, ui: &mut egui::Ui) {
-        for source in &self.sound_sources {
+        let mut sources = self.sound_sources.clone();
+
+        for (snd_idx, source) in &mut sources.iter_mut().enumerate() {
+            let icon = match source.muted {
+                true => IconType::SpeakerMuted,
+                false => IconType::Speaker,
+            };
+
+            let mut volume = source.volume;
+
+            let sctx = GuiVariableContext::SoundSource(snd_idx);
+
             ui.group(|ui| {
                 ui.vertical(|ui| {
-                    ui.label(format!("🔊 {}", source.name));
-                    ui.label(format!("Volume: {}", source.volume));
+                    ui.label(format!("{}", source.name));
+                    ui.horizontal(|ui| {
+                        if ui
+                            .add(
+                                egui::Button::new(BigIcon::new(icon, Some(icon.default_color(ui))).medium().text())
+                                    .frame(true),
+                            )
+                            .clicked()
+                        {
+                            log::warn!("Mute button clicked");
+                            source.muted = !source.muted;
+
+                            if let Some(GuiEnum::AudioMuted(state)) =
+                                self.get_option_enum_mut(GuiEnum::AudioMuted(Default::default()), Some(sctx))
+                            {
+                                *state = source.muted;
+                                self.event_queue.send(GuiEvent::VariableChanged(
+                                    GuiVariableContext::SoundSource(snd_idx),
+                                    GuiVariable::Enum(GuiEnum::AudioMuted(source.muted)),
+                                ));
+                            }
+                        };
+
+                        if ui
+                            .add(egui::Slider::new(&mut source.volume, 0.0..=1.0).text("Volume"))
+                            .changed()
+                        {
+                            if let Some(GuiEnum::AudioVolume(vol)) =
+                                self.get_option_enum_mut(GuiEnum::AudioVolume(Default::default()), Some(sctx))
+                            {
+                                *vol = source.volume;
+                                self.event_queue.send(GuiEvent::VariableChanged(
+                                    GuiVariableContext::SoundSource(snd_idx),
+                                    GuiVariable::Enum(GuiEnum::AudioVolume(source.volume)),
+                                ));
+                            }
+                        }
+                    });
                     ui.label(format!("Samples: {}", source.sample_ct));
                 });
             });

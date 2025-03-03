@@ -52,6 +52,7 @@ pub struct SoundSource {
     pub channels: u16,
     pub receiver: Receiver<AudioSample>,
     pub sample_ct: u64,
+    pub muted: bool,
     pub volume: f32,
     pub sink: Sink,
 }
@@ -63,6 +64,7 @@ impl SoundSource {
             sample_rate: self.sample_rate,
             channels: self.channels,
             sample_ct: self.sample_ct,
+            muted: self.muted,
             volume: self.volume,
         }
     }
@@ -171,6 +173,7 @@ impl SoundInterface {
             receiver: source.receiver.clone(),
             sample_ct: 0,
             sink,
+            muted: false,
             volume: 1.0,
         });
 
@@ -201,11 +204,22 @@ impl SoundInterface {
         self.device_name.clone()
     }
 
-    pub fn set_volume(&mut self, s_idx: usize, volume: f32) {
+    pub fn set_volume(&mut self, s_idx: usize, volume: Option<f32>, muted: Option<bool>) {
         if s_idx < self.sources.len() {
             let source = &mut self.sources[s_idx];
-            source.volume = volume;
-            source.sink.set_volume(source.volume);
+            let mut new_volume = volume.unwrap_or(source.volume);
+            let mut new_sink_volume = new_volume;
+
+            if let Some(mute_state) = muted {
+                source.muted = mute_state;
+                new_sink_volume = match mute_state {
+                    true => 0.0,
+                    false => new_volume,
+                }
+            }
+
+            source.volume = new_volume;
+            source.sink.set_volume(new_sink_volume);
         }
     }
 

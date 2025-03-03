@@ -538,10 +538,6 @@ impl GuiState {
         self.machine_state = state;
     }
 
-    pub fn set_sound_state(&mut self, info: Vec<SoundSourceInfo>) {
-        self.sound_sources = info;
-    }
-
     pub fn set_floppy_drives(&mut self, drives: Vec<FloppyDriveType>) {
         self.floppy_drives.clear();
 
@@ -720,9 +716,52 @@ impl GuiState {
         self.videocard_state = state;
     }
 
+    pub fn set_sound_state(&mut self, info: Vec<SoundSourceInfo>) {
+        for (snd_idx, source) in info.iter().enumerate() {
+            let sctx = GuiVariableContext::SoundSource(snd_idx);
+            if let Some(GuiEnum::AudioMuted(state)) =
+                self.get_option_enum_mut(GuiEnum::AudioMuted(Default::default()), Some(sctx))
+            {
+                *state = source.muted;
+            }
+
+            if let Some(GuiEnum::AudioVolume(vol)) =
+                self.get_option_enum_mut(GuiEnum::AudioVolume(Default::default()), Some(sctx))
+            {
+                *vol = source.volume;
+            }
+        }
+        self.sound_sources = info;
+    }
+
+    /// Initialize the Sound enum state given a vector of SoundSourceInfo fields.
+    pub fn init_sound_info(&mut self, info: Vec<SoundSourceInfo>) {
+        self.sound_sources = info;
+
+        // Build a vector of enums to set to avoid borrowing twice.
+        let mut enum_vec = Vec::new();
+
+        for (idx, sound_source) in self.sound_sources.iter().enumerate() {
+            enum_vec.push((
+                GuiEnum::AudioMuted(sound_source.muted),
+                Some(GuiVariableContext::SoundSource(idx)),
+            ));
+
+            enum_vec.push((
+                GuiEnum::AudioVolume(sound_source.volume),
+                Some(GuiVariableContext::SoundSource(idx)),
+            ));
+        }
+
+        // Set all enums.
+        for enum_item in enum_vec.iter() {
+            self.set_option_enum(enum_item.0.clone(), enum_item.1);
+        }
+    }
+
     /// Initialize GUI Display enum state given a vector of DisplayInfo fields.  
     pub fn init_display_info(&mut self, vci: Vec<DisplayTargetInfo>) {
-        self.display_info = vci.clone();
+        self.display_info = vci;
 
         // Build a vector of enums to set to avoid borrowing twice.
         let mut enum_vec = Vec::new();

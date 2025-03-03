@@ -32,63 +32,61 @@
 use egui::{Color32, Response, Ui, Widget};
 
 #[allow(dead_code)]
+#[derive(Copy, Clone, Debug)]
 pub enum IconType {
     Info,
     Warning,
     Error,
     Floppy,
     HardDisk,
+    Speaker,
+    SpeakerMuted,
 }
 
 pub struct BigIcon {
     icon_type: IconType,
     color: Option<Color32>,
+    size: f32,
 }
 
 impl BigIcon {
     pub fn new(icon_type: IconType, color: Option<Color32>) -> Self {
-        Self { icon_type, color }
+        Self {
+            icon_type,
+            color,
+            size: 40.0,
+        }
+    }
+
+    pub fn medium(self) -> Self {
+        Self { size: 30.0, ..self }
+    }
+
+    pub fn text(&self) -> egui::RichText {
+        egui::RichText::new(self.icon_type.symbol())
+            .color(self.color.unwrap_or(Color32::WHITE))
+            .font(egui::FontId::proportional(self.size))
     }
 
     pub fn show(&self, ui: &mut egui::Ui) -> Response {
-        match self.icon_type {
-            IconType::Info => ui.label(
-                egui::RichText::new(self.icon_type.symbol())
-                    .color(self.color.unwrap_or(ui.visuals().text_color()))
-                    .font(egui::FontId::proportional(40.0)),
-            ),
-            IconType::Warning => ui.label(
-                egui::RichText::new(self.icon_type.symbol())
-                    .color(self.color.unwrap_or(ui.visuals().warn_fg_color))
-                    .font(egui::FontId::proportional(40.0)),
-            ),
-            IconType::Error => ui.label(
-                egui::RichText::new(self.icon_type.symbol())
-                    .color(self.color.unwrap_or(ui.visuals().error_fg_color))
-                    .font(egui::FontId::proportional(40.0)),
-            ),
-            IconType::Floppy => ui.label(
-                egui::RichText::new(self.icon_type.symbol())
-                    .color(self.color.unwrap_or(ui.visuals().text_color()))
-                    .font(egui::FontId::proportional(40.0)),
-            ),
-            IconType::HardDisk => ui.label(
-                egui::RichText::new(self.icon_type.symbol())
-                    .color(self.color.unwrap_or(ui.visuals().text_color()))
-                    .font(egui::FontId::proportional(40.0)),
-            ),
-        }
+        ui.label(
+            egui::RichText::new(self.icon_type.symbol())
+                .color(self.color.unwrap_or(ui.visuals().text_color()))
+                .font(egui::FontId::proportional(self.size)),
+        )
     }
 }
 
 impl IconType {
-    fn default_color(&self, ui: &mut egui::Ui) -> Color32 {
+    pub fn default_color(&self, ui: &egui::Ui) -> Color32 {
         match self {
             IconType::Info => ui.visuals().text_color(),
             IconType::Warning => ui.visuals().warn_fg_color,
             IconType::Error => ui.visuals().error_fg_color,
             IconType::Floppy => ui.visuals().text_color(),
             IconType::HardDisk => ui.visuals().text_color(),
+            IconType::Speaker => ui.visuals().text_color(),
+            IconType::SpeakerMuted => ui.visuals().text_color(),
         }
     }
 
@@ -99,6 +97,8 @@ impl IconType {
             IconType::Error => "⛔",
             IconType::Floppy => "💾",
             IconType::HardDisk => "🖴",
+            IconType::Speaker => "🔊",
+            IconType::SpeakerMuted => "🔇",
         }
     }
 }
