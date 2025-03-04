@@ -213,9 +213,9 @@ impl VideoCard for TGACard {
         &self.buf[self.front_buf][..]
     }
 
-    /// Get the current display refresh rate of the device. For CGA, this is always 60.
-    fn get_refresh_rate(&self) -> u32 {
-        60
+    /// Get the current display refresh rate of the device. For TGA, this is always 60.
+    fn get_refresh_rate(&self) -> f32 {
+        60.0
     }
 
     fn is_40_columns(&self) -> bool {

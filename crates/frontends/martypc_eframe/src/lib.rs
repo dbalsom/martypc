@@ -25,6 +25,7 @@
     --------------------------------------------------------------------------
 */
 #![warn(clippy::all, rust_2018_idioms)]
+#![feature(duration_millis_float)]
 
 pub mod app;
 pub mod counter;

@@ -48,6 +48,9 @@ pub struct AdLibCard {
     pub in_buf: [i16; 2],
     pub out_buf: [i16; SAMPLE_BUF_LEN * 2],
     pub sample_accum: usize,
+    pub sample_accum_second: usize,
+    pub samples_per_second: usize,
+    pub usec_accum_second: f64,
     pub usec_accum: f64,
     pub addr: u8,
 }
@@ -63,6 +66,9 @@ impl AdLibCard {
             in_buf: [0; 2],
             out_buf: [0; SAMPLE_BUF_LEN * 2],
             sample_accum: 0,
+            sample_accum_second: 0,
+            samples_per_second: 0,
+            usec_accum_second: 0.0,
             usec_accum: 0.0,
             addr: 0,
         }
@@ -71,8 +77,19 @@ impl AdLibCard {
 
 impl SoundDevice for AdLibCard {
     fn run(&mut self, usec: f64) {
-        self.sample_accum += self.opl3.run(usec);
+        let samples_run = self.opl3.run(usec);
+        self.sample_accum += samples_run;
+        self.sample_accum_second += samples_run;
         self.usec_accum += usec;
+        self.usec_accum_second += usec;
+
+        if self.usec_accum_second >= 1_000_000.0 {
+            self.samples_per_second = self.sample_accum_second;
+            self.sample_accum_second = 0;
+            self.usec_accum_second = self.usec_accum_second - 1_000_000.0;
+
+            //log::debug!("Adlib samples per second: {}", self.samples_per_second);
+        }
 
         while self.sample_accum >= SAMPLE_BUF_LEN {
             //log::debug!("Reached {} samples in {}", self.sample_accum, self.usec_accum);

@@ -34,9 +34,11 @@ use marty_common::types::history_buffer::HistoryBuffer;
 use std::{default::Default, thread};
 use web_time::{Duration, Instant};
 
+const SECOND: Duration = Duration::from_secs(1);
+
 const UPS_CAP: u64 = 1000; // Maximum number of window manager updates per second
 const UPS_MIN_DURATION: Duration = Duration::from_millis(1000 / UPS_CAP as u64); // Minimum duration between window manager updates
-const DEFAULT_EMU_FPS_TARGET: u32 = 60; // Default rendering FPS for the emulator
+const DEFAULT_EMU_FPS_TARGET: f32 = 60.0; // Default rendering FPS for the emulator
 const FRAME_HISTORY_LEN: usize = 60; // Number of frames of history to keep
 
 #[derive(Copy, Clone, Default)]
@@ -87,24 +89,24 @@ impl CycleFrameCounter {
 
 #[derive(Copy, Clone, Default)]
 pub struct HertzEvent {
-    rate:   u32,
+    rate:   f32,
     target: Duration,
     accum:  Duration,
 }
 
 impl HertzEvent {
-    pub fn new(rate: u32) -> Self {
+    pub fn new(rate: f32) -> Self {
         Self {
             rate,
-            target: Duration::from_micros(1_000_000 / rate as u64),
+            target: Duration::from_secs_f64(SECOND.as_secs_f64() / rate as f64),
             accum: Duration::from_secs(0),
         }
     }
-    pub fn set(&mut self, rate: u32) {
+    pub fn set(&mut self, rate: f32) {
         self.rate = rate;
-        self.target = Duration::from_micros(1_000_000 / rate as u64);
+        self.target = Duration::from_secs_f64(SECOND.as_secs_f64() / rate as f64);
     }
-    pub fn get(&self) -> u32 {
+    pub fn get(&self) -> f32 {
         self.rate
     }
     #[inline]
@@ -207,7 +209,7 @@ impl Default for TimestepManager {
     fn default() -> Self {
         Self {
             init: false,
-            second_rate: HertzEvent::new(1),
+            second_rate: HertzEvent::new(1.0),
             emu_render_rate: HertzEvent::new(DEFAULT_EMU_FPS_TARGET),
             emu_update_rate: HertzEvent::new(DEFAULT_EMU_FPS_TARGET),
             gui_render_rate: HertzEvent::new(DEFAULT_EMU_FPS_TARGET),
@@ -218,8 +220,8 @@ impl Default for TimestepManager {
             last_processed_wm_update: Instant::now(),
 
             cpu_mhz: 1.0,
-            cpu_cycle_update_target: 1_000_000 / DEFAULT_EMU_FPS_TARGET,
-            frame_target: Duration::from_micros(1_000_000 / DEFAULT_EMU_FPS_TARGET as u64),
+            cpu_cycle_update_target: (1_000_000.0 / DEFAULT_EMU_FPS_TARGET) as u32,
+            frame_target: Duration::from_secs_f64(SECOND.as_secs_f64() / DEFAULT_EMU_FPS_TARGET as f64),
             throttle_factor: 1.0,
 
             frame_history: HistoryBuffer::new(FRAME_HISTORY_LEN),
@@ -258,7 +260,7 @@ impl TimestepManager {
     ) where
         F: FnOnce(&mut E) -> MachinePerfStats,
         G: FnMut(&mut E, u32),
-        H: FnMut(&mut E, &mut D, &TimestepManager, &PerfSnapshot),
+        H: FnMut(&mut E, &mut D, &TimestepManager, &PerfSnapshot, Duration),
     {
         if !self.init {
             self.start();
@@ -267,13 +269,14 @@ impl TimestepManager {
 
         self.current_instant = Instant::now();
         let elapsed = self.last_instant.elapsed();
+        self.last_instant = self.current_instant;
 
         // Ignore deltas that are too big (updates may have stopped due to drawing window, etc.
         // honoring large deltas will lead to audio queue backup
         if elapsed > self.frame_target * 2 {
             #[cfg(not(debug_assertions))]
             log::debug!("Ignoring oversized timestep: {:?}", elapsed);
-            self.last_instant = self.current_instant;
+            //self.last_instant = self.current_instant;
             return;
         }
 
@@ -297,7 +300,7 @@ impl TimestepManager {
         // Handle emu frame render
         if self.emu_render_rate.tick(elapsed) {
             let snapshot = self.perf_stats.snapshot(self.cpu_cycle_update_target);
-            emu_render_callback(emu, dm, &self, &snapshot);
+            emu_render_callback(emu, dm, &self, &snapshot, elapsed);
             self.perf_stats.wm_fps.tick();
             self.perf_stats.frame_time = self.last_frame_instant.elapsed();
 
@@ -307,7 +310,6 @@ impl TimestepManager {
             });
         }
 
-        self.last_instant = self.current_instant;
         thread::yield_now();
     }
 
@@ -342,7 +344,7 @@ impl TimestepManager {
         }
     }
 
-    pub fn set_emu_render_rate(&mut self, fps: u32) {
+    pub fn set_emu_render_rate(&mut self, fps: f32) {
         self.emu_render_rate.set(fps);
         self.frame_target = Duration::from_micros(1_000_000 / self.emu_render_rate.get() as u64);
         log::info!(
@@ -362,15 +364,15 @@ impl TimestepManager {
         self.cpu_mhz = mhz;
     }
 
-    pub fn set_emu_update_rate(&mut self, fps: u32) {
+    pub fn set_emu_update_rate(&mut self, fps: f32) {
         self.emu_update_rate.set(fps);
     }
 
-    pub fn set_gui_render_rate(&mut self, fps: u32) {
+    pub fn set_gui_render_rate(&mut self, fps: f32) {
         self.gui_render_rate.set(fps);
     }
 
-    pub fn set_gui_update_rate(&mut self, fps: u32) {
+    pub fn set_gui_update_rate(&mut self, fps: f32) {
         self.gui_update_rate.set(fps);
     }
 

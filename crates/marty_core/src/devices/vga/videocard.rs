@@ -143,10 +143,10 @@ impl VideoCard for VGACard {
         0
     }
 
-    /// Return the current refresh rate.
+    /// Return the current refresh rate. For VGA, this can be 60Hz or 70Hz depending on mode.
     /// TODO: Handle VGA 70Hz modes.
-    fn get_refresh_rate(&self) -> u32 {
-        60
+    fn get_refresh_rate(&self) -> f32 {
+        60.0
     }
 
     fn get_clock_divisor(&self) -> u32 {
