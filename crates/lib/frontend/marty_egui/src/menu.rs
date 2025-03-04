@@ -947,7 +947,10 @@ impl GuiState {
                             }
                         }
                     });
-                    ui.label(format!("Samples: {}", source.sample_ct));
+                    ui.label(format!("Sample Rate: {}Hz", source.sample_rate));
+                    ui.label(format!("Latency: {:.0}ms", source.latency_ms));
+                    // ui.label(format!("Samples: {}", source.sample_ct));
+                    // ui.label(format!("Buffers: {}", source.len));
                 });
             });
         }
