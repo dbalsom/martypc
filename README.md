@@ -50,7 +50,7 @@ with both demos.
 
 Currently, MartyPC can emulate an original IBM 5150 PC, 5160 XT, or a generic XT clone machine.
 
-Preliminary support for the IBM PCJr and Tandy 1000 is present as of 0.2.1. These machines may be buggy and unstable.
+Preliminary support for the IBM PCjr and Tandy 1000 is present as of 0.2.1. These machines may be buggy and unstable.
 
 ### Device Support
 MartyPC emulates the following devices:
@@ -59,31 +59,37 @@ MartyPC emulates the following devices:
     * **Intel 8088** - A cycle-accurate implementation of the Intel 8088 including the asynchronous BIU, processor instruction queue and prefetch logic. Tested for correctness and cycle-accuracy against hardware.
     * **NEC V20** - A preliminary implementation of the NEC V20 CPU. Cycle-based, but not fully cycle-accurate or as performant as the real thing, as timings have not been adjusted from the 8088 that was used as a base. All native-mode V20 instructions are implemented and tested for correctness against hardware.
 
-* ### Video Cards:
+* ### System Hardware:
+  * **8255 PPI** - Low level keyboard emulation is supported via the PPI and keyboard shift register. Supports the 'turbo bit' found in TurboXT clones.
+  * **8259 PIC** - Mostly complete, but still missing advanced features such as priority rotation and nested modes.
+  * **8253 PIT** - Highly accurate, supporting PCM audio.
+  * **8237 DMAC** - Mostly implemented, but DMA transfers are currently "faked". DRAM refresh DMA is simulated using a scheduling system.
+  * **8250 UART** - Supports serial passthrough or mouse emulation.
+  * **Game Port** - Supports two analog joysticks with two buttons each.
+  * **Parallel Port** - Enough of a basic parallel port is emulated to be detected, but is not really functional for any purpose yet.
+
+* ### Video Devices:
     * **CGA** - A dynamic, cycle-or-character clocked implementation of the IBM CGA including the Motorola MC6845 CRTC controller allows MartyPC to run demanding PC demos like 8088MPH and Area5150. MartyPC takes a unique approach to PC video card emulation by simulating the entire display field - including overscan. Composite output and monitor simulation is supported, via reenigne's excellent composite conversion code (also used by DOSBox and 86Box) 
     * **TGA** - A character-clocked implementation of the PCJr and Tandy Graphics Video Gate Array. Work in progress.
     * **MDA** - A character-clocked implementation of the IBM MDA card built on the Motorola MC6845 CRTC controller. An MDA adapter can be installed alongside a CGA or EGA card for multi-monitor operation.
     * **Hercules** - The MDA device optionally supports emulation of the Hercules Graphics Adapter.
     * **EGA** - A character-clocked implementation of the IBM EGA builds on the techniques used developing the CGA. It is structured to replicate the logical functions of each of the LSI chips on the original hardware. It supports redefinable fonts, vsync interrupts and per-scanline pel-panning for smooth scrolling.  
+    * **VGA** - IBM VGA card emulation is in development, but graphics modes such as Mode 13h and Mode X are working.
+
+* ### Sound Devices: 
+    * **PC Speaker** - Not really its own sound device, the PC speaker is driven by MartyPC's timer chip emulation. It can produce reasonable quality PWM audio in demos such as 8088MPH, Area5150, and Magic Mushroom.
+    * **Adlib** - The original Adlib Music Synthesizer is emulated, with OPL2 emulation provided by nuked-opl3, via my [opl3-rs](https://github.com/dbalsom/opl3-rs) bidings. This is a bit CPU heavy, so you'll need a fast computer. 
 
 * ### Storage Devices:
     * **µPD765 FDC** - Currently robust enough to support both DOS and Minix operating systems. MartyPC uses my disk 
                        image library, [fluxfox](https://github.com/dbalsom/fluxfox/), which allows it to support a wide variety of PC disk image formats.
                        MartyPC's FDC emulation is still not as accurate as I'd like it to be, but it can support a number
                        of copy-protected titles, given a disk image of the appropriate format.
-    * **IBM/Xebec 20MB HDC** - Emulated with basic VHD support. MartyPC currently supports a single disk geometry of 20MB.
-    * **PCJr Cartridges** - PCJr cartridge ROMs are supported, in JrRipCart (.JRC) format
+    * **IBM/Xebec 20MB HDC** - Emulated with basic VHD support. MartyPC currently supports a single disk geometry of 20MB when using this controller.
+    * **XTIDE** - Emulation of an XTIDE Rev 2 board allows MartyPC to support a wide range of hard disk formats. This emulation is still in early stages, and may be a bit rough around the edges. Not all ATA commands are implemented.
+    * **PCjr Cartridges** - PCjr cartridge ROMs are supported, in JrRipCart (.JRC) format
 
-* ### System Hardware:
-    * **8255 PPI** - Low level keyboard emulation is supported via the PPI and keyboard shift register. Supports the 'turbo bit' found in TurboXT clones.
-    * **8259 PIC** - Mostly complete, but still missing advanced features such as priority rotation and nested modes.
-    * **8253 PIT** - Highly accurate, supporting PCM audio.
-    * **8237 DMAC** - Mostly implemented, but DMA transfers are currently "faked". DRAM refresh DMA is simulated using a scheduling system.
-    * **8250 UART** - Supports serial passthrough or mouse emulation. Still a bit incomplete (fails tests in CheckIt)
-    * **Game Port** - Supports two analog joysticks with two buttons each.
-    * **PC Speaker** - Although sometimes a little glitchy, it can produce reasonable PCM audio in demos such as 8088MPH, Area5150, and Magic Mushroom.
-
-* ### Add-on Cards:
+* ### Memory Expansion Devices:
     * **LoTech 2MB EMS Card** - 2MB of EMS memory is made available via the [LoTech EMS board](https://www.lo-tech.co.uk/wiki/Lo-tech_2MB_EMS_Board).  
 
 * ### Input Devices:
