@@ -750,7 +750,7 @@ pub fn handle_egui_event(emu: &mut Emulator, dm: &mut EFrameDisplayManager, gui_
                 if let Some(image_lock) = fdc.get_image(*drive_select).0 {
                     let image = image_lock.read().unwrap();
                     let compat_formats = image.compatible_formats(true);
-                    emu.gui.set_floppy_supported_formats(*drive_select, 0, compat_formats);
+                    emu.gui.set_floppy_supported_formats(*drive_select, compat_formats);
                 }
             }
         }

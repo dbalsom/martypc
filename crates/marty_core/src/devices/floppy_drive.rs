@@ -109,7 +109,7 @@ impl OperationStatus {
 pub struct DriveReadResult {
     pub(crate) not_found: bool,
     pub(crate) sectors_read: u16,
-    pub(crate) new_sid: u8,
+    pub(crate) new_chs: DiskChs,
     pub(crate) deleted_mark: bool,
 }
 
@@ -450,7 +450,8 @@ impl FloppyDiskDrive {
 
     pub fn command_read_data(
         &mut self,
-        h: u8,
+        mut mt: bool,
+        mut h: u8,
         id_chs: DiskChs,
         ct: usize,
         n: u8,
@@ -479,13 +480,23 @@ impl FloppyDiskDrive {
 
         self.operation_status.reset(FloppyDriveOperation::ReadData);
 
-        let mut sid = id_chs.s();
+        // Ignore multi-track if head is not 0. MT will only continue a read from head 0 to head 1,
+        // it will not flip from head 1 back to head 0.
+        if h > 0 || id_chs.h() > 0 {
+            mt = false;
+        }
+
+        // Just disable mt entirely
+        //mt = false;
+
+        let mut op_chs = id_chs;
         let mut sectors_read = 0;
+        let mut not_found_count = 0;
 
         while sectors_read < ct {
             let read_sector_result = match image.read_sector(
                 DiskCh::new(self.cylinder, h),
-                DiskChsnQuery::new(id_chs.c(), id_chs.h(), sid, n),
+                DiskChsnQuery::new(op_chs.c(), op_chs.h(), op_chs.s(), n),
                 None,
                 None,
                 RwScope::DataOnly,
@@ -493,12 +504,13 @@ impl FloppyDiskDrive {
             ) {
                 Ok(result) => result,
                 Err(DiskImageError::DataError) => {
-                    log::warn!("command_read_data(): sector id not found");
+                    log::warn!("command_read_data(): no sectors found on this track");
+
                     self.operation_status.sector_not_found = true;
                     return Ok(DriveReadResult {
                         not_found: true,
                         sectors_read: 0,
-                        new_sid: sid,
+                        new_chs: op_chs,
                         deleted_mark: false,
                     });
                 }
@@ -510,13 +522,42 @@ impl FloppyDiskDrive {
                 return Ok(DriveReadResult {
                     not_found: false,
                     sectors_read: 0,
-                    new_sid: sid,
+                    new_chs: op_chs,
+                    deleted_mark: false,
+                });
+            }
+
+            if read_sector_result.not_found {
+                if mt && sectors_read > 0 && not_found_count == 0 {
+                    // If we are in multi-track mode, and this is the first sector not found, we
+                    // will attempt to read the next head instead of failing.
+
+                    // TODO: use the last-sector flag from fluxfox instead of flipping heads on
+                    //       the first sector not found
+                    not_found_count += 1;
+                    op_chs.set_h(1);
+                    h = 1;
+                    op_chs.set_s(1);
+                    log::warn!(
+                        "command_read_data(): sector not found with multi-track enabled, trying new phys_h: {} chs: {}",
+                        h,
+                        op_chs
+                    );
+                    continue;
+                }
+                log::warn!("command_read_data(): sector id not found");
+                self.operation_status.sector_not_found = true;
+                return Ok(DriveReadResult {
+                    not_found: true,
+                    sectors_read: 0,
+                    new_chs: op_chs,
                     deleted_mark: false,
                 });
             }
 
             log::debug!(
-                "command_read_sector(): read {} bytes, address_crc_error: {}, data_crc_error: {}, deleted_mark: {} no_dam: {}",
+                "command_read_data(): read sector id: {}, {} bytes, address_crc_error: {}, data_crc_error: {}, deleted_mark: {} no_dam: {}",
+                op_chs,
                 read_sector_result.data_range.len(),
                 read_sector_result.address_crc_error,
                 read_sector_result.data_crc_error,
@@ -539,7 +580,7 @@ impl FloppyDiskDrive {
                         read_sector_result.data_range.len()
                     );
                     operation_buf.extend(&read_sector_result.read_buf[read_sector_result.data_range]);
-                    sid = sid.wrapping_add(1);
+                    op_chs.set_s(op_chs.s().wrapping_add(1));
                     sectors_read += 1;
                     continue;
                 }
@@ -553,7 +594,7 @@ impl FloppyDiskDrive {
                         break;
                     }
                     operation_buf.extend(&read_sector_result.read_buf[read_sector_result.data_range]);
-                    sid = sid.wrapping_add(1);
+                    op_chs.set_s(op_chs.s().wrapping_add(1));
                     sectors_read += 1;
                     self.operation_status.data_crc_error |= read_sector_result.data_crc_error;
 
@@ -561,7 +602,7 @@ impl FloppyDiskDrive {
                 }
                 (true, true) => {
                     // Deleted mark read, skip flag true. Skip the current sector and continue.
-                    sid = sid.wrapping_add(1);
+                    op_chs.set_s(op_chs.s().wrapping_add(1));
                     self.operation_status.deleted_mark = true;
                     if read_sector_result.address_crc_error {
                         self.operation_status.address_crc_error = true;
@@ -577,7 +618,7 @@ impl FloppyDiskDrive {
         Ok(DriveReadResult {
             not_found: false,
             sectors_read: sectors_read as u16,
-            new_sid: sid,
+            new_chs: op_chs,
             deleted_mark: self.operation_status.deleted_mark,
         })
     }
@@ -611,7 +652,7 @@ impl FloppyDiskDrive {
             return Ok(DriveReadResult {
                 not_found: true,
                 sectors_read: 0,
-                new_sid: 1,
+                new_chs: DiskChs::from((id_ch, 1)),
                 deleted_mark: false,
             });
         }
@@ -630,7 +671,7 @@ impl FloppyDiskDrive {
         Ok(DriveReadResult {
             not_found: false,
             sectors_read: read_track_result.sectors_read,
-            new_sid: (read_track_result.sectors_read + 1) as u8,
+            new_chs: DiskChs::from((id_ch, (read_track_result.sectors_read + 1) as u8)),
             deleted_mark: self.operation_status.deleted_mark,
         })
     }

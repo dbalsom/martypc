@@ -621,7 +621,6 @@ impl GuiState {
     pub fn set_floppy_supported_formats(
         &mut self,
         drive: usize,
-        write_ct: u64,
         supported_formats: Vec<(DiskImageFileFormat, Vec<String>)>,
     ) {
         self.floppy_drives[drive].supported_formats = supported_formats;
@@ -813,7 +812,7 @@ impl GuiState {
                 Some(GuiVariableContext::Display(display.handle)),
             ));
 
-            /// Create GuiEnum for Bezel status (true if bezel is enabled)
+            // Create GuiEnum for Bezel status (true if bezel is enabled)
             enum_vec.push((
                 GuiEnum::WindowBezel(false),
                 Some(GuiVariableContext::Display(display.handle)),
