@@ -307,7 +307,7 @@ impl EmulatorBuilder {
 
             match sound_player.open_device() {
                 Ok(_) => {
-                    stdout.write_fmt(format_args!("Opened audio device: {}", sound_player.device_name()))?;
+                    writeln!(stdout, "Opened audio device: {}", sound_player.device_name())?;
                 }
                 Err(e) => {
                     return Err(AudioDeviceError(e.to_string()));
@@ -316,7 +316,7 @@ impl EmulatorBuilder {
 
             match sound_player.open_stream() {
                 Ok(_) => {
-                    stdout.write_fmt(format_args!("Opened audio stream."))?;
+                    writeln!(stdout, "Opened audio stream.")?;
                 }
                 Err(e) => {
                     return Err(AudioStreamError(e.to_string()));
@@ -379,9 +379,7 @@ impl EmulatorBuilder {
             return Err(NoResourcePaths);
         }
         for path in &resolved_paths {
-            log::debug!("Resolved resource path: {:?}", path);
-            stdout.write_fmt(format_args!("Resolved resource path: {:?}", path))?;
-            stdout.flush()?;
+            writeln!(stdout, "Resolved resource path: {:?}", path)?;
         }
 
         // Tell the resource manager to ignore specified dirs
@@ -394,7 +392,7 @@ impl EmulatorBuilder {
         let mut machine_manager = MachineManager::new();
         if let Err(e) = machine_manager.load_configs(&mut resource_manager).await {
             let err_str = format!("Error loading Machine configuration files: {}", e);
-            stderr.write(err_str.as_bytes())?;
+            writeln!(stderr, "{err_str}")?;
             return Err(MachineConfigError(e.to_string()));
         }
 
@@ -410,12 +408,13 @@ impl EmulatorBuilder {
             init_prefer_oem = config.emulator.benchmark.prefer_oem;
             init_config_overlays = config.emulator.benchmark.config_overlays.clone().unwrap_or_default();
 
-            stdout.write_fmt(format_args!(
+            writeln!(
+                stdout,
                 "Benchmark mode enabled. Using machine config: {} config overlays: [{}] prefer_oem: {}",
                 init_config_name,
                 init_config_overlays.join(", "),
                 init_prefer_oem
-            ))?;
+            )?;
         }
 
         // Get a list of machine configuration names
@@ -427,18 +426,18 @@ impl EmulatorBuilder {
         if config.emulator.machinescan {
             // Print the list of machine configurations and their rom requirements
             for machine in machine_names {
-                stdout.write_fmt(format_args!("Machine: {}", machine))?;
+                writeln!(stdout, "Machine: {}", machine)?;
                 if let Some(reqs) = machine_manager
                     .get_config(&machine)
                     .and_then(|config| Some(config.get_rom_requirements()))
                 {
-                    stdout.write_fmt(format_args!("  Requires: {:?}", reqs))?;
+                    writeln!(stdout, "  Requires: {:?}", reqs)?
                 }
             }
 
             if !have_machine_config {
                 let err_str = format!("Warning! No matching configuration found for: {}", init_config_name);
-                stderr.write(err_str.as_bytes())?;
+                writeln!(stderr, "{err_str}")?;
                 std::process::exit(1);
             }
 
@@ -454,7 +453,7 @@ impl EmulatorBuilder {
                 "No machine configuration for specified config name: {}",
                 &init_config_name
             );
-            stderr.write(err_str.as_bytes())?;
+            writeln!(stderr, "{err_str}")?;
             return Err(BadMachineConfig(init_config_name));
         }
 
@@ -490,19 +489,21 @@ impl EmulatorBuilder {
         }
 
         // Output ROM feature requirements and optional requests
-        stdout.write_fmt(format_args!(
+        writeln!(
+            stdout,
             "Selected machine config {} requires the following ROM features:",
             init_config_name
-        ))?;
+        )?;
         for rom_feature in &required_features {
-            stdout.write_fmt(format_args!("  {}", rom_feature))?;
+            writeln!(stdout, "  {}", rom_feature)?;
         }
-        stdout.write_fmt(format_args!(
+        writeln!(
+            stdout,
             "Selected machine config {} optionally requests the following ROM features:",
             init_config_name
-        ))?;
+        )?;
         for rom_feature in &optional_features {
-            stdout.write_fmt(format_args!("  {}", rom_feature))?;
+            writeln!(stdout, "  {}", rom_feature)?;
         }
 
         // Determine if the machine configuration specifies a particular ROM set
@@ -513,12 +514,13 @@ impl EmulatorBuilder {
             rom_manager.resolve_requirements(required_features, optional_features, specified_rom_set)?;
 
         // Output resolved ROM sets
-        stdout.write_fmt(format_args!(
+        writeln!(
+            stdout,
             "Selected machine config {} has resolved the following ROM sets:",
             init_config_name
-        ))?;
+        )?;
         for rom_set in &rom_sets_resolved {
-            stdout.write_fmt(format_args!("  {}", rom_set))?;
+            writeln!(stdout, "  {}", rom_set)?;
         }
 
         // Create the ROM manifest to pass to the emulator core
@@ -633,7 +635,7 @@ impl EmulatorBuilder {
         let trace_file_base = resource_manager.resource_path("trace").unwrap_or_default();
         let mut trace_file_path = None;
         if let Some(trace_file) = &config.machine.cpu.trace_file {
-            stdout.write_fmt(format_args!("Using CPU trace log file: {:?}", trace_file))?;
+            writeln!(stdout, "Using CPU trace log file: {:?}", trace_file)?;
             trace_file_path = Some(trace_file_base.join(trace_file));
         }
 
@@ -667,10 +669,11 @@ impl EmulatorBuilder {
         let mut disassembly_file_path = None;
         if let Some(disassembly_file) = config.machine.disassembly_file.as_ref() {
             disassembly_file_path = Some(trace_file_base.join(disassembly_file));
-            stdout.write_fmt(format_args!(
+            writeln!(
+                stdout,
                 "Using disassembly log file: {:?}",
                 disassembly_file_path.clone().unwrap_or(PathBuf::from("None"))
-            ))?;
+            )?;
         }
 
         // Construct the core Machine instance
