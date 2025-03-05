@@ -32,12 +32,11 @@
    graphics backend and windowing system combination.
 */
 
+use crate::display_scaler::{ScalerGeometry, ScalerMode, ScalerParams, ScalerPreset};
 use std::{
     fmt::{Display, Formatter},
-    path::PathBuf,
+    path::{Path, PathBuf},
 };
-
-use crate::display_scaler::{ScalerGeometry, ScalerMode, ScalerParams, ScalerPreset};
 
 pub use crate::{
     types::{display_target_dimensions::DisplayTargetDimensions, display_target_margins::DisplayTargetMargins},
@@ -454,5 +453,5 @@ pub trait DisplayManager<B, G, Vh, V, C> {
     /// Save a screenshot of the specified display target to the specified path.
     /// A unique filename will be generated assuming the path is a directory.
     /// No operational error is returned as screenshot operation may be deferred.
-    fn save_screenshot(&mut self, dt: DtHandle, path: PathBuf) -> Result<(), Error>;
+    fn save_screenshot(&mut self, dt: DtHandle, path: impl AsRef<Path>) -> Result<PathBuf, Error>;
 }

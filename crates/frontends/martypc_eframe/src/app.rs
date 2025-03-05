@@ -288,7 +288,8 @@ impl MartyApp {
         // Apply fullscreen configuration now (doesn't seem to work applying to NativeOptions in new())
 
         if let Some(window) = emu.config.emulator.window.get_mut(0) {
-            &cc.egui_ctx
+            let _ = &cc
+                .egui_ctx
                 .send_viewport_cmd(ViewportCommand::Fullscreen(window.fullscreen));
         }
 

@@ -236,6 +236,13 @@ pub fn handle_thread_event(emu: &mut Emulator, ctx: &egui::Context) {
             FrontendThreadEvent::QuitRequested => {
                 ctx.send_viewport_cmd(ViewportCommand::Close);
             }
+            FrontendThreadEvent::ToggleFullscreen => {
+                let mut fullscreen_state = false;
+                ctx.input(|i| {
+                    fullscreen_state = i.viewport().fullscreen.unwrap_or(false);
+                });
+                ctx.send_viewport_cmd(ViewportCommand::Fullscreen(!fullscreen_state));
+            }
         }
     }
 }

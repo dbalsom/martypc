@@ -91,7 +91,6 @@ pub fn handle_egui_event(emu: &mut Emulator, dm: &mut EFrameDisplayManager, gui_
         GuiEvent::Exit => {
             // User chose exit option from menu. Shut down.
             // TODO: Add a timeout from last VHD write for safety?
-
             let _ = emu.sender.send(FrontendThreadEvent::QuitRequested);
         }
         GuiEvent::SetNMI(state) => {
@@ -809,20 +808,38 @@ pub fn handle_egui_event(emu: &mut Emulator, dm: &mut EFrameDisplayManager, gui_
             //         });
             // }
         }
-        GuiEvent::DumpCS => {
-            let cs = emu.machine.cpu().get_register16(Register16::CS);
-            let flat_cs = cpu_common::calc_linear_address(cs, 0);
-            log::info!("Dumping CS: {:04X} ({:08X})", cs, flat_cs);
+        GuiEvent::DumpSegment(register) => {
+            let base_segment = match register {
+                Register16::CS | Register16::DS | Register16::ES | Register16::SS => {
+                    emu.machine.cpu().get_register16(*register)
+                }
+                _ => {
+                    log::error!("Invalid segment register for dump: {:?}", register);
+                    return;
+                }
+            };
 
-            let end = flat_cs + 0x10000;
-            emu.rm
-                .get_available_filename("dump", "cs_dump", Some("bin"))
-                .ok()
-                .map(|path| emu.machine.bus().dump_mem_range(flat_cs, end, &path))
-                .or_else(|| {
+            let flat_addr = cpu_common::calc_linear_address(base_segment, 0);
+            log::info!("Dumping {:?}: {:04X} ({:08X})", register, base_segment, flat_addr);
+
+            let end = flat_addr + 0x10000;
+            let base_name = format!("{:?}_dump", register).to_ascii_lowercase();
+            match emu.rm.get_available_filename("dump", &base_name, Some("bin")) {
+                Ok(path) => {
+                    emu.machine.bus().dump_mem_range(flat_addr, end, &path);
+                    emu.gui
+                        .toasts()
+                        .info(format!("Segment dumped: {:?}", path))
+                        .duration(Some(NORMAL_NOTIFICATION_TIME));
+                }
+                Err(e) => {
                     log::error!("Failed to get available filename for memory dump!");
-                    None
-                });
+                    emu.gui
+                        .toasts()
+                        .error(format!("Failed to dump segment: {e}"))
+                        .duration(Some(LONG_NOTIFICATION_TIME));
+                }
+            }
         }
         GuiEvent::DumpAllMem => {
             emu.rm
@@ -988,29 +1005,17 @@ pub fn handle_egui_event(emu: &mut Emulator, dm: &mut EFrameDisplayManager, gui_
 
             // TODO: Fix this (2024)
 
-            // if let Err(err) = emu.dm.save_screenshot(*dt_idx, screenshot_path) {
-            //     log::error!("Failed to save screenshot: {}", err);
-            //     emu.gui
-            //         .toasts()
-            //         .error(format!("{}", err))
-            //         .set_duration(Some(LONG_NOTIFICATION_TIME));
-            // }
+            if let Err(err) = dm.save_screenshot(DtHandle::from(*dt_idx), screenshot_path) {
+                log::error!("Failed to save screenshot: {}", err);
+                emu.gui
+                    .toasts()
+                    .error(format!("{}", err))
+                    .duration(Some(LONG_NOTIFICATION_TIME));
+            }
         }
-        GuiEvent::ToggleFullscreen(dt_idx) => {
+        GuiEvent::ToggleFullscreen(_dt_idx) => {
             // User requested to toggle fullscreen mode
-
-            // if let Some(window) = emu.dm.get_window(*dt_idx) {
-            //     match window.fullscreen() {
-            //         Some(_) => {
-            //             log::debug!("ToggleFullscreen: Resetting fullscreen state.");
-            //             window.set_fullscreen(None);
-            //         }
-            //         None => {
-            //             log::debug!("ToggleFullscreen: Entering fullscreen state.");
-            //             window.set_fullscreen(Some(winit::window::Fullscreen::Borderless(None)));
-            //         }
-            //     }
-            // }
+            let _ = emu.sender.send(FrontendThreadEvent::ToggleFullscreen);
         }
         GuiEvent::CtrlAltDel => {
             // User requested to send CTRL + ALT + DEL keyboard combination

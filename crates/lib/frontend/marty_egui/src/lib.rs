@@ -213,7 +213,7 @@ pub enum GuiEvent {
     SetFloppyWriteProtect(usize, bool),
     BridgeSerialPort(usize, String, usize),
     DumpVRAM,
-    DumpCS,
+    DumpSegment(Register16),
     DumpAllMem,
     EditBreakpoint,
     MemoryUpdate,

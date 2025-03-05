@@ -53,6 +53,7 @@ use crate::{
 };
 use egui::RichText;
 use fluxfox::ImageFormatParser;
+use marty_core::cpu_common::Register16;
 use marty_frontend_common::thread_events::{FileOpenContext, FileSaveContext, FileSelectionContext};
 
 impl GuiState {
@@ -365,8 +366,20 @@ impl GuiState {
                             self.event_queue.send(GuiEvent::DumpVRAM);
                             ui.close_menu();
                         }
-                        if ui.button("Code Segment").clicked() {
-                            self.event_queue.send(GuiEvent::DumpCS);
+                        if ui.button("Code Segment (CS)").clicked() {
+                            self.event_queue.send(GuiEvent::DumpSegment(Register16::CS));
+                            ui.close_menu();
+                        }
+                        if ui.button("Data Segment (DS)").clicked() {
+                            self.event_queue.send(GuiEvent::DumpSegment(Register16::DS));
+                            ui.close_menu();
+                        }
+                        if ui.button("Extra Segment (ES)").clicked() {
+                            self.event_queue.send(GuiEvent::DumpSegment(Register16::ES));
+                            ui.close_menu();
+                        }
+                        if ui.button("Stack Segment (SS)").clicked() {
+                            self.event_queue.send(GuiEvent::DumpSegment(Register16::SS));
                             ui.close_menu();
                         }
                         if ui.button("All Memory").clicked() {

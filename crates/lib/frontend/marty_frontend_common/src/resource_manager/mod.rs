@@ -232,7 +232,7 @@ impl ResourceManager {
                 for item in items {
                     //log::debug!("Item: {:?}", item);
                     if let Some(filename) = item.filename_only.clone() {
-                        if filename.to_string_lossy().contains(base_name) {
+                        if filename.to_string_lossy().to_ascii_lowercase().contains(base_name) {
                             //log::debug!("Found matching basename: {:?}", filename);
 
                             // Extract any number sequence from the filename
@@ -248,7 +248,7 @@ impl ResourceManager {
                                     largest_num = num
                                 }
                             });
-                            existing_basenames.insert(filename);
+                            existing_basenames.insert(filename.to_ascii_lowercase());
                         }
                     }
                 }
