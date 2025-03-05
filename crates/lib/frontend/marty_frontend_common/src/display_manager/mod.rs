@@ -225,11 +225,9 @@ impl Default for DmViewportOptions {
 ///
 /// If an implementation doesn't require any of these specific types, they can be set to `()`.
 ///
-/// * `Backend`: An implementation of the [DisplayBackend] trait. A graphics backend is reponsible
-///     for initialization of a graphics subsystem (such as opengl or wgpu) if necessary,
-///     and management of the pixel buffer that is used as a target for a [VideoRenderer].
-///     In cases where a backend is already initialized (such as when running under eframe),
-///     the backend is simply a texture manager for viewports and display targets.
+/// * `Backend`: An implementation of the [DisplayBackend] trait. A graphics backend is a wrapper
+///     around a graphics API that provides methods for texture allocation, and maintains a cpu
+///     addressable pixel buffer that can be rendered to by a [VideoRenderer].
 ///
 /// * `GUI Context`: A context object that is used to render GUI elements. This is typically used
 ///     when the display manager is hosting a GUI instead of running on top of one, such as a

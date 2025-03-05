@@ -159,6 +159,9 @@ pub struct Emulator {
     pub paths: Vec<PathConfigItem>,
     pub virtual_fs: Option<PathBuf>,
     pub ignore_dirs: Option<Vec<String>>,
+    #[serde(default)]
+    pub demo_mode: bool,
+    #[serde(default)]
     pub benchmark_mode: bool,
     #[serde(default = "_default_true")]
     pub auto_poweron: bool,
@@ -341,6 +344,11 @@ impl ConfigFileParams {
             self.machine.config_overlays = Some(config_overlays);
         }
 
+        // Apply 'fullscreen' parameter to the first window definition
+        if let Some(window) = self.emulator.window.first_mut() {
+            window.fullscreen |= shell_args.fullscreen;
+        }
+
         if let Some(validator) = shell_args.validator {
             self.validator.vtype = Some(validator);
         }
@@ -349,6 +357,7 @@ impl ConfigFileParams {
             self.emulator.basedir = basedir;
         }
 
+        self.emulator.demo_mode |= shell_args.demo_mode;
         self.emulator.benchmark_mode |= shell_args.benchmark_mode;
         self.emulator.headless |= shell_args.headless;
         self.emulator.fuzzer |= shell_args.fuzzer;

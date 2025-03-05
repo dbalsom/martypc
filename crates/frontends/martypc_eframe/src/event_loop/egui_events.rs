@@ -91,10 +91,8 @@ pub fn handle_egui_event(emu: &mut Emulator, dm: &mut EFrameDisplayManager, gui_
         GuiEvent::Exit => {
             // User chose exit option from menu. Shut down.
             // TODO: Add a timeout from last VHD write for safety?
-            println!("Thank you for using MartyPC!");
 
-            // TODO: how do we quit eframe?
-            //elwt.exit();
+            let _ = emu.sender.send(FrontendThreadEvent::QuitRequested);
         }
         GuiEvent::SetNMI(state) => {
             // User wants to crash the computer. Sure, why not.

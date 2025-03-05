@@ -55,6 +55,7 @@ pub struct EFrameDisplayManagerBuilder<'a> {
     icon_path: Option<PathBuf>,
     icon_buf: Option<&'a [u8]>,
     gui_options: Option<&'a DmGuiOptions>,
+    display_type: Option<DisplayTargetType>,
 }
 
 /// Display managers should be constructed via a [DisplayManagerBuilder]. This allows display targets
@@ -73,6 +74,11 @@ impl<'a> EFrameDisplayManagerBuilder<'a> {
 
     pub fn with_backend(mut self, backend: EFrameBackend) -> Self {
         self.backend = Some(backend);
+        self
+    }
+
+    pub fn with_default_display_type(mut self, display_type: DisplayTargetType) -> Self {
+        self.display_type = Some(display_type);
         self
     }
 

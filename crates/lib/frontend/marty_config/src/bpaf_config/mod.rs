@@ -33,10 +33,10 @@ use bpaf::Bpaf;
 #[cfg_attr(feature = "use_bpaf", bpaf(options, version, generate(cli_args)))]
 #[derive(Debug, Default)]
 pub struct CmdLineArgs {
-    #[bpaf(long("config_file"), long("configfile"), long("config-file"))]
+    #[bpaf(long("config_file"), long("configfile"))]
     pub config_file: Option<PathBuf>,
 
-    #[bpaf(long("base_dir"), long("basedir"), long("base-dir"))]
+    #[bpaf(long("base_dir"), long("basedir"))]
     pub base_dir: Option<PathBuf>,
 
     #[bpaf(long, switch)]
@@ -44,6 +44,12 @@ pub struct CmdLineArgs {
 
     #[bpaf(long("no_sound"), long("nosound"), long("noaudio"), switch)]
     pub no_sound: bool,
+
+    #[bpaf(long("demo_mode"), long("demomode"), switch)]
+    pub demo_mode: bool,
+
+    #[bpaf(long("full_screen"), long("fullscreen"), switch)]
+    pub fullscreen: bool,
 
     // Emulator options
     #[bpaf(long, switch)]
@@ -56,7 +62,7 @@ pub struct CmdLineArgs {
     #[bpaf(long, switch)]
     pub romscan: bool,
 
-    #[bpaf(long("machine_scan"), long("machinescan"), long("machine-scan"), switch)]
+    #[bpaf(long("machine_scan"), long("machinescan"), switch)]
     pub machine_scan: bool,
 
     #[bpaf(long, switch)]

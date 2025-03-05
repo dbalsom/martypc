@@ -143,7 +143,7 @@ impl MemoryViewerControl {
         self.row = new_addr & !(self.row_span - 1);
 
         if self.row != self.prev_row {
-            log::debug!("set_address: {:04X}, row {}", addr, self.row);
+            //log::debug!("set_address: {:04X}, row {}", addr, self.row);
             self.tlv.set_scroll_pos(self.row / self.row_span);
         }
     }

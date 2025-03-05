@@ -148,6 +148,7 @@ impl GuiRenderContext {
     pub fn show<Fw, Fm>(
         &mut self,
         state: &mut GuiState,
+        show_menu: bool,
         main_panel_fill: Option<Color32>,
         mut window_render: Fw,
         mut main_panel_render: Fm,
@@ -155,10 +156,13 @@ impl GuiRenderContext {
         Fw: FnMut(&mut egui::Context),
         Fm: FnMut(&mut egui::Ui),
     {
-        self.ctx.set_visuals(self.menu_theme.visuals());
-        egui::TopBottomPanel::top("martypc_top_panel").show(&self.ctx, |ui| {
-            state.show_menu(ui);
-        });
+        if show_menu {
+            self.ctx.set_visuals(self.menu_theme.visuals());
+            egui::TopBottomPanel::top("martypc_top_panel").show(&self.ctx, |ui| {
+                state.show_menu(ui);
+            });
+        }
+
         self.ctx.set_visuals(self.main_theme.visuals());
 
         state.show_windows(&self.ctx);

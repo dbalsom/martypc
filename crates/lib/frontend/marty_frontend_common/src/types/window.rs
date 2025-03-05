@@ -40,6 +40,8 @@ pub struct WindowDefinition {
     pub background_color: Option<u32>,
     #[serde(default)]
     pub background: bool,
+    #[serde(default)]
+    pub fullscreen: bool,
     pub size: Option<VideoDimensions>,
     #[serde(default)]
     pub resizable: bool,

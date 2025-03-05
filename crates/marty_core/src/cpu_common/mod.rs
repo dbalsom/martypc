@@ -307,6 +307,8 @@ pub enum StepResult {
 #[derive(Copy, Clone, Debug)]
 pub enum ServiceEvent {
     TriggerPITLogging,
+    /// A request to quit the emulator immediately. Triggered by the `mquit` utility.
+    QuitEmulator(u8),
 }
 
 #[derive(Copy, Clone, Debug, Default, PartialEq)]

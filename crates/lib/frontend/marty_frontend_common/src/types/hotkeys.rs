@@ -36,6 +36,7 @@ use strum_macros::EnumIter;
 
 #[derive(Copy, Clone, Debug, PartialEq, Eq, Hash, EnumIter, Deserialize)]
 pub enum HotkeyEvent {
+    Quit,
     CaptureMouse,
     CtrlAltDel,
     Reboot,
