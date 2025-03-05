@@ -51,10 +51,6 @@ impl Intel808x {
         if self.enable_service_interrupt && interrupt == 0xFC {
             match self.a.h() {
                 0x01 => {
-                    // TODO: Make triggering pit logging a separate service number. Just re-using this one
-                    // out of laziness.
-                    self.service_events.push_back(ServiceEvent::TriggerPITLogging);
-
                     log::debug!(
                         "Received emulator trap interrupt: CS: {:04X} IP: {:04X}",
                         self.b.x(),
@@ -76,6 +72,14 @@ impl Intel808x {
                     self.biu_queue_flush();
                     self.cycles(4);
                     self.set_breakpoint_flag();
+                }
+                0x02 => {
+                    self.service_events.push_back(ServiceEvent::TriggerPITLogging);
+                    // Trigger PIT logging
+                }
+                0x03 => {
+                    // Request to quit.
+                    self.service_events.push_back(ServiceEvent::QuitEmulator(self.a.l()));
                 }
                 _ => {}
             }

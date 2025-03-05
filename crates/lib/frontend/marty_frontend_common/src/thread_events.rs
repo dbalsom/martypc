@@ -119,4 +119,6 @@ pub enum FrontendThreadEvent<D> {
     },
     FloppyImageSaveError(String),
     FloppyImageSaveComplete(PathBuf),
+    QuitRequested,
+    ToggleFullscreen,
 }

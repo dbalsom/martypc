@@ -145,8 +145,8 @@ impl VideoCard for EGACard {
 
     /// Return the current refresh rate.
     /// TODO: Handle VGA 70Hz modes.
-    fn get_refresh_rate(&self) -> u32 {
-        60
+    fn get_refresh_rate(&self) -> f32 {
+        60.0
     }
 
     fn get_clock_divisor(&self) -> u32 {

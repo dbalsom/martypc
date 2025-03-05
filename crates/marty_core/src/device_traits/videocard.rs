@@ -401,7 +401,7 @@ pub trait VideoCard {
 
     /// Get the current refresh rate from the adapter. Different adapters might
     /// support different refresh rates, even per mode.
-    fn get_refresh_rate(&self) -> u32;
+    fn get_refresh_rate(&self) -> f32;
 
     /// Get the current calculated video start address from the CRTC
     fn get_start_address(&self) -> u16;

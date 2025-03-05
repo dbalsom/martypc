@@ -48,6 +48,7 @@ use crate::wasm::file_open;
 use crate::{
     counter::Counter,
     emulator::{joystick_state::JoystickData, keyboard_state::KeyboardData, mouse_state::MouseData},
+    floppy::load_floppy::handle_load_floppy,
     input::HotkeyManager,
     sound::SoundInterface,
 };
@@ -65,6 +66,7 @@ use marty_frontend_common::{
     rom_manager::RomManager,
     thread_events::{FileOpenContext, FileSelectionContext, FrontendThreadEvent},
     timestep_manager::PerfSnapshot,
+    types::floppy::FloppyImageSource,
     vhd_manager::VhdManager,
 };
 
@@ -320,7 +322,52 @@ impl Emulator {
             let context = FileOpenContext::FloppyDiskImage { drive_select: idx, fsc };
             file_open::open_file(context, sender.clone());
         }
-
+        #[cfg(not(target_arch = "wasm32"))]
+        for (idx, image_name) in image_names.into_iter().filter_map(|x| x).enumerate() {
+            use std::path::PathBuf;
+            let floppy_path = PathBuf::from(image_name);
+            //handle_load_floppy(self, idx, FileSelectionContext::Path(floppy_path.clone()));
+            match self
+                .floppy_manager
+                .load_floppy_by_path(floppy_path.clone(), &mut self.rm)
+            {
+                Ok(fis) => match fis {
+                    FloppyImageSource::DiskImage(floppy_file, path) => {
+                        if let Some(fdc) = &mut self.machine.bus_mut().fdc_mut() {
+                            match fdc.load_image_from(idx, floppy_file, Some(&path.clone()), false) {
+                                Ok(_) => {
+                                    log::info!(
+                                        "Floppy disk image {:?} successfully loaded into drive: {}",
+                                        path.display(),
+                                        idx
+                                    );
+                                }
+                                Err(err) => {
+                                    log::error!(
+                                        "Error inserting floppy disk image {:?} into drive {}: {}",
+                                        path.display(),
+                                        idx,
+                                        err
+                                    );
+                                }
+                            }
+                        }
+                        else {
+                            log::error!("Couldn't load floppy disk: No Floppy Disk Controller present!");
+                        }
+                    }
+                    _ => {
+                        log::error!(
+                            "Unsupported image source for auto-loading floppy disk: {:?}",
+                            floppy_path.display()
+                        );
+                    }
+                },
+                Err(err) => {
+                    log::error!("Failed to load floppy disk image {}: {}", floppy_path.display(), err);
+                }
+            }
+        }
         Ok(())
     }
 

@@ -38,10 +38,7 @@ use marty_core::{
     cpu_common::CpuStringState,
     machine::{ExecutionControl, ExecutionState},
 };
-use std::{
-    cell::{Cell, RefCell},
-    rc::Rc,
-};
+use std::{cell::RefCell, rc::Rc};
 
 pub struct CpuViewerControl {
     exec_control: Rc<RefCell<ExecutionControl>>,

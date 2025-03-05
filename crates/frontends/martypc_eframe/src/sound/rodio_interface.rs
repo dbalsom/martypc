@@ -29,7 +29,6 @@
     Implement the sound player interface.
 
 */
-
 const MAX_BUFFER_SIZE: u32 = 100;
 
 use anyhow::{anyhow, Error};
@@ -45,6 +44,7 @@ use rodio::{
     Sink,
     SupportedStreamConfig,
 };
+use web_time::{Duration, Instant};
 
 pub struct SoundSource {
     pub name: String,
@@ -52,8 +52,14 @@ pub struct SoundSource {
     pub channels: u16,
     pub receiver: Receiver<AudioSample>,
     pub sample_ct: u64,
+    pub latency_ms: f32,
+    pub buffer_ct: u64,
+    pub first_buffer: Option<Instant>,
+    pub muted: bool,
     pub volume: f32,
     pub sink: Sink,
+    pub last_block_received: Instant,
+    pub controller: AudioLatencyController,
 }
 
 impl SoundSource {
@@ -63,14 +69,89 @@ impl SoundSource {
             sample_rate: self.sample_rate,
             channels: self.channels,
             sample_ct: self.sample_ct,
+            latency_ms: self.latency_ms,
+            muted: self.muted,
             volume: self.volume,
+            len: self.sink.len(),
         }
+    }
+}
+
+struct AudioLatencyController {
+    target_latency: f32, // Target latency in milliseconds
+    tolerance: f32,      // Tolerance in milliseconds
+    playback_speed: f32, // Current playback speed (1.0 = normal)
+    kp: f32,             // Proportional gain
+    ki: f32,             // Integral gain (optional)
+    integral: f32,       // Accumulated integral term
+    min_speed: f32,      // Lower bound for playback speed
+    max_speed: f32,      // Upper bound for playback speed
+}
+
+impl Default for AudioLatencyController {
+    fn default() -> Self {
+        AudioLatencyController::new(
+            50.0,   // Target latency in ms
+            20.0,   // Tolerance in ms
+            0.001,  // Proportional gain
+            0.0001, // Integral gain
+            0.90,   // Min playback speed
+            1.1,    // Max playback speed
+        )
+    }
+}
+
+impl AudioLatencyController {
+    fn new(target_latency: f32, tolerance: f32, kp: f32, ki: f32, min_speed: f32, max_speed: f32) -> Self {
+        Self {
+            target_latency,
+            tolerance,
+            playback_speed: 1.0,
+            kp,
+            ki,
+            integral: 0.0,
+            min_speed,
+            max_speed,
+        }
+    }
+
+    fn speed(&self) -> f32 {
+        self.playback_speed
+    }
+
+    fn update(&mut self, measured_latency: f32, _dt: f32) -> f32 {
+        let error = measured_latency - self.target_latency;
+
+        let lower_bound = self.target_latency - self.tolerance;
+        let upper_bound = self.target_latency + self.tolerance;
+        if measured_latency < lower_bound || measured_latency > upper_bound {
+            // Proportional term
+            let p_term = self.kp * error;
+            //log::trace!("Error: {:.2} P-term: {}", error, p_term);
+
+            // Integral term (accumulates over time)
+            //self.integral += error * dt;
+            // let i_term = self.ki * self.integral;
+            let i_term = 0.0;
+
+            // Compute new playback speed
+            self.playback_speed += p_term + i_term;
+
+            // Clamp playback speed within safe bounds
+            self.playback_speed = self.playback_speed.clamp(self.min_speed, self.max_speed);
+        }
+        else {
+            self.playback_speed = 1.0;
+        }
+
+        self.playback_speed
     }
 }
 
 pub struct SoundInterface {
     enabled: bool,
     device_name: String,
+    master_speed: f32,
     sample_rate: u32,
     sample_format: String, // We don't really need this, so I am not converting it to an enum.
     channels: usize,
@@ -85,6 +166,7 @@ impl Default for SoundInterface {
         SoundInterface {
             enabled: false,
             device_name: String::new(),
+            master_speed: 1.0,
             sample_rate: 0,
             sample_format: String::new(),
             channels: 0,
@@ -147,6 +229,7 @@ impl SoundInterface {
             SoundInterface {
                 enabled: self.enabled,
                 device_name,
+                master_speed: 1.0,
                 sample_rate,
                 sample_format,
                 channels,
@@ -160,6 +243,14 @@ impl SoundInterface {
         Ok(())
     }
 
+    pub fn set_master_speed(&mut self, speed: f32) {
+        self.master_speed = speed;
+
+        for source in self.sources.iter_mut() {
+            source.sink.set_speed(speed);
+        }
+    }
+
     pub fn add_source(&mut self, source: &SoundSourceDescriptor) -> Result<(), Error> {
         let stream_handle = self.stream_handle.as_ref().unwrap();
         let sink = Sink::try_new(stream_handle)?;
@@ -170,20 +261,67 @@ impl SoundInterface {
             channels: source.channels as u16,
             receiver: source.receiver.clone(),
             sample_ct: 0,
+            latency_ms: 0.0,
+            buffer_ct: 0,
+            first_buffer: None,
             sink,
+            muted: false,
             volume: 1.0,
+            last_block_received: Instant::now(),
+            controller: Default::default(),
         });
 
         Ok(())
     }
 
-    pub fn run(&mut self) {
+    pub fn run(&mut self, duration: Duration) {
         for source in self.sources.iter_mut() {
             let samples_in = source.receiver.try_iter().collect::<Vec<f32>>();
             //log::debug!("received {} samples from channel {}", samples_in.len(), source.name);
-            source.sample_ct += (samples_in.len() / source.channels as usize) as u64;
-            let sink_buffer = rodio::buffer::SamplesBuffer::new(source.channels, source.sample_rate, samples_in);
-            source.sink.append(sink_buffer);
+
+            // Do not append an empty buffer.
+            if samples_in.len() > 0 {
+                let now = Instant::now();
+                if source.first_buffer.is_none() {
+                    source.first_buffer = Some(now);
+                }
+                let last_block_duration = now - source.last_block_received;
+                source.last_block_received = now;
+                let block_len = samples_in.len() / source.channels as usize;
+
+                let block_duration = Duration::from_secs_f64(block_len as f64 / source.sample_rate as f64);
+                // How far along is the current block?
+                let mut sink_pos = source.sink.get_pos();
+
+                if sink_pos > block_duration {
+                    sink_pos = block_duration;
+                }
+
+                // Calculate the latency of the audio queue, by combining the current source position with the
+                // number of buffers in the queue
+                let latency = (block_duration - sink_pos)
+                    + Duration::from_secs_f64(source.sink.len() as f64 * block_duration.as_secs_f64());
+                let dt = last_block_duration.as_secs_f32();
+                let new_speed = source.controller.update(latency.as_millis_f32(), dt);
+
+                //let effective_sample_rate = block_len as f32 / block_duration.as_secs_f32();
+                let average_sample_rate =
+                    source.sample_ct as f64 / source.first_buffer.unwrap().elapsed().as_secs_f64();
+
+                source.latency_ms = latency.as_millis() as f32;
+                // log::debug!(
+                //     "{}: Average sample rate: {} Latency: {}ms Speed: {:.2}",
+                //     source.name,
+                //     average_sample_rate,
+                //     latency.as_millis(),
+                //     new_speed,
+                // );
+
+                source.sample_ct += block_len as u64;
+                let sink_buffer = rodio::buffer::SamplesBuffer::new(source.channels, source.sample_rate, samples_in);
+                source.sink.append(sink_buffer);
+                source.sink.set_speed(new_speed * self.master_speed);
+            }
         }
     }
 
@@ -201,11 +339,22 @@ impl SoundInterface {
         self.device_name.clone()
     }
 
-    pub fn set_volume(&mut self, s_idx: usize, volume: f32) {
+    pub fn set_volume(&mut self, s_idx: usize, volume: Option<f32>, muted: Option<bool>) {
         if s_idx < self.sources.len() {
             let source = &mut self.sources[s_idx];
-            source.volume = volume;
-            source.sink.set_volume(source.volume);
+            let mut new_volume = volume.unwrap_or(source.volume);
+            let mut new_sink_volume = new_volume;
+
+            if let Some(mute_state) = muted {
+                source.muted = mute_state;
+                new_sink_volume = match mute_state {
+                    true => 0.0,
+                    false => new_volume,
+                }
+            }
+
+            source.volume = new_volume;
+            source.sink.set_volume(new_sink_volume);
         }
     }
 

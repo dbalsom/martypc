@@ -28,8 +28,8 @@
 
     Update the egui menu and widget state.
 */
-
 use crate::{emulator::Emulator, event_loop::egui_events::handle_egui_event};
+use async_std::future::TimeoutError;
 
 use display_manager_eframe::{DisplayManager, EFrameDisplayManager};
 use marty_core::{
@@ -42,9 +42,9 @@ use marty_core::{
     util,
 };
 use marty_egui::GuiWindow;
-use marty_frontend_common::timestep_manager::TimestepManager;
+use marty_frontend_common::timestep_manager::{TimestepManager, TimestepUpdate};
 
-pub fn update_egui(emu: &mut Emulator, dm: &mut EFrameDisplayManager, tm: &TimestepManager) {
+pub fn update_egui(emu: &mut Emulator, dm: &mut EFrameDisplayManager, tm: &TimestepManager, tmu: &mut TimestepUpdate) {
     // Is the machine in an error state? If so, display an error dialog.
     if let Some(err) = emu.machine.get_error_str() {
         emu.gui.show_error(err);
@@ -59,7 +59,7 @@ pub fn update_egui(emu: &mut Emulator, dm: &mut EFrameDisplayManager, tm: &Times
     loop {
         if let Some(gui_event) = emu.gui.get_event() {
             //log::warn!("Handling GUI event!");
-            handle_egui_event(emu, dm, &gui_event);
+            handle_egui_event(emu, dm, tm, tmu, &gui_event);
         }
         else {
             break;

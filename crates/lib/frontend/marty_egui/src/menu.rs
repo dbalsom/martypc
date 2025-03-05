@@ -29,7 +29,7 @@
     Implement the main emulator menu bar.
 
 */
-use crate::{state::GuiState, GuiBoolean, GuiEnum, GuiEvent, GuiVariable, GuiVariableContext, GuiWindow};
+use crate::{state::GuiState, GuiBoolean, GuiEnum, GuiEvent, GuiFloat, GuiVariable, GuiVariableContext, GuiWindow};
 use std::path::{Path, PathBuf};
 
 use marty_frontend_common::display_manager::DtHandle;
@@ -47,9 +47,13 @@ use marty_core::devices::serial::SerialPortDescriptor;
 
 use crate::modal::ModalContext;
 
-use crate::file_dialogs::FileDialogFilter;
+use crate::{
+    file_dialogs::FileDialogFilter,
+    widgets::big_icon::{BigIcon, IconType},
+};
 use egui::RichText;
 use fluxfox::ImageFormatParser;
+use marty_core::cpu_common::Register16;
 use marty_frontend_common::thread_events::{FileOpenContext, FileSaveContext, FileSelectionContext};
 
 impl GuiState {
@@ -83,6 +87,26 @@ impl GuiState {
             }
 
             ui.menu_button("Machine", |ui| {
+                ui.menu_button("Emulation Speed", |ui| {
+                    ui.horizontal(|ui| {
+                        let mut speed = self.option_floats.get_mut(&GuiFloat::EmulationSpeed).unwrap();
+
+                        ui.label("Factor:");
+                        ui.add(
+                            egui::Slider::new(speed, 0.1..=2.0)
+                                .show_value(true)
+                                .min_decimals(2)
+                                .max_decimals(2)
+                                .suffix("x"),
+                        );
+
+                        self.event_queue.send(GuiEvent::VariableChanged(
+                            GuiVariableContext::Global,
+                            GuiVariable::Float(GuiFloat::EmulationSpeed, *speed),
+                        ));
+                    });
+                });
+
                 ui.menu_button("Input/Output", |ui| {
                     #[cfg(feature = "use_serialport")]
                     {
@@ -362,8 +386,20 @@ impl GuiState {
                             self.event_queue.send(GuiEvent::DumpVRAM);
                             ui.close_menu();
                         }
-                        if ui.button("Code Segment").clicked() {
-                            self.event_queue.send(GuiEvent::DumpCS);
+                        if ui.button("Code Segment (CS)").clicked() {
+                            self.event_queue.send(GuiEvent::DumpSegment(Register16::CS));
+                            ui.close_menu();
+                        }
+                        if ui.button("Data Segment (DS)").clicked() {
+                            self.event_queue.send(GuiEvent::DumpSegment(Register16::DS));
+                            ui.close_menu();
+                        }
+                        if ui.button("Extra Segment (ES)").clicked() {
+                            self.event_queue.send(GuiEvent::DumpSegment(Register16::ES));
+                            ui.close_menu();
+                        }
+                        if ui.button("Stack Segment (SS)").clicked() {
+                            self.event_queue.send(GuiEvent::DumpSegment(Register16::SS));
                             ui.close_menu();
                         }
                         if ui.button("All Memory").clicked() {
@@ -892,12 +928,62 @@ impl GuiState {
     }
 
     pub fn draw_sound_menu(&mut self, ui: &mut egui::Ui) {
-        for source in &self.sound_sources {
+        let mut sources = self.sound_sources.clone();
+
+        for (snd_idx, source) in &mut sources.iter_mut().enumerate() {
+            let icon = match source.muted {
+                true => IconType::SpeakerMuted,
+                false => IconType::Speaker,
+            };
+
+            let mut volume = source.volume;
+
+            let sctx = GuiVariableContext::SoundSource(snd_idx);
+
             ui.group(|ui| {
                 ui.vertical(|ui| {
-                    ui.label(format!("🔊 {}", source.name));
-                    ui.label(format!("Volume: {}", source.volume));
-                    ui.label(format!("Samples: {}", source.sample_ct));
+                    ui.label(format!("{}", source.name));
+                    ui.horizontal(|ui| {
+                        if ui
+                            .add(
+                                egui::Button::new(BigIcon::new(icon, Some(icon.default_color(ui))).medium().text())
+                                    .frame(true),
+                            )
+                            .clicked()
+                        {
+                            log::warn!("Mute button clicked");
+                            source.muted = !source.muted;
+
+                            if let Some(GuiEnum::AudioMuted(state)) =
+                                self.get_option_enum_mut(GuiEnum::AudioMuted(Default::default()), Some(sctx))
+                            {
+                                *state = source.muted;
+                                self.event_queue.send(GuiEvent::VariableChanged(
+                                    GuiVariableContext::SoundSource(snd_idx),
+                                    GuiVariable::Enum(GuiEnum::AudioMuted(source.muted)),
+                                ));
+                            }
+                        };
+
+                        if ui
+                            .add(egui::Slider::new(&mut source.volume, 0.0..=1.0).text("Volume"))
+                            .changed()
+                        {
+                            if let Some(GuiEnum::AudioVolume(vol)) =
+                                self.get_option_enum_mut(GuiEnum::AudioVolume(Default::default()), Some(sctx))
+                            {
+                                *vol = source.volume;
+                                self.event_queue.send(GuiEvent::VariableChanged(
+                                    GuiVariableContext::SoundSource(snd_idx),
+                                    GuiVariable::Enum(GuiEnum::AudioVolume(source.volume)),
+                                ));
+                            }
+                        }
+                    });
+                    ui.label(format!("Sample Rate: {}Hz", source.sample_rate));
+                    ui.label(format!("Latency: {:.0}ms", source.latency_ms));
+                    // ui.label(format!("Samples: {}", source.sample_ct));
+                    // ui.label(format!("Buffers: {}", source.len));
                 });
             });
         }

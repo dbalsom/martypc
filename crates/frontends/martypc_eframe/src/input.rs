@@ -33,12 +33,14 @@
     https://w3c.github.io/uievents-code/#code-value-tables
 */
 
-use marty_core::keys::MartyKey;
-use marty_frontend_common::{HotkeyConfigEntry, HotkeyEvent, HotkeyScope};
 use std::{
     collections::{HashMap, HashSet},
     env::consts::OS,
 };
+
+use marty_core::keys::MartyKey;
+use marty_frontend_common::{HotkeyConfigEntry, HotkeyEvent, HotkeyScope};
+
 use strum::IntoEnumIterator;
 
 #[cfg(feature = "use_winit")]

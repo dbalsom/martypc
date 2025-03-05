@@ -105,6 +105,7 @@ pub enum MachineEvent {
     CheckpointHit(usize, u32),
     Halted,
     Reset,
+    Service(ServiceEvent),
 }
 
 #[derive(Copy, Clone, Debug)]
@@ -1544,8 +1545,13 @@ impl Machine {
             if let Some(event) = self.cpu.get_service_event() {
                 match event {
                     ServiceEvent::TriggerPITLogging => {
-                        log::debug!("PIT logging has been triggered.");
+                        log::debug!("TriggerPITLogging ServiceEvent received.");
                         //self.pit_data.logging_triggered = true;
+                    }
+                    ServiceEvent::QuitEmulator(delay) => {
+                        log::debug!("Quit ServiceEvent received, delay parameter: {}", delay);
+                        // Forward the quit event to the frontend.
+                        self.events.push(MachineEvent::Service(ServiceEvent::QuitEmulator(delay)));
                     }
                 }
             }

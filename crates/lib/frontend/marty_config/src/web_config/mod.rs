@@ -44,6 +44,9 @@ pub struct CmdLineArgs {
     // Ignored on wasm
     pub benchmark_mode: bool,
     pub no_sound: bool,
+    pub demo_mode: bool,
+    // Ignored on wasm
+    pub fullscreen: bool,
     // Ignored on wasm
     pub headless: bool,
     // Ignored on wasm

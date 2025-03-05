@@ -48,17 +48,16 @@ compile_error!("You must select either the use_wgpu or use_glow features!");
 
 pub mod builder;
 
-use std::{
-    path::PathBuf,
-    sync::{Arc, RwLock},
-    time::Duration,
-};
-
 use marty_common::*;
 use marty_core::{
     device_traits::videocard::{DisplayApertureType, DisplayExtents, VideoCardId},
     file_util,
     machine::Machine,
+};
+use std::{
+    path::{Path, PathBuf},
+    sync::{Arc, RwLock},
+    time::Duration,
 };
 
 #[cfg(not(feature = "use_wgpu"))]
@@ -1752,12 +1751,12 @@ impl<'p> DisplayManager<EFrameBackend, GuiRenderContext, ViewportId, ViewportId,
         Ok(())
     }
 
-    fn save_screenshot(&mut self, dt: DtHandle, path: PathBuf) -> Result<(), Error> {
+    fn save_screenshot(&mut self, dt: DtHandle, path: impl AsRef<Path>) -> Result<PathBuf, Error> {
         if is_bad_handle!(dt, self.targets) {
             return Err(anyhow!("Display target out of range!"));
         }
 
-        let filename = file_util::find_unique_filename(&path, "screenshot", "png");
+        let filename = file_util::find_unique_filename(path.as_ref(), "screenshot", "png");
 
         if let Some(renderer) = &mut resolve_dtc_mut!(self.targets[dt.idx()]).renderer {
             renderer.request_screenshot(&filename);
@@ -1766,6 +1765,6 @@ impl<'p> DisplayManager<EFrameBackend, GuiRenderContext, ViewportId, ViewportId,
             return Err(anyhow!("No renderer for display target!"));
         }
 
-        Ok(())
+        Ok(filename)
     }
 }

@@ -99,3 +99,54 @@ icon.png
 /test-gen/
 
 
+/exo_demo/configs/keyboard_layouts/keyboard_IT.toml
+/exo_demo/configs/keyboard_layouts/keyboard_UK.toml
+/exo_demo/configs/keyboard_layouts/keyboard_US.toml
+/exo_demo/configs/machines/acid88.toml
+/exo_demo/configs/machines/compaq_portable.toml
+/exo_demo/configs/machines/config_overlays.toml
+/exo_demo/configs/machines/generic_xt.toml
+/exo_demo/configs/machines/ibm5150.toml
+/exo_demo/configs/machines/ibm5160.toml
+/exo_demo/configs/machines/ibm_pcjr.toml
+/exo_demo/configs/machines/readme.md
+/exo_demo/configs/machines/s100.toml
+/exo_demo/configs/machines/tandy1000.toml
+/exo_demo/media/floppies/Demos/8088MPH (Compo version).img
+/exo_demo/media/floppies/Demos/8088MPH (Final Version).img
+/exo_demo/media/floppies/Demos/Area 5150 (Compo Version).img
+/exo_demo/media/floppies/Demos/AUTOEXEC.BAT
+/exo_demo/media/floppies/Demos/CGADEMO (Codemasters).img
+/exo_demo/media/roms/GLaBIOS/parking/GLABIOS_0.2.6_8EC.ROM
+/exo_demo/media/roms/GLaBIOS/parking/GLABIOS_0.2.6_8P.ROM
+/exo_demo/media/roms/GLaBIOS/parking/GLABIOS_0.2.6_8PC.ROM
+/exo_demo/media/roms/GLaBIOS/parking/GLABIOS_0.2.6_8T.ROM
+/exo_demo/media/roms/GLaBIOS/parking/GLABIOS_0.2.6_8TC.ROM
+/exo_demo/media/roms/GLaBIOS/parking/GLABIOS_0.2.6_8X.ROM
+/exo_demo/media/roms/GLaBIOS/parking/GLABIOS_0.2.6_8XC.ROM
+/exo_demo/media/roms/GLaBIOS/GLABIOS_0.2.5_8PC.ROM
+/exo_demo/media/roms/GLaBIOS/GLABIOS_0.2.5_8TC_PEN.ROM
+/exo_demo/media/roms/GLaBIOS/GLABIOS_0.2.5_8XC.ROM
+/exo_demo/media/roms/GLaBIOS/GLABIOS_0.2.6_8P.ROM
+/exo_demo/media/roms/GLaBIOS/GLABIOS_0.2.6_8PC.ROM
+/exo_demo/media/roms/GLaBIOS/GLABIOS_0.2.6_8T.ROM
+/exo_demo/media/roms/GLaBIOS/GLABIOS_0.2.6_8TC.ROM
+/exo_demo/media/roms/GLaBIOS/GLABIOS_0.2.6_8X.ROM
+/exo_demo/media/roms/GLaBIOS/GLABIOS_0.2.6_8XC.ROM
+/exo_demo/media/roms/romdef.toml
+/exo_demo/media/roms/romdef_ast.toml
+/exo_demo/media/roms/romdef_compaq.toml
+/exo_demo/media/roms/romdef_glabios.toml
+/exo_demo/media/roms/romdef_ibm.toml
+/exo_demo/media/roms/romdef_ibm_pcjr.toml
+/exo_demo/media/roms/romdef_megabios.toml
+/exo_demo/media/roms/romdef_s100.toml
+/exo_demo/media/roms/romdef_tandy.toml
+/exo_demo/8088mph.toml
+/exo_demo/area5150.toml
+/exo_demo/cgademo.toml
+/exo_demo/exo_demo.7z
+/exo_demo/run Area5150.bat
+/exo_demo/run cgademo.bat
+/exo_demo/run 8088mph.bat
+/util/mquit/mquit.com

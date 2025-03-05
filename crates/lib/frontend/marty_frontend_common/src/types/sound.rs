@@ -36,5 +36,8 @@ pub struct SoundSourceInfo {
     pub sample_rate: u32,
     pub channels: u16,
     pub sample_ct: u64,
+    pub latency_ms: f32,
     pub volume: f32,
+    pub muted: bool,
+    pub len: usize,
 }

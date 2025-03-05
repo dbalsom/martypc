@@ -58,7 +58,7 @@ use crate::event_loop::web_keyboard::handle_web_key_event;
 
 use crossbeam_channel::{Receiver, Sender};
 
-use egui::{Context, RawInput, Sense, ViewportId};
+use egui::{Context, RawInput, Sense, ViewportCommand, ViewportId};
 
 use crate::emulator_builder::builder::EmuBuilderError;
 #[cfg(target_arch = "wasm32")]
@@ -80,6 +80,7 @@ pub struct MartyApp {
     current_size: egui::Vec2,
     last_size: egui::Vec2,
     focused: bool,
+    hide_menu: bool,
     #[serde(skip)]
     gui: GuiRenderContext,
     #[serde(skip)]
@@ -107,6 +108,7 @@ impl Default for MartyApp {
         let (sender, receiver) = crossbeam_channel::bounded(1);
 
         Self {
+            hide_menu: false,
             current_size: egui::Vec2::ZERO,
             last_size: egui::Vec2::INFINITY,
             focused: false,
@@ -136,7 +138,7 @@ impl MartyApp {
     /// We split app initialization into two parts, since we can't make the callback eframe passes
     /// the creation context to async. So we first create the app, then let eframe call `init` with
     /// the partially initialized app - it should have the emulator built by then.
-    pub async fn new(_native_options: &mut MartyAppNewOptions) -> Self {
+    pub async fn new(native_options: &mut MartyAppNewOptions) -> Self {
         // Build the emulator.
         let mut emu_builder = EmulatorBuilder::default();
         let emu_result;
@@ -226,8 +228,8 @@ impl MartyApp {
                     }
                     EmuBuilderError::BadMachineConfig(e) =>{
                         format!("MartyPC encountered an error reading its Machine Configuration files!\n\
-                        At least one machine configuration TOML file in /configs/machines appears to be invalid or corrupt.\n\n\
-                        The error reported was:\n{e}")
+                        The specified machine configuration could not be found:\n\n\
+                        '{e}'")
                     }
                     EmuBuilderError::IOError(e) => e.to_string(),
                     EmuBuilderError::Other(e) => e.to_string(),
@@ -253,6 +255,14 @@ impl MartyApp {
         let mut timestep_manager = TimestepManager::new();
         timestep_manager.set_cpu_mhz(emu.machine.get_cpu_mhz());
 
+        // Set eframe's NativeOptions for fullscreen if specified by config
+        if let Some(window) = emu.config.emulator.window.get_mut(0) {
+            if window.fullscreen {
+                native_options.viewport.inner_size = None;
+                native_options.viewport.fullscreen = Some(true);
+            }
+        }
+
         MartyApp {
             emu: Some(emu),
             tm: timestep_manager,
@@ -275,11 +285,19 @@ impl MartyApp {
 
         let mut emu = self.emu.take().expect("Emulator should have been Some, but was None");
 
+        // Apply fullscreen configuration now (doesn't seem to work applying to NativeOptions in new())
+
+        if let Some(window) = emu.config.emulator.window.get_mut(0) {
+            let _ = &cc
+                .egui_ctx
+                .send_viewport_cmd(ViewportCommand::Fullscreen(window.fullscreen));
+        }
+
         // Get a list of video devices from machine.
         let cardlist = emu.machine.bus().enumerate_videocards();
 
         // Find the maximum refresh rate of all video cards
-        let mut highest_rate = 50;
+        let mut highest_rate = 50.0;
         for card in cardlist.iter() {
             let rate = emu.machine.bus().video(&card).unwrap().get_refresh_rate();
             if rate > highest_rate {
@@ -290,12 +308,20 @@ impl MartyApp {
         self.tm.set_emu_update_rate(highest_rate);
         self.tm.set_emu_render_rate(highest_rate);
 
+        self.hide_menu = if emu.config.emulator.demo_mode {
+            true
+        }
+        else {
+            emu.config.gui.disabled
+        };
+
+        // TODO: Re-implement this stuff?
         // Create GUI parameters for the Display Manager.
         let gui_options = DmGuiOptions {
             enabled: !emu.config.gui.disabled,
             theme: emu.config.gui.theme,
             menu_theme: emu.config.gui.menu_theme,
-            menubar_h: EGUI_MENU_BAR_HEIGHT, // TODO: Dynamically measure the height of the egui menu bar somehow
+            menubar_h: EGUI_MENU_BAR_HEIGHT, // ignored on eframe
             zoom: emu.config.gui.zoom.unwrap_or(1.0),
             debug_drawing: false,
         };
@@ -420,6 +446,12 @@ impl MartyApp {
             }
         });
 
+        // Initialize sound info
+        // -- Update sound sources
+        if let Some(si) = emu.si.as_ref() {
+            emu.gui.init_sound_info(si.info());
+        }
+
         // Insert floppies specified in config.
         match emu.insert_floppies(emu.sender.clone()) {
             Ok(_) => {
@@ -530,6 +562,7 @@ impl eframe::App for MartyApp {
                     handle_window_event(
                         emu,
                         self.dm.as_mut().unwrap(),
+                        ctx.clone(),
                         &mut self.tm,
                         event.0,
                         event.1,
@@ -557,7 +590,7 @@ impl eframe::App for MartyApp {
             let dm = self.dm.as_mut().unwrap();
             // Process timestep.
             process_update(emu, dm, &mut self.tm);
-            handle_thread_event(emu);
+            handle_thread_event(emu, ctx);
 
             let fill_color = dm
                 .main_display_target()
@@ -569,9 +602,11 @@ impl eframe::App for MartyApp {
                 .and_then(|c| Some(MartyColor::from_u24(c).to_color32()));
 
             let show_bezel = emu.gui.primary_video_has_bezel();
+
             // Draw the emulator GUI.
             self.gui.show(
                 &mut emu.gui,
+                !self.hide_menu,
                 fill_color,
                 |ctx| {
                     if let Some(DisplayTargetType::GuiWidget) = dm.display_type(DtHandle::MAIN) {

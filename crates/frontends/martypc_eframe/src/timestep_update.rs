@@ -34,9 +34,10 @@ use web_time::{Duration, Instant};
 
 use crate::{emulator::Emulator, event_loop::render_frame::render_frame};
 use display_manager_eframe::{DisplayManager, EFrameDisplayManager};
-use marty_core::{bus::DeviceEvent, machine::MachineEvent};
+use marty_core::{bus::DeviceEvent, cpu_common::ServiceEvent, machine::MachineEvent};
 use marty_frontend_common::{
     constants::{LONG_NOTIFICATION_TIME, NORMAL_NOTIFICATION_TIME, SHORT_NOTIFICATION_TIME},
+    thread_events::FrontendThreadEvent,
     timestep_manager::{MachinePerfStats, TimestepManager},
 };
 use marty_videocard_renderer::RendererEvent;
@@ -75,7 +76,7 @@ pub fn process_update(emu: &mut Emulator, dm: &mut EFrameDisplayManager, tm: &mu
             // Per emu update freq
             emuc.machine.run(cycles, &mut emuc.exec_control.borrow_mut());
         },
-        |emuc, dmc, tmc, &perf| {
+        |emuc, dmc, tmc, &perf, duration, tmu| {
             emuc.perf = perf;
 
             // Per frame freq
@@ -182,6 +183,13 @@ pub fn process_update(emu: &mut Emulator, dm: &mut EFrameDisplayManager, tm: &mu
                             .error("CPU permanently halted!".to_string())
                             .duration(Some(LONG_NOTIFICATION_TIME));
                     }
+                    MachineEvent::Service(service_event) => match service_event {
+                        ServiceEvent::QuitEmulator(delay) => {
+                            let _ = emuc.sender.send(FrontendThreadEvent::QuitRequested);
+                            log::warn!("Emulator quit requested after delay {}", delay);
+                        }
+                        _ => {}
+                    },
                 }
             }
 
@@ -226,11 +234,11 @@ pub fn process_update(emu: &mut Emulator, dm: &mut EFrameDisplayManager, tm: &mu
             emuc.stat_counter.render_time = Instant::now() - render_start;
 
             // Update egui data
-            update_egui(emuc, dmc, tmc);
+            update_egui(emuc, dmc, tmc, tmu);
 
             // Run sound
             if let Some(sound) = &mut emuc.si {
-                sound.run();
+                sound.run(duration);
             }
 
             // Render the current frame for all window display targets.

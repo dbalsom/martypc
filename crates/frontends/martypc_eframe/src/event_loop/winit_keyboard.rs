@@ -29,8 +29,8 @@
     Handle keyboard events.
 
 */
-
 use crate::{emulator::Emulator, input::TranslateKey};
+use egui::ViewportCommand;
 
 use display_manager_eframe::{DisplayManager, EFrameDisplayManager};
 use marty_core::machine::{ExecutionOperation, MachineState};
@@ -65,6 +65,7 @@ pub fn handle_modifiers(emu: &mut Emulator, _wid: WindowId, _event: &WindowEvent
 pub fn handle_winit_key_event(
     emu: &mut Emulator,
     dm: &mut EFrameDisplayManager,
+    context: egui::Context,
     window_id: WindowId,
     key_event: &KeyEvent,
     gui_has_focus: bool,
@@ -97,9 +98,9 @@ pub fn handle_winit_key_event(
             process_hotkeys(
                 emu,
                 dm,
+                context,
                 *keycode,
                 matches!(state, ElementState::Pressed),
-                window_id,
                 gui_focus,
             );
 
@@ -168,9 +169,9 @@ pub fn handle_winit_key_event(
 pub fn process_hotkeys(
     emu: &mut Emulator,
     dm: &mut EFrameDisplayManager,
+    ctx: egui::Context,
     keycode: KeyCode,
     pressed: bool,
-    _window_id: WindowId,
     gui_focus: bool,
 ) {
     let mut event_opt = None;
@@ -239,25 +240,14 @@ pub fn process_hotkeys(
                 log::debug!("Reboot hotkey triggered. Restarting machine.");
                 emu.machine.change_state(MachineState::Rebooting);
             }
-            // HotkeyEvent::ToggleFullscreen => {
-            //     log::debug!("ToggleFullscreen hotkey triggered.");
-            //     // Get the window for this event.
-            //     let event_window = emu
-            //         .dm
-            //         .viewport_by_id(window_id)
-            //         .expect(&format!("Couldn't resolve window id {:?} to window.", window_id));
-            //
-            //     match event_window.fullscreen() {
-            //         Some(_) => {
-            //             log::debug!("ToggleFullscreen: Resetting fullscreen state.");
-            //             event_window.set_fullscreen(None);
-            //         }
-            //         None => {
-            //             log::debug!("ToggleFullscreen: Entering fullscreen state.");
-            //             event_window.set_fullscreen(Some(winit::window::Fullscreen::Borderless(None)));
-            //         }
-            //     }
-            // }
+            HotkeyEvent::ToggleFullscreen => {
+                log::debug!("ToggleFullscreen hotkey triggered.");
+                let mut fullscreen_state = false;
+                ctx.input(|i| {
+                    fullscreen_state = i.viewport().fullscreen.unwrap_or(false);
+                });
+                ctx.send_viewport_cmd(ViewportCommand::Fullscreen(!fullscreen_state));
+            }
             HotkeyEvent::Screenshot => {
                 log::debug!("Screenshot hotkey triggered. Capturing screenshot.");
 
@@ -281,6 +271,10 @@ pub fn process_hotkeys(
             HotkeyEvent::JoyToggle => {
                 log::debug!("JoyToggle hotkey triggered. Toggling joystick keyboard emulation.");
                 emu.joy_data.enabled = !emu.joy_data.enabled;
+            }
+            HotkeyEvent::Quit => {
+                log::debug!("Quit hotkey pressed. Exiting immediately...");
+                ctx.send_viewport_cmd(ViewportCommand::Close);
             }
             _ => {
                 log::debug!("Unhandled Hotkey triggered: {:?}", hotkey);

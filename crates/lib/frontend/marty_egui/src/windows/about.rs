@@ -65,7 +65,7 @@ impl AboutDialog {
         ui.vertical(|ui| {
             ui.label(format!("MartyPC Version {}", env!("CARGO_PKG_VERSION")));
             ui.label("MartyPC is free software licensed under the MIT License.");
-            ui.label("©2024 Daniel Balsom (GloriousCow)");
+            ui.label("©2022-2025 Daniel Balsom (GloriousCow)");
 
             ui.horizontal(|ui| {
                 ui.label("Github:");

@@ -30,16 +30,16 @@
 */
 
 use crate::{emulator::Emulator, floppy::load_floppy::load_floppy_image};
-use std::{path::PathBuf, sync::Arc};
-
+use egui::ViewportCommand;
 use fluxfox::DiskImage;
 use marty_egui::{modal::ModalContext, state::FloppyDriveSelection};
 use marty_frontend_common::{
     constants::{LONG_NOTIFICATION_TIME, NORMAL_NOTIFICATION_TIME},
     thread_events::{FileOpenContext, FileSaveContext, FileSelectionContext, FrontendThreadEvent},
 };
+use std::{path::PathBuf, sync::Arc};
 
-pub fn handle_thread_event(emu: &mut Emulator) {
+pub fn handle_thread_event(emu: &mut Emulator, ctx: &egui::Context) {
     while let Ok(event) = emu.receiver.try_recv() {
         match event {
             FrontendThreadEvent::FileDialogCancelled => {
@@ -232,6 +232,16 @@ pub fn handle_thread_event(emu: &mut Emulator) {
             FrontendThreadEvent::FloppyImageSaveComplete(path) => {
                 emu.gui.modal.close();
                 log::info!("Floppy image saved: {:?}", path);
+            }
+            FrontendThreadEvent::QuitRequested => {
+                ctx.send_viewport_cmd(ViewportCommand::Close);
+            }
+            FrontendThreadEvent::ToggleFullscreen => {
+                let mut fullscreen_state = false;
+                ctx.input(|i| {
+                    fullscreen_state = i.viewport().fullscreen.unwrap_or(false);
+                });
+                ctx.send_viewport_cmd(ViewportCommand::Fullscreen(!fullscreen_state));
             }
         }
     }

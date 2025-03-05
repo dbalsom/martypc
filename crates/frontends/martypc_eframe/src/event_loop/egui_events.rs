@@ -23,11 +23,10 @@
     DEALINGS IN THE SOFTWARE.
 
     --------------------------------------------------------------------------
-
-    event_loop/update.rs
-
-    Process received egui events.
 */
+
+//! Process events received from the emulator GUI.
+//! Typically, the GUI is implemented by the `marty_egui` crate.
 
 use std::{
     ffi::OsString,
@@ -65,6 +64,7 @@ use marty_egui::{
     GuiBoolean,
     GuiEnum,
     GuiEvent,
+    GuiFloat,
     GuiVariable,
     GuiVariableContext,
     InputFieldChangeSource,
@@ -78,23 +78,28 @@ use winit::event_loop::ActiveEventLoop;
 
 #[cfg(target_arch = "wasm32")]
 use crate::wasm::file_open;
-use marty_frontend_common::display_manager::{DisplayManager, DtHandle};
+#[cfg(target_arch = "wasm32")]
+use crate::wasm::worker::spawn_closure_worker as spawn;
+use marty_frontend_common::{
+    display_manager::{DisplayManager, DtHandle},
+    timestep_manager::{TimestepManager, TimestepUpdate},
+};
 #[cfg(not(target_arch = "wasm32"))]
 use std::thread::spawn;
 
-#[cfg(target_arch = "wasm32")]
-use crate::wasm::worker::spawn_closure_worker as spawn;
-
 //noinspection RsBorrowChecker
-pub fn handle_egui_event(emu: &mut Emulator, dm: &mut EFrameDisplayManager, gui_event: &GuiEvent) {
+pub fn handle_egui_event(
+    emu: &mut Emulator,
+    dm: &mut EFrameDisplayManager,
+    tm: &TimestepManager,
+    tmu: &mut TimestepUpdate,
+    gui_event: &GuiEvent,
+) {
     match gui_event {
         GuiEvent::Exit => {
             // User chose exit option from menu. Shut down.
             // TODO: Add a timeout from last VHD write for safety?
-            println!("Thank you for using MartyPC!");
-
-            // TODO: how do we quit eframe?
-            //elwt.exit();
+            let _ = emu.sender.send(FrontendThreadEvent::QuitRequested);
         }
         GuiEvent::SetNMI(state) => {
             // User wants to crash the computer. Sure, why not.
@@ -119,7 +124,30 @@ pub fn handle_egui_event(emu: &mut Emulator, dm: &mut EFrameDisplayManager, gui_
                 }
                 _ => {}
             },
+            GuiVariable::Float(op, val) => match op {
+                GuiFloat::EmulationSpeed => {
+                    log::debug!("Got emulation speed factor: {}", val);
+                    tmu.new_throttle_factor = Some(*val as f64);
+
+                    if let Some(si) = &mut emu.si {
+                        si.set_master_speed(*val);
+                    }
+                }
+            },
             GuiVariable::Enum(op) => match ctx {
+                GuiVariableContext::SoundSource(s_idx) => match op {
+                    GuiEnum::AudioMuted(state) => {
+                        if let Some(si) = &mut emu.si {
+                            si.set_volume(*s_idx, None, Some(*state));
+                        }
+                    }
+                    GuiEnum::AudioVolume(vol) => {
+                        if let Some(si) = &mut emu.si {
+                            si.set_volume(*s_idx, Some(*vol), None);
+                        }
+                    }
+                    _ => {}
+                },
                 GuiVariableContext::Display(dth) => match op {
                     GuiEnum::DisplayType(display_type) => {
                         log::debug!("Got display type update event: {:?}", display_type);
@@ -737,7 +765,7 @@ pub fn handle_egui_event(emu: &mut Emulator, dm: &mut EFrameDisplayManager, gui_
                 if let Some(image_lock) = fdc.get_image(*drive_select).0 {
                     let image = image_lock.read().unwrap();
                     let compat_formats = image.compatible_formats(true);
-                    emu.gui.set_floppy_supported_formats(*drive_select, 0, compat_formats);
+                    emu.gui.set_floppy_supported_formats(*drive_select, compat_formats);
                 }
             }
         }
@@ -798,20 +826,38 @@ pub fn handle_egui_event(emu: &mut Emulator, dm: &mut EFrameDisplayManager, gui_
             //         });
             // }
         }
-        GuiEvent::DumpCS => {
-            let cs = emu.machine.cpu().get_register16(Register16::CS);
-            let flat_cs = cpu_common::calc_linear_address(cs, 0);
-            log::info!("Dumping CS: {:04X} ({:08X})", cs, flat_cs);
+        GuiEvent::DumpSegment(register) => {
+            let base_segment = match register {
+                Register16::CS | Register16::DS | Register16::ES | Register16::SS => {
+                    emu.machine.cpu().get_register16(*register)
+                }
+                _ => {
+                    log::error!("Invalid segment register for dump: {:?}", register);
+                    return;
+                }
+            };
 
-            let end = flat_cs + 0x10000;
-            emu.rm
-                .get_available_filename("dump", "cs_dump", Some("bin"))
-                .ok()
-                .map(|path| emu.machine.bus().dump_mem_range(flat_cs, end, &path))
-                .or_else(|| {
+            let flat_addr = cpu_common::calc_linear_address(base_segment, 0);
+            log::info!("Dumping {:?}: {:04X} ({:08X})", register, base_segment, flat_addr);
+
+            let end = flat_addr + 0x10000;
+            let base_name = format!("{:?}_dump", register).to_ascii_lowercase();
+            match emu.rm.get_available_filename("dump", &base_name, Some("bin")) {
+                Ok(path) => {
+                    emu.machine.bus().dump_mem_range(flat_addr, end, &path);
+                    emu.gui
+                        .toasts()
+                        .info(format!("Segment dumped: {:?}", path))
+                        .duration(Some(NORMAL_NOTIFICATION_TIME));
+                }
+                Err(e) => {
                     log::error!("Failed to get available filename for memory dump!");
-                    None
-                });
+                    emu.gui
+                        .toasts()
+                        .error(format!("Failed to dump segment: {e}"))
+                        .duration(Some(LONG_NOTIFICATION_TIME));
+                }
+            }
         }
         GuiEvent::DumpAllMem => {
             emu.rm
@@ -977,29 +1023,17 @@ pub fn handle_egui_event(emu: &mut Emulator, dm: &mut EFrameDisplayManager, gui_
 
             // TODO: Fix this (2024)
 
-            // if let Err(err) = emu.dm.save_screenshot(*dt_idx, screenshot_path) {
-            //     log::error!("Failed to save screenshot: {}", err);
-            //     emu.gui
-            //         .toasts()
-            //         .error(format!("{}", err))
-            //         .set_duration(Some(LONG_NOTIFICATION_TIME));
-            // }
+            if let Err(err) = dm.save_screenshot(DtHandle::from(*dt_idx), screenshot_path) {
+                log::error!("Failed to save screenshot: {}", err);
+                emu.gui
+                    .toasts()
+                    .error(format!("{}", err))
+                    .duration(Some(LONG_NOTIFICATION_TIME));
+            }
         }
-        GuiEvent::ToggleFullscreen(dt_idx) => {
+        GuiEvent::ToggleFullscreen(_dt_idx) => {
             // User requested to toggle fullscreen mode
-
-            // if let Some(window) = emu.dm.get_window(*dt_idx) {
-            //     match window.fullscreen() {
-            //         Some(_) => {
-            //             log::debug!("ToggleFullscreen: Resetting fullscreen state.");
-            //             window.set_fullscreen(None);
-            //         }
-            //         None => {
-            //             log::debug!("ToggleFullscreen: Entering fullscreen state.");
-            //             window.set_fullscreen(Some(winit::window::Fullscreen::Borderless(None)));
-            //         }
-            //     }
-            // }
+            let _ = emu.sender.send(FrontendThreadEvent::ToggleFullscreen);
         }
         GuiEvent::CtrlAltDel => {
             // User requested to send CTRL + ALT + DEL keyboard combination

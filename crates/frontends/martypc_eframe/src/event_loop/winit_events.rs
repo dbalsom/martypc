@@ -41,6 +41,7 @@ use winit::{event::WindowEvent, window::WindowId};
 pub fn handle_window_event(
     emu: &mut Emulator,
     dm: &mut EFrameDisplayManager,
+    ctx: egui::Context,
     _tm: &mut TimestepManager,
     window_id: WindowId,
     event: WindowEvent,
@@ -112,7 +113,7 @@ pub fn handle_window_event(
             if !window_has_focus {
                 return;
             }
-            pass_to_egui = !handle_winit_key_event(emu, dm, window_id, key_event, gui_has_focus);
+            pass_to_egui = !handle_winit_key_event(emu, dm, ctx, window_id, key_event, gui_has_focus);
         }
         WindowEvent::Focused(state) => match state {
             true => {

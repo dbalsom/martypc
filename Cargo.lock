@@ -2322,7 +2322,7 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "33d852cb9b869c2a9b3df2f71a3074817f01e1844f839a144f5fcef059a4eb5d"
 dependencies = [
  "libc",
- "windows-sys 0.52.0",
+ "windows-sys 0.59.0",
 ]
 
 [[package]]
@@ -2442,7 +2442,7 @@ dependencies = [
 [[package]]
 name = "fluxfox"
 version = "0.2.0"
-source = "git+https://github.com/dbalsom/fluxfox.git?branch=martypc_consumer#9b81e07b4490b200a51200302d9dfa949f982eda"
+source = "git+https://github.com/dbalsom/fluxfox.git?branch=martypc_consumer#8d974b17be12183362a028942131ab09fba10b79"
 dependencies = [
  "binrw",
  "bit-vec 0.8.0",
@@ -2474,7 +2474,7 @@ dependencies = [
 [[package]]
 name = "fluxfox_egui"
 version = "0.3.3"
-source = "git+https://github.com/dbalsom/fluxfox.git?branch=martypc_consumer#9b81e07b4490b200a51200302d9dfa949f982eda"
+source = "git+https://github.com/dbalsom/fluxfox.git?branch=martypc_consumer#8d974b17be12183362a028942131ab09fba10b79"
 dependencies = [
  "egui 0.30.0",
  "egui_extras 0.30.0 (registry+https://github.com/rust-lang/crates.io-index)",
@@ -2496,7 +2496,7 @@ dependencies = [
 [[package]]
 name = "fluxfox_tiny_skia"
 version = "0.2.0"
-source = "git+https://github.com/dbalsom/fluxfox.git?branch=martypc_consumer#9b81e07b4490b200a51200302d9dfa949f982eda"
+source = "git+https://github.com/dbalsom/fluxfox.git?branch=martypc_consumer#8d974b17be12183362a028942131ab09fba10b79"
 dependencies = [
  "fluxfox",
  "log",
@@ -3318,7 +3318,7 @@ checksum = "e19b23d53f35ce9f56aebc7d1bb4e6ac1e9c0db7ac85c8d1760c04379edced37"
 dependencies = [
  "hermit-abi",
  "libc",
- "windows-sys 0.52.0",
+ "windows-sys 0.59.0",
 ]
 
 [[package]]
@@ -5380,7 +5380,7 @@ dependencies = [
  "errno",
  "libc",
  "linux-raw-sys",
- "windows-sys 0.52.0",
+ "windows-sys 0.59.0",
 ]
 
 [[package]]
@@ -5881,7 +5881,7 @@ dependencies = [
  "getrandom 0.2.15",
  "once_cell",
  "rustix",
- "windows-sys 0.52.0",
+ "windows-sys 0.59.0",
 ]
 
 [[package]]
@@ -6629,7 +6629,7 @@ dependencies = [
  "js-sys",
  "log",
  "naga 0.12.3",
- "parking_lot 0.12.3",
+ "parking_lot 0.11.2",
  "profiling",
  "raw-window-handle 0.5.2",
  "smallvec",
@@ -6679,7 +6679,7 @@ dependencies = [
  "codespan-reporting",
  "log",
  "naga 0.12.3",
- "parking_lot 0.12.3",
+ "parking_lot 0.11.2",
  "profiling",
  "raw-window-handle 0.5.2",
  "rustc-hash",
@@ -6743,7 +6743,7 @@ dependencies = [
  "metal 0.24.0",
  "naga 0.12.3",
  "objc",
- "parking_lot 0.12.3",
+ "parking_lot 0.11.2",
  "profiling",
  "range-alloc",
  "raw-window-handle 0.5.2",
