@@ -132,6 +132,7 @@ pub enum InputFieldChangeSource {
 }
 
 pub enum GuiVariable {
+    Float(GuiFloat, f32),
     Bool(GuiBoolean, bool),
     Enum(GuiEnum),
 }
@@ -145,6 +146,11 @@ pub enum GuiBoolean {
     TurboButton,
     ShowBackBuffer,
     ShowRasterPosition,
+}
+
+#[derive(PartialEq, Eq, Hash)]
+pub enum GuiFloat {
+    EmulationSpeed,
 }
 
 // Enums are hashed with a tuple of GuiEnumContext and their base discriminant.

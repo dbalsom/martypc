@@ -31,7 +31,7 @@
 */
 
 use marty_common::types::history_buffer::HistoryBuffer;
-use std::{default::Default, thread};
+use std::{cell::Cell, default::Default, thread};
 use web_time::{Duration, Instant};
 
 const SECOND: Duration = Duration::from_secs(1);
@@ -182,6 +182,11 @@ pub struct MachinePerfStats {
     pub emu_frames: Option<u64>,
 }
 
+#[derive(Default)]
+pub struct TimestepUpdate {
+    pub new_throttle_factor: Option<f64>,
+}
+
 pub struct TimestepManager {
     init: bool, // Has the timestep manager been initialized?
     second_rate: HertzEvent,
@@ -197,7 +202,7 @@ pub struct TimestepManager {
     cpu_mhz: f64,                 // Mhz of the primary emulated CPU (drives sys ticks)
     cpu_cycle_update_target: u32, // Number of CPU cycles to execute per emulator update
     frame_target: Duration,       // Target frame time in microseconds
-    throttle_factor: f64,         // Factor to adjust CPU cycle target by to keep up with emu_render_rate
+    throttle_factor: Cell<f64>,   // Factor to adjust CPU cycle target by to keep up with emu_render_rate
 
     frame_history: HistoryBuffer<FrameEntry>,
     perf_stats: PerfStats,
@@ -222,7 +227,7 @@ impl Default for TimestepManager {
             cpu_mhz: 1.0,
             cpu_cycle_update_target: (1_000_000.0 / DEFAULT_EMU_FPS_TARGET) as u32,
             frame_target: Duration::from_secs_f64(SECOND.as_secs_f64() / DEFAULT_EMU_FPS_TARGET as f64),
-            throttle_factor: 1.0,
+            throttle_factor: Cell::new(1.0),
 
             frame_history: HistoryBuffer::new(FRAME_HISTORY_LEN),
             total_running_time: Duration::from_secs(0),
@@ -245,6 +250,14 @@ impl TimestepManager {
         self.total_running_time = Duration::from_secs(0);
     }
 
+    pub fn throttle_factor(&self) -> f64 {
+        self.throttle_factor.get()
+    }
+
+    pub fn set_throttle_factor(&self, factor: f64) {
+        self.throttle_factor.set(factor);
+    }
+
     /// Process a window manager update.
     /// In winit 0.29.4+, this should be called in response to WindowEvent::RedrawRequested
     /// When a second has elapsed, the 'machine_callback' is called to retrieve the current
@@ -260,7 +273,7 @@ impl TimestepManager {
     ) where
         F: FnOnce(&mut E) -> MachinePerfStats,
         G: FnMut(&mut E, u32),
-        H: FnMut(&mut E, &mut D, &TimestepManager, &PerfSnapshot, Duration),
+        H: FnMut(&mut E, &mut D, &TimestepManager, &PerfSnapshot, Duration, &mut TimestepUpdate),
     {
         if !self.init {
             self.start();
@@ -300,7 +313,18 @@ impl TimestepManager {
         // Handle emu frame render
         if self.emu_render_rate.tick(elapsed) {
             let snapshot = self.perf_stats.snapshot(self.cpu_cycle_update_target);
-            emu_render_callback(emu, dm, &self, &snapshot, elapsed);
+
+            // TODO: We can't give the callback mutable access to the timestep manager,
+            //       but we could give it a struct it can update with new values.
+            //       new_factor should probably be moved in there if we need anything else.
+            let mut update_me = TimestepUpdate::default();
+            emu_render_callback(emu, dm, &self, &snapshot, elapsed, &mut update_me);
+
+            if let Some(factor) = update_me.new_throttle_factor {
+                self.throttle_factor.set(factor);
+                self.recalculate_target();
+            }
+
             self.perf_stats.wm_fps.tick();
             self.perf_stats.frame_time = self.last_frame_instant.elapsed();
 
@@ -355,13 +379,19 @@ impl TimestepManager {
     }
 
     pub fn set_cpu_mhz(&mut self, mhz: f64) {
-        self.cpu_cycle_update_target = (mhz * 1_000_000.0 / self.emu_update_rate.get() as f64) as u32;
+        self.cpu_mhz = mhz;
+        self.recalculate_target();
+    }
+
+    fn recalculate_target(&mut self) {
+        self.cpu_cycle_update_target =
+            ((self.cpu_mhz * 1_000_000.0 / self.emu_update_rate.get() as f64) * self.throttle_factor.get()) as u32;
         log::info!(
-            "CPU clock has changed to {:.4}Mhz, new cycle target: {}",
-            mhz,
+            "CPU clock has changed to {:.4}Mhz, speed factor: {}, new cycle target: {}",
+            self.cpu_mhz,
+            self.throttle_factor.get(),
             self.cpu_cycle_update_target,
         );
-        self.cpu_mhz = mhz;
     }
 
     pub fn set_emu_update_rate(&mut self, fps: f32) {

@@ -75,6 +75,7 @@ use crate::{
     GuiEnumMap,
     GuiEvent,
     GuiEventQueue,
+    GuiFloat,
     GuiVariable,
     GuiVariableContext,
     GuiWindow,
@@ -257,8 +258,9 @@ pub struct GuiState {
     pub(crate) error_dialog_open: bool,
     pub(crate) warning_dialog_open: bool,
 
-    pub(crate) option_flags: HashMap<GuiBoolean, bool>,
-    pub(crate) option_enums: GuiEnumMap,
+    pub(crate) option_flags:  HashMap<GuiBoolean, bool>,
+    pub(crate) option_floats: HashMap<GuiFloat, f32>,
+    pub(crate) option_enums:  GuiEnumMap,
 
     pub(crate) machine_state: MachineState,
 
@@ -366,6 +368,8 @@ impl GuiState {
         ]
         .into();
 
+        let option_floats: HashMap<GuiFloat, f32> = [(GuiFloat::EmulationSpeed, 1.0f32)].into();
+
         let option_enums = HashMap::new();
 
         Self {
@@ -383,6 +387,7 @@ impl GuiState {
             warning_dialog_open: false,
 
             option_flags,
+            option_floats,
             option_enums,
 
             machine_state: MachineState::Off,

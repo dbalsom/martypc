@@ -29,7 +29,7 @@
     Implement the main emulator menu bar.
 
 */
-use crate::{state::GuiState, GuiBoolean, GuiEnum, GuiEvent, GuiVariable, GuiVariableContext, GuiWindow};
+use crate::{state::GuiState, GuiBoolean, GuiEnum, GuiEvent, GuiFloat, GuiVariable, GuiVariableContext, GuiWindow};
 use std::path::{Path, PathBuf};
 
 use marty_frontend_common::display_manager::DtHandle;
@@ -87,6 +87,26 @@ impl GuiState {
             }
 
             ui.menu_button("Machine", |ui| {
+                ui.menu_button("Emulation Speed", |ui| {
+                    ui.horizontal(|ui| {
+                        let mut speed = self.option_floats.get_mut(&GuiFloat::EmulationSpeed).unwrap();
+
+                        ui.label("Factor:");
+                        ui.add(
+                            egui::Slider::new(speed, 0.1..=2.0)
+                                .show_value(true)
+                                .min_decimals(2)
+                                .max_decimals(2)
+                                .suffix("x"),
+                        );
+
+                        self.event_queue.send(GuiEvent::VariableChanged(
+                            GuiVariableContext::Global,
+                            GuiVariable::Float(GuiFloat::EmulationSpeed, *speed),
+                        ));
+                    });
+                });
+
                 ui.menu_button("Input/Output", |ui| {
                     #[cfg(feature = "use_serialport")]
                     {

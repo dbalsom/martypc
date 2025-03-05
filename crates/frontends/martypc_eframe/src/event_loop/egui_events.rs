@@ -23,11 +23,10 @@
     DEALINGS IN THE SOFTWARE.
 
     --------------------------------------------------------------------------
-
-    event_loop/update.rs
-
-    Process received egui events.
 */
+
+//! Process events received from the emulator GUI.
+//! Typically, the GUI is implemented by the `marty_egui` crate.
 
 use std::{
     ffi::OsString,
@@ -65,6 +64,7 @@ use marty_egui::{
     GuiBoolean,
     GuiEnum,
     GuiEvent,
+    GuiFloat,
     GuiVariable,
     GuiVariableContext,
     InputFieldChangeSource,
@@ -78,15 +78,23 @@ use winit::event_loop::ActiveEventLoop;
 
 #[cfg(target_arch = "wasm32")]
 use crate::wasm::file_open;
-use marty_frontend_common::display_manager::{DisplayManager, DtHandle};
+#[cfg(target_arch = "wasm32")]
+use crate::wasm::worker::spawn_closure_worker as spawn;
+use marty_frontend_common::{
+    display_manager::{DisplayManager, DtHandle},
+    timestep_manager::{TimestepManager, TimestepUpdate},
+};
 #[cfg(not(target_arch = "wasm32"))]
 use std::thread::spawn;
 
-#[cfg(target_arch = "wasm32")]
-use crate::wasm::worker::spawn_closure_worker as spawn;
-
 //noinspection RsBorrowChecker
-pub fn handle_egui_event(emu: &mut Emulator, dm: &mut EFrameDisplayManager, gui_event: &GuiEvent) {
+pub fn handle_egui_event(
+    emu: &mut Emulator,
+    dm: &mut EFrameDisplayManager,
+    tm: &TimestepManager,
+    tmu: &mut TimestepUpdate,
+    gui_event: &GuiEvent,
+) {
     match gui_event {
         GuiEvent::Exit => {
             // User chose exit option from menu. Shut down.
@@ -115,6 +123,16 @@ pub fn handle_egui_event(emu: &mut Emulator, dm: &mut EFrameDisplayManager, gui_
                     emu.machine.set_turbo_mode(state);
                 }
                 _ => {}
+            },
+            GuiVariable::Float(op, val) => match op {
+                GuiFloat::EmulationSpeed => {
+                    log::debug!("Got emulation speed factor: {}", val);
+                    tmu.new_throttle_factor = Some(*val as f64);
+
+                    if let Some(si) = &mut emu.si {
+                        si.set_master_speed(*val);
+                    }
+                }
             },
             GuiVariable::Enum(op) => match ctx {
                 GuiVariableContext::SoundSource(s_idx) => match op {

@@ -76,7 +76,7 @@ pub fn process_update(emu: &mut Emulator, dm: &mut EFrameDisplayManager, tm: &mu
             // Per emu update freq
             emuc.machine.run(cycles, &mut emuc.exec_control.borrow_mut());
         },
-        |emuc, dmc, tmc, &perf, duration| {
+        |emuc, dmc, tmc, &perf, duration, tmu| {
             emuc.perf = perf;
 
             // Per frame freq
@@ -234,7 +234,7 @@ pub fn process_update(emu: &mut Emulator, dm: &mut EFrameDisplayManager, tm: &mu
             emuc.stat_counter.render_time = Instant::now() - render_start;
 
             // Update egui data
-            update_egui(emuc, dmc, tmc);
+            update_egui(emuc, dmc, tmc, tmu);
 
             // Run sound
             if let Some(sound) = &mut emuc.si {

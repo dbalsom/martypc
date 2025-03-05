@@ -151,6 +151,7 @@ impl AudioLatencyController {
 pub struct SoundInterface {
     enabled: bool,
     device_name: String,
+    master_speed: f32,
     sample_rate: u32,
     sample_format: String, // We don't really need this, so I am not converting it to an enum.
     channels: usize,
@@ -165,6 +166,7 @@ impl Default for SoundInterface {
         SoundInterface {
             enabled: false,
             device_name: String::new(),
+            master_speed: 1.0,
             sample_rate: 0,
             sample_format: String::new(),
             channels: 0,
@@ -227,6 +229,7 @@ impl SoundInterface {
             SoundInterface {
                 enabled: self.enabled,
                 device_name,
+                master_speed: 1.0,
                 sample_rate,
                 sample_format,
                 channels,
@@ -238,6 +241,14 @@ impl SoundInterface {
         };
 
         Ok(())
+    }
+
+    pub fn set_master_speed(&mut self, speed: f32) {
+        self.master_speed = speed;
+
+        for source in self.sources.iter_mut() {
+            source.sink.set_speed(speed);
+        }
     }
 
     pub fn add_source(&mut self, source: &SoundSourceDescriptor) -> Result<(), Error> {
@@ -309,7 +320,7 @@ impl SoundInterface {
                 source.sample_ct += block_len as u64;
                 let sink_buffer = rodio::buffer::SamplesBuffer::new(source.channels, source.sample_rate, samples_in);
                 source.sink.append(sink_buffer);
-                source.sink.set_speed(new_speed);
+                source.sink.set_speed(new_speed * self.master_speed);
             }
         }
     }
