@@ -48,7 +48,7 @@ jobs:
 
       - name: Copy files into install dir
         run: |
-          Copy-Item LICENSE, README.md, CHANGELOG.md, CREDITS.md, target/release-lto/martypc -Destination install -Recurse
+          Copy-Item LICENSE, README.md, CHANGELOG.md, CREDITS.md, /target/release-lto/martypc.exe -Destination install -Recurse
 
 
       - name: Rename install directory
