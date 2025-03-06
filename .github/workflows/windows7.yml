@@ -1,0 +1,62 @@
+name: Windows 7
+
+on:
+  push:
+    branches:
+      - main
+    paths-ignore:
+      - '**/*.md'
+  pull_request:
+
+env:
+  CARGO_TERM_COLOR: always
+
+jobs:
+  msvc:
+    name: martypc
+    runs-on: windows-2022
+    
+    strategy:
+      matrix:
+        arch:
+          - amd64
+        version:
+          - 1.85.0
+
+    steps:
+      - name: Prepare MSVC Developer Prompt
+      - uses: ilammy/msvc-dev-cmd@v1
+        with:
+          arch: ${{ matrix.arch }}
+
+      - name: Download Rust Nightly MSI
+        run: |
+          Invoke-WebRequest -Uri "https://win7revived.wearmed.xyz/rust-nightly-${{ matrix.version }}-x86_64-pc-windows-msvc.msi" -OutFile "rust-nightly.msi"
+
+      - name: Install Rust Nightly
+        run: |
+          Start-Process msiexec.exe -ArgumentList "/i rust-nightly.msi INSTALLDIR=$env:USERPROFILE\.cargo /quiet /norestart" -NoNewWindow -Wait
+
+      - name: Checkout repository
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Cargo build
+        run: |
+          $env:USERPROFILE\.cargo\bin\cargo build --profile release-lto --features use_winit,use_wgpu,sound,opl
+
+      - name: Copy files into install dir
+        run: |
+          New-Item -ItemType Directory -Path install
+          Copy-Item LICENSE, README.md, CHANGELOG.md, CREDITS.md, target/release-lto/martypc -Destination install -Recurse
+
+
+      - name: Rename install directory
+        run: Rename-Item -Path install -NewName martypc
+
+      - name: Upload artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: martypc-windows7-gha
+          path: martypc
