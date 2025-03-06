@@ -25,7 +25,7 @@ jobs:
 
     steps:
       - name: Prepare MSVC Developer Prompt
-      - uses: ilammy/msvc-dev-cmd@v1
+        uses: ilammy/msvc-dev-cmd@v1
         with:
           arch: ${{ matrix.arch }}
 
