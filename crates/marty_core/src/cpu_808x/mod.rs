@@ -517,6 +517,8 @@ pub struct Intel808x {
     io_wait_states: u32,
     lock: bool, // LOCK pin. Asserted during 2nd INTA bus cycle.
 
+    // WAIT condition
+    waiting: bool,
     // Halt-related stuff
     halted: bool,
     reported_halt: bool, // Only error on halt once. The caller can determine if it wants to continue.
@@ -936,13 +938,15 @@ impl Intel808x {
         self.iret_count = 0;
         self.instr_cycle = 0;
         self.cycle_num = 1;
-        self.halt_cycles = 0;
+
         self.t_stamp = 0.0;
         self.t_step = 0.00000021;
         self.t_step_h = 0.000000105;
         self.ready = true;
         self.in_rep = false;
+        self.waiting = false;
         self.halted = false;
+        self.halt_cycles = 0;
         self.reported_halt = false;
         self.halt_not_hold = false;
         self.opcode0_counter = 0;
@@ -1353,24 +1357,6 @@ impl Intel808x {
     #[inline]
     pub fn set_pc(&mut self, value: u16) {
         self.pc = value;
-    }
-
-    /// Converts a Register8 into a Register16.
-    /// Only really useful for r forms of FE.03-07 which operate on 8 bits of a memory
-    /// operand but 16 bits of a register operand. We don't support 'hybrid' 8/16 bit
-    /// instruction templates, so we have to convert.
-    #[inline]
-    pub fn reg8to16(reg: Register8) -> Register16 {
-        match reg {
-            Register8::AH => Register16::AX,
-            Register8::AL => Register16::AX,
-            Register8::BH => Register16::BX,
-            Register8::BL => Register16::BX,
-            Register8::CH => Register16::CX,
-            Register8::CL => Register16::CX,
-            Register8::DH => Register16::DX,
-            Register8::DL => Register16::DX,
-        }
     }
 
     #[inline]

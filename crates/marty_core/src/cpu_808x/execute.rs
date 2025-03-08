@@ -680,7 +680,26 @@ impl Intel808x {
             }
             0x9B => {
                 // WAIT
-                cycles!(self, 3);
+                // The first microcode instruction of WAIT is TEST, which jumps if the TEST line is not asserted.
+                // Since we don't have an FPU, it won't be, so we always jump to 0x0fb, which will test the interrupt
+                // line.
+                cycles_mc!(self, 0x0f8, MC_JUMP, 0x0fb);
+                self.waiting = true;
+                if self.intr_pending {
+                    // If an interrupt is pending, we jump to 0x0fd, suspend & correct PC, rewind PC by 1 and terminate.
+                    cycles_mc!(self, MC_JUMP, 0x0fd);
+                    self.biu_fetch_suspend();
+                    self.cycle_i(0x0fe);
+                    self.corr();
+                    self.cycle_i(0x0ff);
+                    self.pc = self.pc.wrapping_sub(1); // Rewind PC by 1 to re-execute WAIT after interrupt completion.
+                    self.biu_queue_flush();
+                    self.waiting = false;
+                }
+                else {
+                    // If no interrupt is pending, we execute 0x0fc and jump back to 0x0f8.
+                    cycles_mc!(self, 0x0fc, MC_JUMP);
+                }
             }
             0x9C => {
                 // PUSHF - Push Flags
@@ -1758,26 +1777,24 @@ impl Intel808x {
                         if let OperandType::AddressingMode(_) = self.i.operand1_type {
                             // Reads only 8 bit operand from modrm.
                             let ptr8 = self.read_operand8(self.i.operand1_type, self.i.segment_override).unwrap();
+                            self.biu_fetch_suspend();
+                            cycles_mc!(self, 0x074, 0x075);
+                            self.corr();
+                            cycles_mc!(self, MC_CORR, 0x076, 0x077);
+                            // Set only lower 8 bits of IP, upper bits FF
+                            self.pc = 0xFF00 | ptr8 as u16;
+                            
+                            self.biu_queue_flush();
+                            cycles_mc!(self, 0x078, 0x079);
                             
                             // Push only 8 bits of next IP onto stack
                             let next_i = self.ip();
-
-                            // We do not allow stepping over 0xFE call here as it is unlikely to lead to a valid location or return.
-
                             self.push_u8((next_i & 0xFF) as u8, ReadWriteFlag::Normal);
-
-                            // temporary timings
-                            self.biu_fetch_suspend();
-                            self.cycles(4);
-                            self.biu_queue_flush();
-
-                            // Set only lower 8 bits of IP, upper bits FF
-                            self.pc = 0xFF00 | ptr8 as u16;
                         }
                         else if let OperandType::Register8(reg) = self.i.operand1_type {
                             
                             // Push only 8 bits of next IP onto stack
-                            let next_i = self.ip() + (self.i.size as u16);
+                            let next_i = self.ip();
                             self.push_u8((next_i & 0xFF) as u8, ReadWriteFlag::Normal);
 
                             // temporary timings
@@ -1786,7 +1803,7 @@ impl Intel808x {
                             self.biu_queue_flush();
                             
                             // If this form uses a register operand, the full 16 bits are copied to IP.
-                            self.pc = self.get_register16(Intel808x::reg8to16(reg));
+                            self.pc = self.get_register16(reg.to_16());
                         }
                         jump = true;
                     }
@@ -1838,20 +1855,20 @@ impl Intel808x {
                             self.biu_queue_flush();
                             
                             // If this form uses a register operand, the full 16 bits are copied to PC.
-                            self.pc = self.get_register16(Intel808x::reg8to16(reg));
+                            self.pc = self.get_register16(reg.to_16());
                         }
                     }
                     // Jump to memory r/m16
                     Mnemonic::JMP => {
-                        // Reads only 8 bit operand from modrm.
-                        let ptr8 = self.read_operand8(self.i.operand1_type, self.i.segment_override).unwrap();
-
-                        // Set only lower 8 bits of PC, upper bits FF
-                        self.pc = 0xFF00 | ptr8 as u16;
-
+                        // Reads only 8 bit operand from modrm. When reading from memory, the upper 8 bits are set to FF.
+                        let mut ptr8: u16 = self.read_operand16(self.i.operand1_type.override_16(), self.i.segment_override).unwrap() as u16;
+                        if self.i.operand1_type.is_address() {
+                            ptr8 |= 0xFF00;
+                        }
                         self.biu_fetch_suspend();
                         self.cycles(4);
                         self.biu_queue_flush();
+                        self.pc = ptr8;
                         jump = true;
                     }
                     // Jump Far
@@ -1882,7 +1899,7 @@ impl Intel808x {
                             self.biu_queue_flush();
                             
                             // If this form uses a register operand, the full 16 bits are copied to PC.
-                            self.pc = self.get_register16(Intel808x::reg8to16(reg));
+                            self.pc = self.get_register16(reg.to_16());
                         }
                     }
                     // Push Byte onto stack

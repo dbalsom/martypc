@@ -59,6 +59,14 @@ impl OperandType {
     pub fn is_register(&self) -> bool {
         matches!(self, OperandType::Register8(_) | OperandType::Register16(_))
     }
+    /// Override the operand type to a 16-bit register if it is an 8-bit register.
+    /// This is mostly used for invalid FE & FE opcode forms.
+    pub fn override_16(&self) -> OperandType {
+        match self {
+            OperandType::Register8(r) => OperandType::Register16(r.to_16()),
+            _ => *self,
+        }
+    }
 }
 
 #[derive(Copy, Clone, Default, PartialEq)]

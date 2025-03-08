@@ -113,6 +113,21 @@ pub enum Register8 {
     BH,
 }
 
+impl Register8 {
+    pub fn to_16(&self) -> Register16 {
+        match self {
+            Register8::AL => Register16::AX,
+            Register8::CL => Register16::CX,
+            Register8::DL => Register16::DX,
+            Register8::BL => Register16::BX,
+            Register8::AH => Register16::AX,
+            Register8::CH => Register16::CX,
+            Register8::DH => Register16::DX,
+            Register8::BH => Register16::BX,
+        }
+    }
+}
+
 #[derive(Copy, Clone, Debug, PartialEq)]
 pub enum Register16 {
     AX,

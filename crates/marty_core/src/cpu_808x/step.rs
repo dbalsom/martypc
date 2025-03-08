@@ -73,7 +73,7 @@ impl Intel808x {
         let mut instruction_address = self.instruction_address;
 
         // Fetch the next instruction unless we are executing a REP
-        if !self.in_rep {
+        if !(self.in_rep || self.waiting) {
             // A real 808X CPU maintains a single Program Counter or PC register that points to the next instruction
             // to be fetched, not the currently executing instruction. This value is "corrected" whenever the current
             // value of IP is required, ie, pushing IP to the stack. This is performed by the 'CORR' microcode routine.
@@ -338,11 +338,15 @@ impl Intel808x {
         else if self.intr && self.interrupts_enabled() {
             // An interrupt needs to be processed.
 
-            if self.in_rep {
-                // We're in an REP prefixed-string instruction.
-                // Delay processing of the interrupt so that the string
-                // instruction can execute RPTI. At that point, the REP
-                // will terminate, and we can process the interrupt as normal.
+            if self.in_rep || self.waiting {
+                // We're in an REP prefixed-string instruction, or a WAIT instruction.
+
+                // In the case of a WAIT instruction, we wish to delay processing of the interrupt so that the string
+                // instruction can execute RPTI. At that point, the REP will terminate, and we can process the interrupt
+                // as normal.
+                //
+                // For WAIT, the situation is similar, the instruction should begin its next iteration and then
+                // follow its termination path when the interrupt line is detected high.
                 self.intr_pending = true;
             }
             else {
