@@ -133,6 +133,12 @@ pub fn handle_egui_event(
                         si.set_master_speed(*val);
                     }
                 }
+                GuiFloat::MouseSpeed => {
+                    if let Some(mouse) = emu.machine.bus_mut().mouse_mut() {
+                        log::debug!("Setting mouse speed factor: {:?}", val);
+                        mouse.set_speed(*val);
+                    }
+                }
             },
             GuiVariable::Enum(op) => match ctx {
                 GuiVariableContext::SoundSource(s_idx) => match op {

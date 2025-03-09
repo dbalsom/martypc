@@ -171,6 +171,7 @@ impl Counter {
 
 #[allow(dead_code)]
 pub struct MouseData {
+    pub speed: f32,
     pub reverse_buttons: bool,
     pub l_button_id: u32,
     pub r_button_id: u32,
@@ -186,9 +187,16 @@ pub struct MouseData {
     pub frame_delta_y: f64,
 }
 
+impl Default for MouseData {
+    fn default() -> Self {
+        Self::new(false)
+    }
+}
+
 impl MouseData {
     fn new(reverse_buttons: bool) -> Self {
         Self {
+            speed: 0.50,
             reverse_buttons,
             l_button_id: input::get_mouse_buttons(reverse_buttons).0,
             r_button_id: input::get_mouse_buttons(reverse_buttons).1,
@@ -204,6 +212,15 @@ impl MouseData {
             frame_delta_y: 0.0,
         }
     }
+
+    pub fn speed(&self) -> f32 {
+        self.speed
+    }
+
+    pub fn set_speed(&mut self, speed: f32) {
+        self.speed = speed;
+    }
+
     pub fn reset(&mut self) {
         if !self.l_button_is_pressed {
             self.l_button_was_pressed = false;

@@ -23,13 +23,8 @@
     DEALINGS IN THE SOFTWARE.
 
     --------------------------------------------------------------------------
-
-    marty_egui::context.rs
-
-    EGUI Render context
 */
-use egui::{Color32, Context};
-use egui_extras::install_image_loaders;
+
 use std::sync::Arc;
 
 use marty_egui::{
@@ -37,6 +32,10 @@ use marty_egui::{
     themes::{make_theme, GuiTheme},
 };
 use marty_frontend_common::{display_manager::DmGuiOptions, MartyGuiTheme};
+
+use egui::{Color32, Context};
+use egui_extras::install_image_loaders;
+
 //use web_time::{Duration, Instant};
 
 /// Manages all state required for rendering egui over `Pixels`.
@@ -152,10 +151,13 @@ impl GuiRenderContext {
         main_panel_fill: Option<Color32>,
         mut window_render: Fw,
         mut main_panel_render: Fm,
-    ) where
-        Fw: FnMut(&mut egui::Context),
-        Fm: FnMut(&mut egui::Ui),
+    ) -> Option<bool>
+    where
+        Fw: FnMut(&mut egui::Context, &mut GuiState, &mut Option<bool>),
+        Fm: FnMut(&mut egui::Ui, &mut GuiState, &mut Option<bool>),
     {
+        let mut capture_state = None;
+
         if show_menu {
             self.ctx.set_visuals(self.menu_theme.visuals());
             egui::TopBottomPanel::top("martypc_top_panel").show(&self.ctx, |ui| {
@@ -164,9 +166,8 @@ impl GuiRenderContext {
         }
 
         self.ctx.set_visuals(self.main_theme.visuals());
-
         state.show_windows(&self.ctx);
-        window_render(&mut self.ctx);
+        window_render(&mut self.ctx, state, &mut capture_state);
 
         // Override panel fill if requested.
         if let Some(fill) = main_panel_fill {
@@ -176,7 +177,9 @@ impl GuiRenderContext {
         }
 
         egui::CentralPanel::default().show(&self.ctx, |ui| {
-            main_panel_render(ui);
+            main_panel_render(ui, state, &mut capture_state);
         });
+
+        capture_state
     }
 }

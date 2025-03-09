@@ -55,7 +55,7 @@ mod image;
 mod file_dialogs;
 mod glyphs;
 mod layouts;
-mod menu;
+pub mod menu;
 pub mod modal;
 pub mod state;
 pub mod themes;
@@ -151,6 +151,7 @@ pub enum GuiBoolean {
 #[derive(PartialEq, Eq, Hash)]
 pub enum GuiFloat {
     EmulationSpeed,
+    MouseSpeed,
 }
 
 // Enums are hashed with a tuple of GuiEnumContext and their base discriminant.
