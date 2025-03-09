@@ -83,32 +83,26 @@ pub fn process_update(emu: &mut Emulator, dm: &mut EFrameDisplayManager, tm: &mu
             if let Some(mouse) = emuc.machine.mouse_mut() {
                 // Send any pending mouse update to machine if mouse is captured
                 if emuc.mouse_data.is_captured && emuc.mouse_data.have_update {
-                    mouse.update(
-                        emuc.mouse_data.l_button_was_pressed,
-                        emuc.mouse_data.r_button_was_pressed,
-                        emuc.mouse_data.frame_delta_x,
-                        emuc.mouse_data.frame_delta_y,
-                    );
-
-                    // Handle release event
-                    let l_release_state = if emuc.mouse_data.l_button_was_released {
+                    let l_button_state = if emuc.mouse_data.l_button_was_released {
                         false
                     }
                     else {
                         emuc.mouse_data.l_button_was_pressed
                     };
 
-                    let r_release_state = if emuc.mouse_data.r_button_was_released {
+                    let r_button_state = if emuc.mouse_data.r_button_was_released {
                         false
                     }
                     else {
                         emuc.mouse_data.r_button_was_pressed
                     };
 
-                    if emuc.mouse_data.l_button_was_released || emuc.mouse_data.r_button_was_released {
-                        // Send release event
-                        mouse.update(l_release_state, r_release_state, 0.0, 0.0);
-                    }
+                    mouse.update(
+                        l_button_state,
+                        r_button_state,
+                        emuc.mouse_data.frame_delta_x,
+                        emuc.mouse_data.frame_delta_y,
+                    );
 
                     // Reset mouse for next frame
                     emuc.mouse_data.reset();

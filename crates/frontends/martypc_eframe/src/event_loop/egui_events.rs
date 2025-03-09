@@ -133,6 +133,12 @@ pub fn handle_egui_event(
                         si.set_master_speed(*val);
                     }
                 }
+                GuiFloat::MouseSpeed => {
+                    if let Some(mouse) = emu.machine.bus_mut().mouse_mut() {
+                        log::debug!("Setting mouse speed factor: {:?}", val);
+                        mouse.set_speed(*val);
+                    }
+                }
             },
             GuiVariable::Enum(op) => match ctx {
                 GuiVariableContext::SoundSource(s_idx) => match op {
@@ -661,7 +667,7 @@ pub fn handle_egui_event(
                 let (disk_image_opt, _) = fdc.get_image(*drive_select);
                 if let Some(floppy_image) = disk_image_opt {
                     let mut image = floppy_image.write().unwrap();
-                    match fluxfox::ImageWriter::new(&mut image)
+                    match fluxfox::ImageWriter::<std::fs::File>::new(&mut image)
                         .with_format(*format)
                         .with_path(filepath.clone())
                         .write()

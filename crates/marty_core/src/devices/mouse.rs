@@ -35,7 +35,8 @@ use crate::devices::serial::SerialPortController;
 
 // Scale factor for real vs emulated mouse deltas. Need to play with
 // this value until it feels right.
-const MOUSE_SCALE: f64 = 0.25;
+const DEFAULT_MOUSE_SPEED: f32 = 0.25;
+const DEFAULT_POLL_RATE: f32 = 40.0; // 40 Hz
 
 // Microseconds with RTS low before mouse considers itself reset
 const MOUSE_RESET_TIME: f64 = 10_000.0;
@@ -50,13 +51,18 @@ const MOUSE_UPDATE_RBUTTON: u8 = 0b0001_0000;
 const MOUSE_UPDATE_HO_BITS: u8 = 0b1100_0000;
 const MOUSE_UPDATE_LO_BITS: u8 = 0b0011_1111;
 
+use web_time::{Duration, Instant};
+
 #[allow(dead_code)]
 pub struct Mouse {
+    speed: f32,
     updates: VecDeque<MouseUpdate>,
     rts: bool,
     rts_low_timer: f64,
     dtr: bool,
     port: usize,
+    last_update: Instant,
+    poll_rate: f32,
 }
 
 pub enum MouseUpdate {
@@ -64,19 +70,30 @@ pub enum MouseUpdate {
 }
 
 impl Mouse {
-    pub fn new(port: usize) -> Self {
+    pub fn new(port: usize, speed: Option<f32>, poll_rate: Option<f32>) -> Self {
         Self {
+            speed: speed.unwrap_or(DEFAULT_MOUSE_SPEED),
             updates: VecDeque::new(),
             rts: false,
             rts_low_timer: 0.0,
             dtr: false,
             port,
+            last_update: Instant::now(),
+            poll_rate: poll_rate.unwrap_or(DEFAULT_POLL_RATE),
         }
     }
 
-    pub fn update(&mut self, l_button_pressed: bool, r_button_pressed: bool, delta_x: f64, delta_y: f64) {
-        let mut scaled_x = delta_x * MOUSE_SCALE;
-        let mut scaled_y = delta_y * MOUSE_SCALE;
+    pub fn speed(&self) -> f32 {
+        self.speed
+    }
+
+    pub fn set_speed(&mut self, speed: f32) {
+        self.speed = speed;
+    }
+
+    pub fn update(&mut self, l_button_pressed: bool, r_button_pressed: bool, delta_x: f32, delta_y: f32) {
+        let mut scaled_x = delta_x * self.speed();
+        let mut scaled_y = delta_y * self.speed();
 
         // Mouse scale can cause fractional integer updates. Adjust to Minimum movement of one unit
         if scaled_x > 0.0 && scaled_x < 1.0 {
@@ -100,12 +117,6 @@ impl Mouse {
             //log::debug!("Sending mouse button down");
             byte1 |= MOUSE_UPDATE_LBUTTON;
         }
-        /*
-        else {
-            log::debug!("Sending mouse button up");
-        }
-        */
-
         if r_button_pressed {
             byte1 |= MOUSE_UPDATE_RBUTTON;
         }
@@ -121,13 +132,7 @@ impl Mouse {
         let byte3 = (delta_y_i8 as u8) & MOUSE_UPDATE_LO_BITS;
 
         // Queue update
-
         self.updates.push_back(MouseUpdate::Update(byte1, byte2, byte3));
-        /*
-        let mut serial = self.serial_ctrl.borrow_mut();
-        serial.queue_byte(MOUSE_PORT, byte1);
-        serial.queue_byte(MOUSE_PORT, byte2);
-        serial.queue_byte(MOUSE_PORT, byte3);*/
     }
 
     /// Run the mouse device for the specified number of microseconds

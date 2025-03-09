@@ -335,6 +335,7 @@ pub struct DisplayTargetContext {
     pub(crate) scaler: Option<EFrameScalerType>,  // The scaler pipeline
     pub(crate) scaler_params: Option<ScalerParams>,
     pub(crate) card_scale: Option<f32>, // If Some, the card resolution is scaled by this factor
+    mouse_grabbed: bool,                // Is the mouse grabbed by this display target?
 }
 
 pub struct DisplayTargetCallback {
@@ -483,6 +484,14 @@ impl DisplayTargetContext {
         // if let Some(gui_ctx) = &mut self.gui_ctx {
         //     gui_ctx.scale_factor(factor);
         // }
+    }
+
+    pub fn grabbed(&self) -> bool {
+        self.mouse_grabbed
+    }
+
+    pub fn set_grabbed(&mut self, grabbed: bool) {
+        self.mouse_grabbed = grabbed;
     }
 
     pub fn set_on_top(&mut self, on_top: bool) {
@@ -934,6 +943,7 @@ impl<'p> DisplayManager<EFrameBackend, GuiRenderContext, ViewportId, ViewportId,
                     scaler: Some(Box::new(scaler)),
                     scaler_params: Some(ScalerParams::from(scaler_preset.clone())),
                     card_scale,
+                    mouse_grabbed: false,
                 };
 
                 dtc.apply_scaler_preset(&self.backend.as_ref().unwrap(), &scaler_preset);

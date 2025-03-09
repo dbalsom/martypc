@@ -2000,7 +2000,7 @@ impl BusInterface {
             if self.serial.is_some() {
                 match serial_mouse_config.mouse_type {
                     SerialMouseType::Microsoft => {
-                        let mouse = Mouse::new(serial_mouse_config.port as usize);
+                        let mouse = Mouse::new(serial_mouse_config.port as usize, None, None);
                         self.mouse = Some(mouse);
                     }
                 }

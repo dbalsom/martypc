@@ -13,8 +13,8 @@ pub struct MouseData {
     pub r_button_was_pressed: bool,
     pub r_button_was_released: bool,
     pub r_button_is_pressed: bool,
-    pub frame_delta_x: f64,
-    pub frame_delta_y: f64,
+    pub frame_delta_x: f32,
+    pub frame_delta_y: f32,
 }
 
 impl MouseData {

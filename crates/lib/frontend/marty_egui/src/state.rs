@@ -368,7 +368,8 @@ impl GuiState {
         ]
         .into();
 
-        let option_floats: HashMap<GuiFloat, f32> = [(GuiFloat::EmulationSpeed, 1.0f32)].into();
+        let option_floats: HashMap<GuiFloat, f32> =
+            [(GuiFloat::EmulationSpeed, 1.0f32), (GuiFloat::MouseSpeed, 0.5f32)].into();
 
         let option_enums = HashMap::new();
 

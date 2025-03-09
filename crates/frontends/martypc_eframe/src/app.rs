@@ -25,7 +25,7 @@
     --------------------------------------------------------------------------
 */
 use crate::{
-    emulator::Emulator,
+    emulator::{mouse_state::MouseData, Emulator},
     emulator_builder::EmulatorBuilder,
     event_loop::thread_events::handle_thread_event,
     timestep_update::process_update,
@@ -35,6 +35,7 @@ use crate::{
 use display_manager_eframe::{
     builder::EFrameDisplayManagerBuilder,
     BufferDimensions,
+    DisplayTargetContext,
     EFrameBackend,
     EFrameDisplayManager,
     TextureDimensions,
@@ -58,13 +59,14 @@ use crate::event_loop::web_keyboard::handle_web_key_event;
 
 use crossbeam_channel::{Receiver, Sender};
 
-use egui::{Context, RawInput, Sense, ViewportCommand, ViewportId};
+use egui::{Context, CursorGrab, RawInput, Sense, ViewportCommand, ViewportId};
 
 use crate::emulator_builder::builder::EmuBuilderError;
 #[cfg(target_arch = "wasm32")]
 use crate::wasm::*;
 use marty_frontend_common::{
     color::MartyColor,
+    constants::NORMAL_NOTIFICATION_TIME,
     display_manager::{DisplayTargetType, DtHandle},
 };
 use marty_videocard_renderer::AspectCorrectionMode;
@@ -72,6 +74,12 @@ use marty_videocard_renderer::AspectCorrectionMode;
 use marty_web_helpers::console_writer::ConsoleWriter;
 #[cfg(target_arch = "wasm32")]
 use url::Url;
+// Grab mode. Must be "Locked" on web and macOS, "Confined" on Windows and Linux.
+
+#[cfg(any(target_arch = "wasm32", target_os = "macos"))]
+pub const GRAB_MODE: CursorGrab = CursorGrab::Locked;
+#[cfg(not(any(target_arch = "wasm32", target_os = "macos")))]
+pub const GRAB_MODE: CursorGrab = CursorGrab::Confined;
 
 /// We derive Deserialize/Serialize so we can persist app state on shutdown.
 #[derive(serde::Deserialize, serde::Serialize)]
@@ -603,23 +611,74 @@ impl eframe::App for MartyApp {
 
             let show_bezel = emu.gui.primary_video_has_bezel();
 
+            // We can't access context in the closure below, so we need to set a flag to un-grab the mouse
+            // afterward.
+            let mut ungrab = false;
+            ctx.input(|i| {
+                let dtc = dm.main_display_target();
+                match dtc.try_read() {
+                    Ok(mut dtc_ref) => {
+                        if dtc_ref.grabbed() {
+                            /// Handle mouse movement
+                            if let Some(motion) = i.pointer.motion() {
+                                let (dx, dy) = motion.into();
+                                emu.mouse_data.frame_delta_x += dx;
+                                emu.mouse_data.frame_delta_y += dy;
+                                emu.mouse_data.have_update = true;
+                            }
+                            /// Handle mouse buttons
+                            if i.pointer.button_pressed(egui::PointerButton::Primary) {
+                                emu.mouse_data.l_button_was_pressed = true;
+                                emu.mouse_data.l_button_is_pressed = true;
+                                emu.mouse_data.have_update = true;
+                            }
+                            if i.pointer.button_released(egui::PointerButton::Primary) {
+                                emu.mouse_data.l_button_is_pressed = false;
+                                emu.mouse_data.l_button_was_released = true;
+                                emu.mouse_data.have_update = true;
+                            }
+                            if i.pointer.button_pressed(egui::PointerButton::Secondary) {
+                                emu.mouse_data.r_button_was_pressed = true;
+                                emu.mouse_data.r_button_is_pressed = true;
+                                emu.mouse_data.have_update = true;
+                            }
+                            if i.pointer.button_released(egui::PointerButton::Secondary) {
+                                emu.mouse_data.r_button_is_pressed = false;
+                                emu.mouse_data.r_button_was_released = true;
+                                emu.mouse_data.have_update = true;
+                            }
+
+                            // Middle button un-grabs the mouse.
+                            // TODO: Make this configurable.
+                            if i.pointer.button_pressed(egui::PointerButton::Middle) {
+                                log::warn!("Got middle click while grabbed!");
+                                ungrab = true;
+                            }
+                        }
+                    }
+                    Err(e) => {
+                        log::error!("Failed to get write lock on main display target: {}", e);
+                    }
+                };
+            });
+
             // Draw the emulator GUI.
-            self.gui.show(
+            let capture_state = self.gui.show(
                 &mut emu.gui,
                 !self.hide_menu,
                 fill_color,
-                |ctx| {
+                |ctx, gui, capture_state| {
                     if let Some(DisplayTargetType::GuiWidget) = dm.display_type(DtHandle::MAIN) {
                         let dtc = dm.main_display_target();
-                        let dtc_lock = dtc.read();
-                        let dtc_ref = dtc_lock.as_ref().unwrap();
+                        let mut dtc_lock = dtc.write();
+                        let dtc_ref = dtc_lock.as_mut().unwrap();
 
                         let display_name = dtc_ref.name.clone();
                         if let Some(scaler_geom) = dtc_ref.scaler_geometry() {
                             // Draw the main display in a window.
                             egui::Window::new(display_name).resizable(true).show(ctx, |ui| {
                                 let ui_size = egui::Vec2::new(scaler_geom.target_w as f32, scaler_geom.target_h as f32);
-                                let (rect, _) = ui.allocate_exact_size(ui_size, Sense::hover());
+                                let (rect, response) = ui.allocate_exact_size(ui_size, Sense::click());
 
                                 #[cfg(feature = "use_wgpu")]
                                 {
@@ -635,9 +694,9 @@ impl eframe::App for MartyApp {
                                 }
                                 #[cfg(feature = "use_glow")]
                                 {
-                                    let dtc_lock = dm.main_display_target();
-                                    let dtc = dtc_lock.read().unwrap();
-                                    let surface = dtc.surface().unwrap();
+                                    //let dtc_lock = dm.main_display_target();
+                                    //let dtc = dtc_lock.read().unwrap();
+                                    let surface = dtc_ref.surface().unwrap();
                                     let texture = surface.read().unwrap().backing_texture();
                                     let uv_rect = egui::Rect::from_min_max(egui::pos2(0.0, 0.0), egui::pos2(1.0, 1.0));
                                     // log::trace!(
@@ -654,6 +713,33 @@ impl eframe::App for MartyApp {
                                     //     ui.painter().image(texture.id(), rect, uv_rect, Color32::WHITE);
                                     // });
                                 }
+
+                                if response.double_clicked() {
+                                    log::warn!("Double-clicked main display!");
+                                    if !dtc_ref.grabbed() {
+                                        ctx.send_viewport_cmd(ViewportCommand::CursorGrab(GRAB_MODE));
+                                        ctx.send_viewport_cmd(ViewportCommand::CursorVisible(false));
+
+                                        *capture_state = Some(true);
+                                        dtc_ref.set_grabbed(true);
+
+                                        gui.toasts()
+                                            .info("Mouse captured! Middle-click to release.")
+                                            .duration(Some(NORMAL_NOTIFICATION_TIME));
+                                    }
+                                }
+                                else if ungrab {
+                                    log::warn!("Ungrabbing mouse!");
+                                    ctx.send_viewport_cmd(ViewportCommand::CursorGrab(CursorGrab::None));
+                                    ctx.send_viewport_cmd(ViewportCommand::CursorVisible(true));
+
+                                    *capture_state = Some(false);
+                                    dtc_ref.set_grabbed(false);
+
+                                    gui.toasts()
+                                        .info("Mouse released!")
+                                        .duration(Some(NORMAL_NOTIFICATION_TIME));
+                                }
                             });
                         }
                         else {
@@ -661,23 +747,63 @@ impl eframe::App for MartyApp {
                         }
                     }
                 },
-                |ui| {
+                |ui, gui, capture_state| {
                     if let Some(DisplayTargetType::WindowBackground) = dm.display_type(DtHandle::MAIN) {
-                        ui.allocate_ui(ui.available_size(), |ui| {
-                            let rect = ui.max_rect();
+                        let dtc = dm.main_display_target();
+                        let mut dtc_lock = dtc.write();
+                        let dtc_ref = dtc_lock.as_mut().unwrap();
 
-                            //log::debug!("in allocate_ui with response rect: {:?}", rect);
+                        let response = ui
+                            .allocate_ui(ui.available_size(), |ui| {
+                                let rect = ui.max_rect();
+                                let response = ui.interact(rect, ui.id(), Sense::click());
+                                //log::debug!("in allocate_ui with response rect: {:?}", rect);
 
-                            #[cfg(feature = "use_wgpu")]
-                            {
-                                let callback = dm.main_display_callback();
-                                let paint_callback = egui_wgpu::Callback::new_paint_callback(rect, callback);
-                                ui.painter().add(paint_callback);
+                                #[cfg(feature = "use_wgpu")]
+                                {
+                                    let callback = dm.main_display_callback();
+                                    let paint_callback = egui_wgpu::Callback::new_paint_callback(rect, callback);
+                                    ui.painter().add(paint_callback);
+                                }
+                                response
+                            })
+                            .inner;
+
+                        if response.double_clicked() {
+                            log::warn!("Double-clicked main display!");
+                            if !dtc_ref.grabbed() {
+                                ctx.send_viewport_cmd(ViewportCommand::CursorGrab(GRAB_MODE));
+                                ctx.send_viewport_cmd(ViewportCommand::CursorVisible(false));
+
+                                *capture_state = Some(true);
+                                dtc_ref.set_grabbed(true);
+
+                                gui.toasts()
+                                    .info("Mouse captured! Middle-click to release.")
+                                    .duration(Some(NORMAL_NOTIFICATION_TIME));
                             }
-                        });
+                        }
+                        else if ungrab {
+                            log::warn!("Ungrabbing mouse!");
+                            ctx.send_viewport_cmd(ViewportCommand::CursorGrab(CursorGrab::None));
+                            ctx.send_viewport_cmd(ViewportCommand::CursorVisible(true));
+
+                            *capture_state = Some(false);
+                            dtc_ref.set_grabbed(false);
+
+                            gui.toasts()
+                                .info("Mouse released!")
+                                .duration(Some(NORMAL_NOTIFICATION_TIME));
+                        }
                     }
                 },
             );
+
+            // This is a bit of a hack. At least we could have gui.show() return a structure so we
+            // could return other things other than just the capture state.
+            if let Some(state) = capture_state {
+                emu.mouse_data.is_captured = state;
+            }
         }
 
         // if let Some(dm) = &mut self.dm {

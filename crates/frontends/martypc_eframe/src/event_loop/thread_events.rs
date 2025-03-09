@@ -118,7 +118,7 @@ pub fn handle_thread_event(emu: &mut Emulator, ctx: &egui::Context) {
                     let (disk_image_opt, _) = fdc.get_image(drive_select);
                     if let Some(floppy_image) = disk_image_opt {
                         let mut image = floppy_image.write().unwrap();
-                        match fluxfox::ImageWriter::new(&mut image)
+                        match fluxfox::ImageWriter::<std::fs::File>::new(&mut image)
                             .with_format(format)
                             .with_path(path_buf.clone())
                             .write()

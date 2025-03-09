@@ -34,7 +34,7 @@ use crate::{
     machine_types::FloppyDriveType,
 };
 use anyhow::{anyhow, Error};
-use fluxfox::{prelude::*, DiskSectorMap};
+use fluxfox::{file_system::FileSystemType, prelude::*, DiskSectorMap};
 use std::{
     io::{Cursor, Read, Seek},
     path::{Path, PathBuf},
@@ -320,11 +320,14 @@ impl FloppyDiskDrive {
     ) -> Result<Arc<RwLock<DiskImage>>, Error> {
         self.unload_image();
 
-        let builder = ImageBuilder::new()
+        let mut builder = ImageBuilder::new()
             .with_standard_format(format)
             .with_resolution(TrackDataResolution::BitStream)
-            .with_creator_tag(b"MartyPC")
-            .with_formatted(formatted);
+            .with_creator_tag(b"MartyPC");
+
+        if formatted {
+            builder = builder.with_filesystem(FileSystemType::Fat12);
+        }
 
         let image = builder.build()?;
         self.chsn = Default::default();

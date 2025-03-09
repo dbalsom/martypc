@@ -30,7 +30,7 @@
 
 */
 use crate::{emulator::Emulator, input::TranslateKey};
-use egui::ViewportCommand;
+use egui::{CursorGrab, ViewportCommand};
 
 use display_manager_eframe::{DisplayManager, EFrameDisplayManager};
 use marty_core::machine::{ExecutionOperation, MachineState};
@@ -41,10 +41,11 @@ use marty_frontend_common::{
     HotkeyEvent,
 };
 
+use crate::app::GRAB_MODE;
 use winit::{
     event::{ElementState, KeyEvent, Modifiers, WindowEvent},
     keyboard::{KeyCode, PhysicalKey},
-    window::WindowId,
+    window::{CursorGrabMode, WindowId},
 };
 
 pub fn handle_modifiers(emu: &mut Emulator, _wid: WindowId, _event: &WindowEvent, modifiers: &Modifiers) {
@@ -190,48 +191,31 @@ pub fn process_hotkeys(
                 log::debug!("ToggleGui hotkey triggered. Toggling GUI visibility.");
                 emu.flags.render_gui = !emu.flags.render_gui;
             }
-            // HotkeyEvent::CaptureMouse => {
-            //     // Get the window for this event.
-            //     let event_window = dm
-            //         .viewport_by_id(window_id)
-            //         .expect(&format!("Couldn't resolve window id {:?} to window.", window_id));
-            //
-            //     log::debug!("CaptureMouse hotkey triggered. Capturing mouse cursor.");
-            //     if !emu.mouse_data.is_captured {
-            //         let mut grab_success = false;
-            //
-            //         match event_window.set_cursor_grab(winit::window::CursorGrabMode::Confined) {
-            //             Ok(_) => {
-            //                 emu.mouse_data.is_captured = true;
-            //                 grab_success = true;
-            //             }
-            //             Err(_) => {
-            //                 // Try alternate grab mode (Windows/Mac require opposite modes)
-            //                 match event_window.set_cursor_grab(winit::window::CursorGrabMode::Locked) {
-            //                     Ok(_) => {
-            //                         emu.mouse_data.is_captured = true;
-            //                         grab_success = true;
-            //                     }
-            //                     Err(e) => {
-            //                         log::error!("Couldn't set cursor grab mode: {:?}", e)
-            //                     }
-            //                 }
-            //             }
-            //         }
-            //         // Hide mouse cursor if grab successful
-            //         if grab_success {
-            //             event_window.set_cursor_visible(false);
-            //         }
-            //     }
-            //     else {
-            //         // Cursor is grabbed, ungrab
-            //         match event_window.set_cursor_grab(winit::window::CursorGrabMode::None) {
-            //             Ok(_) => emu.mouse_data.is_captured = false,
-            //             Err(e) => log::error!("Couldn't set cursor grab mode: {:?}", e),
-            //         }
-            //         event_window.set_cursor_visible(true);
-            //     }
-            // }
+            HotkeyEvent::CaptureMouse => {
+                log::debug!("CaptureMouse hotkey triggered. Toggling mosue capture.");
+                let dtc = dm.main_display_target();
+                match dtc.try_write() {
+                    Ok(mut dtc_lock) => {
+                        if !dtc_lock.grabbed() {
+                            // Mouse cursor is not grabbed, grab it.
+                            dtc_lock.set_grabbed(true);
+                            emu.mouse_data.is_captured = true;
+                            ctx.send_viewport_cmd(ViewportCommand::CursorGrab(GRAB_MODE));
+                            ctx.send_viewport_cmd(ViewportCommand::CursorVisible(false));
+                        }
+                        else {
+                            // Mouse cursor is grabbed, un-grab it.
+                            dtc_lock.set_grabbed(false);
+                            emu.mouse_data.is_captured = false;
+                            ctx.send_viewport_cmd(ViewportCommand::CursorGrab(CursorGrab::None));
+                            ctx.send_viewport_cmd(ViewportCommand::CursorVisible(true));
+                        }
+                    }
+                    Err(_e) => {
+                        log::error!("Couldn't get lock on display target.");
+                    }
+                };
+            }
             HotkeyEvent::CtrlAltDel => {
                 log::debug!("CtrlAltDel hotkey triggered. Sending Ctrl-Alt-Del to machine.");
                 emu.machine.emit_ctrl_alt_del();
