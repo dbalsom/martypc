@@ -825,7 +825,7 @@ where
         match entry.node_type() {
             NodeType::File(path) => {
                 if visited.contains(path) {
-                    log::debug!("Skipping previou)sly in)stalled file: {:?}", path);
+                    log::debug!("Skipping previously installed file: {:?}", path);
                     continue;
                 }
                 log::debug!("build_autofloppy_dir: file_name: {}", path.display());
