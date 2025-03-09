@@ -426,7 +426,8 @@ impl PixelCanvas {
             PixelCanvasDepth::OneBpp => {
                 for i in 0..self.view_dimensions.0 * self.view_dimensions.1 {
                     let byte = self.data_buf[(i / 8) as usize];
-                    let bit = 1 << (i % 8);
+                    let shift = i % 8;
+                    let bit = 1 << (7 - shift);
                     self.backing_buf[i as usize] = if byte & bit != 0 {
                         Color32::WHITE
                     }
@@ -447,7 +448,7 @@ impl PixelCanvas {
                 for i in 0..self.view_dimensions.0 * self.view_dimensions.1 {
                     let byte = self.data_buf[(i / 2) as usize];
                     let shift = (i % 2) * 4;
-                    let color = (byte >> shift) & 0x0F;
+                    let color = (byte >> (4 - shift)) & 0x0F;
                     self.backing_buf[i as usize] = PALETTE_4BPP[color as usize];
                 }
             }
