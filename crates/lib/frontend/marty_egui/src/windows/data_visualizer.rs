@@ -32,14 +32,12 @@
 */
 use crate::{
     glyphs::FontInfo,
-    token_listview::*,
     widgets::pixel_canvas::{PixelCanvas, PixelCanvasDepth},
     GuiEventQueue,
 };
-use egui::ScrollArea;
-use image;
+
 use marty_common::find_unique_filename;
-use marty_core::syntax_token::*;
+
 use std::{fmt::Display, path::PathBuf};
 use strum::IntoEnumIterator;
 use strum_macros::EnumIter;
@@ -198,13 +196,14 @@ impl VizPreset {
 
 pub struct DataVisualizerControl {
     pub address_input: String,
-    pub address: String,
+    pub address_output: String,
     pub zoom_str: String,
     pub zoom_idx: usize,
     pub bpp: PixelCanvasDepth,
     w: u32,
     h: u32,
     offset: usize,
+    byte_offset: usize,
     row_offset: usize,
     row_span: usize,
     use_device_palette: bool,
@@ -221,13 +220,14 @@ impl DataVisualizerControl {
         let params = active_preset.params();
         Self {
             address_input: format!("{:05X}", 0),
-            address: format!("{:05X}", 0),
+            address_output: format!("{:05X}", 0),
             zoom_str: ZOOM_STR_LUT[params.zoom].to_string(),
             zoom_idx: params.zoom,
             bpp: params.bpp,
             w: params.w,
             h: params.h,
             offset: 0,
+            byte_offset: 0,
             row_offset: 0,
             row_span: 0,
             use_device_palette: true,
@@ -249,32 +249,7 @@ impl DataVisualizerControl {
     }
 
     pub fn get_address(&self) -> (&str, usize) {
-        let mut offset = self.offset;
-
-        let row_size_bits;
-        let row_size_bytes;
-        let offset;
-        if let PixelCanvasDepth::Text = self.bpp {
-            row_size_bits = ((self.w / self.font.w) as usize) * self.bpp.bits();
-            row_size_bytes = row_size_bits / 8;
-            // Force offset to even byte boundaries. This keeps us from displaying attributes
-            // as glyphs.
-            offset = self.row_offset * row_size_bytes + self.offset & !0x01;
-        }
-        else {
-            row_size_bits = self.w as usize * self.bpp.bits();
-            row_size_bytes = row_size_bits / 8;
-            offset = self.row_offset * row_size_bytes + self.offset;
-        }
-
-        // log::warn!(
-        //     "Calculated row size: Bitmap w: {}, bits: {}, bytes: {} offset: {:05X}",
-        //     self.w,
-        //     row_size_bits,
-        //     row_size_bytes,
-        //     offset
-        // );
-        (&self.address_input, offset)
+        (&self.address_input, self.offset)
     }
 
     pub fn get_required_data_size(&self) -> usize {
@@ -322,17 +297,18 @@ impl DataVisualizerControl {
             ui.set_width(canvas.get_width());
         }
 
-        ui.horizontal(|ui| {
-            ui.label("Address:");
+        let mut recalculate_address = false;
 
+        ui.horizontal(|ui| {
+            ui.label("Base Address:");
             ui.add(egui::TextEdit::singleline(&mut self.address_input).desired_width(50.0));
 
             //ui.text_edit_singleline(&mut self.address_input);
 
             if ui
                 .add(
-                    egui::DragValue::new(&mut self.offset)
-                        .clamp_range(0..=0xFFFFF)
+                    egui::DragValue::new(&mut self.byte_offset)
+                        .range(0..=0xFFFFF)
                         .hexadecimal(5, false, true)
                         .prefix("byte_offs:")
                         .speed(0.5)
@@ -340,13 +316,13 @@ impl DataVisualizerControl {
                 )
                 .changed()
             {
-                // Do stuff when offset changes
+                recalculate_address = true;
             }
 
             if ui
                 .add(
                     egui::DragValue::new(&mut self.row_offset)
-                        .clamp_range(0..=0xFFFFF)
+                        .range(0..=0xFFFFF)
                         .hexadecimal(5, false, true)
                         .prefix("row_offs:")
                         .speed(0.5)
@@ -354,10 +330,13 @@ impl DataVisualizerControl {
                 )
                 .changed()
             {
-                // Do stuff when offset changes
+                recalculate_address = true;
             }
 
-            egui::ComboBox::from_id_source("viz_zoom_combo")
+            ui.label("Address:");
+            ui.add(egui::TextEdit::singleline(&mut self.address_output.as_str()).desired_width(50.0));
+
+            egui::ComboBox::from_id_salt("viz_zoom_combo")
                 .selected_text(ZOOM_STR_LUT[self.zoom_idx])
                 .show_ui(ui, |ui| {
                     for i in 0..ZOOM_LUT.len() {
@@ -369,7 +348,7 @@ impl DataVisualizerControl {
                     }
                 });
 
-            egui::ComboBox::from_id_source("viz_bpp_combo")
+            egui::ComboBox::from_id_salt("viz_bpp_combo")
                 .selected_text(BPP_STR_LUT[self.bpp as usize])
                 .show_ui(ui, |ui| {
                     for i in 0..BPP_LUT.len() {
@@ -382,11 +361,12 @@ impl DataVisualizerControl {
                 });
         });
 
+        let mut recalculate_offsets = false;
         let mut resize = false;
         ui.horizontal(|ui| {
             ui.label("Preset:");
 
-            egui::ComboBox::from_id_source("viz_preset_combo")
+            egui::ComboBox::from_id_salt("viz_preset_combo")
                 .selected_text(&self.active_preset.to_string())
                 .show_ui(ui, |ui| {
                     for preset in VizPreset::iter() {
@@ -409,7 +389,7 @@ impl DataVisualizerControl {
             if ui
                 .add(
                     egui::DragValue::new(&mut self.w)
-                        .clamp_range(MIN_WIDTH..=MAX_WIDTH)
+                        .range(MIN_WIDTH..=MAX_WIDTH)
                         .prefix("w:")
                         .suffix("px")
                         .speed(0.25)
@@ -417,12 +397,13 @@ impl DataVisualizerControl {
                 )
                 .changed()
             {
+                recalculate_offsets = true;
                 resize = true;
             }
             if ui
                 .add(
                     egui::DragValue::new(&mut self.h)
-                        .clamp_range(MIN_HEIGHT..=MAX_HEIGHT)
+                        .range(MIN_HEIGHT..=MAX_HEIGHT)
                         .prefix("h:")
                         .suffix("px")
                         .speed(0.25)
@@ -443,7 +424,7 @@ impl DataVisualizerControl {
                 if ui
                     .add(
                         egui::DragValue::new(&mut self.font.max_scanline)
-                            .clamp_range(1..=self.font.h)
+                            .range(1..=self.font.h)
                             .prefix("r9:")
                             .speed(0.25)
                             .update_while_editing(false),
@@ -481,10 +462,65 @@ impl DataVisualizerControl {
             }
         }
 
+        if recalculate_address {
+            self.recalculate_address();
+        }
+        if recalculate_offsets {
+            self.recalculate_offsets();
+            //self.recalculate_address();
+        }
+
         if let Some(canvas) = &mut self.canvas {
             ui.separator();
             ui.set_width(canvas.get_width());
             canvas.draw(ui);
         }
+    }
+
+    fn recalculate_address(&mut self) {
+        let row_size_bits;
+        let row_size_bytes;
+        let mask = if let PixelCanvasDepth::Text = self.bpp {
+            row_size_bits = ((self.w / self.font.w) as usize) * self.bpp.bits();
+            // Force offset to even byte boundaries. This keeps us from displaying attributes
+            // as glyphs.
+            !0x01usize
+        }
+        else {
+            row_size_bits = self.w as usize * self.bpp.bits();
+            !0x00
+        };
+
+        // log::warn!(
+        //     "Calculated row size: Bitmap w: {}, bits: {}, bytes: {} offset: {:05X}",
+        //     self.w,
+        //     row_size_bits,
+        //     row_size_bytes,
+        //     offset
+        // );
+        row_size_bytes = row_size_bits / 8;
+        self.offset = self.row_offset * row_size_bytes + self.byte_offset & mask;
+        self.address_output = format!("{:05X}", self.offset);
+    }
+
+    /// Recalculate offsets when the width of the bitmap has changed. We want to keep the same
+    /// address pinned to the start of the bitmap.
+    fn recalculate_offsets(&mut self) {
+        let row_size_bits = if let PixelCanvasDepth::Text = self.bpp {
+            ((self.w / self.font.w) as usize) * self.bpp.bits()
+        }
+        else {
+            self.w as usize * self.bpp.bits()
+        };
+        let row_size_bytes = row_size_bits / 8;
+        let (new_row_offset, new_byte_offset) = if row_size_bytes > 0 {
+            (self.offset / row_size_bytes, self.offset % row_size_bytes)
+        }
+        else {
+            (0, 0)
+        };
+
+        self.byte_offset = new_byte_offset;
+        self.row_offset = new_row_offset;
     }
 }
