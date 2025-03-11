@@ -540,6 +540,16 @@ impl eframe::App for MartyApp {
             if let Some(focus) = vi.focused {
                 if self.focused && !focus {
                     log::debug!("MartyApp::update(): Main viewport lost focus");
+
+                    // Clear keyboard state when losing focus to avoid stuck keys.
+                    // We will not receive the key up events if we lose focus while a key is pressed,
+                    // and this will cause any key pressed when focus is lost to be stuck down forever.
+                    if let Some(emu) = &mut self.emu {
+                        if let Some(kb) = emu.machine.bus_mut().keyboard_mut() {
+                            log::debug!("MartyApp::update(): Clearing keyboard on focus loss.");
+                            kb.clear(true);
+                        }
+                    }
                     self.focused = false;
                 }
                 else if !self.focused && focus {
