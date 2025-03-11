@@ -36,20 +36,28 @@ This provides a few nice things:
    (and vice-versa!).
 
 ## New Debugger Features
-- You can now edit memory, at last! Double clicking on byte in the hex view will enter edit mode. Hit enter to accept
-  the current value and go to the next byte. Click outside of the edit box to cancel.
+- You can now edit memory, at last! Double-clicking on byte in the hex view will enter edit mode. Hit enter to accept
+  the current value and go to the next byte. Click outside the edit box to cancel.
 - You can now edit the CPU registers and flags when the machine is paused from the CPU State debug window.
     - You can also flush the CPU's instructon queue by clicking the 'flush' button.
     - To take a manual jump, first, flush the queue, then edit PC to the value of IP you'd like to jump to.
 
 ### Frontend Bug Fixes / Improvements
+ - The new Sound menu has been improved with the ability to mute and adjust the volume of sound sources.
  - You can now toggle the display between the window background and a GUI widget window. Shaders are also available
    in windowed mode (With the wgpu backend)!
  - When in windowed mode, you can apply a bezel overlay. This works best with a shader preset that applies curvature,
-   and the 'accurate' aperture selected. This isn't really a shader effect, just a GUI trick. But it's kinda cool.
+   and the 'accurate' aperture selected. This isn't really a shader effect, just a GUI trick.
  - Fixed an issue where MartyPC would receive keyboard events even though it didn't have keyboard focus (weird)
+ - The keyboard will be reset on loss of window focus, to avoid stuck keys.
+ - The data visualizer now keeps the current view offset when resizing the bitmap, making it easier to resolve bitmap
+   resources of different sizes.
+ - A revamped Input/Output menu allows control of peripherals:
+   - Mouse sensitivity/speed is now adjustable via the Mouse menu.
+   - The Keyboard menu allows for resetting the keyboard (clearing any stuck keys). 
 
 ### Core Bug Fixes / Improvements
+ - Added a keyboard reset function to clear stuck keys. 
  - Improved accuracy of the Programmable Interrupt Timer (PIT)
  - Fixed a bug the CPU's DRAM refresh DMA scheduler. Many tests in Acid88 now pass.
  - Reworked wait state calculations
