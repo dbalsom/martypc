@@ -250,6 +250,11 @@ pub enum SerialMouseType {
 }
 
 #[derive(Copy, Clone, Debug, Deserialize, Eq, PartialEq)]
+pub enum ParallelControllerType {
+    Standard,
+}
+
+#[derive(Copy, Clone, Debug, Deserialize, Eq, PartialEq)]
 pub enum EmsType {
     LoTech2MB,
 }

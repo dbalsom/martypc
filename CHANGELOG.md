@@ -33,7 +33,7 @@ This provides a few nice things:
  - The VHD creator has been updated to support the wide selection of common hard drive geometries that the XTIDE can 
    support. You'll need to be running a machine with the XTIDE configured to see them.
  - It is now possible to take a VHD file from 86Box (assuming you created it as a 'fixed' VHD) and use it in MartyPC
-   (and vice-versa!).
+   (and vice versa!).
 
 ## New Debugger Features
 - You can now edit memory, at last! Double-clicking on byte in the hex view will enter edit mode. Hit enter to accept
@@ -57,6 +57,7 @@ This provides a few nice things:
    - The Keyboard menu allows for resetting the keyboard (clearing any stuck keys). 
 
 ### Core Bug Fixes / Improvements
+ - Added a parallel port card overlay.
  - Added a keyboard reset function to clear stuck keys. 
  - Improved accuracy of the Programmable Interrupt Timer (PIT)
  - Fixed a bug the CPU's DRAM refresh DMA scheduler. Many tests in Acid88 now pass.

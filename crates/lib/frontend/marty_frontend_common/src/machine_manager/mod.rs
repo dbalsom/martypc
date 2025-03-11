@@ -29,8 +29,12 @@
     Machine configuration services for frontends.
 */
 
+use std::{
+    collections::{BTreeMap, HashSet},
+    ffi::OsString,
+};
+
 use crate::resource_manager::ResourceManager;
-use anyhow::Error;
 use marty_core::{
     device_traits::videocard::VideoType,
     machine_config::{
@@ -43,6 +47,7 @@ use marty_core::{
         MachineConfiguration,
         MediaConfig,
         MemoryConfig,
+        ParallelControllerConfig,
         SerialControllerConfig,
         SerialMouseConfig,
         SoundDeviceConfig,
@@ -51,11 +56,8 @@ use marty_core::{
     machine_types::{HardDiskControllerType, MachineType},
 };
 
+use anyhow::Error;
 use serde_derive::Deserialize;
-use std::{
-    collections::{BTreeMap, HashSet},
-    ffi::OsString,
-};
 
 #[derive(Clone, Debug, Deserialize)]
 pub struct MachineConfigFile {
@@ -84,6 +86,7 @@ pub struct MachineConfigFileEntry {
     fdc: Option<FloppyControllerConfig>,
     hdc: Option<HardDriveControllerConfig>,
     serial: Option<Vec<SerialControllerConfig>>,
+    parallel: Option<Vec<ParallelControllerConfig>>,
     video: Option<Vec<VideoCardConfig>>,
     sound: Option<Vec<SoundDeviceConfig>>,
     keyboard: Option<KeyboardConfig>,
@@ -101,6 +104,7 @@ pub struct MachineConfigFileOverlayEntry {
     fdc: Option<FloppyControllerConfig>,
     hdc: Option<HardDriveControllerConfig>,
     serial: Option<Vec<SerialControllerConfig>>,
+    parallel: Option<Vec<ParallelControllerConfig>>,
     video: Option<Vec<VideoCardConfig>>,
     sound: Option<Vec<SoundDeviceConfig>>,
     keyboard: Option<KeyboardConfig>,
@@ -404,6 +408,10 @@ impl MachineConfigFileEntry {
             log::debug!("Applying serial overlay: {:?}", serial);
             self.serial = Some(serial);
         }
+        if let Some(parallel) = overlay.parallel {
+            log::debug!("Applying parallel overlay: {:?}", parallel);
+            self.parallel = Some(parallel);
+        }
         if let Some(video) = overlay.video {
             log::debug!("Applying video overlay: {:?}", video);
             self.video = Some(video);
@@ -439,6 +447,7 @@ impl MachineConfigFileEntry {
             serial: self.serial.clone().unwrap_or_default(),
             video: self.video.clone().unwrap_or_default(),
             sound: self.sound.clone().unwrap_or_default(),
+            parallel: self.parallel.clone().unwrap_or_default(),
             keyboard: self.keyboard.clone(),
             serial_mouse: self.serial_mouse.clone(),
             game_port: self.game_port.clone(),

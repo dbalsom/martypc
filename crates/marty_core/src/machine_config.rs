@@ -37,6 +37,7 @@ use crate::machine_types::{
     HardDiskControllerType,
     HardDriveFormat,
     MachineType,
+    ParallelControllerType,
     SerialControllerType,
     SerialMouseType,
     SoundType,
@@ -197,6 +198,18 @@ pub struct SerialControllerConfig {
 }
 
 #[derive(Clone, Debug, Deserialize)]
+pub struct ParallelControllerConfig {
+    #[serde(rename = "type")]
+    pub lpt_type: ParallelControllerType,
+    pub port: Vec<ParallelPortConfig>,
+}
+
+#[derive(Clone, Debug, Deserialize)]
+pub struct ParallelPortConfig {
+    pub io_base: u32,
+}
+
+#[derive(Clone, Debug, Deserialize)]
 pub struct FloppyControllerConfig {
     #[serde(rename = "type")]
     pub fdc_type: FdcType,
@@ -254,6 +267,7 @@ pub struct MachineConfiguration {
     pub video: Vec<VideoCardConfig>,
     pub sound: Vec<SoundDeviceConfig>,
     pub serial: Vec<SerialControllerConfig>,
+    pub parallel: Vec<ParallelControllerConfig>,
     pub game_port: Option<GamePortConfig>,
     pub fdc: Option<FloppyControllerConfig>,
     pub hdc: Option<HardDriveControllerConfig>,

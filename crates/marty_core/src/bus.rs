@@ -1977,6 +1977,28 @@ impl BusInterface {
             add_io_device!(self, parallel, IoDeviceType::Parallel);
             self.parallel = Some(parallel);
         }
+        else if machine_config.parallel.len() > 0 {
+            if machine_config.parallel.len() > 1 {
+                log::warn!(
+                    "Support for multiple parallel controllers is not implemented. Only the first parallel controller will be created."
+                );
+            }
+
+            if let Some(controller) = machine_config.parallel.get(0) {
+                log::debug!("Creating parallel port...");
+
+                if let Some(port) = controller.port.get(0) {
+                    let parallel = ParallelController::new(Some(port.io_base as u16));
+
+                    // Add Parallel Port ports to io_map
+                    add_io_device!(self, parallel, IoDeviceType::Parallel);
+                    self.parallel = Some(parallel);
+                }
+            }
+            else {
+                log::error!("Parallel controller was specified with no ports!");
+            }
+        }
 
         // Create a Serial card if specified
         if let Some(serial_config) = machine_config.serial.get(0) {

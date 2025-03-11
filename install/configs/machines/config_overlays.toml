@@ -65,6 +65,16 @@ name = "us_modelf_keyboard"
     typematic_rate= 50.0
     
 [[overlay]]
+name = "parallel_port"
+    # Parallel port card
+    [[overlay.parallel]]
+    bus_type = "ISA"
+    type = "Standard"
+        [[overlay.parallel.port]]
+        # 3BC will typically be LPT1. May conflict with MDA.
+        io_base = 0x3BC
+    
+[[overlay]]
 name = "pcxt_2_serial_ports"
     # Serial card
     [[overlay.serial]]
