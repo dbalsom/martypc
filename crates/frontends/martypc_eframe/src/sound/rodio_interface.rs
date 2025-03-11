@@ -148,6 +148,7 @@ impl AudioLatencyController {
     }
 }
 
+#[allow(unused)]
 pub struct SoundInterface {
     enabled: bool,
     device_name: String,
