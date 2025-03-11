@@ -94,28 +94,33 @@ impl GuiState {
         ui.menu_button("Mouse", |ui| {
             ui.vertical(|ui| {
                 ui.horizontal(|ui| {
-                    ui.horizontal(|ui| {
-                        let mut speed = self.option_floats.get_mut(&GuiFloat::MouseSpeed).unwrap();
+                    let mut speed = self.option_floats.get_mut(&GuiFloat::MouseSpeed).unwrap();
 
-                        ui.label("Factor:");
-                        if ui
-                            .add(
-                                egui::Slider::new(speed, 0.1..=2.0)
-                                    .show_value(true)
-                                    .min_decimals(2)
-                                    .max_decimals(2)
-                                    .suffix("x"),
-                            )
-                            .changed()
-                        {
-                            self.event_queue.send(GuiEvent::VariableChanged(
-                                GuiVariableContext::Global,
-                                GuiVariable::Float(GuiFloat::MouseSpeed, *speed),
-                            ));
-                        }
-                    });
+                    ui.label("Speed:");
+                    if ui
+                        .add(
+                            egui::Slider::new(speed, 0.1..=2.0)
+                                .show_value(true)
+                                .min_decimals(2)
+                                .max_decimals(2)
+                                .suffix("x"),
+                        )
+                        .changed()
+                    {
+                        self.event_queue.send(GuiEvent::VariableChanged(
+                            GuiVariableContext::Global,
+                            GuiVariable::Float(GuiFloat::MouseSpeed, *speed),
+                        ));
+                    }
                 });
             });
+        });
+
+        ui.menu_button("Keyboard", |ui| {
+            if ui.button("Reset keyboard").clicked() {
+                self.event_queue.send(GuiEvent::ClearKeyboard);
+                ui.close_menu();
+            }
         });
     }
 }

@@ -249,6 +249,7 @@ pub enum GuiEvent {
     StopRecordingDisassembly,
     InsertCartridge(usize, usize),
     RemoveCartridge(usize),
+    ClearKeyboard,
 }
 
 pub enum DeviceSelection {

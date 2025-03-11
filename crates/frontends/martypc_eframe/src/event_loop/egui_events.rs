@@ -1076,6 +1076,17 @@ pub fn handle_egui_event(
             // User stopped recording disassembly
             emu.machine.set_option(MachineOption::RecordListing(false));
         }
+        GuiEvent::ClearKeyboard => {
+            if let Some(kb) = emu.machine.bus_mut().keyboard_mut() {
+                log::debug!("Clearing keyboard.");
+                kb.clear(true);
+
+                emu.gui
+                    .toasts()
+                    .info("Keyboard reset!".to_string())
+                    .duration(Some(SHORT_NOTIFICATION_TIME));
+            }
+        }
         _ => {
             log::warn!("Unhandled GUI event: {:?}", discriminant(gui_event));
         }

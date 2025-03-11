@@ -177,6 +177,7 @@ pub struct Keyboard {
     kb_buffer_size: usize,
     kb_buffer: Vec<u8>, // Keyboard buffer. Variable length depending on keyboard model.
     kb_buffer_overflow: bool,
+    reset_buffer: Vec<u8>, // Keyboard buffer to hold queued reset scancodes on keyboard reset.
     keycode_mappings: Vec<KeycodeMapping>,
 }
 
@@ -193,6 +194,7 @@ impl Default for Keyboard {
             kb_buffer_size: 1,
             kb_buffer: Vec::new(),
             kb_buffer_overflow: false,
+            reset_buffer: Vec::new(),
             keycode_mappings: Vec::new(),
         }
     }
@@ -645,10 +647,38 @@ impl Keyboard {
     }
 
     /// Reset key states for all keys to unpressed.
-    pub fn clear(&mut self) {
-        for key in self.kb_hash.keys().cloned().collect::<Vec<MartyKey>>() {
-            self.kb_hash.insert(key, KeyState::default());
+    /// # Arguments
+    /// - `send_break` - Send key up scancodes for all keys currently pressed.
+    pub fn clear(&mut self, send_break: bool) {
+        let mut up_keys: Vec<MartyKey> = Vec::new();
+        let mut translations: Vec<Vec<u8>> = Vec::new();
+
+        for (key, state) in self.kb_hash.iter_mut() {
+            if state.pressed {
+                if send_break {
+                    state.pressed = false;
+                    // If key was translated, get the corresponding key up codes
+                    if let Some(translation) = &mut state.translation {
+                        translations.push(translation.clone());
+                    }
+
+                    // Remove this key from keys_pressed.
+                    up_keys.push(*key);
+                }
+                *state = KeyState::default();
+            }
         }
+
+        for translation in translations.iter_mut() {
+            self.translate_keyup(self.kb_type, translation);
+            self.reset_buffer.extend(translation.clone());
+        }
+
+        for key in up_keys.iter() {
+            self.keys_pressed.retain(|&k| k != *key);
+        }
+
+        self.kb_buffer.clear();
     }
 
     /// Send the corresponding scancodes to the keyboard buffer.
@@ -674,6 +704,11 @@ impl Keyboard {
 
     /// Read out a scancode from the keyboard or None if no key in buffer.
     pub fn recv_scancode(&mut self) -> Option<u8> {
+        // Prioritize reset buffer over keyboard buffer.
+        if !self.reset_buffer.is_empty() {
+            return self.reset_buffer.pop();
+        }
+
         if self.kb_buffer_overflow {
             // Send the keyboard overflow scancode
             self.kb_buffer_overflow = false;
