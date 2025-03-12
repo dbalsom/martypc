@@ -548,14 +548,18 @@ impl FloppyDiskDrive {
                     );
                     continue;
                 }
-                log::warn!("command_read_data(): sector id not found");
-                self.operation_status.sector_not_found = true;
-                return Ok(DriveReadResult {
-                    not_found: true,
-                    sectors_read: 0,
-                    new_chs: op_chs,
-                    deleted_mark: false,
-                });
+                else if mt && not_found_count > 0 {
+                    // If we are in multi-track mode, and this is the second sector not found, we
+                    // will stop reading and return the sectors read so far.
+                    log::warn!("command_read_data(): sector not found with multi-track enabled, stopping read");
+                    self.operation_status.sector_not_found = true;
+                    return Ok(DriveReadResult {
+                        not_found: true,
+                        sectors_read: sectors_read as u16,
+                        new_chs: op_chs,
+                        deleted_mark: false,
+                    });
+                }
             }
 
             log::debug!(

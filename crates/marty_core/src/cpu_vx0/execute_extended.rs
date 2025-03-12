@@ -436,7 +436,7 @@ impl NecVx0 {
         }
 
         if unhandled {
-            unreachable!("Invalid opcode!");
+            unreachable!("Invalid opcode: {:02X}", self.i.opcode);
             //ExecutionResult::UnsupportedOpcode(self.i.opcode)
         }
         else if self.halted && !self.reported_halt && !self.get_flag(Flag::Interrupt) && !self.get_flag(Flag::Trap) {

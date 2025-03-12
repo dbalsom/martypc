@@ -306,7 +306,7 @@ impl SoundInterface {
                 let new_speed = source.controller.update(latency.as_millis_f32(), dt);
 
                 //let effective_sample_rate = block_len as f32 / block_duration.as_secs_f32();
-                let average_sample_rate =
+                let _average_sample_rate =
                     source.sample_ct as f64 / source.first_buffer.unwrap().elapsed().as_secs_f64();
 
                 source.latency_ms = latency.as_millis() as f32;

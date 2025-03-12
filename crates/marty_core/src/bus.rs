@@ -91,9 +91,12 @@ use crate::{
 use crate::devices::adlib::AdLibCard;
 #[cfg(feature = "ega")]
 use crate::devices::ega::EGACard;
-use crate::devices::hdc::xebec::{HardDiskController, DRIVE_TYPE2_DIP};
 #[cfg(feature = "vga")]
 use crate::devices::vga::VGACard;
+use crate::devices::{
+    hdc::xebec::{HardDiskController, DRIVE_TYPE2_DIP},
+    sound_source::DSoundSource,
+};
 #[cfg(feature = "sound")]
 use crate::machine_types::SoundType;
 #[cfg(feature = "sound")]
@@ -433,6 +436,7 @@ pub struct BusInterface {
     game_port: Option<GamePort>,
     #[cfg(feature = "opl")]
     adlib: Option<AdLibCard>,
+    sound_source: Option<DSoundSource>,
 
     videocards:    FxHashMap<VideoCardId, VideoCardDispatch>,
     videocard_ids: Vec<VideoCardId>,
@@ -613,6 +617,7 @@ impl Default for BusInterface {
             game_port: None,
             #[cfg(feature = "opl")]
             adlib: None,
+            sound_source: None,
             videocards: FxHashMap::default(),
             videocard_ids: Vec::new(),
 
@@ -2000,6 +2005,28 @@ impl BusInterface {
             }
         }
 
+        // If we installed a parallel card, attach a sound source
+        if let Some(parallel) = &self.parallel {
+            // Add parallel port to installed devices
+
+            #[cfg(feature = "sound")]
+            {
+                // Create audio sample channel
+                let (sample_sender, sample_receiver) = unbounded();
+
+                let device_channel = parallel.device_channel();
+                let sound_source = DSoundSource::new(device_channel, sample_sender);
+                installed_devices.sound_sources.push(SoundSourceDescriptor::new(
+                    "Sound Source",
+                    sound_source.sample_rate(),
+                    1,
+                    sample_receiver,
+                ));
+
+                self.sound_source = Some(sound_source);
+            }
+        }
+
         // Create a Serial card if specified
         if let Some(serial_config) = machine_config.serial.get(0) {
             let mut out2_suppresses_int = true;
@@ -2363,15 +2390,25 @@ impl BusInterface {
             }
         }
 
-        // Run the game port {
+        // Run the parallel port
+        if let Some(parallel) = &mut self.parallel {
+            parallel.run(&mut self.pic1.as_mut().unwrap(), us);
+        }
+
+        // Run the game port
         if let Some(game_port) = &mut self.game_port {
             game_port.run(us);
         }
 
-        // Run the adlib card {
+        // Run the adlib card
         #[cfg(feature = "opl")]
         if let Some(adlib) = &mut self.adlib {
             adlib.run(us);
+        }
+
+        // Run the Sound Source
+        if let Some(sound_source) = &mut self.sound_source {
+            sound_source.run(us);
         }
 
         // Run all video cards
@@ -2420,48 +2457,6 @@ impl BusInterface {
         // Commit logic analyzer if present
         logic_analyzer.as_mut().map(|la| la.commit());
         event
-    }
-
-    pub fn do_area5150_hack(pit_counting_element: u16, trigger1: bool, trigger2: bool, cga: &mut CGACard) {
-        let mut screen_target = 21960;
-        let screen_tick_pos = cga.get_screen_ticks();
-        let mut effect: String = String::new();
-
-        if trigger1 {
-            screen_target = 21960;
-            effect = "Lake".to_string();
-        }
-        else if trigger2 {
-            screen_target = 21952;
-            effect = "Wibble".to_string();
-        }
-
-        if screen_tick_pos > screen_target {
-            // Adjust if we are late - we can't tick the card backwards, so we tick an entire frame minus delta
-            let ticks_adj = screen_tick_pos - screen_target;
-            log::warn!(
-                "Doing Area5150 hack for {} effect. Target: {} Pos: {} Rewinding CGA by {} ticks. (Timer: {})",
-                effect,
-                screen_target,
-                screen_tick_pos,
-                ticks_adj,
-                pit_counting_element
-            );
-            cga.debug_tick(233472 - ticks_adj as u32, None);
-        }
-        else {
-            // Adjust if we are early
-            let ticks_adj = screen_target - screen_tick_pos;
-            log::warn!(
-                "Doing Area5150 hack for {} effect. Target: {} Pos: {} Advancing CGA by {} ticks. (Timer: {})",
-                effect,
-                screen_target,
-                screen_tick_pos,
-                ticks_adj,
-                pit_counting_element
-            );
-            cga.debug_tick(ticks_adj as u32, None);
-        }
     }
 
     pub fn handle_refresh_scheduling(&mut self, pit: &mut Pit, event: &mut Option<DeviceEvent>) {

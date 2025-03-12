@@ -71,8 +71,10 @@ name = "parallel_port"
     bus_type = "ISA"
     type = "Standard"
         [[overlay.parallel.port]]
-        # 3BC will typically be LPT1. May conflict with MDA.
-        io_base = 0x3BC
+        # 3BC is typically used by the parallel port on the MDA card.
+        # 378 is typically used by add-on parallel port adapters.
+        # 278 maybe be used by a second parallel port adapter.
+        io_base = 0x378
     
 [[overlay]]
 name = "pcxt_2_serial_ports"

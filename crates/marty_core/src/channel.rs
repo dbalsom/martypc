@@ -23,50 +23,51 @@
     DEALINGS IN THE SOFTWARE.
 
     --------------------------------------------------------------------------
-
-    lib.rs
-
-    Main emulator core
-
 */
 
-#![allow(dead_code)]
-extern crate core;
+//! Bidirectional crossbeam channel.
 
-pub mod breakpoints;
-pub mod bus;
-pub mod bytebuf;
-pub mod bytequeue;
-pub mod channel;
-pub mod coreconfig;
-pub mod cpu_808x;
-pub mod cpu_common;
-pub mod cpu_validator;
-pub mod cpu_vx0;
-pub mod device_traits;
-pub mod device_types;
-pub mod devices;
-pub mod file_util;
-pub mod interrupt;
-pub mod keys;
-pub mod machine;
-pub mod machine_config;
-pub mod machine_types;
-pub mod memerror;
-#[cfg(feature = "sound")]
-pub mod sound;
-pub mod syntax_token;
-pub mod tracelogger;
-pub mod updatable;
-pub mod util;
-pub mod vhd;
+use crossbeam_channel;
 
-#[cfg(feature = "arduino_validator")]
-#[macro_use]
-pub mod arduino8088_client;
-#[cfg(feature = "arduino_validator")]
-#[macro_use]
-pub mod arduino8088_validator;
+#[derive(Clone)]
+pub struct BidirectionalChannel<T> {
+    sender:   crossbeam_channel::Sender<T>,
+    receiver: crossbeam_channel::Receiver<T>,
+}
 
-// Re-exported for use by frontend to populate file browser.
-pub use fluxfox::supported_extensions as supported_floppy_extensions;
+impl<T> BidirectionalChannel<T> {
+    pub fn new_pair() -> (Self, Self) {
+        let (sender_a, receiver_a) = crossbeam_channel::unbounded();
+        let (sender_b, receiver_b) = crossbeam_channel::unbounded();
+        (
+            Self {
+                sender:   sender_a,
+                receiver: receiver_b,
+            },
+            Self {
+                sender:   sender_b,
+                receiver: receiver_a,
+            },
+        )
+    }
+
+    pub fn sender(&self) -> crossbeam_channel::Sender<T> {
+        self.sender.clone()
+    }
+
+    pub fn receiver(&self) -> crossbeam_channel::Receiver<T> {
+        self.receiver.clone()
+    }
+
+    pub fn send(&self, value: T) -> Result<(), crossbeam_channel::SendError<T>> {
+        self.sender.send(value)
+    }
+
+    pub fn recv(&self) -> Result<T, crossbeam_channel::RecvError> {
+        self.receiver.recv()
+    }
+
+    pub fn try_recv(&self) -> Result<T, crossbeam_channel::TryRecvError> {
+        self.receiver.try_recv()
+    }
+}

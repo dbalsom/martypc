@@ -55,6 +55,7 @@ pub mod pic;
 pub mod pit;
 pub mod ppi;
 pub mod serial;
+pub mod sound_source;
 pub mod tga;
 #[cfg(feature = "vga")]
 pub mod vga;

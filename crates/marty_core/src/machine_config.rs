@@ -358,7 +358,7 @@ impl Default for MachineDescriptor {
             open_bus_byte: 0xFF,
             cpu_type: CpuType::Intel8088,
             cpu_factor: ClockFactor::Divisor(3),
-            cpu_turbo_factor: ClockFactor::Divisor(2),
+            cpu_turbo_factor: ClockFactor::Divisor(1),
             bus_type: BusType::Isa8,
             bus_factor: ClockFactor::Divisor(1),
             timer_divisor: PIT_DIVISOR,
