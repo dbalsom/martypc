@@ -154,7 +154,7 @@ impl GuiRenderContext {
     ) -> Option<bool>
     where
         Fw: FnMut(&mut egui::Context, &mut GuiState, &mut Option<bool>),
-        Fm: FnMut(&mut egui::Ui, &mut GuiState, &mut Option<bool>),
+        Fm: FnMut(&mut egui::Ui, &mut GuiState, f32, &mut Option<bool>),
     {
         let mut capture_state = None;
 
@@ -167,17 +167,29 @@ impl GuiRenderContext {
 
         self.ctx.set_visuals(self.main_theme.visuals());
         state.show_windows(&self.ctx);
+
+        let old_margin = self.ctx.style().spacing.window_margin;
+        // Disable window margin for display window.
+        self.ctx.style_mut(|style| {
+            style.spacing.window_margin = egui::Margin::ZERO;
+        });
         window_render(&mut self.ctx, state, &mut capture_state);
+        // Restore window margin.
+        self.ctx.style_mut(|style| {
+            style.spacing.window_margin = old_margin;
+        });
 
         // Override panel fill if requested.
+        let mut panel_frame = egui::Frame::default();
+        panel_frame.inner_margin = egui::Margin::ZERO;
+        panel_frame.fill = self.main_theme.visuals().panel_fill;
         if let Some(fill) = main_panel_fill {
-            let mut main_theme = self.main_theme.visuals();
-            main_theme.panel_fill = fill;
-            self.ctx.set_visuals(main_theme);
+            panel_frame.fill = fill;
         }
-
-        egui::CentralPanel::default().show(&self.ctx, |ui| {
-            main_panel_render(ui, state, &mut capture_state);
+        egui::CentralPanel::default().frame(panel_frame).show(&self.ctx, |ui| {
+            ui.spacing_mut().item_spacing = [0.0, 0.0].into();
+            let menu_height = self.ctx.screen_rect().size().y - ui.available_size().y;
+            main_panel_render(ui, state, menu_height, &mut capture_state);
         });
 
         capture_state

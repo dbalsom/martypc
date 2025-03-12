@@ -89,6 +89,7 @@ pub struct MartyApp {
     last_size: egui::Vec2,
     focused: bool,
     hide_menu: bool,
+    menu_height: f32,
     #[serde(skip)]
     gui: GuiRenderContext,
     #[serde(skip)]
@@ -120,6 +121,7 @@ impl Default for MartyApp {
             current_size: egui::Vec2::ZERO,
             last_size: egui::Vec2::INFINITY,
             focused: false,
+            menu_height: 22.0,
             // Example stuff:
             gui: GuiRenderContext::default(),
             emu_loading: false,
@@ -567,7 +569,7 @@ impl eframe::App for MartyApp {
                 MartyApp::viewport_resized(
                     self.dm.as_mut().unwrap(),
                     self.current_size.x as u32,
-                    self.current_size.y as u32,
+                    self.current_size.y as u32 - self.menu_height as u32,
                 );
                 self.last_size = self.current_size; // Update tracked size
             }
@@ -686,7 +688,7 @@ impl eframe::App for MartyApp {
                         let display_name = dtc_ref.name.clone();
                         if let Some(scaler_geom) = dtc_ref.scaler_geometry() {
                             // Draw the main display in a window.
-                            egui::Window::new(display_name).resizable(true).show(ctx, |ui| {
+                            egui::Window::new(display_name).resizable(false).show(ctx, |ui| {
                                 let ui_size = egui::Vec2::new(scaler_geom.target_w as f32, scaler_geom.target_h as f32);
                                 let (rect, response) = ui.allocate_exact_size(ui_size, Sense::click());
 
@@ -757,7 +759,8 @@ impl eframe::App for MartyApp {
                         }
                     }
                 },
-                |ui, gui, capture_state| {
+                |ui, gui, menu_height, capture_state| {
+                    self.menu_height = menu_height;
                     if let Some(DisplayTargetType::WindowBackground) = dm.display_type(DtHandle::MAIN) {
                         let dtc = dm.main_display_target();
                         let mut dtc_lock = dtc.write();
