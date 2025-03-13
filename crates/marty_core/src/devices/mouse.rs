@@ -51,7 +51,7 @@ const MOUSE_UPDATE_RBUTTON: u8 = 0b0001_0000;
 const MOUSE_UPDATE_HO_BITS: u8 = 0b1100_0000;
 const MOUSE_UPDATE_LO_BITS: u8 = 0b0011_1111;
 
-use web_time::{Duration, Instant};
+use web_time::Instant;
 
 #[allow(dead_code)]
 pub struct Mouse {
