@@ -274,7 +274,7 @@ pub fn run() {
     // First we resolve the emulator configuration by parsing the configuration toml and merging it with
     // command line arguments. For the desktop frontend, this is handled by the config_toml_bpaf front end
     // library.
-    let config = match marty_config::read_local_config("./martypc.toml") {
+    let config = match marty_config::read_config_file("./martypc.toml") {
         Ok(config) => config,
         Err(e) => match e.downcast_ref::<std::io::Error>() {
             Some(e) if e.kind() == std::io::ErrorKind::NotFound => {
@@ -327,7 +327,7 @@ pub fn run() {
 
     // Instantiate the new machine manager to load Machine configurations.
     let mut machine_manager = MachineManager::new();
-    let future = machine_manager.load_configs(&resource_manager);
+    let future = machine_manager.load_configs(&mut resource_manager);
     let machine_result = future.block_on();
     if let Err(err) = machine_result {
         eprintln!("Error loading Machine configuration files: {}", err);
@@ -393,7 +393,7 @@ pub fn run() {
 
     // Instantiate the new rom manager to load roms
     let mut rom_manager = RomManager::new(init_prefer_oem);
-    let future = rom_manager.load_defs(&resource_manager);
+    let future = rom_manager.load_defs(&mut resource_manager);
     let rom_result = future.block_on();
     if let Err(err) = rom_result {
         eprintln!("Error loading ROM definition files: {}", err);
@@ -421,7 +421,7 @@ pub fn run() {
     });
 
     // Scan the rom resource director(ies)
-    let future = rom_manager.scan(&resource_manager);
+    let future = rom_manager.scan(&mut resource_manager);
     let rom_scan_result = future.block_on();
     if let Err(err) = rom_scan_result {
         eprintln!("Error scanning ROM resource directories: {}", err);
@@ -478,7 +478,7 @@ pub fn run() {
 
     // Create the ROM manifest
     let rom_manifest = rom_manager
-        .create_manifest(rom_sets_resolved.clone(), &resource_manager)
+        .create_manifest(rom_sets_resolved.clone(), &mut resource_manager)
         .unwrap_or_else(|err| {
             eprintln!("Error loading ROM set: {}", err);
             std::process::exit(1);
@@ -511,13 +511,13 @@ pub fn run() {
     floppy_manager.set_extensions(Some(floppy_extensions));
 
     // Scan the "floppy" resource
-    if let Err(e) = floppy_manager.scan_resource(&resource_manager) {
+    if let Err(e) = floppy_manager.scan_resource(&mut resource_manager) {
         eprintln!("Failed to read floppy path: {:?}", e);
         std::process::exit(1);
     }
 
     // Scan the "autofloppy" resource
-    if let Err(e) = floppy_manager.scan_autofloppy(&resource_manager) {
+    if let Err(e) = floppy_manager.scan_autofloppy(&mut resource_manager) {
         eprintln!("Failed to read autofloppy path: {:?}", e);
         std::process::exit(1);
     }
@@ -526,7 +526,7 @@ pub fn run() {
     let mut vhd_manager = VhdManager::new();
 
     // Scan the "hdd" resource
-    if let Err(e) = vhd_manager.scan_resource(&resource_manager) {
+    if let Err(e) = vhd_manager.scan_resource(&mut resource_manager) {
         eprintln!("Failed to read hdd path: {:?}", e);
         std::process::exit(1);
     }
@@ -535,7 +535,7 @@ pub fn run() {
     let mut cart_manager = CartridgeManager::new();
 
     // Scan the "cartridge" resource
-    if let Err(e) = cart_manager.scan_resource(&resource_manager) {
+    if let Err(e) = cart_manager.scan_resource(&mut resource_manager) {
         eprintln!("Failed to read cartridge path: {:?}", e);
         std::process::exit(1);
     }
@@ -674,7 +674,7 @@ pub fn run() {
     // Get a list of video devices from machine.
     let cardlist = machine.bus().enumerate_videocards();
 
-    let mut highest_rate = 50;
+    let mut highest_rate = 50.0;
     for card in cardlist.iter() {
         let rate = machine.bus().video(&card).unwrap().get_refresh_rate();
         if rate > highest_rate {

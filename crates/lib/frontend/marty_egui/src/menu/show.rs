@@ -32,13 +32,13 @@
 use crate::{state::GuiState, GuiBoolean, GuiEnum, GuiEvent, GuiFloat, GuiVariable, GuiVariableContext, GuiWindow};
 use std::path::{Path, PathBuf};
 
-use marty_frontend_common::display_manager::DtHandle;
+use marty_display_common::display_manager::DtHandle;
 
 //use egui_file_dialog::FileDialog;
 use marty_core::{device_traits::videocard::VideoType, machine::MachineState};
 
 #[cfg(feature = "scaler_ui")]
-use marty_frontend_common::display_manager::DisplayTargetType;
+use marty_display_common::display_manager::DisplayTargetType;
 #[cfg(feature = "scaler_ui")]
 use strum::IntoEnumIterator;
 

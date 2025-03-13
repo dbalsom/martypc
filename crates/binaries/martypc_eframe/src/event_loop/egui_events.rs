@@ -80,10 +80,8 @@ use winit::event_loop::ActiveEventLoop;
 use crate::wasm::file_open;
 #[cfg(target_arch = "wasm32")]
 use crate::wasm::worker::spawn_closure_worker as spawn;
-use marty_frontend_common::{
-    display_manager::{DisplayManager, DtHandle},
-    timestep_manager::{TimestepManager, TimestepUpdate},
-};
+use marty_display_common::display_manager::{DisplayManager, DtHandle};
+use marty_frontend_common::timestep_manager::{TimestepManager, TimestepUpdate};
 #[cfg(not(target_arch = "wasm32"))]
 use std::thread::spawn;
 

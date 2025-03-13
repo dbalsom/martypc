@@ -27,7 +27,7 @@
 
 use crate::{state::GuiState, GuiEnum, GuiEvent, GuiVariable, GuiVariableContext, GuiWindow};
 use marty_core::device_traits::videocard::VideoType;
-use marty_frontend_common::display_manager::{DisplayTargetType, DtHandle};
+use marty_display_common::display_manager::{DisplayTargetType, DtHandle};
 
 use strum::IntoEnumIterator;
 

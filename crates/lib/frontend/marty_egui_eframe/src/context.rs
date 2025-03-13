@@ -25,13 +25,13 @@
     --------------------------------------------------------------------------
 */
 
-use std::sync::Arc;
-
+use marty_display_common::display_manager::DmGuiOptions;
 use marty_egui::{
     state::GuiState,
     themes::{make_theme, GuiTheme},
 };
-use marty_frontend_common::{display_manager::DmGuiOptions, MartyGuiTheme};
+use marty_frontend_common::MartyGuiTheme;
+use std::sync::Arc;
 
 use egui::{Color32, Context};
 use egui_extras::install_image_loaders;

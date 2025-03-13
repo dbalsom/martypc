@@ -12,6 +12,7 @@ crate-type = ["lib"]
 
 [dependencies]
 marty_frontend_common =  { path = "../marty_frontend_common" }
+marty_display_common = { path = "../marty_display_common" }
 egui = { workspace = true, optional = true }
 
 [features]

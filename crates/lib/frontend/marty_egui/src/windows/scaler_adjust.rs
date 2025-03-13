@@ -31,7 +31,7 @@
 */
 
 use crate::{layouts::MartyLayout, *};
-use marty_frontend_common::display_scaler::{PhosphorType, ScalerFilter, ScalerParams};
+use marty_display_common::display_scaler::{PhosphorType, ScalerFilter, ScalerParams};
 
 pub struct ScalerAdjustControl {
     params:   Vec<ScalerParams>,

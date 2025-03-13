@@ -92,9 +92,11 @@ use marty_core::{
     machine::{ExecutionControl, MachineState},
     machine_types::FloppyDriveType,
 };
-use marty_frontend_common::{
+use marty_display_common::{
     display_manager::{DisplayTargetInfo, DtHandle},
     display_scaler::{ScalerMode, ScalerPreset},
+};
+use marty_frontend_common::{
     resource_manager::PathTreeNode,
     thread_events::FrontendThreadEvent,
     types::sound::SoundSourceInfo,

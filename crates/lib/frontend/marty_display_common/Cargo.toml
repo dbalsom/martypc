@@ -1,22 +1,22 @@
 [package]
-name = "marty_frontend_common"
+name = "marty_display_common"
+description = "Common code for MartyPC frontends with display support. This is factored out from marty_frontend_common to make it easier to write a headless frontend."
 version.workspace = true
 edition.workspace = true
 license.workspace = true
 authors.workspace = true
 
 [lib]
-name = "marty_frontend_common"
+name = "marty_display_common"
 path = "src/lib.rs"
 crate-type = ["lib"]
 
 [dependencies]
 marty_common = { path = "../../../marty_common" }
-marty_web_helpers = { path = "../marty_web_helpers" }
-
+marty_frontend_common = { path = "../marty_frontend_common" }
+display_backend_trait = { path = "../../backend/display_backend_trait", optional = true }
 marty_videocard_renderer = { path = "../marty_videocard_renderer", optional = true }
 marty_core = { path = "../../../marty_core", default-features = false }
-fluxfox = { workspace = true, default-features = false }
 anyhow.workspace = true
 serde = { workspace = true, features = ["derive"] }
 serde_derive.workspace = true
@@ -52,10 +52,10 @@ default-features = false
 features = ["chrono", "std", "alloc"]
 
 [features]
-default = []
+default = ["use_display"]
 ega = []
 vga = []
 use_url = ["dep:url"]
-use_wgpu = ["dep:wgpu", "dep:marty_videocard_renderer"]
-use_egui = ["dep:egui", "dep:marty_videocard_renderer"]
-use_display = []
+use_wgpu = ["use_display", "dep:wgpu", "dep:display_backend_trait", "display_backend_trait/use_wgpu"]
+use_egui = ["use_display", "dep:egui", "dep:display_backend_trait"]
+use_display = ["dep:marty_videocard_renderer", "dep:display_backend_trait"]

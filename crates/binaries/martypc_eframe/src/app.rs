@@ -40,12 +40,9 @@ use display_manager_eframe::{
     EFrameDisplayManager,
     TextureDimensions,
 };
+use marty_display_common::display_manager::{DisplayManager, DmGuiOptions};
 use marty_egui_eframe::{context::GuiRenderContext, EGUI_MENU_BAR_HEIGHT};
-use marty_frontend_common::{
-    display_manager::{DisplayManager, DmGuiOptions},
-    thread_events::*,
-    timestep_manager::TimestepManager,
-};
+use marty_frontend_common::{thread_events::*, timestep_manager::TimestepManager};
 use marty_web_helpers::FetchResult;
 
 #[cfg(feature = "use_winit")]
@@ -64,11 +61,8 @@ use egui::{Context, CursorGrab, RawInput, Sense, ViewportCommand, ViewportId};
 use crate::emulator_builder::builder::EmuBuilderError;
 #[cfg(target_arch = "wasm32")]
 use crate::wasm::*;
-use marty_frontend_common::{
-    color::MartyColor,
-    constants::NORMAL_NOTIFICATION_TIME,
-    display_manager::{DisplayTargetType, DtHandle},
-};
+use marty_display_common::display_manager::{DisplayTargetType, DtHandle};
+use marty_frontend_common::{color::MartyColor, constants::NORMAL_NOTIFICATION_TIME};
 use marty_videocard_renderer::AspectCorrectionMode;
 #[cfg(target_arch = "wasm32")]
 use marty_web_helpers::console_writer::ConsoleWriter;
@@ -266,6 +260,7 @@ impl MartyApp {
         timestep_manager.set_cpu_mhz(emu.machine.get_cpu_mhz());
 
         // Set eframe's NativeOptions for fullscreen if specified by config
+        #[cfg(not(target_arch = "wasm32"))]
         if let Some(window) = emu.config.emulator.window.get_mut(0) {
             if window.fullscreen {
                 native_options.viewport.inner_size = None;

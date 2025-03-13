@@ -13,7 +13,8 @@ crate-type = ["lib"]
 
 [dependencies]
 marty_core = { path = "../../marty_core" }
-marty_frontend_common =  { path = "../../lib/frontend/marty_frontend_common" }
+marty_frontend_common =  { path = "../../lib/frontend/marty_frontend_common", default-features = false }
+marty_display_common = { path = "../../lib/frontend/marty_display_common", default-features = false }
 marty_config = { path = "../../lib/frontend/marty_config" }
 
 colored = "3.0"

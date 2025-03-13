@@ -23,18 +23,19 @@
    DEALINGS IN THE SOFTWARE.
 
    ---------------------------------------------------------------------------
-
-   frontend_common::types::display_target_dimensions.rs
-
-   Define the DisplayTargetDimensions type and methods.
-
 */
 
-use crate::constants::*;
+//! Provide the [DisplayTargetDimensions] type.
+//! We have several different types defined that are essentially a u32 tuple.
+//! Perhaps we can consolidate these into a single `Vec2` type.
+
+use marty_frontend_common::constants::*;
 
 use crate::types::display_target_margins::DisplayTargetMargins;
-use display_backend_trait::BufferDimensions;
 use marty_common::VideoDimensions;
+
+#[cfg(feature = "use_display")]
+use display_backend_trait::BufferDimensions;
 
 #[derive(Copy, Clone, Debug, PartialEq)]
 pub struct DisplayTargetDimensions {
@@ -72,6 +73,8 @@ impl From<VideoDimensions> for DisplayTargetDimensions {
         DisplayTargetDimensions { w: t.w, h: t.h }
     }
 }
+
+#[cfg(feature = "use_display")]
 impl From<DisplayTargetDimensions> for BufferDimensions {
     fn from(t: DisplayTargetDimensions) -> Self {
         BufferDimensions {

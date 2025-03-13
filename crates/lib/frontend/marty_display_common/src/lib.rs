@@ -23,17 +23,11 @@
    DEALINGS IN THE SOFTWARE.
 
    ---------------------------------------------------------------------------
-
-   frontend_common::types::mod.rs
-
-   Define common frontend types.
-
 */
 
-pub mod floppy;
-pub mod gui;
-pub mod hotkeys;
-pub mod joykeys;
-pub mod resource_location;
-pub mod sound;
-pub mod window;
+// Always make types available. Other modules must be requested with 'display' feature.
+#[cfg(feature = "use_display")]
+pub mod display_manager;
+#[cfg(feature = "use_display")]
+pub mod display_scaler;
+pub mod types;

@@ -39,7 +39,6 @@ use marty_core::{
 };
 use marty_frontend_common::{
     cartridge_manager::CartridgeManager,
-    display_scaler::SCALER_MODES,
     floppy_manager::FloppyManager,
     resource_manager::ResourceManager,
     rom_manager::RomManager,
@@ -232,9 +231,9 @@ impl Emulator {
         for vhd_name in vhd_names.into_iter().filter_map(|x| x) {
             let vhd_os_name: OsString = vhd_name.into();
             match self.vhd_manager.load_vhd_file_by_name(config_drive_idx, &vhd_os_name) {
-                Ok((vhd_file, vhd_idx)) => match VirtualHardDisk::from_file(vhd_file) {
+                Ok((vhd_file, vhd_idx)) => match VirtualHardDisk::parse(Box::new(vhd_file), false) {
                     Ok(vhd) => {
-                        if let Some(hdc) = self.machine.hdc() {
+                        if let Some(hdc) = self.machine.hdc_mut() {
                             match hdc.set_vhd(config_drive_idx, vhd) {
                                 Ok(_) => {
                                     log::info!(

@@ -49,9 +49,7 @@ use serde_derive::Deserialize;
 pub mod cartridge_manager;
 pub mod color;
 pub mod constants;
-pub mod display_manager;
 
-pub mod display_scaler;
 //mod emulator_manager;
 pub mod async_exec;
 pub mod floppy_manager;

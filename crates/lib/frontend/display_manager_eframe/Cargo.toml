@@ -17,7 +17,7 @@ marty_egui = { path = "../marty_egui" }
 marty_egui_eframe = { path = "../../frontend/marty_egui_eframe" }
 
 marty_frontend_common =  { path = "../marty_frontend_common" }
-
+marty_display_common = { path = "../marty_display_common" }
 marty_videocard_renderer = { path = "../marty_videocard_renderer" }
 egui.workspace = true
 egui-wgpu = { workspace = true, optional = true }

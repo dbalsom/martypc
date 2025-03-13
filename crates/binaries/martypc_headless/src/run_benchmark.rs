@@ -95,6 +95,7 @@ pub fn run_benchmark(
 
     let benchmark_start = Instant::now();
     while cycles_left > 0 {
+        //log::warn!("Cycles left: {cycles_left}");
         let cycle_batch = std::cmp::min(cycles_left, BENCHMARK_CYCLE_BATCH);
         machine.run(cycle_batch as u32, &mut exec_control.borrow_mut());
         cycles_left = cycles_left.saturating_sub(BENCHMARK_CYCLE_BATCH);

@@ -32,20 +32,22 @@
    graphics backend and windowing system combination.
 */
 
-use crate::display_scaler::{ScalerGeometry, ScalerMode, ScalerParams, ScalerPreset};
 use std::{
     fmt::{Display, Formatter},
     path::{Path, PathBuf},
 };
 
-pub use crate::{
-    types::{display_target_dimensions::DisplayTargetDimensions, display_target_margins::DisplayTargetMargins},
-    MartyGuiTheme,
+use crate::display_scaler::{ScalerGeometry, ScalerMode, ScalerParams, ScalerPreset};
+pub use crate::types::{
+    display_target_dimensions::DisplayTargetDimensions,
+    display_target_margins::DisplayTargetMargins,
 };
+
 use marty_core::{
     device_traits::videocard::{DisplayApertureType, DisplayExtents, VideoCardId, VideoType},
     machine::Machine,
 };
+use marty_frontend_common::MartyGuiTheme;
 use marty_videocard_renderer::{RendererConfigParams, VideoRenderer};
 
 use anyhow::Error;

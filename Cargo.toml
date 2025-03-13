@@ -3,6 +3,7 @@ members = [
     "crates/marty_core",
     "crates/marty_common",
     "crates/lib/frontend/marty_frontend_common",
+    "crates/lib/frontend/marty_display_common",
     "crates/lib/frontend/marty_videocard_renderer",
     "crates/lib/frontend/marty_scaler_wgpu",
     "crates/lib/frontend/display_manager_wgpu",
@@ -10,13 +11,13 @@ members = [
     "crates/lib/frontend/marty_egui_wgpu",
     "crates/lib/frontend/marty_config",
     "crates/lib/frontend/marty_web_helpers",
-    "crates/frontends/martypc_headless",
-    "crates/frontends/martypc_eframe",
-    "crates/frontends/martypc_web_player_wgpu",
-    "crates/frontends/martypc_desktop_wgpu"
+    "crates/binaries/martypc_headless",
+    "crates/binaries/martypc_eframe",
+    "crates/binaries/martypc_web_player_wgpu",
+    "crates/binaries/martypc_desktop_wgpu"
 ]
 resolver = "2"
-default-members = ["crates/frontends/martypc_eframe"]
+default-members = ["crates/binaries/martypc_eframe"]
 
 [workspace.package]
 version = "0.4.0"

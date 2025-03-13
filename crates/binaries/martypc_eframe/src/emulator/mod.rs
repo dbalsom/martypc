@@ -57,10 +57,10 @@ use marty_core::{
     machine::{ExecutionControl, Machine, MachineEvent, MachineState},
     vhd::{VhdIO, VirtualHardDisk},
 };
+use marty_display_common::display_scaler::SCALER_MODES;
 use marty_egui::{state::GuiState, GuiBoolean, GuiWindow};
 use marty_frontend_common::{
     cartridge_manager::CartridgeManager,
-    display_scaler::SCALER_MODES,
     floppy_manager::FloppyManager,
     resource_manager::ResourceManager,
     rom_manager::RomManager,

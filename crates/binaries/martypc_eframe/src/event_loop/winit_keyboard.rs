@@ -34,12 +34,8 @@ use egui::{CursorGrab, ViewportCommand};
 
 use display_manager_eframe::{DisplayManager, EFrameDisplayManager};
 use marty_core::machine::{ExecutionOperation, MachineState};
-use marty_frontend_common::{
-    constants::LONG_NOTIFICATION_TIME,
-    display_manager::DtHandle,
-    types::joykeys::JoyKeyInput,
-    HotkeyEvent,
-};
+use marty_display_common::display_manager::DtHandle;
+use marty_frontend_common::{constants::LONG_NOTIFICATION_TIME, types::joykeys::JoyKeyInput, HotkeyEvent};
 
 use crate::app::GRAB_MODE;
 use winit::{

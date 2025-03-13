@@ -30,7 +30,7 @@
 
 */
 
-use crate::color::MartyColor;
+use marty_frontend_common::color::MartyColor;
 use marty_videocard_renderer::RendererConfigParams;
 use serde::Deserialize;
 

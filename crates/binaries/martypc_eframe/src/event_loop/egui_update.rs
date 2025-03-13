@@ -29,7 +29,6 @@
     Update the egui menu and widget state.
 */
 use crate::{emulator::Emulator, event_loop::egui_events::handle_egui_event};
-use async_std::future::TimeoutError;
 
 use display_manager_eframe::{DisplayManager, EFrameDisplayManager};
 use marty_core::{

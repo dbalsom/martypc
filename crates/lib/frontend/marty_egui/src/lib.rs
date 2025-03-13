@@ -43,7 +43,7 @@ use std::{
     time::Duration,
 };
 
-use marty_frontend_common::{
+use marty_display_common::{
     display_manager::DisplayTargetInfo,
     display_scaler::{ScalerMode, ScalerParams},
 };
@@ -73,7 +73,7 @@ use marty_core::{
 };
 
 use marty_core::cpu_common::Register16;
-use marty_frontend_common::display_manager::{DisplayTargetType, DtHandle};
+use marty_display_common::display_manager::{DisplayTargetType, DtHandle};
 use marty_videocard_renderer::CompositeParams;
 use serde::{Deserialize, Serialize};
 use strum_macros::EnumIter;
