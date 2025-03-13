@@ -39,7 +39,12 @@ use std::{error::Error, fmt::Display};
 
 use crate::{
     bytequeue::*,
-    cpu_808x::{alu::Xi, gdr::GdrEntry, modrm::ModRmByte, *},
+    cpu_808x::{
+        alu::Xi,
+        gdr::{GdrEntry, GDR_NO_MODRM},
+        modrm::ModRmByte,
+        *,
+    },
     cpu_common::{
         operands::OperandSize,
         AddressingMode,
@@ -56,7 +61,6 @@ use crate::{
         OPCODE_PREFIX_SS_OVERRIDE,
     },
 };
-use crate::cpu_808x::gdr::GDR_NO_MODRM;
 
 #[derive(Copy, Clone, PartialEq)]
 pub enum OperandTemplate {
@@ -81,7 +85,13 @@ pub enum OperandTemplate {
 
 impl OperandTemplate {
     #[inline(always)]
-    pub fn resolve_operand(&self, bytes: &mut impl ByteQueue, modrm: &ModRmByte, size: &mut u32, peek: bool) -> (OperandType, OperandSize) {
+    pub fn resolve_operand(
+        &self,
+        bytes: &mut impl ByteQueue,
+        modrm: &ModRmByte,
+        size: &mut u32,
+        peek: bool,
+    ) -> (OperandType, OperandSize) {
         match (self, peek) {
             (OperandTemplate::ModRM8, _) => {
                 let addr_mode = modrm.get_addressing_mode();
@@ -95,7 +105,7 @@ impl OperandTemplate {
                 let addr_mode = modrm.get_addressing_mode();
                 let operand_type = match addr_mode {
                     AddressingMode::RegisterMode => OperandType::Register16(modrm.get_op1_reg16()),
-                    _ => OperandType::AddressingMode(addr_mode)
+                    _ => OperandType::AddressingMode(addr_mode),
                 };
                 (operand_type, OperandSize::Operand16)
             }
@@ -181,12 +191,8 @@ impl OperandTemplate {
                 *size += 2;
                 (OperandType::Offset16(0), OperandSize::Operand16)
             }
-            (OperandTemplate::FixedRegister8(r8), _) => {
-                (OperandType::Register8(*r8), OperandSize::Operand8)
-            }
-            (OperandTemplate::FixedRegister16(r16), _) => {
-                (OperandType::Register16(*r16), OperandSize::Operand16)
-            }
+            (OperandTemplate::FixedRegister8(r8), _) => (OperandType::Register8(*r8), OperandSize::Operand8),
+            (OperandTemplate::FixedRegister16(r16), _) => (OperandType::Register16(*r16), OperandSize::Operand16),
             (OperandTemplate::FarAddress, true) => {
                 let (segment, offset) = bytes.q_peek_farptr16();
                 *size += 4;
@@ -196,7 +202,7 @@ impl OperandTemplate {
                 *size += 4;
                 (OperandType::FarAddress(0, 0), OperandSize::NoSize)
             }
-            _ => (OperandType::NoOperand, OperandSize::NoOperand)
+            _ => (OperandType::NoOperand, OperandSize::NoOperand),
         }
     }
 }
@@ -417,14 +423,14 @@ pub const DECODE: [InstTemplate; 352] = [
     inst!( 0x8D,  0, 0b0100000000100010, 0x004,         LEA,     Ot::Register16,                         Ot::ModRM16),
     inst!( 0x8E,  0, 0b0100001100100000, 0x0ec,         MOV,     Ot::SegmentRegister,                    Ot::ModRM16),
     inst!( 0x8F,  0, 0b0100000000100010, 0x040,         POP,     Ot::ModRM16,                            Ot::NoOperand),
-    inst!( 0x90,  0, 0b0100000000110010, 0x084,         NOP,     Ot::NoOperand,                          Ot::NoOperand),
-    inst!( 0x91,  0, 0b0100000000110010, 0x084,         XCHG,    Ot::FixedRegister16(Register16::AX),    Ot::FixedRegister16(Register16::AX)),
-    inst!( 0x92,  0, 0b0100000000110010, 0x084,         XCHG,    Ot::FixedRegister16(Register16::CX),    Ot::FixedRegister16(Register16::AX)),
-    inst!( 0x93,  0, 0b0100000000110010, 0x084,         XCHG,    Ot::FixedRegister16(Register16::DX),    Ot::FixedRegister16(Register16::AX)),
-    inst!( 0x94,  0, 0b0100000000110010, 0x084,         XCHG,    Ot::FixedRegister16(Register16::BX),    Ot::FixedRegister16(Register16::AX)),
-    inst!( 0x95,  0, 0b0100000000110010, 0x084,         XCHG,    Ot::FixedRegister16(Register16::SP),    Ot::FixedRegister16(Register16::AX)),
-    inst!( 0x96,  0, 0b0100000000110010, 0x084,         XCHG,    Ot::FixedRegister16(Register16::BP),    Ot::FixedRegister16(Register16::AX)),
-    inst!( 0x97,  0, 0b0100000000110010, 0x084,         XCHG,    Ot::FixedRegister16(Register16::SI),    Ot::FixedRegister16(Register16::AX)),
+    inst!( 0x90,  0, 0b0100000000110010, 0x084,         NOP,     Ot::FixedRegister16(Register16::AX),    Ot::FixedRegister16(Register16::AX)),
+    inst!( 0x91,  0, 0b0100000000110010, 0x084,         XCHG,    Ot::FixedRegister16(Register16::CX),    Ot::FixedRegister16(Register16::AX)),
+    inst!( 0x92,  0, 0b0100000000110010, 0x084,         XCHG,    Ot::FixedRegister16(Register16::DX),    Ot::FixedRegister16(Register16::AX)),
+    inst!( 0x93,  0, 0b0100000000110010, 0x084,         XCHG,    Ot::FixedRegister16(Register16::BX),    Ot::FixedRegister16(Register16::AX)),
+    inst!( 0x94,  0, 0b0100000000110010, 0x084,         XCHG,    Ot::FixedRegister16(Register16::SP),    Ot::FixedRegister16(Register16::AX)),
+    inst!( 0x95,  0, 0b0100000000110010, 0x084,         XCHG,    Ot::FixedRegister16(Register16::BP),    Ot::FixedRegister16(Register16::AX)),
+    inst!( 0x96,  0, 0b0100000000110010, 0x084,         XCHG,    Ot::FixedRegister16(Register16::SI),    Ot::FixedRegister16(Register16::AX)),
+    inst!( 0x97,  0, 0b0100000000110010, 0x084,         XCHG,    Ot::FixedRegister16(Register16::DI),    Ot::FixedRegister16(Register16::AX)),
     inst!( 0x98,  0, 0b0100000000110010, 0x054,         CBW,     Ot::NoOperand,                          Ot::NoOperand),
     inst!( 0x99,  0, 0b0100000000110010, 0x058,         CWD,     Ot::NoOperand,                          Ot::NoOperand),
     inst!( 0x9A,  0, 0b0100000000110010, 0x070,         CALLF,   Ot::FarAddress,                         Ot::NoOperand),
@@ -722,9 +728,9 @@ impl Intel808x {
         }
 
         // Resolve operand templates into OperandTypes
-        (operand1_type, operand1_size) = op_lu.operand1.resolve_operand(bytes, &modrm, &mut size, peek); 
+        (operand1_type, operand1_size) = op_lu.operand1.resolve_operand(bytes, &modrm, &mut size, peek);
         (operand2_type, operand2_size) = op_lu.operand2.resolve_operand(bytes, &modrm, &mut size, peek);
-    
+
         Ok(Instruction {
             decode_idx,
             opcode,
