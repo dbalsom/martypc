@@ -36,10 +36,11 @@ use serde::{self, Deserializer};
 use serde_derive::Deserialize;
 use std::{fmt::Display, str::FromStr};
 
-#[derive(Copy, Clone, Debug, Deserialize, Hash, Eq, PartialEq)]
+#[derive(Copy, Clone, Debug, Default, Deserialize, Hash, Eq, PartialEq)]
 pub enum MachineType {
     Default,
     Ibm5150v64K,
+    #[default]
     Ibm5150v256K,
     Ibm5160,
     IbmPCJr,

@@ -124,7 +124,7 @@ pub struct CpuConfig {
     pub upgrade_type: Option<CpuType>,
 }
 
-#[derive(Clone, Debug, Deserialize)]
+#[derive(Clone, Debug, Default, Deserialize)]
 pub struct MemoryConfig {
     pub conventional: ConventionalMemoryConfig,
 }
@@ -141,6 +141,15 @@ pub struct EmsMemoryConfig {
 pub struct ConventionalMemoryConfig {
     pub size: u32,
     pub wait_states: u32,
+}
+
+impl Default for ConventionalMemoryConfig {
+    fn default() -> Self {
+        ConventionalMemoryConfig {
+            size: 0xA0000,
+            wait_states: 0,
+        }
+    }
 }
 
 #[derive(Clone, Debug, Deserialize)]
@@ -254,7 +263,7 @@ pub struct MediaConfig {
     pub hdd:    Option<Vec<HardDriveImage>>,
 }
 
-#[derive(Clone, Debug)]
+#[derive(Clone, Debug, Default)]
 pub struct MachineConfiguration {
     pub speaker: bool,
     pub ppi_turbo: Option<bool>,
