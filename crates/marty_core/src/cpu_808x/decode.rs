@@ -56,18 +56,16 @@ use crate::{
         OPCODE_PREFIX_SS_OVERRIDE,
     },
 };
+use crate::cpu_808x::gdr::GDR_NO_MODRM;
 
 #[derive(Copy, Clone, PartialEq)]
 pub enum OperandTemplate {
-    NoTemplate,
     NoOperand,
     ModRM8,
     ModRM16,
     Register8,
     Register16,
     SegmentRegister,
-    Register8Encoded,
-    Register16Encoded,
     Immediate8,
     Immediate16,
     Immediate8SignExtended,
@@ -79,6 +77,128 @@ pub enum OperandTemplate {
     FixedRegister16(Register16),
     //NearAddress,
     FarAddress,
+}
+
+impl OperandTemplate {
+    #[inline(always)]
+    pub fn resolve_operand(&self, bytes: &mut impl ByteQueue, modrm: &ModRmByte, size: &mut u32, peek: bool) -> (OperandType, OperandSize) {
+        match (self, peek) {
+            (OperandTemplate::ModRM8, _) => {
+                let addr_mode = modrm.get_addressing_mode();
+                let operand_type = match addr_mode {
+                    AddressingMode::RegisterMode => OperandType::Register8(modrm.get_op1_reg8()),
+                    _ => OperandType::AddressingMode(addr_mode),
+                };
+                (operand_type, OperandSize::Operand8)
+            }
+            (OperandTemplate::ModRM16, _) => {
+                let addr_mode = modrm.get_addressing_mode();
+                let operand_type = match addr_mode {
+                    AddressingMode::RegisterMode => OperandType::Register16(modrm.get_op1_reg16()),
+                    _ => OperandType::AddressingMode(addr_mode)
+                };
+                (operand_type, OperandSize::Operand16)
+            }
+            (OperandTemplate::Register8, _) => {
+                let operand_type = OperandType::Register8(modrm.get_op2_reg8());
+                (operand_type, OperandSize::Operand8)
+            }
+            (OperandTemplate::Register16, _) => {
+                let operand_type = OperandType::Register16(modrm.get_op2_reg16());
+                (operand_type, OperandSize::Operand16)
+            }
+            (OperandTemplate::SegmentRegister, _) => {
+                let operand_type = OperandType::Register16(modrm.get_op2_segmentreg16());
+                (operand_type, OperandSize::Operand16)
+            }
+            (OperandTemplate::Immediate8, true) => {
+                // Peek at immediate value now, fetch during execute
+                let operand = bytes.q_peek_u8();
+                *size += 1;
+                (OperandType::Immediate8(operand), OperandSize::Operand8)
+            }
+            (OperandTemplate::Immediate8, false) => {
+                *size += 1;
+                (OperandType::Immediate8(0), OperandSize::Operand8)
+            }
+            (OperandTemplate::Immediate16, true) => {
+                // Peek at immediate value now, fetch during execute
+                let operand = bytes.q_peek_u16();
+                *size += 2;
+                (OperandType::Immediate16(operand), OperandSize::Operand16)
+            }
+            (OperandTemplate::Immediate16, false) => {
+                *size += 2;
+                (OperandType::Immediate16(0), OperandSize::Operand16)
+            }
+            (OperandTemplate::Immediate8SignExtended, true) => {
+                // Peek at immediate value now, fetch during execute
+                let operand = bytes.q_peek_i8();
+                *size += 1;
+                (OperandType::Immediate8s(operand), OperandSize::Operand8)
+            }
+            (OperandTemplate::Immediate8SignExtended, false) => {
+                *size += 1;
+                (OperandType::Immediate8s(0), OperandSize::Operand8)
+            }
+            (OperandTemplate::Relative8, true) => {
+                // Peek at rel8 value now, fetch during execute
+                let operand = bytes.q_peek_i8();
+                *size += 1;
+                (OperandType::Relative8(operand), OperandSize::Operand8)
+            }
+            (OperandTemplate::Relative8, false) => {
+                *size += 1;
+                (OperandType::Relative8(0), OperandSize::Operand8)
+            }
+            (OperandTemplate::Relative16, true) => {
+                // Peek at rel16 value now, fetch during execute
+                let operand = bytes.q_peek_i16();
+                *size += 2;
+                (OperandType::Relative16(operand), OperandSize::Operand16)
+            }
+            (OperandTemplate::Relative16, false) => {
+                *size += 2;
+                (OperandType::Relative16(0), OperandSize::Operand16)
+            }
+            (OperandTemplate::Offset8, true) => {
+                // Peek at offset8 value now, fetch during execute
+                let operand = bytes.q_peek_u16();
+                *size += 2;
+                (OperandType::Offset8(operand), OperandSize::Operand8)
+            }
+            (OperandTemplate::Offset8, false) => {
+                *size += 2;
+                (OperandType::Offset8(0), OperandSize::Operand8)
+            }
+            (OperandTemplate::Offset16, true) => {
+                // Peek at offset16 value now, fetch during execute
+                let operand = bytes.q_peek_u16();
+                *size += 2;
+                (OperandType::Offset16(operand), OperandSize::Operand16)
+            }
+            (OperandTemplate::Offset16, false) => {
+                *size += 2;
+                (OperandType::Offset16(0), OperandSize::Operand16)
+            }
+            (OperandTemplate::FixedRegister8(r8), _) => {
+                (OperandType::Register8(*r8), OperandSize::Operand8)
+            }
+            (OperandTemplate::FixedRegister16(r16), _) => {
+                (OperandType::Register16(*r16), OperandSize::Operand16)
+            }
+            (OperandTemplate::FarAddress, true) => {
+                let (segment, offset) = bytes.q_peek_farptr16();
+                *size += 4;
+                (OperandType::FarAddress(segment, offset), OperandSize::NoSize)
+            }
+            (OperandTemplate::FarAddress, false) => {
+                *size += 4;
+                (OperandType::FarAddress(0, 0), OperandSize::NoSize)
+            }
+            _ => (OperandType::NoOperand, OperandSize::NoOperand)
+        }
+    }
 }
 
 type Ot = OperandTemplate;
@@ -217,38 +337,38 @@ pub const DECODE: [InstTemplate; 352] = [
     inst!( 0x3D,  0, 0b0100100010010010, 0x018, CMP   , CMP,     Ot::FixedRegister16(Register16::AX),    Ot::Immediate16),
     inst!( 0x3E,  0, 0b0100010000111010, 0x1FF,         Prefix,  Ot::NoOperand,                          Ot::NoOperand),
     inst!( 0x3F,  0, 0b0101000000110010, 0x148, AAS   , AAS,     Ot::NoOperand,                          Ot::NoOperand),
-    inst!( 0x40,  0, 0b0000000000110010, 0x17c, INC   , INC,     Ot::Register16Encoded,                  Ot::NoOperand),
-    inst!( 0x41,  0, 0b0000000000110010, 0x17c, INC   , INC,     Ot::Register16Encoded,                  Ot::NoOperand),
-    inst!( 0x42,  0, 0b0000000000110010, 0x17c, INC   , INC,     Ot::Register16Encoded,                  Ot::NoOperand),
-    inst!( 0x43,  0, 0b0000000000110010, 0x17c, INC   , INC,     Ot::Register16Encoded,                  Ot::NoOperand),
-    inst!( 0x44,  0, 0b0000000000110010, 0x17c, INC   , INC,     Ot::Register16Encoded,                  Ot::NoOperand),
-    inst!( 0x45,  0, 0b0000000000110010, 0x17c, INC   , INC,     Ot::Register16Encoded,                  Ot::NoOperand),
-    inst!( 0x46,  0, 0b0000000000110010, 0x17c, INC   , INC,     Ot::Register16Encoded,                  Ot::NoOperand),
-    inst!( 0x47,  0, 0b0000000000110010, 0x17c, INC   , INC,     Ot::Register16Encoded,                  Ot::NoOperand),
-    inst!( 0x48,  0, 0b0000000000110010, 0x17c, DEC   , DEC,     Ot::Register16Encoded,                  Ot::NoOperand),
-    inst!( 0x49,  0, 0b0000000000110010, 0x17c, DEC   , DEC,     Ot::Register16Encoded,                  Ot::NoOperand),
-    inst!( 0x4A,  0, 0b0000000000110010, 0x17c, DEC   , DEC,     Ot::Register16Encoded,                  Ot::NoOperand),
-    inst!( 0x4B,  0, 0b0000000000110010, 0x17c, DEC   , DEC,     Ot::Register16Encoded,                  Ot::NoOperand),
-    inst!( 0x4C,  0, 0b0000000000110010, 0x17c, DEC   , DEC,     Ot::Register16Encoded,                  Ot::NoOperand),
-    inst!( 0x4D,  0, 0b0000000000110010, 0x17c, DEC   , DEC,     Ot::Register16Encoded,                  Ot::NoOperand),
-    inst!( 0x4E,  0, 0b0000000000110010, 0x17c, DEC   , DEC,     Ot::Register16Encoded,                  Ot::NoOperand),
-    inst!( 0x4F,  0, 0b0000000000110010, 0x17c, DEC   , DEC,     Ot::Register16Encoded,                  Ot::NoOperand),
-    inst!( 0x50,  0, 0b0000000000110010, 0x028,         PUSH,    Ot::Register16Encoded,                  Ot::NoOperand),
-    inst!( 0x51,  0, 0b0000000000110010, 0x028,         PUSH,    Ot::Register16Encoded,                  Ot::NoOperand),
-    inst!( 0x52,  0, 0b0000000000110010, 0x028,         PUSH,    Ot::Register16Encoded,                  Ot::NoOperand),
-    inst!( 0x53,  0, 0b0000000000110010, 0x028,         PUSH,    Ot::Register16Encoded,                  Ot::NoOperand),
-    inst!( 0x54,  0, 0b0000000000110010, 0x028,         PUSH,    Ot::Register16Encoded,                  Ot::NoOperand),
-    inst!( 0x55,  0, 0b0000000000110010, 0x028,         PUSH,    Ot::Register16Encoded,                  Ot::NoOperand),
-    inst!( 0x56,  0, 0b0000000000110010, 0x028,         PUSH,    Ot::Register16Encoded,                  Ot::NoOperand),
-    inst!( 0x57,  0, 0b0000000000110010, 0x028,         PUSH,    Ot::Register16Encoded,                  Ot::NoOperand),
-    inst!( 0x58,  0, 0b0000000000110010, 0x034,         POP,     Ot::Register16Encoded,                  Ot::NoOperand),
-    inst!( 0x59,  0, 0b0000000000110010, 0x034,         POP,     Ot::Register16Encoded,                  Ot::NoOperand),
-    inst!( 0x5A,  0, 0b0000000000110010, 0x034,         POP,     Ot::Register16Encoded,                  Ot::NoOperand),
-    inst!( 0x5B,  0, 0b0000000000110010, 0x034,         POP,     Ot::Register16Encoded,                  Ot::NoOperand),
-    inst!( 0x5C,  0, 0b0000000000110010, 0x034,         POP,     Ot::Register16Encoded,                  Ot::NoOperand),
-    inst!( 0x5D,  0, 0b0000000000110010, 0x034,         POP,     Ot::Register16Encoded,                  Ot::NoOperand),
-    inst!( 0x5E,  0, 0b0000000000110010, 0x034,         POP,     Ot::Register16Encoded,                  Ot::NoOperand),
-    inst!( 0x5F,  0, 0b0000000000110010, 0x034,         POP,     Ot::Register16Encoded,                  Ot::NoOperand),
+    inst!( 0x40,  0, 0b0000000000110010, 0x17c, INC   , INC,     Ot::FixedRegister16(Register16::AX),    Ot::NoOperand),
+    inst!( 0x41,  0, 0b0000000000110010, 0x17c, INC   , INC,     Ot::FixedRegister16(Register16::CX),    Ot::NoOperand),
+    inst!( 0x42,  0, 0b0000000000110010, 0x17c, INC   , INC,     Ot::FixedRegister16(Register16::DX),    Ot::NoOperand),
+    inst!( 0x43,  0, 0b0000000000110010, 0x17c, INC   , INC,     Ot::FixedRegister16(Register16::BX),    Ot::NoOperand),
+    inst!( 0x44,  0, 0b0000000000110010, 0x17c, INC   , INC,     Ot::FixedRegister16(Register16::SP),    Ot::NoOperand),
+    inst!( 0x45,  0, 0b0000000000110010, 0x17c, INC   , INC,     Ot::FixedRegister16(Register16::BP),    Ot::NoOperand),
+    inst!( 0x46,  0, 0b0000000000110010, 0x17c, INC   , INC,     Ot::FixedRegister16(Register16::SI),    Ot::NoOperand),
+    inst!( 0x47,  0, 0b0000000000110010, 0x17c, INC   , INC,     Ot::FixedRegister16(Register16::DI),    Ot::NoOperand),
+    inst!( 0x48,  0, 0b0000000000110010, 0x17c, DEC   , DEC,     Ot::FixedRegister16(Register16::AX),    Ot::NoOperand),
+    inst!( 0x49,  0, 0b0000000000110010, 0x17c, DEC   , DEC,     Ot::FixedRegister16(Register16::CX),    Ot::NoOperand),
+    inst!( 0x4A,  0, 0b0000000000110010, 0x17c, DEC   , DEC,     Ot::FixedRegister16(Register16::DX),    Ot::NoOperand),
+    inst!( 0x4B,  0, 0b0000000000110010, 0x17c, DEC   , DEC,     Ot::FixedRegister16(Register16::BX),    Ot::NoOperand),
+    inst!( 0x4C,  0, 0b0000000000110010, 0x17c, DEC   , DEC,     Ot::FixedRegister16(Register16::SP),    Ot::NoOperand),
+    inst!( 0x4D,  0, 0b0000000000110010, 0x17c, DEC   , DEC,     Ot::FixedRegister16(Register16::BP),    Ot::NoOperand),
+    inst!( 0x4E,  0, 0b0000000000110010, 0x17c, DEC   , DEC,     Ot::FixedRegister16(Register16::SI),    Ot::NoOperand),
+    inst!( 0x4F,  0, 0b0000000000110010, 0x17c, DEC   , DEC,     Ot::FixedRegister16(Register16::DI),    Ot::NoOperand),
+    inst!( 0x50,  0, 0b0000000000110010, 0x028,         PUSH,    Ot::FixedRegister16(Register16::AX),    Ot::NoOperand),
+    inst!( 0x51,  0, 0b0000000000110010, 0x028,         PUSH,    Ot::FixedRegister16(Register16::CX),    Ot::NoOperand),
+    inst!( 0x52,  0, 0b0000000000110010, 0x028,         PUSH,    Ot::FixedRegister16(Register16::DX),    Ot::NoOperand),
+    inst!( 0x53,  0, 0b0000000000110010, 0x028,         PUSH,    Ot::FixedRegister16(Register16::BX),    Ot::NoOperand),
+    inst!( 0x54,  0, 0b0000000000110010, 0x028,         PUSH,    Ot::FixedRegister16(Register16::SP),    Ot::NoOperand),
+    inst!( 0x55,  0, 0b0000000000110010, 0x028,         PUSH,    Ot::FixedRegister16(Register16::BP),    Ot::NoOperand),
+    inst!( 0x56,  0, 0b0000000000110010, 0x028,         PUSH,    Ot::FixedRegister16(Register16::SI),    Ot::NoOperand),
+    inst!( 0x57,  0, 0b0000000000110010, 0x028,         PUSH,    Ot::FixedRegister16(Register16::DI),    Ot::NoOperand),
+    inst!( 0x58,  0, 0b0000000000110010, 0x034,         POP,     Ot::FixedRegister16(Register16::AX),    Ot::NoOperand),
+    inst!( 0x59,  0, 0b0000000000110010, 0x034,         POP,     Ot::FixedRegister16(Register16::CX),    Ot::NoOperand),
+    inst!( 0x5A,  0, 0b0000000000110010, 0x034,         POP,     Ot::FixedRegister16(Register16::DX),    Ot::NoOperand),
+    inst!( 0x5B,  0, 0b0000000000110010, 0x034,         POP,     Ot::FixedRegister16(Register16::BX),    Ot::NoOperand),
+    inst!( 0x5C,  0, 0b0000000000110010, 0x034,         POP,     Ot::FixedRegister16(Register16::SP),    Ot::NoOperand),
+    inst!( 0x5D,  0, 0b0000000000110010, 0x034,         POP,     Ot::FixedRegister16(Register16::BP),    Ot::NoOperand),
+    inst!( 0x5E,  0, 0b0000000000110010, 0x034,         POP,     Ot::FixedRegister16(Register16::SI),    Ot::NoOperand),
+    inst!( 0x5F,  0, 0b0000000000110010, 0x034,         POP,     Ot::FixedRegister16(Register16::DI),    Ot::NoOperand),
     inst!( 0x60,  0, 0b0000000000110010, 0x0e8,         JO,      Ot::Relative8,                          Ot::NoOperand),
     inst!( 0x61,  0, 0b0000000000110010, 0x0e8,         JNO,     Ot::Relative8,                          Ot::NoOperand),
     inst!( 0x62,  0, 0b0000000000110010, 0x0e8,         JB,      Ot::Relative8,                          Ot::NoOperand),
@@ -298,13 +418,13 @@ pub const DECODE: [InstTemplate; 352] = [
     inst!( 0x8E,  0, 0b0100001100100000, 0x0ec,         MOV,     Ot::SegmentRegister,                    Ot::ModRM16),
     inst!( 0x8F,  0, 0b0100000000100010, 0x040,         POP,     Ot::ModRM16,                            Ot::NoOperand),
     inst!( 0x90,  0, 0b0100000000110010, 0x084,         NOP,     Ot::NoOperand,                          Ot::NoOperand),
-    inst!( 0x91,  0, 0b0100000000110010, 0x084,         XCHG,    Ot::Register16Encoded,                  Ot::FixedRegister16(Register16::AX)),
-    inst!( 0x92,  0, 0b0100000000110010, 0x084,         XCHG,    Ot::Register16Encoded,                  Ot::FixedRegister16(Register16::AX)),
-    inst!( 0x93,  0, 0b0100000000110010, 0x084,         XCHG,    Ot::Register16Encoded,                  Ot::FixedRegister16(Register16::AX)),
-    inst!( 0x94,  0, 0b0100000000110010, 0x084,         XCHG,    Ot::Register16Encoded,                  Ot::FixedRegister16(Register16::AX)),
-    inst!( 0x95,  0, 0b0100000000110010, 0x084,         XCHG,    Ot::Register16Encoded,                  Ot::FixedRegister16(Register16::AX)),
-    inst!( 0x96,  0, 0b0100000000110010, 0x084,         XCHG,    Ot::Register16Encoded,                  Ot::FixedRegister16(Register16::AX)),
-    inst!( 0x97,  0, 0b0100000000110010, 0x084,         XCHG,    Ot::Register16Encoded,                  Ot::FixedRegister16(Register16::AX)),
+    inst!( 0x91,  0, 0b0100000000110010, 0x084,         XCHG,    Ot::FixedRegister16(Register16::AX),    Ot::FixedRegister16(Register16::AX)),
+    inst!( 0x92,  0, 0b0100000000110010, 0x084,         XCHG,    Ot::FixedRegister16(Register16::CX),    Ot::FixedRegister16(Register16::AX)),
+    inst!( 0x93,  0, 0b0100000000110010, 0x084,         XCHG,    Ot::FixedRegister16(Register16::DX),    Ot::FixedRegister16(Register16::AX)),
+    inst!( 0x94,  0, 0b0100000000110010, 0x084,         XCHG,    Ot::FixedRegister16(Register16::BX),    Ot::FixedRegister16(Register16::AX)),
+    inst!( 0x95,  0, 0b0100000000110010, 0x084,         XCHG,    Ot::FixedRegister16(Register16::SP),    Ot::FixedRegister16(Register16::AX)),
+    inst!( 0x96,  0, 0b0100000000110010, 0x084,         XCHG,    Ot::FixedRegister16(Register16::BP),    Ot::FixedRegister16(Register16::AX)),
+    inst!( 0x97,  0, 0b0100000000110010, 0x084,         XCHG,    Ot::FixedRegister16(Register16::SI),    Ot::FixedRegister16(Register16::AX)),
     inst!( 0x98,  0, 0b0100000000110010, 0x054,         CBW,     Ot::NoOperand,                          Ot::NoOperand),
     inst!( 0x99,  0, 0b0100000000110010, 0x058,         CWD,     Ot::NoOperand,                          Ot::NoOperand),
     inst!( 0x9A,  0, 0b0100000000110010, 0x070,         CALLF,   Ot::FarAddress,                         Ot::NoOperand),
@@ -329,22 +449,22 @@ pub const DECODE: [InstTemplate; 352] = [
     inst!( 0xAD,  0, 0b0100100010110010, 0x12c,         LODSW,   Ot::NoOperand,                          Ot::NoOperand),
     inst!( 0xAE,  0, 0b0100100010110010, 0x120,         SCASB,   Ot::NoOperand,                          Ot::NoOperand),
     inst!( 0xAF,  0, 0b0100100010110010, 0x120,         SCASW,   Ot::NoOperand,                          Ot::NoOperand),
-    inst!( 0xB0,  0, 0b0100000000110010, 0x01c,         MOV,     Ot::Register8Encoded,                   Ot::Immediate8),
-    inst!( 0xB1,  0, 0b0100000000110010, 0x01c,         MOV,     Ot::Register8Encoded,                   Ot::Immediate8),
-    inst!( 0xB2,  0, 0b0100000000110010, 0x01c,         MOV,     Ot::Register8Encoded,                   Ot::Immediate8),
-    inst!( 0xB3,  0, 0b0100000000110010, 0x01c,         MOV,     Ot::Register8Encoded,                   Ot::Immediate8),
-    inst!( 0xB4,  0, 0b0100000000110010, 0x01c,         MOV,     Ot::Register8Encoded,                   Ot::Immediate8),
-    inst!( 0xB5,  0, 0b0100000000110010, 0x01c,         MOV,     Ot::Register8Encoded,                   Ot::Immediate8),
-    inst!( 0xB6,  0, 0b0100000000110010, 0x01c,         MOV,     Ot::Register8Encoded,                   Ot::Immediate8),
-    inst!( 0xB7,  0, 0b0100000000110010, 0x01c,         MOV,     Ot::Register8Encoded,                   Ot::Immediate8),
-    inst!( 0xB8,  0, 0b0100000000110010, 0x01c,         MOV,     Ot::Register16Encoded,                  Ot::Immediate16),
-    inst!( 0xB9,  0, 0b0100000000110010, 0x01c,         MOV,     Ot::Register16Encoded,                  Ot::Immediate16),
-    inst!( 0xBA,  0, 0b0100000000110010, 0x01c,         MOV,     Ot::Register16Encoded,                  Ot::Immediate16),
-    inst!( 0xBB,  0, 0b0100000000110010, 0x01c,         MOV,     Ot::Register16Encoded,                  Ot::Immediate16),
-    inst!( 0xBC,  0, 0b0100000000110010, 0x01c,         MOV,     Ot::Register16Encoded,                  Ot::Immediate16),
-    inst!( 0xBD,  0, 0b0100000000110010, 0x01c,         MOV,     Ot::Register16Encoded,                  Ot::Immediate16),
-    inst!( 0xBE,  0, 0b0100000000110010, 0x01c,         MOV,     Ot::Register16Encoded,                  Ot::Immediate16),
-    inst!( 0xBF,  0, 0b0100000000110010, 0x01c,         MOV,     Ot::Register16Encoded,                  Ot::Immediate16),
+    inst!( 0xB0,  0, 0b0100000000110010, 0x01c,         MOV,     Ot::FixedRegister8(Register8::AL),      Ot::Immediate8),
+    inst!( 0xB1,  0, 0b0100000000110010, 0x01c,         MOV,     Ot::FixedRegister8(Register8::CL),      Ot::Immediate8),
+    inst!( 0xB2,  0, 0b0100000000110010, 0x01c,         MOV,     Ot::FixedRegister8(Register8::DL),      Ot::Immediate8),
+    inst!( 0xB3,  0, 0b0100000000110010, 0x01c,         MOV,     Ot::FixedRegister8(Register8::BL),      Ot::Immediate8),
+    inst!( 0xB4,  0, 0b0100000000110010, 0x01c,         MOV,     Ot::FixedRegister8(Register8::AH),      Ot::Immediate8),
+    inst!( 0xB5,  0, 0b0100000000110010, 0x01c,         MOV,     Ot::FixedRegister8(Register8::CH),      Ot::Immediate8),
+    inst!( 0xB6,  0, 0b0100000000110010, 0x01c,         MOV,     Ot::FixedRegister8(Register8::DH),      Ot::Immediate8),
+    inst!( 0xB7,  0, 0b0100000000110010, 0x01c,         MOV,     Ot::FixedRegister8(Register8::BH),      Ot::Immediate8),
+    inst!( 0xB8,  0, 0b0100000000110010, 0x01c,         MOV,     Ot::FixedRegister16(Register16::AX),    Ot::Immediate16),
+    inst!( 0xB9,  0, 0b0100000000110010, 0x01c,         MOV,     Ot::FixedRegister16(Register16::CX),    Ot::Immediate16),
+    inst!( 0xBA,  0, 0b0100000000110010, 0x01c,         MOV,     Ot::FixedRegister16(Register16::DX),    Ot::Immediate16),
+    inst!( 0xBB,  0, 0b0100000000110010, 0x01c,         MOV,     Ot::FixedRegister16(Register16::BX),    Ot::Immediate16),
+    inst!( 0xBC,  0, 0b0100000000110010, 0x01c,         MOV,     Ot::FixedRegister16(Register16::SP),    Ot::Immediate16),
+    inst!( 0xBD,  0, 0b0100000000110010, 0x01c,         MOV,     Ot::FixedRegister16(Register16::BP),    Ot::Immediate16),
+    inst!( 0xBE,  0, 0b0100000000110010, 0x01c,         MOV,     Ot::FixedRegister16(Register16::SI),    Ot::Immediate16),
+    inst!( 0xBF,  0, 0b0100000000110010, 0x01c,         MOV,     Ot::FixedRegister16(Register16::DI),    Ot::Immediate16),
     inst!( 0xC0,  0, 0b0100000000110000, 0x0cc,         RETN,    Ot::Immediate16,                        Ot::NoOperand),
     inst!( 0xC1,  0, 0b0100000000110000, 0x0bc,         RETN,    Ot::NoOperand,                          Ot::NoOperand),
     inst!( 0xC2,  0, 0b0100000000110000, 0x0cc,         RETN,    Ot::Immediate16,                        Ot::NoOperand),
@@ -585,24 +705,8 @@ impl Intel808x {
             op_lu = &DECODE[decode_idx];
         }
 
-        // Set a flag to load the ModRM Byte if either operand requires one
-        let mut load_modrm = match op_lu.operand1 {
-            OperandTemplate::ModRM8 => true,
-            OperandTemplate::ModRM16 => true,
-            OperandTemplate::Register8 => true,
-            OperandTemplate::Register16 => true,
-            _=> false
-        };
-        load_modrm |= match op_lu.operand2 {
-            OperandTemplate::ModRM8 => true,
-            OperandTemplate::ModRM16 => true,
-            OperandTemplate::Register8 => true,
-            OperandTemplate::Register16 => true,
-            _=> false
-        };
-
         // Load the ModRM byte if required
-        if load_modrm && !loaded_modrm {
+        if op_lu.gdr.has_modrm() && !loaded_modrm {
             let modrm_len;
             (modrm, modrm_len) = ModRmByte::read(bytes);
             size += modrm_len;
@@ -618,167 +722,9 @@ impl Intel808x {
         }
 
         // Resolve operand templates into OperandTypes
-        let mut match_op = |op_template| -> (OperandType, OperandSize) {
-            match (op_template, peek) {
-                (OperandTemplate::ModRM8, _) => {
-                    let addr_mode = modrm.get_addressing_mode();
-                    let operand_type = match addr_mode {
-                        AddressingMode::RegisterMode => OperandType::Register8(modrm.get_op1_reg8()),
-                        _=> OperandType::AddressingMode(addr_mode),
-                    };
-                    (operand_type, OperandSize::Operand8)
-                }
-                (OperandTemplate::ModRM16, _) => {
-                    let addr_mode = modrm.get_addressing_mode();
-                    let operand_type = match addr_mode {
-                        AddressingMode::RegisterMode => OperandType::Register16(modrm.get_op1_reg16()),
-                        _=> OperandType::AddressingMode(addr_mode)
-                    };
-                    (operand_type, OperandSize::Operand16)
-                }
-                (OperandTemplate::Register8, _) => {
-                    let operand_type = OperandType::Register8(modrm.get_op2_reg8());
-                    (operand_type, OperandSize::Operand8)
-                }
-                (OperandTemplate::Register16, _) => {
-                    let operand_type = OperandType::Register16(modrm.get_op2_reg16());
-                    (operand_type, OperandSize::Operand16)
-                }
-                (OperandTemplate::SegmentRegister, _) => {
-                    let operand_type = OperandType::Register16(modrm.get_op2_segmentreg16());
-                    (operand_type, OperandSize::Operand16)
-                }
-                (OperandTemplate::Register8Encoded, _) => {
-                    let operand_type = match opcode & OPCODE_REGISTER_SELECT_MASK {
-                        0x00 => OperandType::Register8(Register8::AL),
-                        0x01 => OperandType::Register8(Register8::CL),
-                        0x02 => OperandType::Register8(Register8::DL),
-                        0x03 => OperandType::Register8(Register8::BL),
-                        0x04 => OperandType::Register8(Register8::AH),
-                        0x05 => OperandType::Register8(Register8::CH),
-                        0x06 => OperandType::Register8(Register8::DH),
-                        0x07 => OperandType::Register8(Register8::BH),
-                        _ => OperandType::InvalidOperand
-                    };
-                    (operand_type, OperandSize::Operand8)
-                }
-                (OperandTemplate::Register16Encoded, _) => {
-                    let operand_type = match opcode & OPCODE_REGISTER_SELECT_MASK {
-                        0x00 => OperandType::Register16(Register16::AX),
-                        0x01 => OperandType::Register16(Register16::CX),
-                        0x02 => OperandType::Register16(Register16::DX),
-                        0x03 => OperandType::Register16(Register16::BX),
-                        0x04 => OperandType::Register16(Register16::SP),
-                        0x05 => OperandType::Register16(Register16::BP),
-                        0x06 => OperandType::Register16(Register16::SI),
-                        0x07 => OperandType::Register16(Register16::DI),
-                        _ => OperandType::InvalidOperand
-                    };
-                    (operand_type, OperandSize::Operand16)
-                }
-                (OperandTemplate::Immediate8, true) => {
-                    // Peek at immediate value now, fetch during execute
-                    let operand = bytes.q_peek_u8();
-                    size += 1;
-                    (OperandType::Immediate8(operand), OperandSize::Operand8)
-                }
-                (OperandTemplate::Immediate8, false) => {
-                    size += 1;
-                    (OperandType::Immediate8(0), OperandSize::Operand8)
-                }
-                (OperandTemplate::Immediate16, true) => {
-                    // Peek at immediate value now, fetch during execute
-                    let operand = bytes.q_peek_u16();
-                    size += 2;
-                    (OperandType::Immediate16(operand), OperandSize::Operand16)
-                }
-                (OperandTemplate::Immediate16, false) => {
-                    size += 2;
-                    (OperandType::Immediate16(0), OperandSize::Operand16)
-                }
-                (OperandTemplate::Immediate8SignExtended, true) => {
-                    // Peek at immediate value now, fetch during execute
-                    let operand = bytes.q_peek_i8();
-                    size += 1;
-                    (OperandType::Immediate8s(operand), OperandSize::Operand8)
-                }
-                (OperandTemplate::Immediate8SignExtended, false) => {
-                    size += 1;
-                    (OperandType::Immediate8s(0), OperandSize::Operand8)
-                }
-                (OperandTemplate::Relative8, true) => {
-                    // Peek at rel8 value now, fetch during execute
-                    let operand = bytes.q_peek_i8();
-                    size += 1;
-                    (OperandType::Relative8(operand), OperandSize::Operand8)
-                }
-                (OperandTemplate::Relative8, false) => {
-                    size += 1;
-                    (OperandType::Relative8(0), OperandSize::Operand8)
-                }
-                (OperandTemplate::Relative16, true) => {
-                    // Peek at rel16 value now, fetch during execute
-                    let operand = bytes.q_peek_i16();
-                    size += 2;
-                    (OperandType::Relative16(operand), OperandSize::Operand16)
-                }
-                (OperandTemplate::Relative16, false) => {
-                    size += 2;
-                    (OperandType::Relative16(0), OperandSize::Operand16)
-                }
-                (OperandTemplate::Offset8, true) => {
-                    // Peek at offset8 value now, fetch during execute
-                    let operand = bytes.q_peek_u16();
-                    size += 2;
-                    (OperandType::Offset8(operand), OperandSize::Operand8)
-                }
-                (OperandTemplate::Offset8, false) => {
-                    size += 2;
-                    (OperandType::Offset8(0), OperandSize::Operand8)
-                }
-                (OperandTemplate::Offset16, true) => {
-                    // Peek at offset16 value now, fetch during execute
-                    let operand = bytes.q_peek_u16();
-                    size += 2;
-                    (OperandType::Offset16(operand), OperandSize::Operand16)
-                }
-                (OperandTemplate::Offset16, false) => {
-                    size += 2;
-                    (OperandType::Offset16(0), OperandSize::Operand16)
-                }
-                (OperandTemplate::FixedRegister8(r8), _) => {
-                    (OperandType::Register8(r8), OperandSize::Operand8)
-                }
-                (OperandTemplate::FixedRegister16(r16), _) => {
-                    (OperandType::Register16(r16), OperandSize::Operand16)
-                }
-                (OperandTemplate::FarAddress, true) => {
-                    let (segment, offset) = bytes.q_peek_farptr16();
-                    size += 4;
-                    (OperandType::FarAddress(segment,offset), OperandSize::NoSize)
-                }
-                (OperandTemplate::FarAddress, false) => {
-                    size += 4;
-                    (OperandType::FarAddress(0,0), OperandSize::NoSize)
-                }
-                _ => (OperandType::NoOperand,OperandSize::NoOperand)
-            }
-        };
-
-        if !matches!(op_lu.operand1, OperandTemplate::NoTemplate) {
-            (operand1_type, operand1_size) = match_op(op_lu.operand1);
-        }
-        if !matches!(op_lu.operand2, OperandTemplate::NoTemplate) {
-            (operand2_type, operand2_size) = match_op(op_lu.operand2);
-        }
-
-        // Disabled: Decode cannot fail, but this is a placeholder for future error handling in other CPUs
-        /*
-        if let Mnemonic::InvalidOpcode = op_lu.mnemonic {
-            return Err(Box::new(InstructionDecodeError::UnsupportedOpcode(opcode)));
-        }
-        */
-
+        (operand1_type, operand1_size) = op_lu.operand1.resolve_operand(bytes, &modrm, &mut size, peek); 
+        (operand2_type, operand2_size) = op_lu.operand2.resolve_operand(bytes, &modrm, &mut size, peek);
+    
         Ok(Instruction {
             decode_idx,
             opcode,

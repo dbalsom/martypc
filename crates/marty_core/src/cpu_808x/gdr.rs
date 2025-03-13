@@ -75,6 +75,10 @@ impl GdrEntry {
         self.0 & GDR_W_VALID != 0
     }
     #[inline(always)]
+    pub fn is_wide(&self, opcode: u8) -> bool {
+        (self.0 & GDR_W_VALID != 0) && (opcode & 1 != 0)
+    }
+    #[inline(always)]
     pub fn d_valid(&self) -> bool {
         self.0 & GDR_D_VALID != 0
     }
