@@ -31,6 +31,42 @@
 
 */
 
+/// The ALU operation specifier 'Xi' determines the ALU operation by decoding 5 bits from the group
+/// decode rom, opcode, and optionally modrm. We don't bother decoding Xi. Instead, Xi is stored
+/// in the precalculated decode table.
+#[derive(Copy, Clone, Default, Debug)]
+pub enum Xi {
+    #[default]
+    ADD,
+    ADC,
+    OR,
+    SBB,
+    SUB,
+    CMP,
+    AND,
+    XOR,
+    ROL,
+    ROR,
+    RCL,
+    RCR,
+    SHL,
+    SHR,
+    SETMO,
+    SETMOC,
+    SAR,
+    PASS,
+    DAA,
+    DAS,
+    AAA,
+    AAS,
+    INC,
+    DEC,
+    NOT,
+    NEG,
+    INC2,
+    DEC2,
+}
+
 /* ----------------------- Addition & Subtraction ------------------------- */
 
 pub trait AluNeg: Sized {

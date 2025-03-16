@@ -42,14 +42,12 @@ pub mod mnemonic;
 pub mod operands;
 pub mod services;
 
-use enum_dispatch::enum_dispatch;
-use serde::Deserialize;
 use std::str::FromStr;
 
 pub use addressing::{AddressingMode, CpuAddress, Displacement};
 pub use analyzer::{AnalyzerEntry, LogicAnalyzer};
 pub use error::CpuError;
-pub use instruction::Instruction;
+pub use instruction::{Instruction, InstructionWidth};
 pub use mnemonic::Mnemonic;
 pub use operands::OperandType;
 
@@ -64,6 +62,9 @@ use crate::{
     cpu_vx0::NecVx0,
     syntax_token::{SyntaxToken, SyntaxTokenize},
 };
+
+use enum_dispatch::enum_dispatch;
+use serde::Deserialize;
 
 // Instruction prefixes
 pub const OPCODE_PREFIX_0F: u32 = 0b_1000_0000_0000_0000;
@@ -94,8 +95,9 @@ pub enum ExecutionResult {
     Halt,
 }
 
-#[derive(Debug, Copy, Clone, PartialEq)]
+#[derive(Debug, Copy, Clone, Default, PartialEq)]
 pub enum CpuException {
+    #[default]
     NoException,
     DivideError,
     BoundsException,

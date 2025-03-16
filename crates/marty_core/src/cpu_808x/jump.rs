@@ -118,8 +118,8 @@ impl Intel808x {
         //self.cycle_i(MC_NONE);
         cycles_mc!(self, 0x0c3, 0x0c4);
 
-        let far2 = self.i.opcode & 0x08 != 0;
-        assert_eq!(far, far2);
+        //let far2 = self.i.opcode & 0x08 != 0;
+        //assert_eq!(far, far2);
 
         if far {
             self.cycle_i(MC_JUMP);

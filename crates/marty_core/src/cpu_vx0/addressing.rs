@@ -121,7 +121,7 @@ impl NecVx0 {
     }
 
     pub fn load_effective_address(&mut self, operand: OperandType) -> Option<u16> {
-        if let OperandType::AddressingMode(mode) = operand {
+        if let OperandType::AddressingMode(mode, _) = operand {
             let (_segment, offset) =
                 self.calc_effective_address(mode, None);
             return Some(offset);
@@ -137,12 +137,12 @@ impl NecVx0 {
 
             let ea_mode: AddressingMode;
             let ea_size;
-            if let OperandType::AddressingMode(mode) = self.i.operand1_type {
-                ea_size = self.i.operand1_size;
+            if let OperandType::AddressingMode(mode, size) = self.i.operand1_type {
+                ea_size = size;
                 ea_mode = mode;
             }
-            else if let OperandType::AddressingMode(mode) = self.i.operand2_type {
-                ea_size = self.i.operand2_size;
+            else if let OperandType::AddressingMode(mode, size) = self.i.operand2_type {
+                ea_size = size;
                 ea_mode = mode;
             }
             else {
@@ -163,13 +163,9 @@ impl NecVx0 {
             */
 
             if ea_size == OperandSize::Operand16 {
-                // Width is word
-                assert!(ea_size == OperandSize::Operand16);
                 self.ea_opr = self.biu_read_u16(segment, offset, ReadWriteFlag::Normal);
             }
             else {
-                // Width is byte
-                assert!(ea_size == OperandSize::Operand8);
                 self.ea_opr = self.biu_read_u8(segment, offset) as u16;
             }
             self.cycles_i(2, &[0x1e2, MC_RTN]); // Return delay cycle from EALOAD
@@ -216,7 +212,7 @@ impl NecVx0 {
                 Register8::DH => Some(self.d.h()),
                 Register8::DL => Some(self.d.l()),
             }
-            OperandType::AddressingMode(_mode) => {
+            OperandType::AddressingMode(_mode, _) => {
                 // EA operand was already fetched into ea_opr. Return masked byte.
                 if self.i.opcode & 0x01 != 0 {
                     panic!("Reading byte operand for word size instruction");
@@ -273,7 +269,7 @@ impl NecVx0 {
                 Register16::DS => Some(self.ds),
                 _ => panic!("read_operand16(): Invalid Register16 operand: {:?}", reg16),
             },
-            OperandType::AddressingMode(_mode) => {
+            OperandType::AddressingMode(_mode, _) => {
                 // EA operand was already fetched into ea_opr. Return it.
                 Some(self.ea_opr)
             }
@@ -301,7 +297,7 @@ impl NecVx0 {
         flag: ReadWriteFlag,
     ) -> Option<(u16, u16)> {
         match operand {
-            OperandType::AddressingMode(mode) => {
+            OperandType::AddressingMode(mode, _) => {
                 let offset = self.ea_opr;
                 let (segment, ea_offset) = self.calc_effective_address(mode, seg_override);
                 let segment = self.biu_read_u16(segment, ea_offset.wrapping_add(2), flag);
@@ -330,7 +326,7 @@ impl NecVx0 {
         flag: ReadWriteFlag,
     ) -> Option<(u16, u16)> {
         match operand {
-            OperandType::AddressingMode(mode) => {
+            OperandType::AddressingMode(mode, _) => {
                 let m1 = self.ea_opr;
                 let (segment, ea_offset) = self.calc_effective_address(mode, seg_override);
                 let m2 = self.biu_read_u16(segment, ea_offset.wrapping_add(2), flag);
@@ -365,7 +361,7 @@ impl NecVx0 {
                 Register8::DH => self.set_register8(Register8::DH, value),
                 Register8::DL => self.set_register8(Register8::DL, value),
             },
-            OperandType::AddressingMode(mode) => {
+            OperandType::AddressingMode(mode, _) => {
                 let (segment, offset) = self.calc_effective_address(mode, seg_override);
                 self.biu_write_u8(segment, offset, value, flag);
             }
@@ -416,7 +412,7 @@ impl NecVx0 {
                     _ => panic!("read_operand16(): Invalid Register16 operand"),
                 }
             }
-            OperandType::AddressingMode(mode) => {
+            OperandType::AddressingMode(mode, _) => {
                 let (segment, offset) = self.calc_effective_address(mode, seg_override);
                 self.biu_write_u16(segment, offset, value, flag);
             }

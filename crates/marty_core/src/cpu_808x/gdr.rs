@@ -23,26 +23,26 @@
     DEALINGS IN THE SOFTWARE.
 
     ---------------------------------------------------------------------------
-
-    cpu_808x::gdr.rs
-
-    Provides routines for querying an entry of the Group Decode ROM.
-
-    Microcode disassembly by reenigne:
-    https://www.reenigne.org/blog/8086-microcode-disassembled/
-
 */
+
+//! This module provides the functionality of the Group Decode ROM (GDR) for the 808x CPU.
+//! The GDR is a not technically a ROM, but a PLA with 15 outputs given an 8-bit opcode.
+//! These outputs determine various properties of the instruction.
+//! The actual GDR values are stored in the main instruction decode table in `decode.rs`.
+//! For more info on the GDR, see
+//! https://www.righto.com/2023/05/8086-processor-group-decode-rom.html
+
 #![allow(dead_code)]
 
-/// Technically a PLA, the Group Decode ROM emits 15 signals given an 8-bit opcode for output.
-/// These signals are encoded as a bitfield.
+use crate::cpu_common::instruction::InstructionWidth;
+
 pub const GDR_IO: u16 = 0b0000_0000_0000_0001; // Instruction is an I/O instruction
 pub const GDR_NO_LOAD_EA: u16 = 0b0000_0000_0000_0010; // Instruction does not load its EA (write-only)
 pub const GDR_GRP_345: u16 = 0b0000_0000_0000_0100; // Instruction is a Group 3, 4, or 5 instruction
 pub const GDR_PREFIX: u16 = 0b0000_0000_0000_1000; // Instruction is a prefix byte
 pub const GDR_NO_MODRM: u16 = 0b0000_0000_0001_0000; // Instruction does not have a modrm byte
-pub const GDR_SPECIAL_ALU: u16 = 0b0000_0000_0010_0000;
-pub const GDR_CLEARS_COND: u16 = 0b0000_0000_0100_0000;
+pub const GDR_SPECIAL_ALU: u16 = 0b0000_0000_0010_0000; // ??
+pub const GDR_CLEARS_COND: u16 = 0b0000_0000_0100_0000; // ??
 pub const GDR_USES_AREG: u16 = 0b0000_0000_1000_0000; // Instruction uses the AL or AX register specifically
 pub const GDR_USES_SREG: u16 = 0b0000_0001_0000_0000; // Instruction uses a segment register
 pub const GDR_D_VALID: u16 = 0b0000_0010_0000_0000; // 'D' bit is valid for instruction
@@ -75,8 +75,13 @@ impl GdrEntry {
         self.0 & GDR_W_VALID != 0
     }
     #[inline(always)]
-    pub fn is_wide(&self, opcode: u8) -> bool {
-        (self.0 & GDR_W_VALID != 0) && (opcode & 1 != 0)
+    pub fn width(&self, opcode: u8) -> InstructionWidth {
+        if self.w_valid() && (opcode & 1 == 0) {
+            InstructionWidth::Byte
+        }
+        else {
+            InstructionWidth::Word
+        }
     }
     #[inline(always)]
     pub fn d_valid(&self) -> bool {

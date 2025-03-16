@@ -36,9 +36,11 @@ pub use crate::cpu_common::Cpu;
 use crate::cpu_common::{
     instruction::Instruction,
     CpuAddress,
+    CpuException,
     CpuStringState,
     CpuSubType,
     ExecutionResult,
+    InstructionWidth,
     LogicAnalyzer,
     Mnemonic,
     QueueOp,
@@ -61,6 +63,7 @@ mod cycle;
 mod decode;
 mod display;
 mod execute;
+mod execute_fn;
 mod fuzzer;
 mod gdr;
 mod instruction;
@@ -549,6 +552,7 @@ pub struct Intel808x {
     last_ip: u16,
     last_intr: bool,
     jumped: bool,
+    exception: CpuException,
     instruction_address: u32,
     instruction_history_on: bool,
     instruction_history: VecDeque<HistoryEntry>,
@@ -960,6 +964,7 @@ impl Intel808x {
         self.last_cs = 0;
         self.last_intr = false;
         self.jumped = false;
+        self.exception = CpuException::NoException;
 
         self.queue_op = QueueOp::Idle;
         self.last_queue_op = QueueOp::Idle;
@@ -1055,7 +1060,7 @@ impl Intel808x {
     /// Execute the CORR (Correct PC) microcode routine.
     /// This is used to correct the PC in anticipation of a jump or call, where the queue will
     /// be flushed. Unlike most microcode instructions, CORR takes two cycles to execute.
-    #[inline]
+    #[inline(always)]
     pub fn corr(&mut self) {
         self.pc = self.pc.wrapping_sub(self.queue.len() as u16);
         self.cycle_i(MC_CORR);
@@ -1312,6 +1317,13 @@ impl Intel808x {
     #[inline]
     pub fn get_flags(&self) -> u16 {
         self.flags
+    }
+
+    pub fn set_register_a(&mut self, value: u16) {
+        match self.i.width {
+            InstructionWidth::Byte => self.a.set_l(value as u8),
+            InstructionWidth::Word => self.a.set_x(value),
+        }
     }
 
     // Set one of the 8 bit registers.

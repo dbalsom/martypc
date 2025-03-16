@@ -23,12 +23,9 @@
     DEALINGS IN THE SOFTWARE.
 
     ---------------------------------------------------------------------------
-
-    cpu_808x::stack.rs
-
-    Implements stack-oriented routines such as push and pop.
-
 */
+
+//! This module implements stack-oriented routines such as push and pop.
 
 use crate::{
     cpu_808x::{biu::*, *},
@@ -36,18 +33,40 @@ use crate::{
 };
 
 impl Intel808x {
+    /// This is a width-agnostic version of push.
+    /// Normally, it will push a 16-bit value onto the stack.
+    /// However, if the operand size is 8-bit, it will push an 8-bit value onto the stack.
+    /// (The stack pointer is still decremented by 2)
+    /// This only happens during invalid FE opcode forms. Otherwise, you should use push_u16.
+    pub fn push_sized(&mut self, data: u16) {
+        // Stack pointer grows downwards
+        self.sp = self.sp.wrapping_sub(2);
+        match self.i.width {
+            InstructionWidth::Word => {
+                self.biu_write_u16(Segment::SS, self.sp, data, ReadWriteFlag::RNI);
+            }
+            InstructionWidth::Byte => {
+                // Weird stuff happens here!
+                self.biu_write_u8(Segment::SS, self.sp, data as u8, ReadWriteFlag::RNI);
+            }
+        }
+    }
+
+    // Delete me
     pub fn push_u8(&mut self, data: u8, flag: ReadWriteFlag) {
         // Stack pointer grows downwards
         self.sp = self.sp.wrapping_sub(2);
         self.biu_write_u8(Segment::SS, self.sp, data, flag);
     }
 
+    #[inline]
     pub fn push_u16(&mut self, data: u16, flag: ReadWriteFlag) {
         // Stack pointer grows downwards
         self.sp = self.sp.wrapping_sub(2);
         self.biu_write_u16(Segment::SS, self.sp, data, flag);
     }
 
+    #[inline]
     pub fn pop_u16(&mut self) -> u16 {
         let result = self.biu_read_u16(Segment::SS, self.sp, ReadWriteFlag::Normal);
 
@@ -147,6 +166,7 @@ impl Intel808x {
         }
     }
 
+    #[inline]
     pub fn push_flags(&mut self, wflag: ReadWriteFlag) {
         // Stack pointer grows downwards
         self.sp = self.sp.wrapping_sub(2);
@@ -184,6 +204,7 @@ impl Intel808x {
         self.sp = self.sp.wrapping_add(2);
     }
 
+    #[inline]
     pub fn release(&mut self, disp: u16) {
         self.sp = self.sp.wrapping_add(disp);
     }

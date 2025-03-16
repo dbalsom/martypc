@@ -43,7 +43,7 @@ pub enum OperandType {
     Offset16(u16),
     Register8(Register8),
     Register16(Register16),
-    AddressingMode(AddressingMode),
+    AddressingMode(AddressingMode, OperandSize),
     FarAddress(u16, u16),
     M16Pair(u16, u16),
     NoOperand,
@@ -53,7 +53,7 @@ pub enum OperandType {
 impl OperandType {
     #[inline(always)]
     pub fn is_address(&self) -> bool {
-        matches!(self, OperandType::AddressingMode(_))
+        matches!(self, OperandType::AddressingMode(_, _))
     }
     #[inline(always)]
     pub fn is_register(&self) -> bool {
@@ -61,7 +61,7 @@ impl OperandType {
     }
 }
 
-#[derive(Copy, Clone, Default, PartialEq)]
+#[derive(Copy, Clone, Debug, Default, PartialEq)]
 pub enum OperandSize {
     #[default]
     NoOperand,

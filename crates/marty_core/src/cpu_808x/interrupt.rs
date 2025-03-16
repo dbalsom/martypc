@@ -37,14 +37,6 @@ use crate::{
 };
 
 impl Intel808x {
-    /// Execute the IRET microcode routine.
-    pub fn iret_routine(&mut self) {
-        self.cycle_i(0x0c8);
-        self.farret(true);
-        self.pop_flags();
-        self.cycle_i(0x0ca);
-    }
-
     /// Perform a software interrupt
     pub fn sw_interrupt(&mut self, interrupt: u8) {
         // Interrupt FC, emulator internal services.

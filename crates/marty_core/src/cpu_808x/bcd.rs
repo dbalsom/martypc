@@ -238,27 +238,4 @@ impl Intel808x {
 
         self.set_szp_flags_from_result_u8(self.a.l());
     }
-
-    /// AAM - Ascii adjust AX After multiply
-    /// Flags: The SF, ZF, and PF flags are set according to the resulting binary value in the AL register
-    /// As AAM is implemented via CORD, it can throw an exception. This is indicated by a return value
-    /// of false.
-    pub fn aam(&mut self, imm8: u8) -> bool {
-        cycles_mc!(self, 0x175, 0x176, MC_JUMP);
-        // 176: A->tmpc   | UNC CORD
-        // Jump delay
-
-        match 0u8.cord(self, 0, imm8 as u16, self.a.l() as u16) {
-            Ok((quotient, remainder, _)) => {
-                // 177:          | COM1 tmpc
-                self.set_register8(Register8::AH, !(quotient as u8));
-                self.set_register8(Register8::AL, remainder as u8);
-                self.cycle_i(0x177);
-                // Other sources set flags from AX register. Intel's documentation specifies AL
-                self.set_szp_flags_from_result_u8(self.a.l());
-                true
-            }
-            Err(_) => false,
-        }
-    }
 }
