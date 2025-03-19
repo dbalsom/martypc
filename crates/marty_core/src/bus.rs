@@ -122,7 +122,7 @@ pub const MEM_SW_BIT: u8 = 0b0000_0010; // Bit to signify that this address is i
 
 pub const KB_UPDATE_RATE: f64 = 5000.0; // Keyboard device update rate in microseconds
 
-pub const TIMING_TABLE_LEN: usize = 512;
+pub const TIMING_TABLE_LEN: usize = 2048;
 
 pub const IMMINENT_TIMER_INTERRUPT: u16 = 10;
 
