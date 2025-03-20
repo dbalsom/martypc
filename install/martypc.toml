@@ -87,6 +87,11 @@ pit_phase = 0
 # ----------------------------------------------------------------------------
 [machine.cpu]
 
+# Enable DRAM DMA refresh emulation. This is required for precise accuracy for
+# certain 8088-specific titles. Setting this to false may speed up the CPU,
+# but will break some demos (8088MPH, Area 5150).
+dram_refresh_simulation = true
+
 # Enable CPU wait states. This includes wait states from DMA, memory access
 # and device IO. Setting this to false may speed up the CPU, but reduce 
 # accuracy (Area 5150 will break)

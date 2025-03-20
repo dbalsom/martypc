@@ -23,30 +23,21 @@
     DEALINGS IN THE SOFTWARE.
 
     --------------------------------------------------------------------------
-
-    bus.rs
-
-    Implement the system bus.
-
-    The bus module implements memory read and write routines.
-
-    The bus module is the logical owner of all memory and devices in the
-    system, and implements both IO and MMIO dispatch to installed devices.
 */
-
 #![allow(dead_code)]
+//! Module for modelling an abstract system bus.
 
-use anyhow::Error;
+//! The ISA bus is transparent enough that its particular details of are no
+//! concern to the CPU.  The CPU only needs to know that it can read and write
+//! to memory and I/O ports.
+//! DMA-capable devices can also access memory directly.
 
-use fxhash::FxHashMap;
-use std::{collections::VecDeque, fmt, io::Write, path::Path};
+mod dispatch;
+mod io;
+mod memory;
+pub mod queue;
 
-#[cfg(feature = "sound")]
-use crate::device_traits::sounddevice::SoundDevice;
-#[cfg(feature = "sound")]
-use crate::devices::pit::SPEAKER_SAMPLE_RATE;
-#[cfg(feature = "sound")]
-use crossbeam_channel::unbounded;
+use std::{collections::VecDeque, fmt};
 
 use crate::{
     bytequeue::*,
@@ -67,7 +58,10 @@ use crate::{
         dma::*,
         fdc::FloppyController,
         game_port::GamePort,
-        hdc::xtide::XtIdeController,
+        hdc::{
+            xebec::{HardDiskController, DRIVE_TYPE2_DIP},
+            xtide::XtIdeController,
+        },
         keyboard::{KeyboardType, *},
         lotech_ems::LotechEmsCard,
         lpt_card::ParallelController,
@@ -77,12 +71,12 @@ use crate::{
         pit::Pit,
         ppi::*,
         serial::*,
+        sound_source::DSoundSource,
         tga::TGACard,
     },
     machine::{KeybufferEntry, MachineCheckpoint, MachinePatch},
     machine_config::{normalize_conventional_memory, MachineConfiguration, MachineDescriptor},
     machine_types::{EmsType, FdcType, HardDiskControllerType, MachineType, SerialControllerType, SerialMouseType},
-    memerror::MemError,
     syntax_token::{SyntaxFormatType, SyntaxToken},
     tracelogger::TraceLogger,
 };
@@ -93,24 +87,30 @@ use crate::devices::adlib::AdLibCard;
 use crate::devices::ega::EGACard;
 #[cfg(feature = "vga")]
 use crate::devices::vga::VGACard;
-use crate::devices::{
-    hdc::xebec::{HardDiskController, DRIVE_TYPE2_DIP},
-    sound_source::DSoundSource,
-};
+
+#[cfg(feature = "sound")]
+use crate::device_traits::sounddevice::SoundDevice;
+#[cfg(feature = "sound")]
+use crate::devices::pit::SPEAKER_SAMPLE_RATE;
 #[cfg(feature = "sound")]
 use crate::machine_types::SoundType;
 #[cfg(feature = "sound")]
 use crate::sound::{SoundOutputConfig, SoundSourceDescriptor};
 
-pub const NO_IO_BYTE: u8 = 0xFF; // This is the byte read from an unconnected IO address.
-pub const OPEN_BUS_BYTE: u8 = 0xFF; // This is the byte read from an unmapped memory address.
+use anyhow::Error;
+#[cfg(feature = "sound")]
+use crossbeam_channel::unbounded;
+use fxhash::FxHashMap;
 
-const ADDRESS_SPACE: usize = 0x10_0000;
-const DEFAULT_WAIT_STATES: u32 = 0;
+pub(crate) const NO_IO_BYTE: u8 = 0xFF; // This is the byte read from an unconnected IO address.
+pub(crate) const OPEN_BUS_BYTE: u8 = 0xFF; // This is the byte read from an unmapped memory address.
 
-const MMIO_MAP_SIZE: usize = 0x2000;
-const MMIO_MAP_SHIFT: usize = 13;
-const MMIO_MAP_LEN: usize = ADDRESS_SPACE >> MMIO_MAP_SHIFT;
+pub(crate) const ADDRESS_SPACE: usize = 0x10_0000;
+pub(crate) const DEFAULT_WAIT_STATES: u32 = 0;
+
+pub(crate) const MMIO_MAP_SIZE: usize = 0x2000;
+pub(crate) const MMIO_MAP_SHIFT: usize = 13;
+pub(crate) const MMIO_MAP_LEN: usize = ADDRESS_SPACE >> MMIO_MAP_SHIFT;
 
 pub const MEM_ROM_BIT: u8 = 0b1000_0000; // Bit to signify that this address is ROM
 pub const MEM_RET_BIT: u8 = 0b0100_0000; // Bit to signify that this address is a return address for a CALL or INT
@@ -127,6 +127,8 @@ pub const TIMING_TABLE_LEN: usize = 2048;
 pub const IMMINENT_TIMER_INTERRUPT: u16 = 10;
 
 pub const DEVICE_DESC_LEN: usize = 28;
+
+pub const NULL_DELTA_US: DeviceRunTimeUnit = DeviceRunTimeUnit::Microseconds(0.0);
 
 #[derive(Copy, Clone, Debug)]
 pub struct TimingTableEntry {
@@ -318,8 +320,8 @@ pub struct IoDeviceStats {
     last_write: u8,
     reads: usize,
     reads_dirty: bool,
-    writes: usize,
-    writes_dirty: bool,
+    pub(crate) writes: usize,
+    pub(crate) writes_dirty: bool,
 }
 
 impl IoDeviceStats {
@@ -414,22 +416,22 @@ pub struct BusInterface {
     io_map: FxHashMap<u16, IoDeviceType>,
     io_desc_map: FxHashMap<u16, String>,
     io_stats: FxHashMap<u16, (bool, IoDeviceStats)>,
-    ppi: Option<Ppi>,
+    ppi: Option<Box<Ppi>>,
     a0: Option<A0Register>,
     a0_data: u8,
     nmi_latch: bool,
     pit: Option<Pit>,
     speaker_src: Option<usize>,
     dma_counter: u16,
-    dma1: Option<DMAController>,
-    dma2: Option<DMAController>,
-    pic1: Option<Pic>,
+    dma1: Option<Box<DMAController>>,
+    dma2: Option<Box<DMAController>>,
+    pic1: Option<Box<Pic>>,
     pic2: Option<Pic>,
     serial: Option<SerialPortController>,
     parallel: Option<ParallelController>,
-    fdc: Option<FloppyController>,
-    hdc: Option<HardDiskController>,
-    xtide: Option<XtIdeController>,
+    fdc: Option<Box<FloppyController>>,
+    hdc: Option<Box<HardDiskController>>,
+    xtide: Option<Box<XtIdeController>>,
     mouse: Option<Mouse>,
     ems: Option<LotechEmsCard>,
     cart_slot: Option<CartridgeSlot>,
@@ -450,7 +452,8 @@ pub struct BusInterface {
 
     cga_tick_accum: u32,
     tga_tick_accum: u32,
-    kb_us_accum:    f64,
+    kb_us_accum: f64,
+    refresh_enabled: bool,
     refresh_active: bool,
 
     terminal_port: Option<u16>,
@@ -473,104 +476,6 @@ macro_rules! add_mmio_device {
             $self.register_map($device_type, desc.clone());
         }
     }};
-}
-
-impl ByteQueue for BusInterface {
-    fn seek(&mut self, pos: usize) {
-        self.cursor = pos;
-    }
-
-    fn tell(&self) -> usize {
-        self.cursor
-    }
-
-    fn wait(&mut self, _cycles: u32) {}
-    fn wait_i(&mut self, _cycles: u32, _instr: &[u16]) {}
-    fn wait_comment(&mut self, _comment: &str) {}
-    fn set_pc(&mut self, _pc: u16) {}
-
-    fn q_read_u8(&mut self, _dtype: QueueType, _reader: QueueReader) -> u8 {
-        if self.cursor < self.memory.len() {
-            let (b, _) = self.read_u8(self.cursor, 0).unwrap_or((0xFF, 0));
-            self.cursor += 1;
-            return b;
-        }
-        0xffu8
-    }
-
-    fn q_read_i8(&mut self, _dtype: QueueType, _reader: QueueReader) -> i8 {
-        if self.cursor < self.memory.len() {
-            let (b, _) = self.read_u8(self.cursor, 0).unwrap_or((0xFF, 0));
-            self.cursor += 1;
-            return b as i8;
-        }
-        -1i8
-    }
-
-    fn q_read_u16(&mut self, _dtype: QueueType, _reader: QueueReader) -> u16 {
-        if self.cursor < self.memory.len() - 1 {
-            let (b0, _) = self.read_u8(self.cursor, 0).unwrap_or((0xFF, 0));
-            let (b1, _) = self.read_u8(self.cursor + 1, 0).unwrap_or((0xFF, 0));
-            self.cursor += 2;
-            return b0 as u16 | (b1 as u16) << 8;
-        }
-        0xffffu16
-    }
-
-    fn q_read_i16(&mut self, _dtype: QueueType, _reader: QueueReader) -> i16 {
-        if self.cursor < self.memory.len() - 1 {
-            let (b0, _) = self.read_u8(self.cursor, 0).unwrap_or((0xFF, 0));
-            let (b1, _) = self.read_u8(self.cursor + 1, 0).unwrap_or((0xFF, 0));
-            self.cursor += 2;
-            return (b0 as u16 | (b1 as u16) << 8) as i16;
-        }
-        -1i16
-    }
-
-    fn q_peek_u8(&mut self) -> u8 {
-        if self.cursor < self.memory.len() {
-            let b = self.peek_u8(self.cursor).unwrap_or(0xFF);
-            return b;
-        }
-        0xffu8
-    }
-
-    fn q_peek_i8(&mut self) -> i8 {
-        if self.cursor < self.memory.len() {
-            let b = self.peek_u8(self.cursor).unwrap_or(0xFF);
-            return b as i8;
-        }
-        -1i8
-    }
-
-    fn q_peek_u16(&mut self) -> u16 {
-        if self.cursor < self.memory.len() - 1 {
-            return self.peek_u8(self.cursor).unwrap_or(0xFF) as u16
-                | (self.peek_u8(self.cursor + 1).unwrap_or(0xFF) as u16) << 8;
-        }
-        0xffffu16
-    }
-
-    fn q_peek_i16(&mut self) -> i16 {
-        if self.cursor < self.memory.len() - 1 {
-            return (self.peek_u8(self.cursor).unwrap_or(0xFF) as u16
-                | (self.peek_u8(self.cursor + 1).unwrap_or(0xFF) as u16) << 8) as i16;
-        }
-        -1i16
-    }
-
-    fn q_peek_farptr16(&mut self) -> (u16, u16) {
-        if self.cursor < self.memory.len() - 3 {
-            let offset: u16 = (self.peek_u8(self.cursor).unwrap_or(0xFF) as u16
-                | self.peek_u8(self.cursor + 1).unwrap_or(0xFF) as u16)
-                << 8;
-            let segment: u16 = (self.peek_u8(self.cursor + 2).unwrap_or(0xFF) as u16
-                | self.peek_u8(self.cursor + 3).unwrap_or(0xFF) as u16)
-                << 8;
-            return (segment, offset);
-        }
-        (0xffffu16, 0xffffu16)
-    }
 }
 
 impl Default for BusInterface {
@@ -630,8 +535,9 @@ impl Default for BusInterface {
 
             cga_tick_accum: 0,
             tga_tick_accum: 0,
-            kb_us_accum:    0.0,
+            kb_us_accum: 0.0,
             refresh_active: false,
+            refresh_enabled: false,
 
             terminal_port: None,
         }
@@ -639,18 +545,23 @@ impl Default for BusInterface {
 }
 
 impl BusInterface {
-    pub fn new(cpu_factor: ClockFactor, machine_desc: MachineDescriptor, keyboard_type: KeyboardType) -> BusInterface {
-        let mut timing_table = Box::new([TimingTableEntry { sys_ticks: 0, us: 0.0 }; TIMING_TABLE_LEN]);
-        Self::update_timing_table(&mut timing_table, cpu_factor, machine_desc.system_crystal);
-
-        BusInterface {
-            cpu_factor,
-            timing_table,
-            machine_desc: Some(machine_desc),
-            keyboard_type,
-            ..BusInterface::default()
-        }
-    }
+    // pub fn new(
+    //     cpu_factor: ClockFactor,
+    //     machine_desc: MachineDescriptor,
+    //     keyboard_type: KeyboardType,
+    // ) -> BusInterface {
+    //     let mut timing_table = Box::new([TimingTableEntry { sys_ticks: 0, us: 0.0 }; TIMING_TABLE_LEN]);
+    //     Self::update_timing_table(&mut timing_table, cpu_factor, machine_desc.system_crystal);
+    //
+    //     BusInterface {
+    //         cpu_factor,
+    //         timing_table,
+    //         machine_desc: Some(machine_desc),
+    //         keyboard_type,
+    //         refresh_enabled,
+    //         ..BusInterface::default()
+    //     }
+    // }
 
     pub fn set_options(&mut self, do_timing_hacks: bool) {
         self.do_title_hacks = do_timing_hacks;
@@ -771,122 +682,6 @@ impl BusInterface {
         self.mmio_map.push((mem_descriptor, device));
     }
 
-    pub fn copy_from(&mut self, src: &[u8], location: usize, cycle_cost: u32, read_only: bool) -> Result<(), bool> {
-        let src_size = src.len();
-        if location + src_size > self.memory.len() {
-            // copy request goes out of bounds
-            log::error!("copy out of range: {} len: {}", location, src_size);
-            return Err(false);
-        }
-
-        let mem_slice: &mut [u8] = &mut self.memory[location..location + src_size];
-        let mask_slice: &mut [u8] = &mut self.memory_mask[location..location + src_size];
-
-        for (dst, src) in mem_slice.iter_mut().zip(src) {
-            *dst = *src;
-        }
-
-        // Write access mask
-        let access_bit = match read_only {
-            true => MEM_ROM_BIT,
-            false => 0x00,
-        };
-        for dst in mask_slice.iter_mut() {
-            *dst |= access_bit;
-        }
-
-        self.desc_vec.push({
-            MemRangeDescriptor {
-                address: location,
-                size: src_size,
-                cycle_cost,
-                read_only,
-                priority: 1,
-            }
-        });
-
-        Ok(())
-    }
-
-    /// Write the specified bytes from src_vec into memory at location 'location'
-    ///
-    /// Does not obey memory mapping
-    pub fn patch_from(&mut self, src_vec: &Vec<u8>, location: usize) -> Result<(), bool> {
-        let src_size = src_vec.len();
-        if location + src_size > self.memory.len() {
-            // copy request goes out of bounds
-            return Err(false);
-        }
-
-        let mem_slice: &mut [u8] = &mut self.memory[location..location + src_size];
-
-        for (dst, src) in mem_slice.iter_mut().zip(src_vec.as_slice()) {
-            *dst = *src;
-        }
-        Ok(())
-    }
-
-    /// Return a slice of memory at the specified location and length.
-    /// Does not resolve mmio addresses.
-    pub fn get_slice_at(&self, start: usize, len: usize) -> &[u8] {
-        if start >= self.memory.len() {
-            return &[];
-        }
-
-        &self.memory[start..std::cmp::min(start + len, self.memory.len())]
-    }
-
-    /// Return a vector of memory at the specified location and length.
-    /// Does not resolve mmio addresses.
-    pub fn get_vec_at(&self, start: usize, len: usize) -> Vec<u8> {
-        if start >= self.memory.len() {
-            return Vec::new();
-        }
-
-        self.memory[start..std::cmp::min(start + len, self.memory.len())].to_vec()
-    }
-
-    /// Return a vector representing the contents of memory starting from the specified location,
-    /// and continuing for the specified length. This function resolves mmio addresses.
-    pub fn get_vec_at_ex(&self, start: usize, len: usize) -> Vec<u8> {
-        if start >= self.memory.len() {
-            return Vec::new();
-        }
-
-        let start_mmio_block = start >> MMIO_MAP_SHIFT;
-        let mut end_mmio_block = (start + len) >> MMIO_MAP_SHIFT;
-
-        if end_mmio_block >= MMIO_MAP_LEN {
-            // If the end block is out of range, just return a slice of conventional memory.
-            end_mmio_block = MMIO_MAP_LEN - 1;
-        }
-
-        // First, scan the mmio map to see if the range contains any mmio mapped devices.
-        // If one is found, set a flag to fall back to the slow path.
-        let mut range_has_mmio = false;
-        for i in start_mmio_block..=end_mmio_block {
-            if self.mmio_map_fast[i] != MmioDeviceType::None {
-                range_has_mmio = true;
-            }
-        }
-
-        if !range_has_mmio {
-            // Fast path: No mmio. Just return a slice of conventional.
-            self.memory[start..std::cmp::min(start + len, self.memory.len())].to_vec()
-        }
-        else {
-            // Slow path: Slice has mmio. Build a vector from bus peeks.
-            let mut result = Vec::with_capacity(len);
-            for addr in start..std::cmp::min(start + len, self.memory.len()) {
-                match self.peek_u8(addr) {
-                    Ok(byte) => result.push(byte),
-                    Err(_) => result.push(0xFF),
-                }
-            }
-            result
-        }
-    }
-
     pub fn set_descriptor(&mut self, start: usize, size: usize, cycle_cost: u32, read_only: bool) {
         // TODO: prevent overlapping descriptors
         self.desc_vec.push({
@@ -940,7 +735,7 @@ impl BusInterface {
     #[inline]
     /// Convert a count of CPU cycles to system clock ticks based on the current CPU
     /// clock divisor.
-    fn cpu_cycles_to_system_ticks(&self, cycles: u32) -> u32 {
+    pub(crate) fn cpu_cycles_to_system_ticks(&self, cycles: u32) -> u32 {
         match self.cpu_factor {
             ClockFactor::Divisor(n) => cycles * (n as u32),
             ClockFactor::Multiplier(n) => cycles / (n as u32),
@@ -950,774 +745,10 @@ impl BusInterface {
     #[inline]
     /// Convert a count of system clock ticks to CPU cycles based on the current CPU
     /// clock divisor. If a clock Divisor is set, the dividend will be rounded upwards.
-    fn system_ticks_to_cpu_cycles(&self, ticks: u32) -> u32 {
+    pub(crate) fn system_ticks_to_cpu_cycles(&self, ticks: u32) -> u32 {
         match self.cpu_factor {
             ClockFactor::Divisor(n) => (ticks + (n as u32) - 1) / (n as u32),
             ClockFactor::Multiplier(n) => ticks * (n as u32),
-        }
-    }
-
-    pub fn get_read_wait(&mut self, address: usize, cycles: u32) -> Result<u32, MemError> {
-        if address < self.memory.len() {
-            if self.memory_mask[address] & MEM_MMIO_BIT == 0 {
-                // Address is not mapped.
-                return Ok(DEFAULT_WAIT_STATES);
-            }
-            else {
-                // Handle memory-mapped devices
-                let system_ticks = self.cpu_cycles_to_system_ticks(cycles);
-
-                match self.mmio_map_fast[address >> MMIO_MAP_SHIFT] {
-                    MmioDeviceType::Video(vid) => {
-                        if let Some(card_dispatch) = self.videocards.get_mut(&vid) {
-                            match card_dispatch {
-                                VideoCardDispatch::Mda(mda) => {
-                                    let syswait = mda.get_read_wait(address, system_ticks);
-                                    return Ok(self.system_ticks_to_cpu_cycles(syswait));
-                                }
-                                VideoCardDispatch::Cga(cga) => {
-                                    let syswait = cga.get_read_wait(address, system_ticks);
-                                    return Ok(self.system_ticks_to_cpu_cycles(syswait));
-                                }
-                                VideoCardDispatch::Tga(tga) => {
-                                    let syswait = tga.get_read_wait(address, system_ticks);
-                                    return Ok(self.system_ticks_to_cpu_cycles(syswait));
-                                }
-                                #[cfg(feature = "ega")]
-                                VideoCardDispatch::Ega(ega) => {
-                                    let syswait = ega.get_read_wait(address, system_ticks);
-                                    return Ok(self.system_ticks_to_cpu_cycles(syswait));
-                                }
-                                #[cfg(feature = "vga")]
-                                VideoCardDispatch::Vga(vga) => {
-                                    let syswait = vga.get_read_wait(address, system_ticks);
-                                    return Ok(self.system_ticks_to_cpu_cycles(syswait));
-                                }
-                                _ => {}
-                            }
-                        }
-                    }
-                    MmioDeviceType::Cart => {
-                        return Ok(0);
-                    }
-                    _ => {}
-                }
-                // We didn't match any mmio devices, return raw memory
-                return Ok(DEFAULT_WAIT_STATES);
-            }
-        }
-        Err(MemError::ReadOutOfBoundsError)
-    }
-
-    pub fn get_write_wait(&mut self, address: usize, cycles: u32) -> Result<u32, MemError> {
-        if address < self.memory.len() {
-            if self.memory_mask[address] & MEM_MMIO_BIT == 0 {
-                // Address is not mapped.
-                return Ok(DEFAULT_WAIT_STATES);
-            }
-            else {
-                // Handle memory-mapped devices
-                let system_ticks = self.cpu_cycles_to_system_ticks(cycles);
-
-                // Handle memory-mapped devices
-                match self.mmio_map_fast[address >> MMIO_MAP_SHIFT] {
-                    MmioDeviceType::Video(vid) => {
-                        if let Some(card_dispatch) = self.videocards.get_mut(&vid) {
-                            match card_dispatch {
-                                VideoCardDispatch::Mda(mda) => {
-                                    let syswait = mda.get_write_wait(address, system_ticks);
-                                    return Ok(self.system_ticks_to_cpu_cycles(syswait));
-                                }
-                                VideoCardDispatch::Cga(cga) => {
-                                    let syswait = cga.get_write_wait(address, system_ticks);
-                                    return Ok(self.system_ticks_to_cpu_cycles(syswait));
-                                }
-                                VideoCardDispatch::Tga(tga) => {
-                                    let syswait = tga.get_write_wait(address, system_ticks);
-                                    return Ok(self.system_ticks_to_cpu_cycles(syswait));
-                                }
-                                #[cfg(feature = "ega")]
-                                VideoCardDispatch::Ega(ega) => {
-                                    let syswait = ega.get_write_wait(address, system_ticks);
-                                    return Ok(self.system_ticks_to_cpu_cycles(syswait));
-                                }
-                                #[cfg(feature = "vga")]
-                                VideoCardDispatch::Vga(vga) => {
-                                    let syswait = vga.get_write_wait(address, system_ticks);
-                                    return Ok(self.system_ticks_to_cpu_cycles(syswait));
-                                }
-                                _ => {}
-                            }
-                        }
-                    }
-                    MmioDeviceType::Cart => {
-                        return Ok(0);
-                    }
-                    _ => {}
-                }
-                // We didn't match any mmio devices, return raw memory
-                return Ok(DEFAULT_WAIT_STATES);
-            }
-        }
-        Err(MemError::ReadOutOfBoundsError)
-    }
-
-    pub fn read_u8(&mut self, address: usize, cycles: u32) -> Result<(u8, u32), MemError> {
-        if address < self.memory.len() {
-            if self.memory_mask[address] & MEM_MMIO_BIT == 0 {
-                // Address is not mapped.
-                let data: u8 = self.memory[address];
-                return Ok((data, 0));
-            }
-            else {
-                // Handle memory-mapped devices
-                let system_ticks = self.cpu_cycles_to_system_ticks(cycles);
-
-                match self.mmio_map_fast[address >> MMIO_MAP_SHIFT] {
-                    MmioDeviceType::Video(vid) => {
-                        if let Some(card_dispatch) = self.videocards.get_mut(&vid) {
-                            match card_dispatch {
-                                VideoCardDispatch::Mda(mda) => {
-                                    let (data, _waits) =
-                                        MemoryMappedDevice::mmio_read_u8(mda, address, system_ticks, None);
-                                    return Ok((data, 0));
-                                }
-                                VideoCardDispatch::Cga(cga) => {
-                                    let (data, _waits) =
-                                        MemoryMappedDevice::mmio_read_u8(cga, address, system_ticks, None);
-                                    return Ok((data, 0));
-                                }
-                                VideoCardDispatch::Tga(tga) => {
-                                    let (data, _waits) = MemoryMappedDevice::mmio_read_u8(
-                                        tga,
-                                        address,
-                                        system_ticks,
-                                        Some(&self.memory),
-                                    );
-                                    return Ok((data, 0));
-                                }
-                                #[cfg(feature = "ega")]
-                                VideoCardDispatch::Ega(ega) => {
-                                    let (data, _waits) =
-                                        MemoryMappedDevice::mmio_read_u8(ega, address, system_ticks, None);
-                                    return Ok((data, 0));
-                                }
-                                #[cfg(feature = "vga")]
-                                VideoCardDispatch::Vga(vga) => {
-                                    let (data, _waits) =
-                                        MemoryMappedDevice::mmio_read_u8(vga, address, system_ticks, None);
-                                    return Ok((data, 0));
-                                }
-                                _ => {}
-                            }
-                        }
-                    }
-                    MmioDeviceType::Ems => {
-                        if let Some(ems) = &mut self.ems {
-                            let (data, _waits) = MemoryMappedDevice::mmio_read_u8(ems, address, system_ticks, None);
-                            return Ok((data, 0));
-                        }
-                    }
-                    MmioDeviceType::Cart => {
-                        if let Some(cart_slot) = &mut self.cart_slot {
-                            let (data, _waits) =
-                                MemoryMappedDevice::mmio_read_u8(cart_slot, address, system_ticks, None);
-                            return Ok((data, 0));
-                        }
-                    }
-                    _ => {}
-                }
-                return Err(MemError::MmioError);
-            }
-        }
-        Err(MemError::ReadOutOfBoundsError)
-    }
-
-    pub fn peek_range(&self, address: usize, len: usize) -> Result<&[u8], MemError> {
-        if address + len < self.memory.len() {
-            Ok(&self.memory[address..address + len])
-        }
-        else {
-            Err(MemError::ReadOutOfBoundsError)
-        }
-    }
-
-    pub fn peek_u8(&self, address: usize) -> Result<u8, MemError> {
-        if address < self.memory.len() {
-            if self.memory_mask[address] & MEM_MMIO_BIT == 0 {
-                // Address is not mapped.
-                let b: u8 = self.memory[address];
-                return Ok(b);
-            }
-            else {
-                // Handle memory-mapped devices
-                match self.mmio_map_fast[address >> MMIO_MAP_SHIFT] {
-                    MmioDeviceType::Video(vid) => {
-                        if let Some(card_dispatch) = self.videocards.get(&vid) {
-                            match card_dispatch {
-                                VideoCardDispatch::Mda(mda) => {
-                                    let data = MemoryMappedDevice::mmio_peek_u8(mda, address, None);
-                                    return Ok(data);
-                                }
-                                VideoCardDispatch::Cga(cga) => {
-                                    let data = MemoryMappedDevice::mmio_peek_u8(cga, address, None);
-                                    return Ok(data);
-                                }
-                                VideoCardDispatch::Tga(tga) => {
-                                    let data = MemoryMappedDevice::mmio_peek_u8(tga, address, Some(&self.memory));
-                                    return Ok(data);
-                                }
-                                #[cfg(feature = "ega")]
-                                VideoCardDispatch::Ega(ega) => {
-                                    let data = MemoryMappedDevice::mmio_peek_u8(ega, address, None);
-                                    return Ok(data);
-                                }
-                                #[cfg(feature = "vga")]
-                                VideoCardDispatch::Vga(vga) => {
-                                    let data = MemoryMappedDevice::mmio_peek_u8(vga, address, None);
-                                    return Ok(data);
-                                }
-                                _ => {}
-                            }
-                        }
-                    }
-                    MmioDeviceType::Ems => {
-                        if let Some(ems) = &self.ems {
-                            let data = MemoryMappedDevice::mmio_peek_u8(ems, address, None);
-                            return Ok(data);
-                        }
-                    }
-                    MmioDeviceType::Cart => {
-                        if let Some(cart_slot) = &self.cart_slot {
-                            let data = MemoryMappedDevice::mmio_peek_u8(cart_slot, address, None);
-                            return Ok(data);
-                        }
-                    }
-                    _ => {}
-                }
-                return Err(MemError::MmioError);
-            }
-        }
-        Err(MemError::ReadOutOfBoundsError)
-    }
-
-    pub fn read_u16(&mut self, address: usize, cycles: u32) -> Result<(u16, u32), MemError> {
-        if address < self.memory.len() - 1 {
-            if self.memory_mask[address] & MEM_MMIO_BIT == 0 {
-                // Address is not mapped.
-                let w: u16 = self.memory[address] as u16 | (self.memory[address + 1] as u16) << 8;
-                return Ok((w, DEFAULT_WAIT_STATES));
-            }
-            else {
-                // Handle memory-mapped devices
-                match self.mmio_map_fast[address >> MMIO_MAP_SHIFT] {
-                    MmioDeviceType::Video(vid) => {
-                        if let Some(card_dispatch) = self.videocards.get_mut(&vid) {
-                            let system_ticks = self.cycles_to_ticks[cycles as usize];
-                            match card_dispatch {
-                                VideoCardDispatch::Mda(mda) => {
-                                    //let (data, syswait) = MemoryMappedDevice::read_u16(cga, address, system_ticks);
-                                    let (data, syswait) = mda.mmio_read_u16(address, system_ticks, None);
-                                    return Ok((data, self.system_ticks_to_cpu_cycles(syswait)));
-                                }
-                                VideoCardDispatch::Cga(cga) => {
-                                    //let (data, syswait) = MemoryMappedDevice::read_u16(cga, address, system_ticks);
-                                    let (data, syswait) = cga.mmio_read_u16(address, system_ticks, None);
-                                    return Ok((data, self.system_ticks_to_cpu_cycles(syswait)));
-                                }
-                                VideoCardDispatch::Tga(tga) => {
-                                    //let (data, syswait) = MemoryMappedDevice::read_u16(cga, address, system_ticks);
-                                    let (data, syswait) = tga.mmio_read_u16(address, system_ticks, Some(&self.memory));
-                                    return Ok((data, self.system_ticks_to_cpu_cycles(syswait)));
-                                }
-                                #[cfg(feature = "ega")]
-                                VideoCardDispatch::Ega(ega) => {
-                                    let (data, _syswait) =
-                                        MemoryMappedDevice::mmio_read_u16(ega, address, system_ticks, None);
-                                    return Ok((data, 0));
-                                }
-                                #[cfg(feature = "vga")]
-                                VideoCardDispatch::Vga(vga) => {
-                                    let (data, _syswait) =
-                                        MemoryMappedDevice::mmio_read_u16(vga, address, system_ticks, None);
-                                    return Ok((data, 0));
-                                }
-                                _ => {}
-                            }
-                        }
-                    }
-                    MmioDeviceType::Ems => {
-                        if let Some(ems) = &mut self.ems {
-                            let (data, syswait) = MemoryMappedDevice::mmio_read_u16(ems, address, 0, None);
-                            return Ok((data, self.system_ticks_to_cpu_cycles(syswait)));
-                        }
-                    }
-                    _ => {}
-                }
-                return Ok((0xFFFF, 0));
-                //return Err(MemError::MmioError);
-            }
-        }
-        Err(MemError::ReadOutOfBoundsError)
-    }
-
-    pub fn write_u8(&mut self, address: usize, data: u8, cycles: u32) -> Result<u32, MemError> {
-        if address < self.memory.len() {
-            if self.memory_mask[address] & (MEM_MMIO_BIT | MEM_ROM_BIT) == 0 {
-                // Address is not mapped and not ROM, write to it if it is within conventional memory.
-                if address < self.conventional_size {
-                    self.memory[address] = data;
-                }
-                return Ok(DEFAULT_WAIT_STATES);
-            }
-            else {
-                // Handle memory-mapped devices.
-                match self.mmio_map_fast[address >> MMIO_MAP_SHIFT] {
-                    MmioDeviceType::Video(vid) => {
-                        if let Some(card_dispatch) = self.videocards.get_mut(&vid) {
-                            let system_ticks = self.cycles_to_ticks[cycles as usize];
-                            match card_dispatch {
-                                VideoCardDispatch::Mda(mda) => {
-                                    let _syswait = mda.mmio_write_u8(address, data, system_ticks, None);
-                                    //return Ok(self.system_ticks_to_cpu_cycles(syswait)); // temporary wait state value.
-                                    return Ok(0);
-                                }
-                                VideoCardDispatch::Cga(cga) => {
-                                    let _syswait = cga.mmio_write_u8(address, data, system_ticks, None);
-                                    //return Ok(self.system_ticks_to_cpu_cycles(syswait)); // temporary wait state value.
-                                    return Ok(0);
-                                }
-                                VideoCardDispatch::Tga(tga) => {
-                                    let _syswait = tga.mmio_write_u8(
-                                        address,
-                                        data,
-                                        system_ticks,
-                                        Some(self.memory.as_mut_slice()),
-                                    );
-                                    //return Ok(self.system_ticks_to_cpu_cycles(syswait)); // temporary wait state value.
-                                    return Ok(0);
-                                }
-                                #[cfg(feature = "ega")]
-                                VideoCardDispatch::Ega(ega) => {
-                                    MemoryMappedDevice::mmio_write_u8(ega, address, data, system_ticks, None);
-                                }
-                                #[cfg(feature = "vga")]
-                                VideoCardDispatch::Vga(vga) => {
-                                    MemoryMappedDevice::mmio_write_u8(vga, address, data, system_ticks, None);
-                                }
-                                _ => {}
-                            }
-                        }
-                    }
-                    MmioDeviceType::Ems => {
-                        if let Some(ems) = &mut self.ems {
-                            MemoryMappedDevice::mmio_write_u8(ems, address, data, 0, None);
-                        }
-                    }
-                    _ => {}
-                }
-                return Ok(DEFAULT_WAIT_STATES);
-            }
-        }
-        Err(MemError::ReadOutOfBoundsError)
-    }
-
-    pub fn write_u16(&mut self, address: usize, data: u16, cycles: u32) -> Result<u32, MemError> {
-        if address < self.memory.len() - 1 {
-            if self.memory_mask[address] & (MEM_MMIO_BIT | MEM_ROM_BIT) == 0 {
-                // Address is not mapped. Write to memory if within conventional memory size.
-                if address < self.conventional_size - 1 {
-                    self.memory[address] = (data & 0xFF) as u8;
-                    self.memory[address + 1] = (data >> 8) as u8;
-                }
-                else if address < self.conventional_size {
-                    self.memory[address] = (data & 0xFF) as u8;
-                }
-                return Ok(DEFAULT_WAIT_STATES);
-            }
-            else {
-                // Handle memory-mapped devices
-                match self.mmio_map_fast[address >> MMIO_MAP_SHIFT] {
-                    MmioDeviceType::Video(vid) => {
-                        if let Some(card_dispatch) = self.videocards.get_mut(&vid) {
-                            let system_ticks = self.cycles_to_ticks[cycles as usize];
-
-                            match card_dispatch {
-                                VideoCardDispatch::Mda(mda) => {
-                                    let mut syswait;
-                                    syswait = MemoryMappedDevice::mmio_write_u8(
-                                        mda,
-                                        address,
-                                        (data & 0xFF) as u8,
-                                        system_ticks,
-                                        None,
-                                    );
-                                    syswait +=
-                                        MemoryMappedDevice::mmio_write_u8(mda, address + 1, (data >> 8) as u8, 0, None);
-                                    return Ok(self.system_ticks_to_cpu_cycles(syswait));
-                                    // temporary wait state value.
-                                }
-                                VideoCardDispatch::Cga(cga) => {
-                                    let mut syswait;
-                                    syswait = MemoryMappedDevice::mmio_write_u8(
-                                        cga,
-                                        address,
-                                        (data & 0xFF) as u8,
-                                        system_ticks,
-                                        None,
-                                    );
-                                    syswait +=
-                                        MemoryMappedDevice::mmio_write_u8(cga, address + 1, (data >> 8) as u8, 0, None);
-                                    return Ok(self.system_ticks_to_cpu_cycles(syswait));
-                                    // temporary wait state value.
-                                }
-                                VideoCardDispatch::Tga(tga) => {
-                                    let mut syswait;
-                                    syswait = MemoryMappedDevice::mmio_write_u8(
-                                        tga,
-                                        address,
-                                        (data & 0xFF) as u8,
-                                        system_ticks,
-                                        None,
-                                    );
-                                    syswait +=
-                                        MemoryMappedDevice::mmio_write_u8(tga, address + 1, (data >> 8) as u8, 0, None);
-                                    return Ok(self.system_ticks_to_cpu_cycles(syswait));
-                                    // temporary wait state value.
-                                }
-                                #[cfg(feature = "ega")]
-                                VideoCardDispatch::Ega(ega) => {
-                                    MemoryMappedDevice::mmio_write_u8(
-                                        ega,
-                                        address,
-                                        (data & 0xFF) as u8,
-                                        system_ticks,
-                                        None,
-                                    );
-                                    MemoryMappedDevice::mmio_write_u8(ega, address + 1, (data >> 8) as u8, 0, None);
-                                }
-                                #[cfg(feature = "vga")]
-                                VideoCardDispatch::Vga(vga) => {
-                                    MemoryMappedDevice::mmio_write_u8(
-                                        vga,
-                                        address,
-                                        (data & 0xFF) as u8,
-                                        system_ticks,
-                                        None,
-                                    );
-                                    MemoryMappedDevice::mmio_write_u8(vga, address + 1, (data >> 8) as u8, 0, None);
-                                }
-                                _ => {}
-                            }
-                        }
-                    }
-                    MmioDeviceType::Ems => {
-                        if let Some(ems) = &mut self.ems {
-                            MemoryMappedDevice::mmio_write_u16(ems, address, data, 0, None);
-                        }
-                    }
-                    _ => {}
-                }
-                return Ok(0);
-            }
-        }
-        Err(MemError::ReadOutOfBoundsError)
-    }
-
-    /// Get bit flags for the specified byte at address
-    #[inline]
-    pub fn get_flags(&self, address: usize) -> u8 {
-        if address < self.memory.len() - 1 {
-            self.memory_mask[address]
-        }
-        else {
-            0
-        }
-    }
-
-    /// Set bit flags for the specified byte at address
-    pub fn set_flags(&mut self, address: usize, flags: u8) {
-        if address < self.memory.len() - 1 {
-            //log::trace!("set flag for address: {:05X}: {:02X}", address, flags);
-            self.memory_mask[address] |= flags;
-        }
-    }
-
-    /// Clear the specified flags for the specified byte at address
-    /// Do not allow ROM bit to be cleared
-    pub fn clear_flags(&mut self, address: usize, flags: u8) {
-        if address < self.memory.len() - 1 {
-            self.memory_mask[address] &= !(flags & 0x7F);
-        }
-    }
-
-    /// Dump memory to a string representation.
-    ///
-    /// Does not honor memory mappings.
-    pub fn dump_flat(&self, address: usize, size: usize) -> String {
-        if address + size >= self.memory.len() {
-            return "REQUEST OUT OF BOUNDS".to_string();
-        }
-        else {
-            let mut dump_str = String::new();
-            let dump_slice = &self.memory[address..address + size];
-            let mut display_address = address;
-
-            for dump_row in dump_slice.chunks_exact(16) {
-                let mut dump_line = String::new();
-                let mut ascii_line = String::new();
-
-                for byte in dump_row {
-                    dump_line.push_str(&format!("{:02x} ", byte));
-
-                    let char_str = match byte {
-                        00..=31 => ".".to_string(),
-                        32..=127 => format!("{}", *byte as char),
-                        128.. => ".".to_string(),
-                    };
-                    ascii_line.push_str(&char_str)
-                }
-                dump_str.push_str(&format!("{:05X} {} {}\n", display_address, dump_line, ascii_line));
-                display_address += 16;
-            }
-            return dump_str;
-        }
-    }
-
-    /// Dump memory to a vector of string representations.
-    ///
-    /// Does not honor memory mappings.
-    pub fn dump_flat_vec(&self, address: usize, size: usize) -> Vec<String> {
-        let mut vec = Vec::new();
-
-        if address + size >= self.memory.len() {
-            vec.push("REQUEST OUT OF BOUNDS".to_string());
-            return vec;
-        }
-        else {
-            let dump_slice = &self.memory[address..address + size];
-            let mut display_address = address;
-
-            for dump_row in dump_slice.chunks_exact(16) {
-                let mut dump_line = String::new();
-                let mut ascii_line = String::new();
-
-                for byte in dump_row {
-                    dump_line.push_str(&format!("{:02x} ", byte));
-
-                    let char_str = match byte {
-                        00..=31 => ".".to_string(),
-                        32..=127 => format!("{}", *byte as char),
-                        128.. => ".".to_string(),
-                    };
-                    ascii_line.push_str(&char_str)
-                }
-
-                vec.push(format!("{:05X} {} {}\n", display_address, dump_line, ascii_line));
-
-                display_address += 16;
-            }
-        }
-        vec
-    }
-
-    /// Dump memory to a vector of vectors of SyntaxTokens.
-    ///
-    /// Does not honor memory mappings.
-    pub fn dump_flat_tokens(&self, address: usize, cursor: usize, mut size: usize) -> Vec<Vec<SyntaxToken>> {
-        let mut vec: Vec<Vec<SyntaxToken>> = Vec::new();
-
-        if address >= self.memory.len() {
-            // Start address is invalid. Send only an error token.
-            let mut linevec = Vec::new();
-
-            linevec.push(SyntaxToken::ErrorString("REQUEST OUT OF BOUNDS".to_string()));
-            vec.push(linevec);
-
-            return vec;
-        }
-        else if address + size >= self.memory.len() {
-            // Request size invalid. Send truncated result.
-            let new_size = size - ((address + size) - self.memory.len());
-            size = new_size
-        }
-
-        let dump_slice = &self.memory[address..address + size];
-        let mut display_address = address;
-
-        for dump_row in dump_slice.chunks_exact(16) {
-            let mut line_vec = Vec::new();
-
-            // Push memory flat address tokens
-            line_vec.push(SyntaxToken::MemoryAddressFlat(
-                display_address as u32,
-                format!("{:05X}", display_address),
-            ));
-
-            // Build hex byte value tokens
-            let mut i = 0;
-            for byte in dump_row {
-                if (display_address + i) == cursor {
-                    line_vec.push(SyntaxToken::MemoryByteHexValue(
-                        (display_address + i) as u32,
-                        *byte,
-                        format!("{:02X}", *byte),
-                        true, // Set cursor on this byte
-                        0,
-                    ));
-                }
-                else {
-                    line_vec.push(SyntaxToken::MemoryByteHexValue(
-                        (display_address + i) as u32,
-                        *byte,
-                        format!("{:02X}", *byte),
-                        false,
-                        0,
-                    ));
-                }
-                i += 1;
-            }
-
-            // Build ASCII representation tokens
-            let mut i = 0;
-            for byte in dump_row {
-                let char_str = match byte {
-                    00..=31 => ".".to_string(),
-                    32..=127 => format!("{}", *byte as char),
-                    128.. => ".".to_string(),
-                };
-                line_vec.push(SyntaxToken::MemoryByteAsciiValue(
-                    (display_address + i) as u32,
-                    *byte,
-                    char_str,
-                    0,
-                ));
-                i += 1;
-            }
-
-            vec.push(line_vec);
-            display_address += 16;
-        }
-
-        vec
-    }
-
-    /// Dump memory to a vector of vectors of SyntaxTokens.
-    ///
-    /// Uses bus peek functions to resolve MMIO addresses.
-    pub fn dump_flat_tokens_ex(&self, address: usize, cursor: usize, mut size: usize) -> Vec<Vec<SyntaxToken>> {
-        let mut vec: Vec<Vec<SyntaxToken>> = Vec::new();
-
-        if address >= self.memory.len() {
-            // Start address is invalid. Send only an error token.
-            let mut linevec = Vec::new();
-
-            linevec.push(SyntaxToken::ErrorString("REQUEST OUT OF BOUNDS".to_string()));
-            vec.push(linevec);
-
-            return vec;
-        }
-        else if address + size >= self.memory.len() {
-            // Request size invalid. Send truncated result.
-            let new_size = size - ((address + size) - self.memory.len());
-            size = new_size
-        }
-
-        let addr_vec = Vec::from_iter(address..address + size);
-        let mut display_address = address;
-
-        for dump_addr_row in addr_vec.chunks_exact(16) {
-            let mut line_vec = Vec::new();
-
-            // Push memory flat address tokens
-            line_vec.push(SyntaxToken::MemoryAddressFlat(
-                display_address as u32,
-                format!("{:05X}", display_address),
-            ));
-
-            // Build hex byte value tokens
-            let mut i = 0;
-            for addr in dump_addr_row {
-                let byte = self.peek_u8(*addr).unwrap();
-
-                if (display_address + i) == cursor {
-                    line_vec.push(SyntaxToken::MemoryByteHexValue(
-                        (display_address + i) as u32,
-                        byte,
-                        format!("{:02X}", byte),
-                        true, // Set cursor on this byte
-                        0,
-                    ));
-                }
-                else {
-                    line_vec.push(SyntaxToken::MemoryByteHexValue(
-                        (display_address + i) as u32,
-                        byte,
-                        format!("{:02X}", byte),
-                        false,
-                        0,
-                    ));
-                }
-                i += 1;
-            }
-
-            // Build ASCII representation tokens
-            let mut i = 0;
-            for addr in dump_addr_row {
-                let byte = self.peek_u8(*addr).unwrap();
-
-                let char_str = match byte {
-                    00..=31 => ".".to_string(),
-                    32..=127 => format!("{}", byte as char),
-                    128.. => ".".to_string(),
-                };
-                line_vec.push(SyntaxToken::MemoryByteAsciiValue(
-                    (display_address + i) as u32,
-                    byte,
-                    char_str,
-                    0,
-                ));
-                i += 1;
-            }
-
-            vec.push(line_vec);
-            display_address += 16;
-        }
-
-        vec
-    }
-
-    pub fn dump_mem(&self, path: &Path) {
-        let filename = path.to_path_buf();
-
-        let len = 0x100000;
-        let address = 0;
-        log::debug!("Dumping {} bytes at address {:05X}", len, address);
-
-        match std::fs::write(filename.clone(), &self.memory) {
-            Ok(_) => {
-                log::debug!("Wrote memory dump: {}", filename.display())
-            }
-            Err(e) => {
-                log::error!("Failed to write memory dump '{}': {}", filename.display(), e)
-            }
-        }
-    }
-
-    pub fn dump_mem_range(&self, start: u32, end: u32, path: &Path) {
-        let filename = path.to_path_buf();
-
-        let len = end.saturating_sub(start) as usize;
-        let end = (start as usize + len) & 0xFFFFF;
-        log::debug!("Dumping {} bytes at address {:05X}", len, start);
-
-        match std::fs::write(filename.clone(), &self.memory[(start as usize)..=end]) {
-            Ok(_) => {
-                log::debug!("Wrote memory dump: {}", filename.display())
-            }
-            Err(e) => {
-                log::error!("Failed to write memory dump '{}': {}", filename.display(), e)
-            }
         }
     }
 
@@ -1809,6 +840,7 @@ impl BusInterface {
         machine_config: &MachineConfiguration,
         #[cfg(feature = "sound")] sound_config: &SoundOutputConfig,
         terminal_port: Option<u16>,
+        refresh_enabled: bool,
     ) -> Result<InstalledDevicesResult, Error> {
         #[allow(unused_mut)]
         let mut installed_devices = InstalledDevicesResult::new();
@@ -1819,6 +851,7 @@ impl BusInterface {
             log::debug!("Terminal port set to: {:04X}", terminal_port);
         }
         self.terminal_port = terminal_port;
+        self.refresh_enabled = refresh_enabled;
 
         // First we need to initialize the PPI. The PPI is used to read the system's DIP switches, so the PPI must be
         // given several parameters from the machine configuration.
@@ -1859,13 +892,13 @@ impl BusInterface {
 
         // Create PPI if PPI is defined for this machine type
         if machine_desc.have_ppi {
-            self.ppi = Some(Ppi::new(
+            self.ppi = Some(Box::new(Ppi::new(
                 machine_desc.machine_type,
                 conventional_memory,
                 false,
                 video_types,
                 num_floppies,
-            ));
+            )));
             // Add PPI ports to io_map
 
             add_io_device!(self, self.ppi.as_mut().unwrap(), IoDeviceType::Ppi);
@@ -1919,13 +952,13 @@ impl BusInterface {
 
         // Add DMA ports to io_map
         add_io_device!(self, dma1, IoDeviceType::DmaPrimary);
-        self.dma1 = Some(dma1);
+        self.dma1 = Some(Box::new(dma1));
 
         // Create PIC. One PIC will always exist.
         let pic1 = Pic::new();
         // Add PIC ports to io_map
         add_io_device!(self, pic1, IoDeviceType::PicPrimary);
-        self.pic1 = Some(pic1);
+        self.pic1 = Some(Box::new(pic1));
 
         // Create keyboard if specified.
         if let Some(kb_config) = &machine_config.keyboard {
@@ -1951,7 +984,7 @@ impl BusInterface {
                     let fdc = FloppyController::new(fdc_type, fdc_config.drive.clone());
                     // Add FDC ports to io_map
                     add_io_device!(self, fdc, IoDeviceType::FloppyController);
-                    self.fdc = Some(fdc);
+                    self.fdc = Some(Box::new(fdc));
                 }
             }
         }
@@ -1964,12 +997,12 @@ impl BusInterface {
                     let hdc = HardDiskController::new(2, DRIVE_TYPE2_DIP);
                     // Add HDC ports to io_map
                     add_io_device!(self, hdc, IoDeviceType::HardDiskController);
-                    self.hdc = Some(hdc);
+                    self.hdc = Some(Box::new(hdc));
                 }
                 HardDiskControllerType::XtIde => {
                     let xtide = XtIdeController::new(None, 2);
                     add_io_device!(self, xtide, IoDeviceType::HardDiskController);
-                    self.xtide = Some(xtide);
+                    self.xtide = Some(Box::new(xtide));
                 }
             }
         }
@@ -2008,7 +1041,6 @@ impl BusInterface {
         // If we installed a parallel card, attach a sound source
         if let Some(parallel) = &self.parallel {
             // Add parallel port to installed devices
-
             #[cfg(feature = "sound")]
             {
                 // Create audio sample channel
@@ -2343,7 +1375,9 @@ impl BusInterface {
             self.pit_ticks_advance = 0;
         }
 
-        self.handle_refresh_scheduling(&mut pit, &mut event);
+        if self.refresh_enabled {
+            self.handle_refresh_scheduling(&mut pit, &mut event);
+        }
 
         // Save current count info.
         let (_pit_reload_value, pit_counting_element, pit_counting) = pit.get_channel_count(0);
@@ -2551,338 +1585,6 @@ impl BusInterface {
         //self.pic1.as_mut().unwrap().reset();
     }
 
-    /// Read an 8-bit value from an IO port.
-    ///
-    /// We provide the elapsed cycle count for the current instruction. This allows a device
-    /// to optionally tick itself to bring itself in sync with CPU state.
-    pub fn io_read_u8(&mut self, port: u16, cycles: u32) -> u8 {
-        // Convert cycles to system clock ticks
-        let sys_ticks = match self.cpu_factor {
-            ClockFactor::Divisor(d) => d as u32 * cycles,
-            ClockFactor::Multiplier(m) => cycles / m as u32,
-        };
-        let nul_delta = DeviceRunTimeUnit::Microseconds(0.0);
-        let mut byte = None;
-        if let Some(device_id) = self.io_map.get(&port) {
-            match device_id {
-                IoDeviceType::A0Register => {
-                    if let Some(a0) = &mut self.a0 {
-                        byte = Some(a0.read_u8(port, nul_delta));
-                    }
-                }
-                IoDeviceType::Ppi => {
-                    if let Some(ppi) = &mut self.ppi {
-                        byte = Some(ppi.read_u8(port, nul_delta));
-                    }
-                }
-                IoDeviceType::Pit => {
-                    // There will always be a PIT, so safe to unwrap
-                    byte = Some(
-                        self.pit
-                            .as_mut()
-                            .unwrap()
-                            .read_u8(port, DeviceRunTimeUnit::SystemTicks(sys_ticks)),
-                    );
-                    //self.pit.as_mut().unwrap().read_u8(port, nul_delta)
-                }
-                IoDeviceType::DmaPrimary => {
-                    // There will always be a primary DMA, so safe to unwrap
-                    byte = Some(self.dma1.as_mut().unwrap().read_u8(port, nul_delta));
-                }
-                IoDeviceType::DmaSecondary => {
-                    // Secondary DMA may not exist
-                    if let Some(dma2) = &mut self.dma2 {
-                        byte = Some(dma2.read_u8(port, nul_delta));
-                    }
-                }
-                IoDeviceType::PicPrimary => {
-                    // There will always be a primary PIC, so safe to unwrap
-                    byte = Some(self.pic1.as_mut().unwrap().read_u8(port, nul_delta));
-                }
-                IoDeviceType::PicSecondary => {
-                    // Secondary PIC may not exist
-                    if let Some(pic2) = &mut self.pic2 {
-                        byte = Some(pic2.read_u8(port, nul_delta));
-                    }
-                }
-                IoDeviceType::FloppyController => {
-                    if let Some(fdc) = &mut self.fdc {
-                        byte = Some(fdc.read_u8(port, nul_delta));
-                    }
-                }
-                IoDeviceType::HardDiskController => {
-                    if let Some(hdc) = &mut self.hdc {
-                        byte = Some(hdc.read_u8(port, nul_delta));
-                    }
-                    else if let Some(xtide) = &mut self.xtide {
-                        byte = Some(xtide.read_u8(port, nul_delta));
-                    }
-                }
-                IoDeviceType::Serial => {
-                    if let Some(serial) = &mut self.serial {
-                        // Serial port write does not need bus.
-                        byte = Some(serial.read_u8(port, nul_delta));
-                    }
-                }
-                IoDeviceType::Parallel => {
-                    if let Some(parallel) = &mut self.parallel {
-                        byte = Some(parallel.read_u8(port, nul_delta));
-                    }
-                }
-                IoDeviceType::Ems => {
-                    if let Some(ems) = &mut self.ems {
-                        byte = Some(ems.read_u8(port, nul_delta));
-                    }
-                }
-                IoDeviceType::GamePort => {
-                    if let Some(game_port) = &mut self.game_port {
-                        byte = Some(game_port.read_u8(port, nul_delta));
-                    }
-                }
-                IoDeviceType::Video(vid) => {
-                    if let Some(video_dispatch) = self.videocards.get_mut(&vid) {
-                        byte = match video_dispatch {
-                            VideoCardDispatch::Mda(mda) => {
-                                Some(IoDevice::read_u8(mda, port, DeviceRunTimeUnit::SystemTicks(sys_ticks)))
-                            }
-                            VideoCardDispatch::Cga(cga) => {
-                                Some(IoDevice::read_u8(cga, port, DeviceRunTimeUnit::SystemTicks(sys_ticks)))
-                            }
-                            VideoCardDispatch::Tga(tga) => {
-                                Some(IoDevice::read_u8(tga, port, DeviceRunTimeUnit::SystemTicks(sys_ticks)))
-                            }
-                            #[cfg(feature = "ega")]
-                            VideoCardDispatch::Ega(ega) => Some(IoDevice::read_u8(ega, port, nul_delta)),
-                            #[cfg(feature = "vga")]
-                            VideoCardDispatch::Vga(vga) => Some(IoDevice::read_u8(vga, port, nul_delta)),
-                            VideoCardDispatch::None => None,
-                        }
-                    }
-                }
-                IoDeviceType::Sound =>
-                {
-                    #[cfg(feature = "opl")]
-                    if let Some(adlib) = &mut self.adlib {
-                        byte = Some(adlib.read_u8(port, nul_delta));
-                    }
-                }
-                _ => {}
-            }
-        }
-
-        let byte_val = byte.unwrap_or(NO_IO_BYTE);
-
-        self.io_stats
-            .entry(port)
-            .and_modify(|e| {
-                e.1.last_read = byte_val;
-                e.1.reads += 1;
-                e.1.reads_dirty = true;
-            })
-            .or_insert((byte.is_some(), IoDeviceStats::one_read()));
-
-        byte_val
-    }
-
-    /// Write an 8-bit value to an IO port.
-    ///
-    /// We provide the elapsed cycle count for the current instruction. This allows a device
-    /// to optionally tick itself to bring itself in sync with CPU state.
-    pub fn io_write_u8(&mut self, port: u16, data: u8, cycles: u32, analyzer: Option<&mut LogicAnalyzer>) {
-        // Convert cycles to system clock ticks
-        let sys_ticks = match self.cpu_factor {
-            ClockFactor::Divisor(n) => cycles * (n as u32),
-            ClockFactor::Multiplier(n) => cycles / (n as u32),
-        };
-
-        // Handle terminal debug port
-        if let Some(terminal_port) = self.terminal_port {
-            if port == terminal_port {
-                //log::debug!("Write to terminal port: {:02X}", data);
-
-                // Filter Escape character to avoid terminal shenanigans.
-                // See: https://www.cyberark.com/resources/threat-research-blog/dont-trust-this-title-abusing-terminal-emulators-with-ansi-escape-characters
-                if data != 0x1B {
-                    print!("{}", data as char);
-                    _ = std::io::stdout().flush();
-                }
-            }
-        }
-
-        let nul_delta = DeviceRunTimeUnit::Microseconds(0.0);
-
-        let mut resolved = false;
-        if let Some(device_id) = self.io_map.get(&port) {
-            match device_id {
-                IoDeviceType::A0Register => {
-                    if let Some(a0) = &mut self.a0 {
-                        a0.write_u8(port, data, None, nul_delta, analyzer);
-                        resolved = true;
-                    }
-                }
-                IoDeviceType::Ppi => {
-                    if let Some(mut ppi) = self.ppi.take() {
-                        ppi.write_u8(port, data, Some(self), nul_delta, analyzer);
-                        resolved = true;
-                        self.ppi = Some(ppi);
-                    }
-                }
-                IoDeviceType::Pit => {
-                    if let Some(mut pit) = self.pit.take() {
-                        //log::debug!("writing PIT with {} cycles", cycles);
-                        pit.write_u8(
-                            port,
-                            data,
-                            Some(self),
-                            DeviceRunTimeUnit::SystemTicks(sys_ticks),
-                            analyzer,
-                        );
-                        resolved = true;
-                        self.pit = Some(pit);
-                    }
-                }
-                IoDeviceType::DmaPrimary => {
-                    if let Some(mut dma1) = self.dma1.take() {
-                        dma1.write_u8(port, data, Some(self), nul_delta, analyzer);
-                        resolved = true;
-                        self.dma1 = Some(dma1);
-                    }
-                }
-                IoDeviceType::DmaSecondary => {
-                    if let Some(mut dma2) = self.dma2.take() {
-                        dma2.write_u8(port, data, Some(self), nul_delta, analyzer);
-                        resolved = true;
-                        self.dma2 = Some(dma2);
-                    }
-                }
-                IoDeviceType::PicPrimary => {
-                    if let Some(mut pic1) = self.pic1.take() {
-                        pic1.write_u8(port, data, Some(self), nul_delta, analyzer);
-                        resolved = true;
-                        self.pic1 = Some(pic1);
-                    }
-                }
-                IoDeviceType::PicSecondary => {
-                    if let Some(mut pic2) = self.pic2.take() {
-                        pic2.write_u8(port, data, Some(self), nul_delta, analyzer);
-                        resolved = true;
-                        self.pic2 = Some(pic2);
-                    }
-                }
-                IoDeviceType::FloppyController => {
-                    if let Some(mut fdc) = self.fdc.take() {
-                        fdc.write_u8(port, data, Some(self), nul_delta, analyzer);
-                        resolved = true;
-                        self.fdc = Some(fdc);
-                    }
-                }
-                IoDeviceType::HardDiskController => {
-                    if let Some(mut hdc) = self.hdc.take() {
-                        hdc.write_u8(port, data, Some(self), nul_delta, analyzer);
-                        resolved = true;
-                        self.hdc = Some(hdc);
-                    }
-                    else if let Some(mut xtide) = self.xtide.take() {
-                        xtide.write_u8(port, data, Some(self), nul_delta, analyzer);
-                        resolved = true;
-                        self.xtide = Some(xtide);
-                    }
-                }
-                IoDeviceType::Serial => {
-                    if let Some(serial) = &mut self.serial {
-                        // Serial port write does not need bus.
-                        serial.write_u8(port, data, None, nul_delta, analyzer);
-                        resolved = true;
-                    }
-                }
-                IoDeviceType::Parallel => {
-                    if let Some(parallel) = &mut self.parallel {
-                        parallel.write_u8(port, data, None, nul_delta, analyzer);
-                        resolved = true;
-                    }
-                }
-                IoDeviceType::Ems => {
-                    if let Some(ems) = &mut self.ems {
-                        ems.write_u8(port, data, None, nul_delta, analyzer);
-                        resolved = true;
-                    }
-                }
-                IoDeviceType::GamePort => {
-                    if let Some(game_port) = &mut self.game_port {
-                        game_port.write_u8(port, data, None, nul_delta, analyzer);
-                        resolved = true;
-                    }
-                }
-                IoDeviceType::Video(vid) => {
-                    if let Some(video_dispatch) = self.videocards.get_mut(&vid) {
-                        match video_dispatch {
-                            VideoCardDispatch::Mda(mda) => {
-                                IoDevice::write_u8(
-                                    mda,
-                                    port,
-                                    data,
-                                    None,
-                                    DeviceRunTimeUnit::SystemTicks(sys_ticks),
-                                    analyzer,
-                                );
-                                resolved = true;
-                            }
-                            VideoCardDispatch::Cga(cga) => {
-                                IoDevice::write_u8(
-                                    cga,
-                                    port,
-                                    data,
-                                    None,
-                                    DeviceRunTimeUnit::SystemTicks(sys_ticks),
-                                    analyzer,
-                                );
-                                resolved = true;
-                            }
-                            VideoCardDispatch::Tga(tga) => {
-                                IoDevice::write_u8(
-                                    tga,
-                                    port,
-                                    data,
-                                    None,
-                                    DeviceRunTimeUnit::SystemTicks(sys_ticks),
-                                    analyzer,
-                                );
-                                resolved = true;
-                            }
-                            #[cfg(feature = "ega")]
-                            VideoCardDispatch::Ega(ega) => {
-                                IoDevice::write_u8(ega, port, data, None, nul_delta, analyzer);
-                                resolved = true;
-                            }
-                            #[cfg(feature = "vga")]
-                            VideoCardDispatch::Vga(vga) => {
-                                IoDevice::write_u8(vga, port, data, None, nul_delta, analyzer);
-                                resolved = true;
-                            }
-                            VideoCardDispatch::None => {}
-                        }
-                    }
-                }
-                IoDeviceType::Sound =>
-                {
-                    #[cfg(feature = "opl")]
-                    if let Some(adlib) = &mut self.adlib {
-                        IoDevice::write_u8(adlib, port, data, None, nul_delta, analyzer);
-                    }
-                }
-                _ => {}
-            }
-        }
-
-        self.io_stats
-            .entry(port)
-            .and_modify(|e| {
-                e.1.writes += 1;
-                e.1.writes_dirty = true;
-            })
-            .or_insert((resolved, IoDeviceStats::one_write()));
-    }
-
     /// Return a boolean indicating whether a timer interrupt is imminent.
     /// This is intended to be called by the CPU to determine the required cycle granularity of the HLT state.
     #[inline]
@@ -2895,7 +1597,7 @@ impl BusInterface {
         &self.pit
     }
 
-    pub fn fdc(&self) -> &Option<FloppyController> {
+    pub fn fdc(&self) -> &Option<Box<FloppyController>> {
         &self.fdc
     }
 
@@ -2903,19 +1605,19 @@ impl BusInterface {
         &mut self.pit
     }
 
-    pub fn pic(&self) -> &Option<Pic> {
+    pub fn pic(&self) -> &Option<Box<Pic>> {
         &self.pic1
     }
 
-    pub fn pic_mut(&mut self) -> &mut Option<Pic> {
+    pub fn pic_mut(&mut self) -> &mut Option<Box<Pic>> {
         &mut self.pic1
     }
 
-    pub fn ppi_mut(&mut self) -> &mut Option<Ppi> {
+    pub fn ppi_mut(&mut self) -> &mut Option<Box<Ppi>> {
         &mut self.ppi
     }
 
-    pub fn dma_mut(&mut self) -> &mut Option<DMAController> {
+    pub fn dma_mut(&mut self) -> &mut Option<Box<DMAController>> {
         &mut self.dma1
     }
 
@@ -2923,15 +1625,15 @@ impl BusInterface {
         &mut self.serial
     }
 
-    pub fn fdc_mut(&mut self) -> &mut Option<FloppyController> {
+    pub fn fdc_mut(&mut self) -> &mut Option<Box<FloppyController>> {
         &mut self.fdc
     }
 
-    pub fn hdc_mut(&mut self) -> &mut Option<HardDiskController> {
+    pub fn hdc_mut(&mut self) -> &mut Option<Box<HardDiskController>> {
         &mut self.hdc
     }
 
-    pub fn xtide_mut(&mut self) -> &mut Option<XtIdeController> {
+    pub fn xtide_mut(&mut self) -> &mut Option<Box<XtIdeController>> {
         &mut self.xtide
     }
 

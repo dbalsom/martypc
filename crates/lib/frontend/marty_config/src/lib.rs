@@ -274,6 +274,7 @@ pub struct Tests {
 
 #[derive(Debug, Deserialize)]
 pub struct Cpu {
+    pub dram_refresh_simulation: Option<bool>,
     pub wait_states: Option<bool>,
     pub off_rails_detection: Option<bool>,
     pub on_halt: Option<OnHaltBehavior>,

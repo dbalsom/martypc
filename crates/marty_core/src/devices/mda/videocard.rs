@@ -337,7 +337,7 @@ impl VideoCard for MDACard {
         map
     }
 
-    fn run(&mut self, time: DeviceRunTimeUnit, _pic: &mut Option<Pic>, _cpumem: Option<&[u8]>) {
+    fn run(&mut self, time: DeviceRunTimeUnit, _pic: &mut Option<Box<Pic>>, _cpumem: Option<&[u8]>) {
         /*
         if self.scanline > 1000 {
             log::error!("run(): scanlines way too high: {}", self.scanline);

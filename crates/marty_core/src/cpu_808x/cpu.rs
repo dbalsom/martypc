@@ -144,7 +144,7 @@ impl Cpu for Intel808x {
 
     #[inline]
     fn set_flags(&mut self, flags: u16) {
-        self.set_flags(flags);
+        self.set_flags_safe(flags);
     }
 
     #[inline]

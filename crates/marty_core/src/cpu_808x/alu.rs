@@ -33,12 +33,7 @@
 
 use crate::{
     cpu_808x::*,
-    cpu_common::{
-        alu::{Xi::ADD, *},
-        InstructionWidth,
-        InstructionWidth::Byte,
-        Mnemonic,
-    },
+    cpu_common::{alu::*, InstructionWidth, Mnemonic},
 };
 //use num_traits::PrimInt;
 

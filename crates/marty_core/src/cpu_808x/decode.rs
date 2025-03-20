@@ -35,8 +35,6 @@
 
 */
 
-use std::{error::Error, fmt::Display};
-
 use crate::{
     bytequeue::*,
     cpu_808x::{gdr::GdrEntry, modrm::ModRmByte, Intel808x, *},
@@ -44,6 +42,7 @@ use crate::{
         alu::Xi,
         operands::OperandSize,
         AddressingMode,
+        Displacement,
         Instruction,
         Mnemonic,
         OperandType,
@@ -57,6 +56,7 @@ use crate::{
         OPCODE_PREFIX_SS_OVERRIDE,
     },
 };
+use std::{error::Error, fmt::Display};
 
 #[derive(Copy, Clone, PartialEq)]
 pub enum OperandTemplate {
@@ -85,120 +85,110 @@ impl OperandTemplate {
         &self,
         bytes: &mut impl ByteQueue,
         modrm: &ModRmByte,
+        displacement: Displacement,
         size: &mut u32,
         peek: bool,
-    ) -> (OperandType, OperandSize) {
+    ) -> OperandType {
         match (self, peek) {
             (OperandTemplate::ModRM8, _) => {
-                let addr_mode = modrm.get_addressing_mode();
-                let operand_type = match addr_mode {
-                    AddressingMode::RegisterMode => OperandType::Register8(modrm.get_op1_reg8()),
+                let addr_mode = modrm.addressing_mode(displacement);
+                match addr_mode {
+                    AddressingMode::RegisterMode => OperandType::Register8(modrm.op1_reg8()),
                     _ => OperandType::AddressingMode(addr_mode, OperandSize::Operand8),
-                };
-                (operand_type, OperandSize::Operand8)
+                }
             }
             (OperandTemplate::ModRM16, _) => {
-                let addr_mode = modrm.get_addressing_mode();
-                let operand_type = match addr_mode {
-                    AddressingMode::RegisterMode => OperandType::Register16(modrm.get_op1_reg16()),
+                let addr_mode = modrm.addressing_mode(displacement);
+                match addr_mode {
+                    AddressingMode::RegisterMode => OperandType::Register16(modrm.op1_reg16()),
                     _ => OperandType::AddressingMode(addr_mode, OperandSize::Operand16),
-                };
-                (operand_type, OperandSize::Operand16)
+                }
             }
-            (OperandTemplate::Register8, _) => {
-                let operand_type = OperandType::Register8(modrm.get_op2_reg8());
-                (operand_type, OperandSize::Operand8)
-            }
-            (OperandTemplate::Register16, _) => {
-                let operand_type = OperandType::Register16(modrm.get_op2_reg16());
-                (operand_type, OperandSize::Operand16)
-            }
-            (OperandTemplate::SegmentRegister, _) => {
-                let operand_type = OperandType::Register16(modrm.get_op2_segmentreg16());
-                (operand_type, OperandSize::Operand16)
-            }
+            (OperandTemplate::Register8, _) => OperandType::Register8(modrm.op2_reg8()),
+            (OperandTemplate::Register16, _) => OperandType::Register16(modrm.op2_reg16()),
+            (OperandTemplate::SegmentRegister, _) => OperandType::Register16(modrm.op2_segmentreg16()),
             (OperandTemplate::Immediate8, true) => {
                 // Peek at immediate value now, fetch during execute
                 let operand = bytes.q_peek_u8();
                 *size += 1;
-                (OperandType::Immediate8(operand), OperandSize::Operand8)
+                OperandType::Immediate8(operand)
             }
             (OperandTemplate::Immediate8, false) => {
                 *size += 1;
-                (OperandType::Immediate8(0), OperandSize::Operand8)
+                OperandType::Immediate8(0)
             }
             (OperandTemplate::Immediate16, true) => {
                 // Peek at immediate value now, fetch during execute
                 let operand = bytes.q_peek_u16();
                 *size += 2;
-                (OperandType::Immediate16(operand), OperandSize::Operand16)
+                OperandType::Immediate16(operand)
             }
             (OperandTemplate::Immediate16, false) => {
                 *size += 2;
-                (OperandType::Immediate16(0), OperandSize::Operand16)
+                OperandType::Immediate16(0)
             }
             (OperandTemplate::Immediate8SignExtended, true) => {
                 // Peek at immediate value now, fetch during execute
                 let operand = bytes.q_peek_i8();
                 *size += 1;
-                (OperandType::Immediate8s(operand), OperandSize::Operand8)
+                OperandType::Immediate8s(operand)
             }
             (OperandTemplate::Immediate8SignExtended, false) => {
                 *size += 1;
-                (OperandType::Immediate8s(0), OperandSize::Operand8)
+                OperandType::Immediate8s(0)
             }
             (OperandTemplate::Relative8, true) => {
                 // Peek at rel8 value now, fetch during execute
                 let operand = bytes.q_peek_i8();
                 *size += 1;
-                (OperandType::Relative8(operand), OperandSize::Operand8)
+                OperandType::Relative8(operand)
             }
             (OperandTemplate::Relative8, false) => {
                 *size += 1;
-                (OperandType::Relative8(0), OperandSize::Operand8)
+                OperandType::Relative8(0)
             }
             (OperandTemplate::Relative16, true) => {
                 // Peek at rel16 value now, fetch during execute
                 let operand = bytes.q_peek_i16();
                 *size += 2;
-                (OperandType::Relative16(operand), OperandSize::Operand16)
+                OperandType::Relative16(operand)
             }
             (OperandTemplate::Relative16, false) => {
                 *size += 2;
-                (OperandType::Relative16(0), OperandSize::Operand16)
+                OperandType::Relative16(0)
             }
             (OperandTemplate::Offset8, true) => {
                 // Peek at offset8 value now, fetch during execute
                 let operand = bytes.q_peek_u16();
                 *size += 2;
-                (OperandType::Offset8(operand), OperandSize::Operand8)
+                OperandType::Offset8(operand)
             }
             (OperandTemplate::Offset8, false) => {
                 *size += 2;
-                (OperandType::Offset8(0), OperandSize::Operand8)
+                OperandType::Offset8(0)
             }
             (OperandTemplate::Offset16, true) => {
                 // Peek at offset16 value now, fetch during execute
                 let operand = bytes.q_peek_u16();
                 *size += 2;
-                (OperandType::Offset16(operand), OperandSize::Operand16)
+                OperandType::Offset16(operand)
             }
             (OperandTemplate::Offset16, false) => {
                 *size += 2;
-                (OperandType::Offset16(0), OperandSize::Operand16)
+                OperandType::Offset16(0)
             }
-            (OperandTemplate::FixedRegister8(r8), _) => (OperandType::Register8(*r8), OperandSize::Operand8),
-            (OperandTemplate::FixedRegister16(r16), _) => (OperandType::Register16(*r16), OperandSize::Operand16),
+            (OperandTemplate::FixedRegister8(r8), _) => OperandType::Register8(*r8),
+            (OperandTemplate::FixedRegister16(r16), _) => OperandType::Register16(*r16),
             (OperandTemplate::FarAddress, true) => {
                 let (segment, offset) = bytes.q_peek_farptr16();
                 *size += 4;
-                (OperandType::FarAddress(segment, offset), OperandSize::NoSize)
+                OperandType::FarAddress(segment, offset)
             }
             (OperandTemplate::FarAddress, false) => {
                 *size += 4;
-                (OperandType::FarAddress(0, 0), OperandSize::NoSize)
+                OperandType::FarAddress(0, 0)
             }
-            _ => (OperandType::NoOperand, OperandSize::NoOperand),
+            _ => OperandType::NoOperand,
         }
     }
 }
@@ -647,12 +637,10 @@ pub const DECODE: [InstTemplate; 352] = [
 impl Intel808x {
     #[rustfmt::skip]
     pub fn decode(bytes: &mut impl ByteQueue, peek: bool) -> Result<Instruction, Box<dyn std::error::Error>> {
+        let operand1_type: OperandType;
+        let operand2_type: OperandType;
 
-        let mut operand1_type: OperandType = OperandType::NoOperand;
-        let mut operand2_type: OperandType = OperandType::NoOperand;
-        let mut operand1_size: OperandSize = OperandSize::NoOperand;
-        let mut operand2_size: OperandSize = OperandSize::NoOperand;
-
+        // Read an initial byte as our opcode or first prefix
         let mut opcode = bytes.q_read_u8(QueueType::First, QueueReader::Biu);
         let mut size: u32 = 1;
         let mut op_prefixes: u32 = 0;
@@ -692,43 +680,38 @@ impl Intel808x {
             size += 1;
         }
 
+        // Lookup the opcode in the decode table
         decode_idx = opcode as usize;
         let mut op_lu = &DECODE[decode_idx];
-        let mut modrm= ModRmByte::default();
+    
+        // Prepare to read ModRm
+        let mut modrm= ModRmByte::default_ref();
         let mut loaded_modrm = false;
+        let mut displacement = Displacement::NoDisp;
 
         // Check if resolved first opcode is a group instruction
         if op_lu.grp != 0 {
-            // All group instructions have a modrm w/ op extension. Load the modrm now.
+            // All group instructions have a ModRm. Load it now.
             let modrm_len;
-            (modrm, modrm_len) = ModRmByte::read(bytes);
+            (modrm, displacement, modrm_len) = ModRmByte::read(bytes);
             size += modrm_len;
             loaded_modrm = true;
 
             // Perform secondary lookup of opcode group + extension.
-            decode_idx = 256 + ((op_lu.grp as usize - 1) * 8) + modrm.get_op_extension() as usize;
+            decode_idx = 256 + ((op_lu.grp as usize - 1) * 8) + modrm.op_extension() as usize;
             op_lu = &DECODE[decode_idx];
         }
 
-        // Load the ModRM byte if required
+        // Load the ModRm byte if required, and we didn't already load it to decode a group.
         if op_lu.gdr.has_modrm() && !loaded_modrm {
             let modrm_len;
-            (modrm, modrm_len) = ModRmByte::read(bytes);
+            (modrm, displacement, modrm_len) = ModRmByte::read(bytes);
             size += modrm_len;
-            loaded_modrm = true;
-        }
-
-        if loaded_modrm && (!op_lu.gdr.loads_ea()) {
-            // The EA calculated by the modrm will not be loaded (ie, we proceed to EADONE instead of EALOAD).
-            // TODO: Move these cycles out of decode
-            if !matches!(modrm.get_addressing_mode(), AddressingMode::RegisterMode) {
-                bytes.wait_i(2, &[0x1e3, MC_RTN]);
-            }
         }
 
         // Resolve operand templates into OperandTypes
-        (operand1_type, operand1_size) = op_lu.operand1.resolve_operand(bytes, &modrm, &mut size, peek);
-        (operand2_type, operand2_size) = op_lu.operand2.resolve_operand(bytes, &modrm, &mut size, peek);
+        operand1_type = op_lu.operand1.resolve_operand(bytes, modrm, displacement, &mut size, peek);
+        operand2_type = op_lu.operand2.resolve_operand(bytes, modrm, displacement, &mut size, peek);
 
         Ok(Instruction {
             decode_idx,

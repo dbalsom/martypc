@@ -163,6 +163,13 @@ impl Intel808x {
             }
             cycles_mc!(self, 0x1e2, MC_RTN); // Return delay cycle from EALOAD
         }
+        
+        else if DECODE[self.i.decode_idx].gdr.has_modrm() {
+            // The EA calculated by the modrm will not be loaded (ie, we proceed to EADONE instead of EALOAD).
+            if self.i.operand1_type.is_address() || self.i.operand2_type.is_address() {
+                cycles_mc!(self, 0x1e3, MC_RTN);
+            } 
+        }
     }
 
 

@@ -31,60 +31,17 @@
 */
 
 use crate::{
-    cpu_808x::{biu::*, decode::DECODE, *},
+    cpu_808x::{decode::DECODE, *},
     cpu_common::{
         CpuAddress,
         CpuException,
         ExecutionResult,
         Mnemonic,
-        OperandType,
         QueueOp,
-        Segment,
         OPCODE_PREFIX_REP1,
         OPCODE_PREFIX_REP2,
     },
-    cycles,
-    cycles_mc,
-    util,
 };
-/*
-macro_rules! read_operand {
-    ($self:ident, $op: expr) => {
-        {
-            if $self.i.opcode & 0x01 == 0 {
-                $self.op1_8 = $self.read_operand8($op, $self.i.segment_override).unwrap()
-            }
-            else {
-                $self.op1_16 = $self.read_operand16($op, $self.i.segment_override).unwrap()
-            }
-        }
-    };
-}
-
-macro_rules! write_operand {
-    ($self:ident, $op: expr, $value: expr, $flag: expr ) => {
-        {
-            if $self.i.opcode & 0x01 == 0 {
-                $self.write_operand8($op, $self.i.segment_override, $self.result_8, $flag)
-            }
-            else {
-                $self.write_operand16($op, $self.i.segment_override, $self.result_16, $flag)
-            }
-        }
-    };
-}
-
-macro_rules! alu_op {
-    ($self:ident) => {
-        if $self.i.opcode & 0x01 == 0 {
-            $self.result_8 = $self.math_op8($self.i.mnemonic, $self.op1_8, $self.op2_8)
-        }
-        else {
-            $self.result_16 = $self.math_op16($self.i.mnemonic, $self.op1_16, $self.op2_16)
-        }
-    }
-}
-*/
 
 // rustfmt chokes on large match statements.
 #[rustfmt::skip]
@@ -128,7 +85,6 @@ impl Intel808x {
             self.nx = false;
         }
         else if self.last_queue_op == QueueOp::First {
-            self.mc_pc = MC_NONE;
             self.cycle();
         }
 
@@ -136,7 +92,7 @@ impl Intel808x {
         self.mc_pc = DECODE[self.i.decode_idx].mc;
 
         // Check for REPx prefixes
-        if (self.i.prefixes & (OPCODE_PREFIX_REP1 | OPCODE_PREFIX_REP2) != 0) {
+        if self.i.prefixes & (OPCODE_PREFIX_REP1 | OPCODE_PREFIX_REP2) != 0 {
             // A REPx prefix was set
             let mut invalid_rep = false;
 
@@ -171,23 +127,25 @@ impl Intel808x {
         // Reset the wait cycle after STI
         self.interrupt_inhibit = false;
 
+        // `Off-the-rails` detection. Try to determine when we are executing garbage code.
         // Keep a tally of how many Opcode 0x00's we've executed in a row. Too many likely means we've run
         // off the rails into uninitialized memory, whereupon we halt so that we can check things out.
 
         // This is now optional in the configuration file, as some test applications like acid88 won't work
         // otherwise.
-        if self.i.opcode == 0x00 {
-            self.opcode0_counter = self.opcode0_counter.wrapping_add(1);
-
-            if self.off_rails_detection && (self.opcode0_counter > 5) {
-                // Halt permanently by clearing interrupt flag
-                self.clear_flag(Flag::Interrupt);
-                self.halted = true;
-                self.instruction_reentrant = true;
+        if self.off_rails_detection {
+            if self.i.opcode == 0x00 {
+                self.opcode0_counter = self.opcode0_counter.wrapping_add(1);
+                if self.opcode0_counter > 5 {
+                    // Halt permanently by clearing interrupt flag
+                    self.clear_flag(Flag::Interrupt);
+                    self.halted = true;
+                    self.instruction_reentrant = true;
+                }
             }
-        }
-        else {
-            self.opcode0_counter = 0;
+            else {
+                self.opcode0_counter = 0;
+            }
         }
         
         // Execute the instruction microcode

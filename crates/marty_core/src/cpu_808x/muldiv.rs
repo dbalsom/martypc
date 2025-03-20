@@ -755,7 +755,7 @@ impl Intel808x {
     #[allow(dead_code)]
     #[allow(unused_assignments)]
     /// 8-bit division operation
-    /// This isn't pretty, but it is a more-or-less direct translation of the microcode routine.
+    /// A more-or-less direct translation of the microcode routine.
     /// Accepts 16-bit dividend, 8-bit divisor. Returns 8 bit quotient and remainder, or Err() on
     /// divide error so that an int0 can be triggered.
     pub fn div8(&mut self, dividend: u16, divisor: u8, signed: bool, mut negate: bool) -> Result<(u8, u8), bool> {
@@ -763,8 +763,7 @@ impl Intel808x {
         let mut tmpc: u16 = dividend & 0xFF; // 161
         let mut tmpb = divisor as u16; // 162
         let mut sigma16: u16;
-        let sigma_next16: u16;
-        let mut carry: bool;
+        let carry: bool;
 
         cycles_mc!(self, 0x160, 0x161, 0x162);
 
@@ -807,7 +806,7 @@ impl Intel808x {
         let mut tmpc: u16 = (dividend & 0xFFFF) as u16; // 169
         let mut tmpb = divisor; // 16a
         let mut sigma16: u16;
-        let mut carry: bool;
+        let carry: bool;
 
         cycles_mc!(self, 0x168, 0x169, 0x16a);
 

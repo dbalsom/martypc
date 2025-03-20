@@ -149,7 +149,7 @@ impl Intel808x {
             // instruction.
             // This of course now requires decoding each instruction twice, but cycle tracing is pretty slow
             // anyway.
-            if self.trace_mode == TraceMode::CycleText {
+            if self.trace_enabled && self.trace_mode == TraceMode::CycleText {
                 self.bus.seek(instruction_address as usize);
                 self.i = match Intel808x::decode(&mut self.bus, true) {
                     Ok(i) => i,

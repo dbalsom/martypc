@@ -563,7 +563,7 @@ impl Machine {
         let mut cpu;
 
         cfg_if::cfg_if! {
-            if #[cfg(feature =  "cpu_validator")] {
+            if #[cfg(feature="cpu_validator")] {
                 cpu = match CpuBuilder::new()
                     .with_cpu_type(resolved_cpu_type)
                     .with_trace_mode(trace_mode)
@@ -647,11 +647,11 @@ impl Machine {
             if #[cfg(feature = "sound")] {
                 let install_result = cpu
                     .bus_mut()
-                    .install_devices(&machine_desc, &machine_config, &sound_config, core_config.get_terminal_port());
+                    .install_devices(&machine_desc, &machine_config, &sound_config, core_config.get_terminal_port(), core_config.get_cpu_dram_refresh_simulation());
             } else {
                 let install_result = cpu
                     .bus_mut()
-                    .install_devices(&machine_desc, &machine_config, core_config.get_terminal_port());
+                    .install_devices(&machine_desc, &machine_config, core_config.get_terminal_port(), core_config.get_cpu_dram_refresh_simulation());
             }
         }
 
@@ -998,15 +998,15 @@ impl Machine {
         );
     }
 
-    pub fn fdc(&mut self) -> &mut Option<FloppyController> {
+    pub fn fdc(&mut self) -> &mut Option<Box<FloppyController>> {
         self.cpu.bus_mut().fdc_mut()
     }
 
-    pub fn hdc_mut(&mut self) -> &mut Option<HardDiskController> {
+    pub fn hdc_mut(&mut self) -> &mut Option<Box<HardDiskController>> {
         self.cpu.bus_mut().hdc_mut()
     }
 
-    pub fn xtide_mut(&mut self) -> &mut Option<XtIdeController> {
+    pub fn xtide_mut(&mut self) -> &mut Option<Box<XtIdeController>> {
         self.cpu.bus_mut().xtide_mut()
     }
 

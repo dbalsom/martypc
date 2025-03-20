@@ -56,7 +56,6 @@ use std::{collections::VecDeque, fmt, path::Path};
 mod addressing;
 mod alu;
 mod bcd;
-mod bitwise;
 mod biu;
 mod cpu;
 mod cycle;
@@ -268,6 +267,17 @@ impl GeneralRegister {
     }
 }
 
+pub const REGISTER8_LUT: [Register8; 8] = [
+    Register8::AL,
+    Register8::CL,
+    Register8::DL,
+    Register8::BL,
+    Register8::AH,
+    Register8::CH,
+    Register8::DH,
+    Register8::BH,
+];
+
 pub const REGISTER16_LUT: [Register16; 8] = [
     Register16::AX,
     Register16::CX,
@@ -279,7 +289,16 @@ pub const REGISTER16_LUT: [Register16; 8] = [
     Register16::DI,
 ];
 
-pub const SEGMENT_REGISTER16_LUT: [Register16; 4] = [Register16::ES, Register16::CS, Register16::SS, Register16::DS];
+pub const SREGISTER_LUT: [Register16; 8] = [
+    Register16::ES,
+    Register16::CS,
+    Register16::SS,
+    Register16::DS,
+    Register16::ES,
+    Register16::CS,
+    Register16::SS,
+    Register16::DS,
+];
 
 #[derive(Debug, Copy, Clone, PartialEq)]
 pub enum CpuState {
@@ -485,15 +504,6 @@ pub struct Intel808x {
     iret_count: u64,
     interrupt_inhibit: bool,
 
-    // Operand and result state
-    /*
-    op1_8: u8,
-    op1_16: u16,
-    op2_8: u8,
-    op2_16: u16,
-    result_8: u8,
-    result_16: u16,
-    */
     // BIU stuff
     ready: bool, // READY line from 8284
     queue: InstructionQueue,
@@ -1210,7 +1220,20 @@ impl Intel808x {
         };
     }
 
-    pub fn set_flags(&mut self, mut flags: u16) {
+    /// Set the specified bitmask of flags, unchecked.
+    #[inline(always)]
+    fn set_flags(&mut self, flags: u16) {
+        self.flags |= flags;
+    }
+
+    /// Clear the specified bitmask of flags, unchecked.
+    #[inline(always)]
+    fn clear_flags(&mut self, flags: u16) {
+        self.flags &= !flags;
+    }
+
+    #[inline]
+    pub fn set_flags_safe(&mut self, mut flags: u16) {
         // Clear reserved 0 flags
         flags &= CPU_FLAGS_RESERVED_OFF;
         // Set reserved 1 flags

@@ -103,7 +103,7 @@ impl Intel808x {
         flags &= !CPU_FLAG_TRAP;
         flags &= !CPU_FLAG_INT_ENABLE;
 
-        self.set_flags(flags);
+        self.set_flags_safe(flags);
 
         //self.set_flags(0);
     }

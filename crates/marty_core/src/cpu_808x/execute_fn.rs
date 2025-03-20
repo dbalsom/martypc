@@ -29,7 +29,7 @@
 
 use crate::{
     cpu_808x::{
-        microcode::{MC_CORR, MC_JUMP},
+        microcode::MC_JUMP,
         muldiv::{Cord, Corx},
         CallStackEntry,
         Flag,
@@ -39,7 +39,7 @@ use crate::{
         IO_READ_BREAKPOINT,
         IO_WRITE_BREAKPOINT,
         REGISTER16_LUT,
-        SEGMENT_REGISTER16_LUT,
+        SREGISTER_LUT,
     },
     cpu_common::{
         alu::Xi,
@@ -277,7 +277,7 @@ impl Intel808x {
     /// PUSH sreg
     pub fn mc_02c(&mut self) {
         cycles_mc!(self, 0x02c, 0x02d, 0x02e);
-        let reg = SEGMENT_REGISTER16_LUT[((self.i.opcode >> 3) & 0x03) as usize];
+        let reg = SREGISTER_LUT[((self.i.opcode >> 3) & 0x03) as usize];
         self.push_register16(reg, ReadWriteFlag::RNI);
     }
 

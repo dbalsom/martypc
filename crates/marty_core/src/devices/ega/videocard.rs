@@ -292,7 +292,7 @@ impl VideoCard for EGACard {
         map
     }
 
-    fn run(&mut self, time: DeviceRunTimeUnit, pic: &mut Option<Pic>, _cpumem: Option<&[u8]>) {
+    fn run(&mut self, time: DeviceRunTimeUnit, pic: &mut Option<Box<Pic>>, _cpumem: Option<&[u8]>) {
         if let DeviceRunTimeUnit::Microseconds(us) = time {
             // Select the appropriate timings based on the current clocking mode
             let ticks = match self.misc_output_register.clock_select() {

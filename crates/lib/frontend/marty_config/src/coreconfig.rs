@@ -93,6 +93,9 @@ impl CoreConfig for ConfigFileParams {
     fn get_validator_baud(&self) -> Option<u32> {
         self.validator.baud_rate
     }
+    fn get_cpu_dram_refresh_simulation(&self) -> bool {
+        self.machine.cpu.dram_refresh_simulation.unwrap_or(true)
+    }
     fn get_cpu_trace_mode(&self) -> Option<TraceMode> {
         self.machine.cpu.trace_mode
     }

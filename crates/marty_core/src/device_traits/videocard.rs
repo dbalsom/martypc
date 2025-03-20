@@ -431,7 +431,7 @@ pub trait VideoCard {
     fn get_videocard_string_state(&self) -> HashMap<String, Vec<(String, VideoCardStateEntry)>>;
 
     /// Runs the video card device for the specified period of time
-    fn run(&mut self, time: DeviceRunTimeUnit, pic: &mut Option<Pic>, cpumem: Option<&[u8]>);
+    fn run(&mut self, time: DeviceRunTimeUnit, pic: &mut Option<Box<Pic>>, cpumem: Option<&[u8]>);
 
     /// Runs the video card for the specified number of video clocks
     /// Used for debugging by advancing the video card independent of machine state.

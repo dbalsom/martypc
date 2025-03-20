@@ -1992,7 +1992,7 @@ impl TGACard {
 
     /// Execute a hires or lowres character clock as appropriate.
     #[inline]
-    pub fn tick_char(&mut self, pic: &mut Option<Pic>, cpumem: &[u8]) {
+    pub fn tick_char(&mut self, pic: &mut Option<Box<Pic>>, cpumem: &[u8]) {
         match self.clock_divisor {
             1 => self.tick_hchar(cpumem),
             2 => self.tick_mchar(cpumem),

@@ -612,11 +612,8 @@ pub static DECODE: [InstTemplate; TOTAL_OPS_LEN] = {
 impl NecVx0 {
     #[rustfmt::skip]
     pub fn decode(bytes: &mut impl ByteQueue, peek: bool) -> Result<Instruction, Box<dyn std::error::Error>> {
-
         let mut operand1_type: OperandType = OperandType::NoOperand;
         let mut operand2_type: OperandType = OperandType::NoOperand;
-        let mut operand1_size: OperandSize = OperandSize::NoOperand;
-        let mut operand2_size: OperandSize = OperandSize::NoOperand;
         
         let mut opcode = bytes.q_read_u8(QueueType::First, QueueReader::Biu);
         let mut size: u32 = 1;
@@ -886,10 +883,10 @@ impl NecVx0 {
         };
 
         if !matches!(op_lu.operand1, OperandTemplate::NoTemplate) {
-            (operand1_type, operand1_size) = match_op(op_lu.operand1);
+            (operand1_type, _) = match_op(op_lu.operand1);
         }
         if !matches!(op_lu.operand2, OperandTemplate::NoTemplate) {
-            (operand2_type, operand2_size) = match_op(op_lu.operand2);
+            (operand2_type, _) = match_op(op_lu.operand2);
         }
 
         // Hacks for irregular-operand instructions

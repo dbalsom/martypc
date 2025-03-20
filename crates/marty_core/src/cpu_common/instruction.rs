@@ -42,7 +42,6 @@ use crate::{
         operands::OperandSize,
         AddressingMode,
         Mnemonic,
-        Mnemonic::{AAD, ENTER, IN, INT, OUT},
         OperandType,
         Register16,
         Register8,

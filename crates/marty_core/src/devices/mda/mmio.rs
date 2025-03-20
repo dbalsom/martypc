@@ -46,21 +46,19 @@ impl MemoryMappedDevice for MDACard {
         waits
     }
 
-    fn get_write_wait(&mut self, _address: usize, cycles: u32) -> u32 {
-        // Look up wait states given the last ticked clock cycle + elapsed cycles
-        // passed in.
-        let phase = (self.cycles + cycles as u64 + 1) as usize & (0x0F as usize);
-        let waits = WAIT_TABLE[phase];
-
-        trace!(self, "WRITE_U8 (T2): PHASE: {:02X}, WAITS: {}", phase, waits);
-        waits
-    }
-
     fn mmio_read_u8(&mut self, address: usize, _cycles: u32, _cpumem: Option<&[u8]>) -> (u8, u32) {
         let a_offset = address & self.mem_mask;
 
         trace!(self, "READ_U8: {:04X}:{:02X}", a_offset, self.mem[a_offset]);
         (self.mem[a_offset], 0)
+    }
+
+    fn mmio_read_u16(&mut self, address: usize, _cycles: u32, cpumem: Option<&[u8]>) -> (u16, u32) {
+        let (lo_byte, wait1) = MemoryMappedDevice::mmio_read_u8(self, address, 0, cpumem);
+        let (ho_byte, wait2) = MemoryMappedDevice::mmio_read_u8(self, address + 1, 0, cpumem);
+
+        log::warn!("Unsupported 16 bit read from VRAM");
+        return ((ho_byte as u16) << 8 | lo_byte as u16, wait1 + wait2);
     }
 
     fn mmio_peek_u8(&self, address: usize, _cpumem: Option<&[u8]>) -> u8 {
@@ -75,20 +73,22 @@ impl MemoryMappedDevice for MDACard {
         (self.mem[a_offset] as u16) << 8 | self.mem[(a_offset + 1) & self.mem_mask] as u16
     }
 
+    fn get_write_wait(&mut self, _address: usize, cycles: u32) -> u32 {
+        // Look up wait states given the last ticked clock cycle + elapsed cycles
+        // passed in.
+        let phase = (self.cycles + cycles as u64 + 1) as usize & (0x0F as usize);
+        let waits = WAIT_TABLE[phase];
+
+        trace!(self, "WRITE_U8 (T2): PHASE: {:02X}, WAITS: {}", phase, waits);
+        waits
+    }
+
     fn mmio_write_u8(&mut self, address: usize, byte: u8, _cycles: u32, _cpumem: Option<&mut [u8]>) -> u32 {
         let a_offset = address & self.mem_mask;
 
         self.mem[a_offset] = byte;
         trace!(self, "WRITE_U8: {:04X}:{:02X}", a_offset, byte);
         0
-    }
-
-    fn mmio_read_u16(&mut self, address: usize, _cycles: u32, cpumem: Option<&[u8]>) -> (u16, u32) {
-        let (lo_byte, wait1) = MemoryMappedDevice::mmio_read_u8(self, address, 0, cpumem);
-        let (ho_byte, wait2) = MemoryMappedDevice::mmio_read_u8(self, address + 1, 0, cpumem);
-
-        log::warn!("Unsupported 16 bit read from VRAM");
-        return ((ho_byte as u16) << 8 | lo_byte as u16, wait1 + wait2);
     }
 
     fn mmio_write_u16(&mut self, _address: usize, _data: u16, _cycles: u32, _cpumem: Option<&mut [u8]>) -> u32 {
