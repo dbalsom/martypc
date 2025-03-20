@@ -27,14 +27,14 @@
 
 /// Definition of [Emulator] struct and related types.
 use crate::{JoystickData, MouseData};
-use std::{cell::RefCell, ffi::OsString, rc::Rc};
+use std::ffi::OsString;
 
 use crate::{Counter, KeyboardData};
 use anyhow::Error;
 use marty_config::ConfigFileParams;
 use marty_core::{
-    cpu_common::{Cpu, CpuOption},
-    machine::{ExecutionControl, Machine, MachineEvent, MachineState},
+    cpu_common::CpuOption,
+    machine::{Machine, MachineEvent, MachineState},
     vhd::VirtualHardDisk,
 };
 use marty_frontend_common::{
@@ -231,7 +231,7 @@ impl Emulator {
         for vhd_name in vhd_names.into_iter().filter_map(|x| x) {
             let vhd_os_name: OsString = vhd_name.into();
             match self.vhd_manager.load_vhd_file_by_name(config_drive_idx, &vhd_os_name) {
-                Ok((vhd_file, vhd_idx)) => match VirtualHardDisk::parse(Box::new(vhd_file), false) {
+                Ok((vhd_file, _vhd_idx)) => match VirtualHardDisk::parse(Box::new(vhd_file), false) {
                     Ok(vhd) => {
                         if let Some(hdc) = self.machine.hdc_mut() {
                             match hdc.set_vhd(config_drive_idx, vhd) {
