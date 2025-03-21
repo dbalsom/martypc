@@ -487,7 +487,8 @@ pub struct Machine {
     turbo_bit: bool,
     turbo_button: bool,
     cpu_factor: ClockFactor,
-    next_cpu_factor: ClockFactor,
+    cpu_clock_period: f64,
+    next_cpu_factor: Option<ClockFactor>,
     cpu_cycles: u64,
     cpu_instructions: u64,
     system_ticks: u64,
@@ -598,51 +599,7 @@ impl Machine {
         // Set bus options from core configuration now that CPU has created the bus
         cpu.bus_mut().set_options(core_config.get_title_hacks());
 
-        // Set up Ringbuffer for PIT channel #2 sampling for PC speaker
-        /*        
-        let speaker_buf_size = ((pit::PIT_MHZ * 1_000_000.0) * (BUFFER_MS as f64 / 1000.0)) as usize;
-        let speaker_buf: RingBuffer<u8> = RingBuffer::new(speaker_buf_size);
-        let (speaker_buf_producer, speaker_buf_consumer) = speaker_buf.split();
-
-        let mut sample_rate = 44000;
-        if let Some(sound_player) = &sound_player {
-            sample_rate = sound_player.sample_rate();
-        }
-        let pit_ticks_per_sample = (pit::PIT_MHZ * 1_000_000.0) / sample_rate as f64;
-
-        let pit_data = PitData {
-            buffer_consumer: speaker_buf_consumer,
-            ticks_per_sample: pit_ticks_per_sample,
-            samples_produced: 0,
-            log_file: pit_output_file_option,
-            logging_triggered: false,
-            fractional_part: pit_ticks_per_sample.fract(),
-            next_sample_size: pit_ticks_per_sample.trunc() as usize,
-        };
-
-        // open a file to write the sound to
-        //let mut debug_snd_file = File::create("output.pcm").expect("Couldn't open debug pcm file");
-
-        log::trace!(
-            "Sample rate: {} pit_ticks_per_sample: {}",
-            sample_rate,
-            pit_ticks_per_sample
-        );
-        
-         */
-
-        // Create the video trace file, if specified
-        //let video_trace = TraceLogger::None;
-        /*
-        if let Some(trace_filename) = &config.get_video_trace_file() {
-            video_trace = TraceLogger::from_filename(&trace_filename);
-        }
-        */
-
-        //let have_audio = core_config.get_audio_enabled() && sound_config.enabled;
-
         // Install devices
-
         cfg_if::cfg_if! {
             if #[cfg(feature = "sound")] {
                 let install_result = cpu
@@ -729,7 +686,7 @@ impl Machine {
             patch_map = rom_manifest.patch_map();
         }
 
-        Ok(Machine {
+        let mut machine = Machine {
             machine_type,
             machine_desc,
             machine_config,
@@ -750,7 +707,8 @@ impl Machine {
             turbo_bit: false,
             turbo_button: false,
             cpu_factor,
-            next_cpu_factor: cpu_factor,
+            next_cpu_factor: None,
+            cpu_clock_period: 0.0,
             cpu_cycles: 0,
             cpu_instructions: 0,
             system_ticks: 0,
@@ -762,7 +720,10 @@ impl Machine {
             disassembly: Disassembly::default(),
             disassembly_listing: BTreeMap::new(),
             disassembly_listing_file,
-        })
+        };
+
+        machine.set_cpu_factor(cpu_factor);
+        Ok(machine)
     }
 
     #[cfg(feature = "sound")]
@@ -987,14 +948,14 @@ impl Machine {
     pub fn set_turbo_mode(&mut self, state: bool) {
         self.turbo_button = state;
         if state {
-            self.next_cpu_factor = self.machine_desc.cpu_turbo_factor;
+            self.next_cpu_factor = Some(self.machine_desc.cpu_turbo_factor);
         } else {
-            self.next_cpu_factor = self.machine_desc.cpu_factor;
+            self.next_cpu_factor = Some(self.machine_desc.cpu_factor);
         }
         log::debug!(
             "Set turbo button to: {} New cpu factor is {:?}",
             state,
-            self.next_cpu_factor
+            self.next_cpu_factor.unwrap()
         );
     }
 
@@ -1223,16 +1184,20 @@ impl Machine {
         self.reload_pending = state;
     }
 
-    #[inline]
-    /// Convert a count of CPU cycles to microseconds based on the current CPU clock
-    /// divisor and system crystal speed.
-    fn cpu_cycles_to_us(&self, cycles: u32) -> f64 {
+    fn set_cpu_factor(&mut self, new_factor: ClockFactor) {
+        self.cpu_factor = new_factor;
         let mhz = match self.cpu_factor {
             ClockFactor::Divisor(n) => self.machine_desc.system_crystal / (n as f64),
             ClockFactor::Multiplier(n) => self.machine_desc.system_crystal * (n as f64),
         };
+        self.cpu_clock_period = 1.0 / mhz
+    }
 
-        1.0 / mhz * cycles as f64
+    #[inline]
+    /// Convert a count of CPU cycles to microseconds based on the current CPU clock
+    /// divisor and system crystal speed.
+    fn cpu_cycles_to_us(&self, cycles: u32) -> f64 {
+        cycles as f64 * self.cpu_clock_period
     }
 
     #[inline]
@@ -1270,9 +1235,10 @@ impl Machine {
         let mut instr_count = 0;
 
         // Update cpu factor.
-        let new_factor = self.next_cpu_factor;
-        self.cpu_factor = new_factor;
-        self.bus_mut().set_cpu_factor(new_factor);
+        if let Some(new_factor) = self.next_cpu_factor {
+            self.set_cpu_factor(new_factor);
+            self.bus_mut().set_cpu_factor(new_factor);
+        }
 
         // Don't run this iteration if we're pending a ROM reload
         if self.reload_pending {
@@ -1381,11 +1347,6 @@ impl Machine {
         while cycles_elapsed < cycle_target_adj {
             let fake_cycles: u32 = 7;
             let mut cpu_cycles;
-
-            // if self.cpu.is_error() {
-            //     break;
-            // }
-
             let flat_address = self.cpu.flat_ip_disassembly();
 
             // Match checkpoints. The first check is against a simple bit flag so that we do not 
@@ -1411,19 +1372,6 @@ impl Machine {
                     self.bus_mut().install_patch(&mut patch);
                     self.rom_manifest.patches[cp] = patch;
                 }
-
-                /*
-                if let Some(cp) = self.rom_manager.get_checkpoint(flat_address) {
-                    log::debug!("ROM CHECKPOINT: [{:05X}] {}", flat_address, cp);
-                }
-
-                // Check for patching checkpoint & install patches
-                if self.rom_manager.is_patch_checkpoint(flat_address) {
-                    log::debug!("ROM PATCH CHECKPOINT: [{:05X}] Installing ROM patches...", flat_address);
-                    self.rom_manager.install_patch(self.cpu.bus_mut(), flat_address);
-                }
-
-                 */
             }
 
             let mut step_over_target = None;
@@ -1486,12 +1434,6 @@ impl Machine {
             }
 
             skip_breakpoint = false;
-
-            // This is not reliable. A rotate by CL can take a long time.
-            // if cpu_cycles > 200 {
-            //     log::warn!("CPU instruction took too long! Cycles: {}", cpu_cycles);
-            // }
-
             instr_count += 1;
             cycles_elapsed += cpu_cycles;
             self.cpu_cycles += cpu_cycles as u64;
@@ -1638,12 +1580,6 @@ impl Machine {
             }
         }
 
-        // Sample the PIT channel #2 for sound
-        /*        
-        while self.speaker_buf_producer.len() >= self.pit_data.next_sample_size {
-            self.pit_buf_to_sound_buf();
-        }*/
-
         // Query interrupt line after device processing.
         let intr = self.cpu.bus_mut().pic_mut().as_ref().unwrap().query_interrupt_line();
 
@@ -1693,11 +1629,11 @@ impl Machine {
                                 // Turbo bit has changed.
                                 match turbo_bit {
                                     true => {
-                                        self.next_cpu_factor = self.machine_desc.cpu_turbo_factor;
+                                        self.next_cpu_factor = Some(self.machine_desc.cpu_turbo_factor);
                                         device_events.push(DeviceEvent::TurboToggled(true));
                                     }
                                     false => {
-                                        self.next_cpu_factor = self.machine_desc.cpu_factor;
+                                        self.next_cpu_factor = Some(self.machine_desc.cpu_factor);
                                         device_events.push(DeviceEvent::TurboToggled(false));
                                     }
                                 }
