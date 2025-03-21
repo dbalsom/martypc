@@ -92,4 +92,43 @@ impl VideoCardDispatch {
             VideoCardDispatch::Vga(vga) => MemoryMappedDevice::mmio_read_u8(vga, address, ticks, cpumem),
         }
     }
+
+    pub fn mmio_read_u16(&mut self, address: usize, ticks: u32, cpumem: Option<&[u8]>) -> (u16, u32) {
+        match self {
+            VideoCardDispatch::None => (0, 0),
+            VideoCardDispatch::Mda(mda) => MemoryMappedDevice::mmio_read_u16(mda, address, ticks, cpumem),
+            VideoCardDispatch::Cga(cga) => MemoryMappedDevice::mmio_read_u16(cga, address, ticks, cpumem),
+            VideoCardDispatch::Tga(tga) => MemoryMappedDevice::mmio_read_u16(tga, address, ticks, cpumem),
+            #[cfg(feature = "ega")]
+            VideoCardDispatch::Ega(ega) => MemoryMappedDevice::mmio_read_u16(ega, address, ticks, cpumem),
+            #[cfg(feature = "vga")]
+            VideoCardDispatch::Vga(vga) => MemoryMappedDevice::mmio_read_u16(vga, address, ticks, cpumem),
+        }
+    }
+
+    pub fn mmio_write_u8(&mut self, address: usize, data: u8, ticks: u32, cpumem: Option<&mut [u8]>) -> u32 {
+        match self {
+            VideoCardDispatch::None => 0,
+            VideoCardDispatch::Mda(mda) => MemoryMappedDevice::mmio_write_u8(mda, address, data, ticks, cpumem),
+            VideoCardDispatch::Cga(cga) => MemoryMappedDevice::mmio_write_u8(cga, address, data, ticks, cpumem),
+            VideoCardDispatch::Tga(tga) => MemoryMappedDevice::mmio_write_u8(tga, address, data, ticks, cpumem),
+            #[cfg(feature = "ega")]
+            VideoCardDispatch::Ega(ega) => MemoryMappedDevice::mmio_write_u8(ega, address, data, ticks, cpumem),
+            #[cfg(feature = "vga")]
+            VideoCardDispatch::Vga(vga) => MemoryMappedDevice::mmio_write_u8(vga, address, data, ticks, cpumem),
+        }
+    }
+
+    pub fn mmio_write_u16(&mut self, address: usize, data: u16, ticks: u32, cpumem: Option<&mut [u8]>) -> u32 {
+        match self {
+            VideoCardDispatch::None => 0,
+            VideoCardDispatch::Mda(mda) => MemoryMappedDevice::mmio_write_u16(mda, address, data, ticks, cpumem),
+            VideoCardDispatch::Cga(cga) => MemoryMappedDevice::mmio_write_u16(cga, address, data, ticks, cpumem),
+            VideoCardDispatch::Tga(tga) => MemoryMappedDevice::mmio_write_u16(tga, address, data, ticks, cpumem),
+            #[cfg(feature = "ega")]
+            VideoCardDispatch::Ega(ega) => MemoryMappedDevice::mmio_write_u16(ega, address, data, ticks, cpumem),
+            #[cfg(feature = "vga")]
+            VideoCardDispatch::Vga(vga) => MemoryMappedDevice::mmio_write_u16(vga, address, data, ticks, cpumem),
+        }
+    }
 }
