@@ -86,16 +86,16 @@ pub enum ChannelMode {
 impl From<u8> for ChannelMode {
     fn from(orig: u8) -> Self {
         match orig {
-            0x0 => return ChannelMode::InterruptOnTerminalCount,
-            0x1 => return ChannelMode::HardwareRetriggerableOneShot,
-            0x2 => return ChannelMode::RateGenerator,
-            0x3 => return ChannelMode::SquareWaveGenerator,
-            0x4 => return ChannelMode::SoftwareTriggeredStrobe,
-            0x5 => return ChannelMode::HardwareTriggeredStrobe,
-            0x6 => return ChannelMode::RateGenerator,
-            0x7 => return ChannelMode::SquareWaveGenerator,
+            0x0 => ChannelMode::InterruptOnTerminalCount,
+            0x1 => ChannelMode::HardwareRetriggerableOneShot,
+            0x2 => ChannelMode::RateGenerator,
+            0x3 => ChannelMode::SquareWaveGenerator,
+            0x4 => ChannelMode::SoftwareTriggeredStrobe,
+            0x5 => ChannelMode::HardwareTriggeredStrobe,
+            0x6 => ChannelMode::RateGenerator,
+            0x7 => ChannelMode::SquareWaveGenerator,
             _ => panic!("From<u8> for ChannelMode: Invalid u8 value"),
-        };
+        }
     }
 }
 
