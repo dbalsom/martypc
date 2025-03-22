@@ -100,6 +100,12 @@ pub enum KbControllerType {
 }
 
 #[derive(Copy, Clone, Debug)]
+pub enum SoundChipType {
+    Sn76489,
+    Ncr8496,
+}
+
+#[derive(Copy, Clone, Debug)]
 pub enum PicType {
     Single,
     Chained,
@@ -348,12 +354,13 @@ pub struct MachineDescriptor {
     pub kb_controller: KbControllerType,
     pub pit_type: PitType,
     pub pic_type: PicType,
-    pub dma_type: Option<DmaType>,     // Not all machines have DMA (PCJr)
-    pub onboard_serial: Option<u16>,   // Whether the machine has an onboard serial port - and if so, the port base.
+    pub dma_type: Option<DmaType>, // Not all machines have DMA (PCJr)
+    pub onboard_sound: Option<(SoundChipType, u16, ClockFactor)>,
+    pub onboard_serial: Option<u16>, // Whether the machine has an onboard serial port - and if so, the port base.
     pub onboard_parallel: Option<u16>, // Whether the machine has an onboard parallel port - and if so, the port base.
-    pub allow_expansion_video: bool,   // Whether the machine allows for expansion video cards.
-    pub pcjr_cart_slot: bool,          // Does the system have PCJr cartridge slots?
-    pub game_port: Option<u16>,        // Does the system have an onboard game port, and if so, at what address?
+    pub allow_expansion_video: bool, // Whether the machine allows for expansion video cards.
+    pub pcjr_cart_slot: bool,        // Does the system have PCJr cartridge slots?
+    pub game_port: Option<u16>,      // Does the system have an onboard game port, and if so, at what address?
 }
 
 impl Default for MachineDescriptor {
@@ -377,6 +384,7 @@ impl Default for MachineDescriptor {
             pit_type: PitType::Model8253,
             pic_type: PicType::Single,
             dma_type: Some(DmaType::Single),
+            onboard_sound: None,
             onboard_serial: None,
             onboard_parallel: None,
             allow_expansion_video: true,
@@ -454,6 +462,7 @@ lazy_static! {
                     dma_type: None,
                     pcjr_cart_slot: true, // PCJr has cartridge slots!
                     game_port: Some(GAME_PORT_DEFAULT_IO),
+                    onboard_sound: Some((SoundChipType::Sn76489, 0xC0, ClockFactor::Divisor(4))),
                     ..Default::default()
                 },
             ),
@@ -482,6 +491,7 @@ lazy_static! {
                     allow_expansion_video: false,
                     pcjr_cart_slot: false,
                     game_port: Some(GAME_PORT_DEFAULT_IO),
+                    onboard_sound: Some((SoundChipType::Sn76489, 0xC0, ClockFactor::Divisor(4))),
                     ..Default::default()
                 },
             )

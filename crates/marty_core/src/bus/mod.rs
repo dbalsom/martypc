@@ -97,6 +97,7 @@ use crate::machine_types::SoundType;
 #[cfg(feature = "sound")]
 use crate::sound::{SoundOutputConfig, SoundSourceDescriptor};
 
+use crate::{devices::sn76489::Sn76489, machine_config::SoundChipType};
 use anyhow::Error;
 #[cfg(feature = "sound")]
 use crossbeam_channel::unbounded;
@@ -307,6 +308,7 @@ pub enum IoDeviceType {
     GamePort,
     Video(VideoCardId),
     Sound,
+    Sn76489,
 }
 
 pub enum IoDeviceDispatch {
@@ -439,6 +441,7 @@ pub struct BusInterface {
     #[cfg(feature = "opl")]
     adlib: Option<AdLibCard>,
     sound_source: Option<DSoundSource>,
+    sn76489: Option<Sn76489>,
 
     videocards:    FxHashMap<VideoCardId, VideoCardDispatch>,
     videocard_ids: Vec<VideoCardId>,
@@ -523,6 +526,7 @@ impl Default for BusInterface {
             #[cfg(feature = "opl")]
             adlib: None,
             sound_source: None,
+            sn76489: None,
             videocards: FxHashMap::default(),
             videocard_ids: Vec::new(),
 
@@ -1127,6 +1131,29 @@ impl BusInterface {
             self.game_port = Some(game_port);
         }
 
+        // Create sound chips
+        #[cfg(feature = "sound")]
+        if let Some((chip, io_base, factor)) = machine_desc.onboard_sound {
+            match chip {
+                SoundChipType::Sn76489 => {
+                    // Create an Sn76489.
+                    let (s, r) = unbounded();
+                    installed_devices.sound_sources.push(SoundSourceDescriptor::new(
+                        "SN76489 Sound Chip",
+                        sound_config.sample_rate,
+                        1,
+                        r,
+                    ));
+                    let sn76489 = Sn76489::new(io_base, machine_desc.system_crystal, factor, s);
+                    add_io_device!(self, sn76489, IoDeviceType::Sn76489);
+                    self.sn76489 = Some(sn76489);
+                }
+                _ => {
+                    log::warn!("Sound chip {:?} not implemented", chip);
+                }
+            }
+        }
+
         // Create sound cards
         #[cfg(feature = "sound")]
         for (_i, card) in machine_config.sound.iter().enumerate() {
@@ -1144,7 +1171,6 @@ impl BusInterface {
                         r,
                     ));
                     let adlib = AdLibCard::new(card.io_base, 48000, s);
-                    println!(">>> TESTING ADLIB <<<");
                     add_io_device!(self, adlib, IoDeviceType::Sound);
                     self.adlib = Some(adlib);
                 }
@@ -1443,6 +1469,11 @@ impl BusInterface {
         // Run the Sound Source
         if let Some(sound_source) = &mut self.sound_source {
             sound_source.run(us);
+        }
+
+        // Run the SN76489 sound chip
+        if let Some(sn76489) = &mut self.sn76489 {
+            sn76489.run(DeviceRunTimeUnit::SystemTicks(sys_ticks));
         }
 
         // Run all video cards

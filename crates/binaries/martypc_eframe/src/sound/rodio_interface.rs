@@ -30,6 +30,7 @@
 
 */
 const MAX_BUFFER_SIZE: u32 = 100;
+const DEFAULT_VOLUME: f32 = 0.25;
 
 use anyhow::{anyhow, Error};
 use crossbeam_channel::Receiver;
@@ -254,7 +255,9 @@ impl SoundInterface {
 
     pub fn add_source(&mut self, source: &SoundSourceDescriptor) -> Result<(), Error> {
         let stream_handle = self.stream_handle.as_ref().unwrap();
-        let sink = Sink::try_new(stream_handle)?;
+        let mut sink = Sink::try_new(stream_handle)?;
+        let volume = DEFAULT_VOLUME;
+        sink.set_volume(volume);
 
         self.sources.push(SoundSource {
             name: source.name.clone(),
@@ -267,7 +270,7 @@ impl SoundInterface {
             first_buffer: None,
             sink,
             muted: false,
-            volume: 1.0,
+            volume,
             last_block_received: Instant::now(),
             controller: Default::default(),
         });

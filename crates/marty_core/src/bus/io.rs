@@ -306,6 +306,13 @@ impl BusInterface {
                     #[cfg(feature = "opl")]
                     if let Some(adlib) = &mut self.adlib {
                         IoDevice::write_u8(adlib, port, data, None, NULL_DELTA_US, analyzer);
+                        resolved = true;
+                    }
+                }
+                IoDeviceType::Sn76489 => {
+                    if let Some(sn76489) = &mut self.sn76489 {
+                        sn76489.write_u8(port, data, None, NULL_DELTA_US, analyzer);
+                        resolved = true;
                     }
                 }
                 _ => {}
