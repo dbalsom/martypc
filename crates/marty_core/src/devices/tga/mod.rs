@@ -1488,7 +1488,7 @@ impl TGACard {
                     0b10_0010 => DisplayMode::Mode8LowResGraphics16,
                     _ => {
                         trace!(self, "Invalid display mode selected: {:02X}", self.mode_byte & 0x1F);
-                        log::warn!("CGA: Invalid display mode selected: {:02X}", self.mode_byte & 0x1F);
+                        log::warn!("TGA: Invalid display mode selected: {:02X}", self.mode_byte & 0x1F);
                         DisplayMode::Mode3TextCo80
                     }
                 };
@@ -1554,10 +1554,10 @@ impl TGACard {
                     // Low-res text mode (40x25)
                     (2, TGA_MCHAR_CLOCK as u32, 0x0F, 0x1F, VideoModeSize::Mode16k)
                 }
-                (false, false, true) => {
-                    log::warn!("Invalid graphics mode configured. Clock divisor guessed (2)");
-                    (2, TGA_MCHAR_CLOCK as u32, 0x0F, 0x1F, VideoModeSize::Mode16k)
-                }
+                // (false, false, true) => {
+                //     log::warn!("Invalid graphics mode configured. Clock divisor guessed (2)");
+                //     (2, TGA_MCHAR_CLOCK as u32, 0x0F, 0x1F, VideoModeSize::Mode16k)
+                // }
                 (false, true, false) => {
                     // High-res text mode (80x25)
                     (1, TGA_HCHAR_CLOCK as u32, 0x07, 0x0F, VideoModeSize::Mode16k)
@@ -1570,7 +1570,7 @@ impl TGACard {
                     // Medium-res 320x200, 2bpp graphics.
                     (2, TGA_MCHAR_CLOCK as u32, 0x0F, 0x1F, VideoModeSize::Mode16k)
                 }
-                (true, false, true) => {
+                (_, false, true) => {
                     // Low-res 160x200, 4bpp graphics.
                     (4, TGA_LCHAR_CLOCK as u32, 0x1F, 0x3F, VideoModeSize::Mode16k)
                 }
@@ -2548,7 +2548,12 @@ impl TGACard {
                     }
                 }
                 _ => {
-                    if (self.clock_divisor == 1) || self.mode_4bpp {
+                    if self.clock_divisor == 4 {
+                        // The tandy has a longer syncwidth in 160x200 mode than pcjr.
+                        // Adjust it to match the pcjr so that our aperture lines up.
+                        5
+                    }
+                    else if (self.clock_divisor == 1) || self.mode_4bpp {
                         std::cmp::min(10, self.crtc_sync_width)
                     }
                     else {

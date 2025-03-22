@@ -89,7 +89,7 @@ pub const TGA_HIRES_GLYPH_TABLE: [[u64; 9]; 256] = {
 
 /// Constant initializer to unpack the CGA font by glyph into
 /// 9 rows of 64 bit values. These values are then AND'd with
-/// 64 bit color constants and then OR'd together to produce
+/// 64-bit color constants and then OR'd together to produce
 /// the final 64 bit drawing value for drawing by one entire
 /// character row.
 ///
