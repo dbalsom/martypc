@@ -416,7 +416,9 @@ impl Channel {
         (is_dirty, is_counting, self.ticked)
     }
 
+    /// Check for and service a change in the output state of the channel.
     pub fn change_output_state(&mut self, state: bool, bus: &mut BusInterface) {
+        // Only update if state has changed
         if *self.output != state {
             self.output.set(state);
             // Do things specific to channel #
@@ -817,18 +819,21 @@ impl Channel {
                             }
                             else {
                                 // On the 8253, odd values are allowed into the counting element. An odd value
-                                // triggers special behavior of output is high.
-                                if *self.output && (*self.counting_element & 1) != 0 {
-                                    // If output is high and count is odd, decrement by one. The counting element will be even
-                                    // from now on until counter is reloaded.
-                                    self.count();
-                                }
-                                else if !*self.output && (*self.counting_element & 1) != 0 {
-                                    // If output is low and count is odd, decrement by three. The counting element will be even
-                                    // from now on until counter is reloaded.
-                                    self.count3();
+                                // triggers special behavior depending on the output status.
+                                if (*self.counting_element & 1) != 0 {
+                                    if *self.output {
+                                        // If output is high and count is odd, decrement by one. The counting element will be even
+                                        // from now on until counter is reloaded.
+                                        self.count();
+                                    }
+                                    else {
+                                        // If output is low and count is odd, decrement by three. The counting element will be even
+                                        // from now on until counter is reloaded.
+                                        self.count3();
+                                    }
                                 }
                                 else {
+                                    // Count is even, so we can safely decrement by two.
                                     self.count2();
                                 }
 
