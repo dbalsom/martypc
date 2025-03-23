@@ -141,7 +141,7 @@ impl VideoCard for TGACard {
         Some((self.beam_x, self.beam_y))
     }
 
-    /// Tick the CGA the specified number of video clock cycles.
+    /// Tick the TGA the specified number of video clock cycles.
     fn debug_tick(&mut self, ticks: u32, cpumem: Option<&[u8]>) {
         match self.clock_mode {
             ClockingMode::Character | ClockingMode::Dynamic => {
@@ -301,11 +301,11 @@ impl VideoCard for TGACard {
 
         let mut general_vec = Vec::new();
 
-        general_vec.push((format!("Adapter Type:"), VideoCardStateEntry::String(format!("{:?} ({:?})", self.get_video_type(), self.subtype))));
-        general_vec.push((format!("Display Mode:"), VideoCardStateEntry::String(format!("{:?}", self.get_display_mode()))));
-        general_vec.push((format!("Video Enable:"), VideoCardStateEntry::String(format!("{:?}", self.mode_enable))));
-        general_vec.push((format!("Clock Divisor:"), VideoCardStateEntry::String(format!("{}", self.clock_divisor))));
-        general_vec.push((format!("Frame Count:"), VideoCardStateEntry::String(format!("{}", self.frame_count))));
+        general_vec.push(("Adapter Type:".to_string(), VideoCardStateEntry::String(format!("{:?} ({:?})", self.get_video_type(), self.subtype))));
+        general_vec.push(("Display Mode:".to_string(), VideoCardStateEntry::String(format!("{:?}", self.get_display_mode()))));
+        general_vec.push(("Video Enable:".to_string(), VideoCardStateEntry::String(format!("{:?}", self.mode_enable))));
+        general_vec.push(("Clock Divisor:".to_string(), VideoCardStateEntry::String(format!("{}", self.clock_divisor))));
+        general_vec.push(("Frame Count:".to_string(), VideoCardStateEntry::String(format!("{}", self.frame_count))));
         map.insert("General".to_string(), general_vec);
 
         let mut crtc_vec = Vec::new();
@@ -330,33 +330,33 @@ impl VideoCard for TGACard {
         map.insert("CRTC".to_string(), crtc_vec);
 
         let mut internal_vec = Vec::new();
-
+        internal_vec.push((String::from("char_clock"), VideoCardStateEntry::String(format!("{}", self.char_clock))));
         internal_vec.push((String::from("status"), VideoCardStateEntry::String(format!("{:08b}", self.calc_status_register()))));
         internal_vec.push((String::from("mode"), VideoCardStateEntry::String(format!("{:08b}", self.mode_byte))));
-        internal_vec.push((format!("hcc_c0:"), VideoCardStateEntry::String(format!("{}", self.hcc_c0))));
-        internal_vec.push((format!("vlc_c9:"), VideoCardStateEntry::String(format!("{}", self.vlc_c9))));
-        internal_vec.push((format!("vcc_c4:"), VideoCardStateEntry::String(format!("{}", self.vcc_c4))));
-        internal_vec.push((format!("scanline:"), VideoCardStateEntry::String(format!("{}", self.scanline))));
-        internal_vec.push((format!("vsc_c3h:"), VideoCardStateEntry::String(format!("{}", self.vsc_c3h))));
-        internal_vec.push((format!("hsc_c3l:"), VideoCardStateEntry::String(format!("{}", self.hsc_c3l))));
-        internal_vec.push((format!("vtac_c5:"), VideoCardStateEntry::String(format!("{}", self.vtac_c5))));
-        internal_vec.push((format!("vma:"), VideoCardStateEntry::String(format!("{:04X}", self.vma))));
-        internal_vec.push((format!("vma':"), VideoCardStateEntry::String(format!("{:04X}", self.vma_t))));
-        internal_vec.push((format!("vmws:"), VideoCardStateEntry::String(format!("{}", self.vmws))));
-        internal_vec.push((format!("rba:"), VideoCardStateEntry::String(format!("{:04X}", self.rba))));
-        internal_vec.push((format!("de:"), VideoCardStateEntry::String(format!("{}", self.in_display_area))));
-        internal_vec.push((format!("crtc_hblank:"), VideoCardStateEntry::String(format!("{}", self.in_crtc_hblank))));
-        internal_vec.push((format!("crtc_vblank:"), VideoCardStateEntry::String(format!("{}", self.in_crtc_vblank))));
-        internal_vec.push((format!("beam_x:"), VideoCardStateEntry::String(format!("{}", self.beam_x))));
-        internal_vec.push((format!("beam_y:"), VideoCardStateEntry::String(format!("{}", self.beam_y))));
-        internal_vec.push((format!("border:"), VideoCardStateEntry::String(format!("{}", self.hborder))));
-        internal_vec.push((format!("s_reads:"), VideoCardStateEntry::String(format!("{}", self.status_reads))));
-        internal_vec.push((format!("missed_hsyncs:"), VideoCardStateEntry::String(format!("{}", self.missed_hsyncs))));
-        internal_vec.push((format!("vsync_cycles:"), VideoCardStateEntry::String(format!("{}", self.cycles_per_vsync))));
-        internal_vec.push((format!("cur_screen_cycles:"), VideoCardStateEntry::String(format!("{}", self.cur_screen_cycles))));
-        internal_vec.push((format!("phase:"), VideoCardStateEntry::String(format!("{}", self.cycles & 0x0F))));
-        internal_vec.push((format!("cursor attr:"), VideoCardStateEntry::String(format!("{:02b}", self.cursor_attr))));
-        internal_vec.push((format!("snowflakes:"), VideoCardStateEntry::String(format!("{}", self.snow_count))));
+        internal_vec.push((String::from("hcc_c0:"), VideoCardStateEntry::String(format!("{}", self.hcc_c0))));
+        internal_vec.push((String::from("vlc_c9:"), VideoCardStateEntry::String(format!("{}", self.vlc_c9))));
+        internal_vec.push((String::from("vcc_c4:"), VideoCardStateEntry::String(format!("{}", self.vcc_c4))));
+        internal_vec.push((String::from("scanline:"), VideoCardStateEntry::String(format!("{}", self.scanline))));
+        internal_vec.push((String::from("vsc_c3h:"), VideoCardStateEntry::String(format!("{}", self.vsc_c3h))));
+        internal_vec.push((String::from("hsc_c3l:"), VideoCardStateEntry::String(format!("{}", self.hsc_c3l))));
+        internal_vec.push((String::from("vtac_c5:"), VideoCardStateEntry::String(format!("{}", self.vtac_c5))));
+        internal_vec.push((String::from("vma:"), VideoCardStateEntry::String(format!("{:04X}", self.vma))));
+        internal_vec.push((String::from("vma':"), VideoCardStateEntry::String(format!("{:04X}", self.vma_t))));
+        internal_vec.push((String::from("vmws:"), VideoCardStateEntry::String(format!("{}", self.vmws))));
+        internal_vec.push((String::from("rba:"), VideoCardStateEntry::String(format!("{:04X}", self.rba))));
+        internal_vec.push((String::from("de:"), VideoCardStateEntry::String(format!("{}", self.in_display_area))));
+        internal_vec.push((String::from("crtc_hblank:"), VideoCardStateEntry::String(format!("{}", self.in_crtc_hblank))));
+        internal_vec.push((String::from("crtc_vblank:"), VideoCardStateEntry::String(format!("{}", self.in_crtc_vblank))));
+        internal_vec.push((String::from("beam_x:"), VideoCardStateEntry::String(format!("{}", self.beam_x))));
+        internal_vec.push((String::from("beam_y:"), VideoCardStateEntry::String(format!("{}", self.beam_y))));
+        internal_vec.push((String::from("border:"), VideoCardStateEntry::String(format!("{}", self.hborder))));
+        internal_vec.push((String::from("s_reads:"), VideoCardStateEntry::String(format!("{}", self.status_reads))));
+        internal_vec.push((String::from("missed_hsyncs:"), VideoCardStateEntry::String(format!("{}", self.missed_hsyncs))));
+        internal_vec.push((String::from("vsync_cycles:"), VideoCardStateEntry::String(format!("{}", self.cycles_per_vsync))));
+        internal_vec.push((String::from("cur_screen_cycles:"), VideoCardStateEntry::String(format!("{}", self.cur_screen_cycles))));
+        internal_vec.push((String::from("phase:"), VideoCardStateEntry::String(format!("{}", self.cycles & 0x0F))));
+        internal_vec.push((String::from("cursor attr:"), VideoCardStateEntry::String(format!("{:02b}", self.cursor_attr))));
+        internal_vec.push((String::from("snowflakes:"), VideoCardStateEntry::String(format!("{}", self.snow_count))));
         map.insert("Internal".to_string(), internal_vec);
 
         let mut video_vec = Vec::new();
@@ -406,20 +406,14 @@ impl VideoCard for TGACard {
     }
 
     fn run(&mut self, time: DeviceRunTimeUnit, pic: &mut Option<Box<Pic>>, cpumem: Option<&[u8]>) {
-        /*
-        if self.scanline > 1000 {
-            log::error!("run(): scanlines way too high: {}", self.scanline);
-        }
-        */
-
         let mut hdots = if let DeviceRunTimeUnit::SystemTicks(ticks) = time {
             ticks
         } else {
-            panic!("CGA requires SystemTicks time unit.")
+            panic!("TGA requires SystemTicks time unit.")
         };
 
         if hdots == 0 {
-            panic!("CGA run() with 0 ticks");
+            panic!("TGA run() with 0 ticks");
         }
 
         if self.ticks_advanced > hdots {
@@ -471,7 +465,7 @@ impl VideoCard for TGACard {
 
         match self.clock_mode {
             ClockingMode::Character | ClockingMode::Dynamic => {
-                if self.cycles & self.char_clock_mask as u64 != 0 {
+                if self.cycles & self.char_clock_mask != 0 {
                     log::warn!(
                         "out of phase with char clock: {} mask: {:02X} \
                         cycles: {} out of phase: {} \
@@ -494,12 +488,6 @@ impl VideoCard for TGACard {
                         log::error!("excessive clocks in accumulator: {}", self.clocks_accum);
                     }
 
-                    /*
-                    if self.debug_counter >= 3638297 {
-                        log::error!("Break on me");
-                    }
-                    */
-
                     // Handle blinking. TODO: Move blink handling into tick().
                     self.blink_accum_clocks += self.char_clock;
                     if self.blink_accum_clocks > CGA_CURSOR_BLINK_RATE_CLOCKS {
@@ -512,15 +500,6 @@ impl VideoCard for TGACard {
                     let old_char_clock = self.char_clock;
 
                     self.tick_char(pic, cpumem.unwrap());
-
-
-                    /*
-                    if self.debug_counter >= 3638298 {
-                        log::error!("{} < {}", self.clocks_accum, self.char_clock);
-                    }
-                    self.debug_counter += 1;
-                    */
-
                     self.clocks_accum = self.clocks_accum.saturating_sub(old_char_clock);
                 }
             }

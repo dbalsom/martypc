@@ -162,6 +162,32 @@ impl BusInterface {
         byte_val
     }
 
+    pub fn io_write_wait(&mut self, port: u16, cycles: u32) -> u32 {
+        let mut write_waits = None;
+
+        // Currently only the SN76489 sound chip has a custom write wait time.
+        if let Some(device_id) = self.io_map.get(&port) {
+            match device_id {
+                IoDeviceType::Sn76489 => {
+                    if let Some(sn76489) = &mut self.sn76489 {
+                        write_waits = Some(IoDevice::write_wait(sn76489, port, NULL_DELTA_US));
+                    }
+                }
+                _ => {}
+            }
+        }
+
+        if let Some(write_waits) = write_waits {
+            let cpu_waits = self.system_ticks_to_cpu_cycles(write_waits);
+            log::debug!("io_write_wait: {} wait states for port {:04X}", cpu_waits, port);
+            cpu_waits
+        }
+        else {
+            // Default of 1 wait state for all IO
+            1
+        }
+    }
+
     /// Write an 8-bit value to an IO port.
     ///
     /// We provide the elapsed cycle count for the current instruction. This allows a device

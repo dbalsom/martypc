@@ -73,7 +73,7 @@ impl IoDevice for TGACard {
         else {
             match port {
                 CGA_MODE_CONTROL_REGISTER => {
-                    log::error!("CGA: Read from Mode control register!");
+                    log::error!("TGA: Read from Mode control register!");
                     0
                 }
                 CGA_STATUS_REGISTER => self.handle_status_register_read(),

@@ -80,6 +80,32 @@ impl VideoCardDispatch {
         }
     }
 
+    pub fn mmio_read_wait(&mut self, address: usize, system_ticks: u32) -> u32 {
+        match self {
+            VideoCardDispatch::None => 0,
+            VideoCardDispatch::Mda(mda) => mda.get_read_wait(address, system_ticks),
+            VideoCardDispatch::Cga(cga) => cga.get_read_wait(address, system_ticks),
+            VideoCardDispatch::Tga(tga) => tga.get_read_wait(address, system_ticks),
+            #[cfg(feature = "ega")]
+            VideoCardDispatch::Ega(ega) => ega.get_read_wait(address, system_ticks),
+            #[cfg(feature = "vga")]
+            VideoCardDispatch::Vga(vga) => vga.get_read_wait(address, system_ticks),
+        }
+    }
+
+    pub fn mmio_write_wait(&mut self, address: usize, system_ticks: u32) -> u32 {
+        match self {
+            VideoCardDispatch::None => 0,
+            VideoCardDispatch::Mda(mda) => mda.get_write_wait(address, system_ticks),
+            VideoCardDispatch::Cga(cga) => cga.get_write_wait(address, system_ticks),
+            VideoCardDispatch::Tga(tga) => tga.get_write_wait(address, system_ticks),
+            #[cfg(feature = "ega")]
+            VideoCardDispatch::Ega(ega) => ega.get_write_wait(address, system_ticks),
+            #[cfg(feature = "vga")]
+            VideoCardDispatch::Vga(vga) => vga.get_write_wait(address, system_ticks),
+        }
+    }
+
     pub fn mmio_read_u8(&mut self, address: usize, ticks: u32, cpumem: Option<&[u8]>) -> (u8, u32) {
         match self {
             VideoCardDispatch::None => (NO_IO_BYTE, 0),

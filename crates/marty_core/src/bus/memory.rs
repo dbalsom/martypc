@@ -174,31 +174,8 @@ impl BusInterface {
                 match self.mmio_map_fast[address >> MMIO_MAP_SHIFT] {
                     MmioDeviceType::Video(vid) => {
                         if let Some(card_dispatch) = self.videocards.get_mut(&vid) {
-                            match card_dispatch {
-                                VideoCardDispatch::Mda(mda) => {
-                                    let syswait = mda.get_read_wait(address, system_ticks);
-                                    return Ok(self.system_ticks_to_cpu_cycles(syswait));
-                                }
-                                VideoCardDispatch::Cga(cga) => {
-                                    let syswait = cga.get_read_wait(address, system_ticks);
-                                    return Ok(self.system_ticks_to_cpu_cycles(syswait));
-                                }
-                                VideoCardDispatch::Tga(tga) => {
-                                    let syswait = tga.get_read_wait(address, system_ticks);
-                                    return Ok(self.system_ticks_to_cpu_cycles(syswait));
-                                }
-                                #[cfg(feature = "ega")]
-                                VideoCardDispatch::Ega(ega) => {
-                                    let syswait = ega.get_read_wait(address, system_ticks);
-                                    return Ok(self.system_ticks_to_cpu_cycles(syswait));
-                                }
-                                #[cfg(feature = "vga")]
-                                VideoCardDispatch::Vga(vga) => {
-                                    let syswait = vga.get_read_wait(address, system_ticks);
-                                    return Ok(self.system_ticks_to_cpu_cycles(syswait));
-                                }
-                                _ => {}
-                            }
+                            let syswait = card_dispatch.mmio_read_wait(address, system_ticks);
+                            return Ok(self.system_ticks_to_cpu_cycles(syswait));
                         }
                     }
                     MmioDeviceType::Cart => {
@@ -227,31 +204,8 @@ impl BusInterface {
                 match self.mmio_map_fast[address >> MMIO_MAP_SHIFT] {
                     MmioDeviceType::Video(vid) => {
                         if let Some(card_dispatch) = self.videocards.get_mut(&vid) {
-                            match card_dispatch {
-                                VideoCardDispatch::Mda(mda) => {
-                                    let syswait = mda.get_write_wait(address, system_ticks);
-                                    return Ok(self.system_ticks_to_cpu_cycles(syswait));
-                                }
-                                VideoCardDispatch::Cga(cga) => {
-                                    let syswait = cga.get_write_wait(address, system_ticks);
-                                    return Ok(self.system_ticks_to_cpu_cycles(syswait));
-                                }
-                                VideoCardDispatch::Tga(tga) => {
-                                    let syswait = tga.get_write_wait(address, system_ticks);
-                                    return Ok(self.system_ticks_to_cpu_cycles(syswait));
-                                }
-                                #[cfg(feature = "ega")]
-                                VideoCardDispatch::Ega(ega) => {
-                                    let syswait = ega.get_write_wait(address, system_ticks);
-                                    return Ok(self.system_ticks_to_cpu_cycles(syswait));
-                                }
-                                #[cfg(feature = "vga")]
-                                VideoCardDispatch::Vga(vga) => {
-                                    let syswait = vga.get_write_wait(address, system_ticks);
-                                    return Ok(self.system_ticks_to_cpu_cycles(syswait));
-                                }
-                                _ => {}
-                            }
+                            let syswait = card_dispatch.mmio_write_wait(address, system_ticks);
+                            return Ok(self.system_ticks_to_cpu_cycles(syswait));
                         }
                     }
                     MmioDeviceType::Cart => {

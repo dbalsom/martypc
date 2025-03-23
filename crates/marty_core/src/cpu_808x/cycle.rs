@@ -174,7 +174,10 @@ impl Intel808x {
                                 self.io_wait_states = 1;
                             }
                             BusStatus::IoWrite => {
-                                self.io_wait_states = 1;
+                                //self.io_wait_states = 1;
+                                self.io_wait_states = self
+                                    .bus
+                                    .io_write_wait((self.address_latch & 0xFFFF) as u16, self.instr_elapsed);
                             }
                             _ => {}
                         }

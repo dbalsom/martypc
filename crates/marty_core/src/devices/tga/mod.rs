@@ -1337,7 +1337,7 @@ impl TGACard {
     }
 
     /// Return true if the pending mode change defined by mode_byte would change from text mode to
-    /// graphics mode, or vice-versa
+    /// graphics mode, or vice versa
     fn is_deferred_mode_change(&self, new_mode_byte: u8) -> bool {
         // In general, we can determine whether we are in graphics mode or text mode by
         // checking the graphics bit, however, the graphics bit is allowed to coexist with the
@@ -1433,7 +1433,7 @@ impl TGACard {
                     0b00_0110 => DisplayMode::Mode5LowResAltPalette,
                     0b01_0110 => DisplayMode::Mode6HiResGraphics,
                     0b01_0010 => DisplayMode::Mode6HiResGraphics,
-                    0b10_0010 => DisplayMode::Mode8LowResGraphics16,
+                    0b10_0010 => DisplayMode::Mode8TGALowResGraphics,
                     _ => {
                         trace!(
                             self,
@@ -1485,7 +1485,8 @@ impl TGACard {
                     0b00_0110 => DisplayMode::Mode5LowResAltPalette,
                     0b01_0110 => DisplayMode::Mode6HiResGraphics,
                     0b01_0010 => DisplayMode::Mode6HiResGraphics,
-                    0b10_0010 => DisplayMode::Mode8LowResGraphics16,
+                    0b10_0010 => DisplayMode::Mode8TGALowResGraphics,
+                    0b10_0001 => DisplayMode::Mode9TGAMedResGraphics,
                     _ => {
                         trace!(self, "Invalid display mode selected: {:02X}", self.mode_byte & 0x1F);
                         log::warn!("TGA: Invalid display mode selected: {:02X}", self.mode_byte & 0x1F);
@@ -1580,7 +1581,7 @@ impl TGACard {
                 }
                 (true, true, true) => {
                     // Medium-res 320x200, 4bpp graphics.
-                    (2, TGA_MCHAR_CLOCK as u32, 0x0F, 0x1F, VideoModeSize::Mode32k)
+                    (1, TGA_HCHAR_CLOCK as u32, 0x07, 0x0F, VideoModeSize::Mode32k)
                 }
             };
 
@@ -1737,20 +1738,8 @@ impl TGACard {
     fn set_char_addr(&mut self, cpu_mem: &[u8]) {
         // Address from CRTC is masked by 0x1FFF by the CGA card (bit 13 ignored) and doubled.
         let addr = (self.vma & CGA_TEXT_MODE_WRAP) << 1;
-
-        // Generate snow if we are in hires mode, have a dirty bus, and HCLOCK is odd
-        if self.enable_snow && self.mode_hires_txt && self.dirty_snow && (self.cycles & 0b1000 != 0) {
-            self.cur_char = self.snow_char;
-            self.cur_attr = self.last_bus_value;
-            self.dirty_snow = false;
-            self.snow_count += 1;
-        }
-        else {
-            // No snow
-            self.cur_char = self.crt_mem(cpu_mem)[addr];
-            self.cur_attr = self.crt_mem(cpu_mem)[addr + 1];
-        }
-
+        self.cur_char = self.crt_mem(cpu_mem)[addr];
+        self.cur_attr = self.crt_mem(cpu_mem)[addr + 1];
         self.cur_fg = self.cur_attr & 0x0F;
 
         // If blinking is enabled, the bg attribute is only 3 bits and only low-intensity colors
@@ -1764,10 +1753,6 @@ impl TGACard {
             self.cur_bg = self.cur_attr >> 4;
             self.cur_blink = false;
         }
-
-        self.dirty_snow = false;
-
-        //(self.cur_fg, self.cur_bg) = ATTRIBUTE_TABLE[self.cur_attr as usize];
     }
 
     /// Get the 64-bit value representing the specified row of the specified character
@@ -2052,6 +2037,9 @@ impl TGACard {
                     //self.draw_solid_hchar(CGA_HBLANK_DEBUG_COLOR);
                     self.draw_gfx_mode_2bpp_hchar(cpumem);
                 }
+                else if self.mode_4bpp {
+                    self.draw_gfx_mode_4bpp_char(cpumem);
+                }
                 else {
                     self.draw_solid_hchar(CGA_VBLANK_DEBUG_COLOR);
                     //self.draw_gfx_mode_2bpp_mchar(cpumem);
@@ -2157,7 +2145,7 @@ impl TGACard {
                     self.draw_gfx_mode_hchar_1bpp(cpumem);
                 }
                 else if self.mode_4bpp {
-                    self.draw_gfx_mode_4bpp_mchar(cpumem);
+                    self.draw_gfx_mode_4bpp_char(cpumem);
                 }
                 else {
                     self.draw_gfx_mode_2bpp_mchar(cpumem);
@@ -2166,7 +2154,7 @@ impl TGACard {
             else if self.in_crtc_hblank {
                 // Draw hblank in debug color
                 if self.debug_draw && self.mode_4bpp {
-                    self.draw_solid_4bpp_mchar(CGA_HBLANK_DEBUG_COLOR);
+                    self.draw_solid_4bpp_char(CGA_HBLANK_DEBUG_COLOR);
                 }
                 else if self.debug_draw {
                     self.draw_solid_mchar(CGA_HBLANK_DEBUG_COLOR);
@@ -2175,7 +2163,7 @@ impl TGACard {
             else if self.in_crtc_vblank {
                 // Draw vblank in debug color
                 if self.debug_draw && self.mode_4bpp {
-                    self.draw_solid_4bpp_mchar(CGA_HBLANK_DEBUG_COLOR);
+                    self.draw_solid_4bpp_char(CGA_HBLANK_DEBUG_COLOR);
                 }
                 else if self.debug_draw {
                     self.draw_solid_mchar(CGA_VBLANK_DEBUG_COLOR);
@@ -2184,7 +2172,7 @@ impl TGACard {
             else if self.vborder | self.hborder {
                 // Draw overscan
                 if self.mode_4bpp {
-                    self.draw_solid_4bpp_mchar(self.cc_overscan_color);
+                    self.draw_solid_4bpp_char(self.cc_overscan_color);
                 }
                 else {
                     self.draw_solid_mchar(self.cc_overscan_color);

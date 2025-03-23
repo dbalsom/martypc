@@ -351,15 +351,43 @@ impl IoDeviceStats {
 }
 
 pub trait IoDevice {
-    fn read_u8(&mut self, port: u16, delta: DeviceRunTimeUnit) -> u8;
+    /// Read a byte from the specified port, given a delta time that may be used to 'catch up'
+    /// the device state, if timing is critical. The default implementation returns NO_IO_BYTE (0xFF).
+    fn read_u8(&mut self, _port: u16, _delta: DeviceRunTimeUnit) -> u8 {
+        NO_IO_BYTE
+    }
+
+    /// Write a byte to the specified port, given a delta time that may be used to 'catch up'
+    /// the device state, if timing is critical. A mutable reference to the BusInterface is provided
+    /// if the device needs to perform any bus operations on write.
+    /// The default implementation does nothing.
     fn write_u8(
         &mut self,
-        port: u16,
-        data: u8,
-        bus: Option<&mut BusInterface>,
-        delta: DeviceRunTimeUnit,
-        analyzer: Option<&mut LogicAnalyzer>,
-    );
+        _port: u16,
+        _data: u8,
+        _bus: Option<&mut BusInterface>,
+        _delta: DeviceRunTimeUnit,
+        _analyzer: Option<&mut LogicAnalyzer>,
+    ) {
+        // Default implementation does nothing
+    }
+
+    /// Return the number of waits (in system ticks) to be incurred by an immediate read from the
+    /// specified port.
+    /// The default implementation returns 0.
+    fn read_wait(&mut self, _port: u16, _delta: DeviceRunTimeUnit) -> u32 {
+        0
+    }
+
+    /// Return the number of waits (in system ticks) to be incurred by an immediate write to the
+    /// specified port.
+    /// The default implementation returns 0.
+    fn write_wait(&mut self, _port: u16, _delta: DeviceRunTimeUnit) -> u32 {
+        0
+    }
+
+    /// Return a list of ports the device should service, comprised of a vector of tuples of
+    /// (port description, port number).
     fn port_list(&self) -> Vec<(String, u16)>;
 }
 
