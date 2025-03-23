@@ -26,14 +26,7 @@
 */
 
 // Reexport trait items
-use marty_display_common::display_scaler::{
-    DisplayScaler,
-    ScalerEffect,
-    ScalerFilter,
-    ScalerGeometry,
-    ScalerMode,
-    ScalerOption,
-};
+use marty_display_common::display_scaler::{DisplayScaler, ScalerGeometry, ScalerMode, ScalerOption};
 
 pub use marty_frontend_common::color::MartyColor;
 
