@@ -89,15 +89,16 @@ use crate::devices::ega::EGACard;
 use crate::devices::vga::VGACard;
 
 #[cfg(feature = "sound")]
-use crate::device_traits::sounddevice::SoundDevice;
-#[cfg(feature = "sound")]
-use crate::devices::pit::SPEAKER_SAMPLE_RATE;
-#[cfg(feature = "sound")]
-use crate::machine_types::SoundType;
-#[cfg(feature = "sound")]
-use crate::sound::{SoundOutputConfig, SoundSourceDescriptor};
+use crate::{
+    device_traits::sounddevice::SoundDevice,
+    devices::pit::SPEAKER_SAMPLE_RATE,
+    machine_config::SoundChipType,
+    machine_types::SoundType,
+    sound::{SoundOutputConfig, SoundSourceDescriptor},
+};
 
-use crate::{devices::sn76489::Sn76489, machine_config::SoundChipType};
+use crate::devices::sn76489::Sn76489;
+
 use anyhow::Error;
 #[cfg(feature = "sound")]
 use crossbeam_channel::unbounded;
@@ -1071,14 +1072,14 @@ impl BusInterface {
         }
 
         // If we installed a parallel card, attach a sound source
-        if let Some(parallel) = &self.parallel {
+        if let Some(_parallel) = &self.parallel {
             // Add parallel port to installed devices
             #[cfg(feature = "sound")]
             {
                 // Create audio sample channel
                 let (sample_sender, sample_receiver) = unbounded();
 
-                let device_channel = parallel.device_channel();
+                let device_channel = _parallel.device_channel();
                 let sound_source = DSoundSource::new(device_channel, sample_sender);
                 installed_devices.sound_sources.push(SoundSourceDescriptor::new(
                     "Sound Source",
