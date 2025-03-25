@@ -38,7 +38,6 @@ use std::{
     time::{Duration, Instant},
 };
 
-use colored::*;
 use flate2::read::GzDecoder;
 use marty_config::{ConfigFileParams, TestMode};
 
@@ -792,7 +791,7 @@ fn run_tests(
                     cpu_cycles.len()
                 );
             }
-            else if ((test.cycles.len() as i32 - cpu_cycles.len() as i32).abs() > 1) {
+            else if (test.cycles.len() as i32 - cpu_cycles.len() as i32).abs() > 1 {
                 // If the difference is more than 1, the test has failed.
                 trace_error!(
                     log,
@@ -815,7 +814,7 @@ fn run_tests(
                 results.cycle_mismatch += 1;
                 results.failed_tests.push_back(item);
             }
-            else if ((test.cycles.len() as i32 - cpu_cycles.len() as i32).abs() == 1) {
+            else if (test.cycles.len() as i32 - cpu_cycles.len() as i32).abs() == 1 {
                 // A cycle difference of only 1 is acceptable (for now)
                 _ = writeln!(
                     log,
