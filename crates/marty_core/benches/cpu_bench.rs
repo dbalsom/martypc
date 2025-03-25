@@ -38,9 +38,8 @@ use criterion::{black_box, criterion_group, criterion_main, Criterion};
 
 use marty_core::{
     bytequeue::ByteQueue,
-    cpu_808x::{Cpu, ReadWriteFlag},
-    cpu_common::{builder::CpuBuilder, CpuType, Segment},
-    device_traits::videocard::{ClockingMode, VideoType},
+    cpu_808x::Cpu,
+    cpu_common::{builder::CpuBuilder, CpuType},
     machine_config::{MachineConfiguration, MACHINE_DESCS},
     machine_types::MachineType,
     tracelogger::TraceLogger,
@@ -129,7 +128,9 @@ pub fn cpu_bus_write_bench<'a>(c: &mut Criterion) {
     };
 
     // Install devices
-    let _ = cpu.bus_mut().install_devices(&machine_desc, &machine_config, None);
+    let _ = cpu
+        .bus_mut()
+        .install_devices(&machine_desc, &machine_config, None, false);
 
     let mut rng = rand::thread_rng();
     cpu.randomize_seed(0);
@@ -161,7 +162,9 @@ pub fn cpu_bus_read_cga_bench<'a>(c: &mut Criterion) {
     let machine_desc = MACHINE_DESCS[&MachineType::Ibm5150v256K];
 
     // Install devices
-    let _ = cpu.bus_mut().install_devices(&machine_desc, &machine_config, None);
+    let _ = cpu
+        .bus_mut()
+        .install_devices(&machine_desc, &machine_config, None, false);
 
     let mut rng = rand::thread_rng();
     cpu.randomize_seed(0);
@@ -190,7 +193,9 @@ pub fn cpu_bus_write_cga_bench<'a>(c: &mut Criterion) {
     };
 
     // Install devices
-    let _ = cpu.bus_mut().install_devices(&machine_desc, &machine_config, None);
+    let _ = cpu
+        .bus_mut()
+        .install_devices(&machine_desc, &machine_config, None, false);
 
     let mut rng = rand::thread_rng();
     cpu.randomize_seed(0);
