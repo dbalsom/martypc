@@ -52,7 +52,7 @@ pub const SN_WRITE_WAIT_TICKS: u32 = 32;
 pub const SN_MHZ: f64 = 3.579545;
 pub const SN_TICK_US: f64 = 1.0 / SN_MHZ;
 
-pub const MAX_SCOPE_SAMPLES: usize = 2048; // This may seem like a lot, but PCM bit-banging pushes it up there.
+pub const MAX_SCOPE_SAMPLES: usize = 512; // This may seem like a lot, but PCM bit-banging pushes it up there.
 
 pub const SN_NOISE_DIVIDER_1: u16 = (512 / SN_INTERNAL_DIVISOR) as u16;
 pub const SN_NOISE_DIVIDER_2: u16 = (1024 / SN_INTERNAL_DIVISOR) as u16;
@@ -320,7 +320,7 @@ impl SoundChannel {
     /// If the frequency counter reaches zero, toggle the output and reset the counter.
     /// Returns true if the output was toggled.
     #[inline(always)]
-    pub fn tick(&mut self, ticknum: u64) -> bool {
+    pub fn tick(&mut self, _ticknum: u64) -> bool {
         if self.freq_counter == 0 {
             self.freq_counter = self.period;
             self.output = !self.output;
