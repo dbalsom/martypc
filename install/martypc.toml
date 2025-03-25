@@ -288,6 +288,11 @@ breakpoint_notify = true
 # Provide a name for this window. (Required)
 name = "Main GUI"
 
+# If true, the display output of the primary card for this window will be
+# rendered in the window background by default.
+background = true
+
+# The background color of the window.
 background_color = 0x323338 # Medium gray.
 
 # If this parameter is provided, the window will be created at *at least* 
