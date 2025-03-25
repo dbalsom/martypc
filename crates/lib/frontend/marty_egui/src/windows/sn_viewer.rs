@@ -41,6 +41,9 @@ use egui::plot::{
 
 use crate::{color::*, constants::*, widgets::vu_meter::VuMeter, *};
 
+pub const COL_SPACING: f32 = 60.0;
+pub const ROW_SPACING: f32 = 4.0;
+
 #[allow(dead_code)]
 pub struct SnViewerControl {
     sn_state: SnDisplayState,
@@ -75,7 +78,7 @@ impl SnViewerControl {
                                 ui.vertical(|ui| {
                                     Grid::new(format!("sn_channel_view{}", i))
                                         .num_columns(2)
-                                        .spacing([40.0, 4.0])
+                                        .spacing([COL_SPACING, ROW_SPACING])
                                         .striped(true)
                                         .show(ui, |ui| {
                                             ui.label(RichText::new("Period").text_style(TextStyle::Monospace));
@@ -96,15 +99,21 @@ impl SnViewerControl {
                                                     .text_style(TextStyle::Monospace),
                                             );
                                             ui.end_row();
+                                        });
 
-                                            if self.vu_enabled {
+                                    if self.vu_enabled {
+                                        Grid::new(format!("sn_tone{}_vu_grid", i))
+                                            .num_columns(2)
+                                            .spacing([80.0, 4.0])
+                                            .striped(true)
+                                            .show(ui, |ui| {
                                                 ui.label(RichText::new("Volume").text_style(TextStyle::Monospace));
                                                 ui.add(VuMeter::new(16, channel.volume));
                                                 ui.end_row();
-                                            }
-                                        });
+                                            });
+                                    }
 
-                                    ui.label(format!("{} pts", channel.scope.len()));
+                                    //ui.label(format!("{} pts", channel.scope.len()));
                                     if self.scope_enabled {
                                         self.show_scope(i, &channel.scope, ui);
                                     }
@@ -125,7 +134,7 @@ impl SnViewerControl {
                             ui.vertical(|ui| {
                                 Grid::new("sn_noise_grid")
                                     .num_columns(2)
-                                    .spacing([40.0, 4.0])
+                                    .spacing([COL_SPACING, ROW_SPACING])
                                     .striped(true)
                                     .show(ui, |ui| {
                                         ui.label(RichText::new("Feedback Mode").text_style(TextStyle::Monospace));
@@ -148,15 +157,21 @@ impl SnViewerControl {
                                                 .text_style(TextStyle::Monospace),
                                         );
                                         ui.end_row();
+                                    });
 
-                                        if self.vu_enabled {
+                                if self.vu_enabled {
+                                    Grid::new("sn_noise_vu_grid")
+                                        .num_columns(2)
+                                        .spacing([COL_SPACING, ROW_SPACING])
+                                        .striped(true)
+                                        .show(ui, |ui| {
                                             ui.label(RichText::new("Volume").text_style(TextStyle::Monospace));
                                             ui.add(VuMeter::new(16, self.sn_state.noise_volume));
                                             ui.end_row();
-                                        }
-                                    });
+                                        });
+                                }
 
-                                ui.label(format!("{} pts", self.sn_state.noise_scope.len()));
+                                //ui.label(format!("{} pts", self.sn_state.noise_scope.len()));
                                 if self.scope_enabled {
                                     self.show_scope(4, &self.sn_state.noise_scope, ui);
                                 }
