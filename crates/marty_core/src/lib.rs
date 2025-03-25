@@ -1,3 +1,4 @@
+#![feature(slice_take)]
 /*
     MartyPC
     https://github.com/dbalsom/martypc
@@ -29,7 +30,6 @@
     Main emulator core
 
 */
-
 #![allow(dead_code)]
 extern crate core;
 

@@ -162,7 +162,7 @@ impl BusInterface {
         byte_val
     }
 
-    pub fn io_write_wait(&mut self, port: u16, cycles: u32) -> u32 {
+    pub fn io_write_wait(&mut self, port: u16, _cycles: u32) -> u32 {
         let mut write_waits = None;
 
         // Currently only the SN76489 sound chip has a custom write wait time.

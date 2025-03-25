@@ -122,6 +122,7 @@ pub enum GuiWindow {
     TextModeViewer,
     FdcViewer,
     FloppyViewer,
+    SnViewer,
 }
 
 #[derive(Copy, Clone, Debug)]
@@ -566,6 +567,16 @@ lazy_static! {
                 title: "Floppy Viewer",
                 menu: "Floppy Viewer",
                 width: 700.0,
+                resizable: false,
+            },
+        ),
+        (
+            GuiWindow::SnViewer,
+            WorkspaceWindowDef {
+                id: GuiWindow::SnViewer,
+                title: "SN76489 Viewer",
+                menu: "SN76489f",
+                width: 600.0,
                 resizable: false,
             },
         ),

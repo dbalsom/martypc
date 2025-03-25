@@ -31,7 +31,7 @@
 //! TI documentation typically refers to the tone channels as "tone 1", "tone 2", and "tone 3".
 //! We will reuse those names here for clarity.
 
-use crate::{channel::BidirectionalChannel, device_traits::sounddevice::AudioSample};
+use crate::device_traits::sounddevice::AudioSample;
 
 use crate::{
     bus::{BusInterface, ClockFactor, DeviceRunTimeUnit, IoDevice},
@@ -52,28 +52,93 @@ pub const SN_WRITE_WAIT_TICKS: u32 = 32;
 pub const SN_MHZ: f64 = 3.579545;
 pub const SN_TICK_US: f64 = 1.0 / SN_MHZ;
 
+pub const MAX_SCOPE_SAMPLES: usize = 2048; // This may seem like a lot, but PCM bit-banging pushes it up there.
+
 pub const SN_NOISE_DIVIDER_1: u16 = (512 / SN_INTERNAL_DIVISOR) as u16;
 pub const SN_NOISE_DIVIDER_2: u16 = (1024 / SN_INTERNAL_DIVISOR) as u16;
 pub const SN_NOISE_DIVIDER_3: u16 = (2048 / SN_INTERNAL_DIVISOR) as u16;
 
-const ATTENUATION_TABLE: [f32; 16] = [
-    1.000, // 0 dB
-    0.794, // 2 dB
-    0.630, // 4 dB
-    0.500, // 6 dB
-    0.398, // 8 dB
-    0.316, // 10 dB
-    0.251, // 12 dB
-    0.200, // 14 dB
-    0.158, // 16 dB
-    0.126, // 18 dB
-    0.100, // 20 dB
-    0.079, // 22 dB
-    0.063, // 24 dB
-    0.050, // 26 dB
-    0.040, // 28 dB
-    0.0,   // off
-];
+/// Returns a 16-element volume table for the SN76489.
+/// Each iteration reduces the volume by ~2dB, with the last slot set to 0.
+pub const fn sn76489_volume_table() -> [f32; 16] {
+    // 2 dB = 10^(-2/20) ≈ 0.7943
+    const ATTENUATION: f32 = 0.7943282;
+    let mut volumes = [0.0; 16];
+    let mut i = 0;
+    let mut vol = 1.0_f32;
+
+    while i < 15 {
+        volumes[i] = vol / 4.0; // Scale the volume to one quarter (4 channels total)
+        vol *= ATTENUATION;
+        i += 1;
+    }
+
+    // The last volume is always zero (chip's "off" level)
+    volumes[15] = 0.0;
+    volumes
+}
+
+const VOLUME_TABLE: [f32; 16] = sn76489_volume_table();
+
+#[derive(Clone, Default)]
+pub struct SnDisplayState {
+    pub tone_channels: [SnChannelDisplayState; 3],
+    pub noise_mode: u8,
+    pub noise_divider: u16,
+    pub noise_attenuation: u8,
+    pub noise_volume: f32,
+    pub noise_feedback: FeedbackType,
+    pub noise_scope: Vec<(u64, f32)>,
+}
+
+#[derive(Clone, Default)]
+pub struct SnChannelDisplayState {
+    pub period: u16,
+    pub counter: u16,
+    pub attenuation: u8,
+    pub volume: f32,
+    pub output: bool,
+    pub scope: Vec<(u64, f32)>,
+}
+
+impl From<&mut Sn76489> for SnDisplayState {
+    fn from(sn: &mut Sn76489) -> Self {
+        SnDisplayState {
+            tone_channels: [
+                SnChannelDisplayState {
+                    period: sn.tone_channels[0].period,
+                    counter: sn.tone_channels[0].freq_counter,
+                    attenuation: sn.attenuation_registers[0].attenuation as u8,
+                    volume: sn.attenuation_registers[0].get() * 4.0,
+                    output: sn.tone_channels[0].output(),
+                    scope: sn.tone_channels[0].scope.points(sn.ticks),
+                },
+                SnChannelDisplayState {
+                    period: sn.tone_channels[1].period,
+                    counter: sn.tone_channels[1].freq_counter,
+                    attenuation: sn.attenuation_registers[1].attenuation as u8,
+                    volume: sn.attenuation_registers[1].get() * 4.0,
+                    output: sn.tone_channels[1].output(),
+                    scope: sn.tone_channels[1].scope.points(sn.ticks),
+                },
+                SnChannelDisplayState {
+                    period: sn.tone_channels[2].period,
+                    counter: sn.tone_channels[2].freq_counter,
+                    attenuation: sn.attenuation_registers[2].attenuation as u8,
+                    volume: sn.attenuation_registers[2].get() * 4.0,
+                    output: sn.tone_channels[2].output(),
+                    scope: sn.tone_channels[2].scope.points(sn.ticks),
+                },
+            ],
+            noise_mode: sn.noise_channel.feedback as u8,
+            noise_divider: sn.noise_channel.shift_rate as u16,
+            noise_attenuation: sn.attenuation_registers[3].attenuation as u8,
+            noise_volume: sn.attenuation_registers[3].get() * 4.0,
+            noise_feedback: sn.noise_channel.feedback,
+            noise_scope: sn.noise_scope.points(sn.ticks),
+        }
+    }
+}
 
 pub struct Sn76489 {
     io_base: u16,
@@ -81,12 +146,14 @@ pub struct Sn76489 {
     internal_divisor: u32,
     write_wait: u32,
     sample_sender: Sender<AudioSample>,
+    ticks: u64,
     sys_tick_accumulator: u32,
     sn_tick_accumulator: f64,
     ticks_per_sample: f64,
     selected_channel: usize,
     tone_channels: [SoundChannel; 3],
     noise_channel: NoiseChannel,
+    noise_scope: Oscilloscope,
     attenuation_registers: [ChannelAttenuation; 4],
 }
 
@@ -110,7 +177,83 @@ impl ChannelAttenuation {
     }
     #[inline(always)]
     pub fn get(&self) -> f32 {
-        ATTENUATION_TABLE[self.attenuation]
+        VOLUME_TABLE[self.attenuation]
+    }
+}
+
+/// The oscilloscope struct is used to store waveform data for display purposes.
+/// It keeps track of the last tick and volume, and stores points for the waveform.
+/// The points are stored as a tuple of (tick, volume).
+/// These can be rendered in the debug gui as simulated oscilloscope display.
+struct Oscilloscope {
+    start_tick: u64,
+    last_tick: u64,
+    last_vol: f32,
+    points: Vec<(u64, f32)>,
+}
+
+impl Default for Oscilloscope {
+    fn default() -> Self {
+        Oscilloscope {
+            start_tick: 0,
+            last_tick: 0,
+            last_vol: 0.0,
+            points: Vec::with_capacity(MAX_SCOPE_SAMPLES),
+        }
+    }
+}
+
+impl Oscilloscope {
+    /// Update the scope without a change in the Y-axis.
+    pub fn update_flat(&mut self, tick: u64) {
+        if self.points.len() < MAX_SCOPE_SAMPLES {
+            if self.last_tick != tick {
+                self.points.push((tick, self.last_vol));
+                self.last_tick = tick;
+            }
+        }
+    }
+    /// Update the scope upon a change of the Y axis (output or volume change)
+    pub fn update_delta(&mut self, tick: u64, output: bool, volume: f32) {
+        if self.points.len() < MAX_SCOPE_SAMPLES {
+            if output {
+                if volume == self.last_vol {
+                    return;
+                }
+                self.points.push((tick, self.last_vol));
+                self.points.push((tick, volume));
+                self.last_vol = volume;
+            }
+            else {
+                if -volume == self.last_vol {
+                    return;
+                }
+                self.points.push((tick, self.last_vol));
+                self.points.push((tick, -volume));
+                self.last_vol = -volume;
+            }
+            self.last_tick = tick;
+        }
+    }
+
+    pub fn points(&mut self, tick: u64) -> Vec<(u64, f32)> {
+        // Emit a line from (last_tick,last_volume) level to the current tick.
+        self.update_flat(tick);
+
+        if self.points.len() > 2 {
+            // Drain the current points to return them
+            let vec = self.points.drain(0..).collect();
+            // Start the 'new' points with the last volume.
+            self.points.push((tick, self.last_vol));
+            self.start_tick = tick;
+            vec
+        }
+        else {
+            // Not enough points, just return a flat line.
+            let vec = vec![(self.start_tick, 0.0), (tick, 0.0)];
+            self.start_tick = tick;
+            vec
+        }
     }
 }
 
@@ -118,15 +261,18 @@ impl ChannelAttenuation {
 struct SoundChannel {
     idx: usize,
     running: bool,
+    period_one: bool,
     period: u16,
     freq_counter: u16,
     output: bool,
+    scope: Oscilloscope,
 }
 
 impl SoundChannel {
     pub fn new(index: usize) -> SoundChannel {
         SoundChannel {
             idx: index,
+            period: SN_COUNTER_MAX + 1,
             ..Default::default()
         }
     }
@@ -135,8 +281,12 @@ impl SoundChannel {
     pub fn set_freq_1st(&mut self, data: u8) {
         // First byte contains the lower 4 bits of frequency.
         self.period = (self.period & 0xFFF0) | (data & 0x0F) as u16;
+        self.period_one = false;
         if self.period == 0 {
             self.period = SN_COUNTER_MAX + 1;
+        }
+        else if self.period == 1 {
+            self.period_one = true;
         }
         log::debug!(
             "[{}]: Setting frequency 1st byte: {:02X}, new period {}",
@@ -150,8 +300,12 @@ impl SoundChannel {
     pub fn set_freq_2nd(&mut self, data: u8) {
         // Second byte contains the upper 6 bits of frequency.
         self.period = (self.period & 0x000F) | (((data & 0x3F) as u16) << 4);
+        self.period_one = false;
         if self.period == 0 {
             self.period = SN_COUNTER_MAX + 1;
+        }
+        else if self.period == 1 {
+            self.period_one = true;
         }
         log::debug!(
             "[{}]: Setting frequency 2st byte: {:02X}, new period {}",
@@ -166,21 +320,21 @@ impl SoundChannel {
     /// If the frequency counter reaches zero, toggle the output and reset the counter.
     /// Returns true if the output was toggled.
     #[inline(always)]
-    pub fn tick(&mut self) -> bool {
-        self.freq_counter = self.freq_counter.wrapping_sub(1);
+    pub fn tick(&mut self, ticknum: u64) -> bool {
         if self.freq_counter == 0 {
             self.freq_counter = self.period;
             self.output = !self.output;
             true
         }
         else {
+            self.freq_counter = self.freq_counter.wrapping_sub(1);
             false
         }
     }
 
     #[inline(always)]
     fn output(&self) -> bool {
-        self.running && self.output
+        self.period_one || self.running && self.output
     }
 }
 
@@ -252,19 +406,21 @@ impl NoiseChannel {
         // but some references do it before. The SN doc is ambiguous,
         // but either approach yields similar "randomness."
         let new_bit0 = self.lfsr & 0x0001;
-        self.output = new_bit0 != 0;
+        let new_output = new_bit0 != 0;
+        let delta = self.output != new_output;
 
-        self.output
+        self.output = new_output;
+        delta
     }
 
-    fn tick(&mut self, tone3_edge: bool) {
+    fn tick(&mut self, tone3_edge: bool) -> bool {
         // If shift_rate == 0, we shift the LFSR every time tone #3 output changes state.
         // 'tone3_edge' is a boolean representing that tone #3 output changed on this tick.
         if self.shift_rate == 0 {
             if tone3_edge {
-                self.shift();
+                return self.shift();
             }
-            return;
+            return false;
         }
 
         // If shift_rate != 0, we have a fixed rate => some precomputed reload
@@ -278,10 +434,11 @@ impl NoiseChannel {
         // Decrement the counter and shift the LFSR when it reaches zero.
         if self.counter > 0 {
             self.counter -= 1;
+            false
         }
         else {
             self.counter = reload;
-            self.shift();
+            self.shift()
         }
     }
 
@@ -321,6 +478,7 @@ impl Sn76489 {
             internal_divisor,
             write_wait: 0,
             sample_sender,
+            ticks: 0,
             sys_tick_accumulator: 0,
             sn_tick_accumulator: 0.0,
             ticks_per_sample,
@@ -328,6 +486,7 @@ impl Sn76489 {
             selected_channel: 0,
             tone_channels: [SoundChannel::new(0), SoundChannel::new(1), SoundChannel::new(2)],
             noise_channel: NoiseChannel::new(),
+            noise_scope: Oscilloscope::default(),
             attenuation_registers: [
                 ChannelAttenuation::new(0),
                 ChannelAttenuation::new(1),
@@ -366,10 +525,26 @@ impl Sn76489 {
     }
 
     pub fn tick(&mut self) {
-        self.tone_channels[0].tick();
-        self.tone_channels[1].tick();
+        self.ticks += 1;
+        let mut delta = false;
+        for i in 0..3 {
+            delta = self.tone_channels[i].tick(self.ticks);
+
+            // Update the scope if there was a change in output.
+            if delta {
+                let volume = self.attenuation_registers[i].get() * 4.0;
+                self.tone_channels[i]
+                    .scope
+                    .update_delta(self.ticks, self.tone_channels[i].output(), volume);
+            }
+        }
         // Pass any edge of tone #3 to the noise channel
-        self.noise_channel.tick(self.tone_channels[2].tick());
+        if self.noise_channel.tick(delta) {
+            // Noise channel output changed; update oscilloscope.
+            let volume = self.attenuation_registers[3].get() * 4.0;
+            self.noise_scope
+                .update_delta(self.ticks, self.noise_channel.output(), volume);
+        }
         // Decrement the write wait counter.
         self.write_wait = self.write_wait.saturating_sub(1);
     }
@@ -387,8 +562,11 @@ impl Sn76489 {
             sample += self.attenuation_registers[3].get()
         }
 
-        // Normalize [0..4.0] sample range to [-1.0..1.0]
-        (sample / 2.0) - 1.0
+        (sample * 2.0) - 1.0
+    }
+
+    pub fn display_state(&mut self) -> SnDisplayState {
+        SnDisplayState::from(self)
     }
 }
 

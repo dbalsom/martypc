@@ -404,4 +404,11 @@ pub fn update_egui(emu: &mut Emulator, dm: &mut EFrameDisplayManager, tm: &Times
             );
         });
     }
+
+    // Update SN chip viewer.
+    if emu.gui.is_window_open(GuiWindow::SnViewer) {
+        if let Some(sn) = emu.machine.bus_mut().sn_chip_mut() {
+            emu.gui.sn_viewer.update_state(sn.display_state());
+        }
+    }
 }

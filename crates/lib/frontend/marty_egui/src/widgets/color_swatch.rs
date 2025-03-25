@@ -33,6 +33,11 @@
 
 use egui::*;
 
+pub struct ColorSwatch {
+    pub color: Color32,
+    pub open:  bool,
+}
+
 /// Simple color swatch widget. Used for palette register display.
 pub fn color_swatch(ui: &mut Ui, color: Color32, open: bool) -> Response {
     let size = ui.spacing().interact_size;
@@ -68,4 +73,16 @@ pub fn color_swatch(ui: &mut Ui, color: Color32, open: bool) -> Response {
     }
 
     response
+}
+
+impl ColorSwatch {
+    pub fn new(color: Color32, open: bool) -> Self {
+        Self { color, open }
+    }
+}
+
+impl Widget for ColorSwatch {
+    fn ui(self, ui: &mut Ui) -> Response {
+        color_swatch(ui, self.color, self.open)
+    }
 }

@@ -1708,6 +1708,14 @@ impl BusInterface {
         &mut self.mouse
     }
 
+    pub fn sn_chip(&self) -> &Option<Sn76489> {
+        &self.sn76489
+    }
+
+    pub fn sn_chip_mut(&mut self) -> &mut Option<Sn76489> {
+        &mut self.sn76489
+    }
+
     pub fn primary_video(&self) -> Option<Box<&dyn VideoCard>> {
         if self.videocard_ids.len() > 0 {
             self.video(&self.videocard_ids[0])

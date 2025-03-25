@@ -39,7 +39,6 @@ use crate::{
         MMIO_MAP_LEN,
         MMIO_MAP_SHIFT,
     },
-    device_traits::videocard::VideoCardDispatch,
     memerror::MemError,
     syntax_token::SyntaxToken,
 };

@@ -33,6 +33,7 @@ use egui::Color32;
 
 // Window geometries
 pub const PIT_VIEWER_WIDTH: f32 = 350.0;
+pub const SN_VIEWER_WIDTH: f32 = 400.0;
 pub const DMA_VIEWER_WIDTH: f32 = 350.0;
 
 // Color definitions
