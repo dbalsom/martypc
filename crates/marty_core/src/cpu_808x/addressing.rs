@@ -31,7 +31,7 @@
 */
 
 use crate::{
-    cpu_808x::{biu::*, decode::DECODE, *},
+    cpu_808x::{decode::DECODE, *},
     cpu_common::{operands::OperandSize, AddressingMode, OperandType, Segment},
     cycles_mc,
 };
@@ -156,10 +156,10 @@ impl Intel808x {
             self.trace_comment("EALOAD");
 
             if ea_size == OperandSize::Operand16 {
-                self.ea_opr = self.biu_read_u16(segment, offset, ReadWriteFlag::Normal);
+                self.ea_opr = self.biu_read_u16(segment, offset);
             }
             else {
-                self.ea_opr = self.biu_read_u8(segment, offset, ReadWriteFlag::Normal) as u16;
+                self.ea_opr = self.biu_read_u8(segment, offset) as u16;
             }
             cycles_mc!(self, 0x1e2, MC_RTN); // Return delay cycle from EALOAD
         }
@@ -196,7 +196,7 @@ impl Intel808x {
             OperandType::Offset8(_offset8) => {
                 let offset = self.q_read_u16(QueueType::Subsequent, QueueReader::Eu);
                 let segment = seg_override.unwrap_or(Segment::DS);
-                self.biu_read_u8(segment, offset, ReadWriteFlag::Normal) as u16
+                self.biu_read_u8(segment, offset) as u16
             }
             OperandType::Register8(reg8) => match reg8 {
                 Register8::AH => self.a.h() as u16,
@@ -217,7 +217,7 @@ impl Intel808x {
             OperandType::Offset16(_offset16) => {
                 let offset = self.q_read_u16(QueueType::Subsequent, QueueReader::Eu);
                 let segment = seg_override.unwrap_or(Segment::DS);
-                self.biu_read_u16(segment, offset, ReadWriteFlag::Normal)
+                self.biu_read_u16(segment, offset)
             }
             OperandType::Register16(reg16) => match reg16 {
                 Register16::AX => self.a.x(),
@@ -269,7 +269,7 @@ impl Intel808x {
             OperandType::Offset8(_offset8) => {
                 let offset = self.q_read_u16(QueueType::Subsequent, QueueReader::Eu);
                 let segment = seg_override.unwrap_or(Segment::DS);
-                let byte = self.biu_read_u8(segment, offset, ReadWriteFlag::Normal);
+                let byte = self.biu_read_u8(segment, offset);
                 Some(byte)
             }
             OperandType::Register8(reg8) => match reg8 {
@@ -316,7 +316,7 @@ impl Intel808x {
             OperandType::Offset16(_offset16) => {
                 let offset = self.q_read_u16(QueueType::Subsequent, QueueReader::Eu);
                 let segment = seg_override.unwrap_or(Segment::DS);
-                let word = self.biu_read_u16(segment, offset, ReadWriteFlag::Normal);
+                let word = self.biu_read_u16(segment, offset);
 
                 Some(word)
             }
@@ -380,25 +380,20 @@ impl Intel808x {
         &mut self,
         operand: OperandType,
         seg_override: Option<Segment>,
-        flag: ReadWriteFlag,
     ) -> Option<(u16, u16)> {
         match operand {
             OperandType::AddressingMode(mode, _) => {
                 let offset = self.ea_opr;
                 let (segment, ea_offset) = self.calc_effective_address(mode, seg_override);
-                let segment = self.biu_read_u16(segment, ea_offset.wrapping_add(2), flag);
+                let segment = self.biu_read_u16(segment, ea_offset.wrapping_add(2));
                 Some((segment, offset))
             }
             OperandType::Register16(_) => {
                 // Illegal form of LES/LDS reg/reg uses the last calculated EA.
                 let segment_base_ds = self.i.segment_override.unwrap_or(Segment::DS);
                 let offset =
-                    self.biu_read_u16(segment_base_ds, self.last_ea, ReadWriteFlag::Normal);
-                let segment = self.biu_read_u16(
-                    segment_base_ds,
-                    self.last_ea.wrapping_add(2),
-                    ReadWriteFlag::Normal,
-                );
+                    self.biu_read_u16(segment_base_ds, self.last_ea);
+                let segment = self.biu_read_u16(segment_base_ds, self.last_ea.wrapping_add(2));
                 Some((segment, offset))
             }
             _ => None,
@@ -410,16 +405,15 @@ impl Intel808x {
         operand: OperandType,
         seg_override: Option<Segment>,
         ptr: FarPtr,
-        flag: ReadWriteFlag,
     ) -> Option<u16> {
         match operand {
             OperandType::AddressingMode(mode, _) => {
                 let (segment, offset) = self.calc_effective_address(mode, seg_override);
 
                 match ptr {
-                    FarPtr::Offset => Some(self.biu_read_u16(segment, offset, flag)),
+                    FarPtr::Offset => Some(self.biu_read_u16(segment, offset)),
                     FarPtr::Segment => {
-                        Some(self.biu_read_u16(segment, offset.wrapping_add(2), flag))
+                        Some(self.biu_read_u16(segment, offset.wrapping_add(2)))
                     }
                 }
             }
@@ -429,7 +423,7 @@ impl Intel808x {
                 match ptr {
                     FarPtr::Offset => Some(0),
                     FarPtr::Segment => {
-                        Some(self.biu_read_u16(segment_base_ds, self.last_ea.wrapping_add(2), flag))
+                        Some(self.biu_read_u16(segment_base_ds, self.last_ea.wrapping_add(2)))
                     }
                 }
             }
@@ -441,15 +435,14 @@ impl Intel808x {
         &mut self,
         operand: OperandType,
         seg_override: Option<Segment>,
-        value: u16,
-        flag: ReadWriteFlag,
+        value: u16
     ) {
         match operand {
             OperandType::Offset8(_offset8) => {
                 let offset = self.q_read_u16(QueueType::Subsequent, QueueReader::Eu);
                 self.cycle();
                 let segment = seg_override.unwrap_or(Segment::DS);
-                self.biu_write_u8(segment, offset, value as u8, flag);
+                self.biu_write_u8(segment, offset, value as u8);
             }
             OperandType::Register8(reg8) => match reg8 {
                 Register8::AH => self.set_register8(Register8::AH, value as u8),
@@ -465,7 +458,7 @@ impl Intel808x {
                 let offset = self.q_read_u16(QueueType::Subsequent, QueueReader::Eu);
                 self.cycle();
                 let segment = seg_override.unwrap_or(Segment::DS);
-                self.biu_write_u16(segment, offset, value, flag);
+                self.biu_write_u16(segment, offset, value);
             }
             OperandType::Register16(reg16) => {
                 match reg16 {
@@ -500,10 +493,10 @@ impl Intel808x {
                 let (segment, offset) = self.calc_effective_address(mode, seg_override);
                 match size {
                     OperandSize::Operand8 => {
-                        self.biu_write_u8(segment, offset, value as u8, flag);
+                        self.biu_write_u8(segment, offset, value as u8);
                     }
                     OperandSize::Operand16 => {
-                        self.biu_write_u16(segment, offset, value, flag);
+                        self.biu_write_u16(segment, offset, value);
                     }
                     _ => {}
                 }
@@ -517,15 +510,14 @@ impl Intel808x {
         &mut self,
         operand: OperandType,
         seg_override: Option<Segment>,
-        value: u8,
-        flag: ReadWriteFlag,
+        value: u8
     ) {
         match operand {
             OperandType::Offset8(_offset8) => {
                 let offset = self.q_read_u16(QueueType::Subsequent, QueueReader::Eu);
                 self.cycle();
                 let segment = seg_override.unwrap_or(Segment::DS);
-                self.biu_write_u8(segment, offset, value, flag);
+                self.biu_write_u8(segment, offset, value);
             }
             OperandType::Register8(reg8) => match reg8 {
                 Register8::AH => self.set_register8(Register8::AH, value),
@@ -539,7 +531,7 @@ impl Intel808x {
             },
             OperandType::AddressingMode(mode, _) => {
                 let (segment, offset) = self.calc_effective_address(mode, seg_override);
-                self.biu_write_u8(segment, offset, value, flag);
+                self.biu_write_u8(segment, offset, value);
             }
             _ => {}
         }
@@ -549,15 +541,14 @@ impl Intel808x {
         &mut self,
         operand: OperandType,
         seg_override: Option<Segment>,
-        value: u16,
-        flag: ReadWriteFlag,
+        value: u16
     ) {
         match operand {
             OperandType::Offset16(_offset16) => {
                 let offset = self.q_read_u16(QueueType::Subsequent, QueueReader::Eu);
                 self.cycle();
                 let segment = seg_override.unwrap_or(Segment::DS);
-                self.biu_write_u16(segment, offset, value, flag);
+                self.biu_write_u16(segment, offset, value);
             }
             OperandType::Register16(reg16) => {
                 match reg16 {
@@ -590,7 +581,7 @@ impl Intel808x {
             }
             OperandType::AddressingMode(mode, _) => {
                 let (segment, offset) = self.calc_effective_address(mode, seg_override);
-                self.biu_write_u16(segment, offset, value, flag);
+                self.biu_write_u16(segment, offset, value);
             }
             _ => {}
         }

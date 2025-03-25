@@ -29,11 +29,7 @@
     Implements microcode routines for jumps and calls.
 */
 
-use crate::{
-    cpu_808x::{biu::*, *},
-    cycles_mc,
-    util,
-};
+use crate::{cpu_808x::*, cycles_mc, util};
 
 impl Intel808x {
     /*
@@ -79,7 +75,8 @@ impl Intel808x {
         cycles_mc!(self, 0x06b, 0x06c);
         self.corr();
         // Push return segment to stack
-        self.push_u16(self.cs, ReadWriteFlag::Normal);
+        self.cycle_i(0x06d);
+        self.push_u16(self.cs);
         self.cs = new_cs;
         cycles_mc!(self, 0x06e, 0x06f);
         self.nearcall(new_ip);
@@ -91,7 +88,8 @@ impl Intel808x {
         cycles_mc!(self, MC_JUMP, 0x06c);
         self.corr();
         // Push return segment to stack
-        self.push_u16(self.cs, ReadWriteFlag::Normal);
+        self.cycle_i(0x06d);
+        self.push_u16(self.cs);
         self.cs = new_cs;
         cycles_mc!(self, 0x06e, 0x06f);
         self.nearcall(new_ip);
@@ -105,17 +103,15 @@ impl Intel808x {
         self.pc = new_ip;
         self.biu_queue_flush();
         cycles_mc!(self, 0x077, 0x078, 0x079);
-        self.push_u16(ret_ip, ReadWriteFlag::RNI);
+        self.push_u16(ret_ip);
     }
 
     /// Execute the FARRET microcode routine, including the jump into the procedure.
     pub fn farret(&mut self, far: bool) {
         self.cycle_i(MC_JUMP);
         self.set_mc_pc(0x0c2);
-        //self.pop_register16(Register16::IP, ReadWriteFlag::RNI);
         self.pc = self.pop_u16();
         self.biu_fetch_suspend();
-        //self.cycle_i(MC_NONE);
         cycles_mc!(self, 0x0c3, 0x0c4);
 
         //let far2 = self.i.opcode & 0x08 != 0;
@@ -123,8 +119,7 @@ impl Intel808x {
 
         if far {
             self.cycle_i(MC_JUMP);
-            self.pop_register16(Register16::CS, ReadWriteFlag::Normal);
-
+            self.pop_register16(Register16::CS);
             self.biu_queue_flush();
             cycles_mc!(self, 0x0c7, MC_RTN);
         }

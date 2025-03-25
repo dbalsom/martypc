@@ -34,7 +34,6 @@ use crate::{
         CallStackEntry,
         Flag,
         Intel808x,
-        ReadWriteFlag,
         RepType,
         IO_READ_BREAKPOINT,
         IO_WRITE_BREAKPOINT,
@@ -140,7 +139,7 @@ impl Intel808x {
         if self.i.operand1_type.is_address() {
             cycles_mc!(self, 0x000, 0x001);
         }
-        self.write_operand(self.i.operand1_type, self.i.segment_override, op_value, ReadWriteFlag::RNI);
+        self.write_operand(self.i.operand1_type, self.i.segment_override, op_value);
     }
 
     /// LEA
@@ -149,11 +148,11 @@ impl Intel808x {
         let ea = self.load_effective_address(self.i.operand2_type);
         match ea {
             Some(value) => {
-                self.write_operand16(self.i.operand1_type, None, value, ReadWriteFlag::RNI);
+                self.write_operand16(self.i.operand1_type, None, value);
             }
             None => {
                 // In the event of an invalid (Register) operand2, operand1 is set to the last EA calculated by an instruction.
-                self.write_operand16(self.i.operand1_type, None, self.last_ea, ReadWriteFlag::RNI);
+                self.write_operand16(self.i.operand1_type, None, self.last_ea);
             }
         }
     }
@@ -171,7 +170,7 @@ impl Intel808x {
                 if self.i.operand1_type.is_address() {
                     cycles_mc!(self, 0x009, 0x00a);
                 }
-                self.write_operand(self.i.operand1_type, self.i.segment_override, result, ReadWriteFlag::RNI);
+                self.write_operand(self.i.operand1_type, self.i.segment_override, result);
             }
         }
     }
@@ -197,7 +196,7 @@ impl Intel808x {
         }
 
         if self.i.mnemonic != Mnemonic::CMP {
-            self.write_operand(self.i.operand1_type, self.i.segment_override, result, ReadWriteFlag::RNI);
+            self.write_operand(self.i.operand1_type, self.i.segment_override, result);
         }
     }
 
@@ -212,7 +211,7 @@ impl Intel808x {
             // This cycle is an RNI for register operands
             cycles_mc!(self, 0x016);
         }
-        self.write_operand(self.i.operand1_type, self.i.segment_override, op2_value, ReadWriteFlag::RNI);
+        self.write_operand(self.i.operand1_type, self.i.segment_override, op2_value);
     }
 
     /// ALU A, imm
@@ -236,7 +235,7 @@ impl Intel808x {
         if self.i.opcode & 0x08 == 0 {
             self.cycle_i(MC_JUMP); // 0x01c jumps over 2nd queue read
         }
-        self.write_operand(self.i.operand1_type, None, op2_value, ReadWriteFlag::RNI);
+        self.write_operand(self.i.operand1_type, None, op2_value);
     }
 
     /// INC/DEC rm
@@ -249,7 +248,7 @@ impl Intel808x {
         if self.i.operand1_type.is_address() {
             self.cycle_i(0x021);
         }                           
-        self.write_operand(self.i.operand1_type, self.i.segment_override, result, ReadWriteFlag::RNI);
+        self.write_operand(self.i.operand1_type, self.i.segment_override, result);
     }
 
     /// PUSH rm
@@ -271,33 +270,33 @@ impl Intel808x {
     pub fn mc_028(&mut self) {
         cycles_mc!(self, 0x028, 0x029, 0x02a);
         let reg = REGISTER16_LUT[(self.i.opcode & 0x07) as usize];
-        self.push_register16(reg, ReadWriteFlag::RNI);
+        self.push_register16(reg);
     }
 
     /// PUSH sreg
     pub fn mc_02c(&mut self) {
         cycles_mc!(self, 0x02c, 0x02d, 0x02e);
         let reg = SREGISTER_LUT[((self.i.opcode >> 3) & 0x03) as usize];
-        self.push_register16(reg, ReadWriteFlag::RNI);
+        self.push_register16(reg);
     }
 
     /// PUSHF - Push Flags
     /// Opcode: 9C
     pub fn mc_030(&mut self) {
         cycles!(self, 3);
-        self.push_flags(ReadWriteFlag::RNI);
+        self.push_flags();
     }
 
     /// POP reg
     pub fn mc_034(&mut self) {
         let reg = REGISTER16_LUT[(self.i.opcode & 0x07) as usize];
-        self.pop_register16(reg, ReadWriteFlag::RNI);
+        self.pop_register16(reg);
     }
 
     /// POP sreg
     pub fn mc_038(&mut self) {
         let value = self.pop_u16();
-        self.write_operand16(self.i.operand1_type, None, value, ReadWriteFlag::Normal);
+        self.write_operand16(self.i.operand1_type, None, value);
     }
 
     /// POPF - Pop Flags
@@ -315,7 +314,7 @@ impl Intel808x {
         if self.i.operand1_type.is_address() {
             cycles_mc!(self, 0x043, 0x044);
         }
-        self.write_operand16(self.i.operand1_type, self.i.segment_override, value, ReadWriteFlag::RNI);
+        self.write_operand16(self.i.operand1_type, self.i.segment_override, value);
     }
 
     /// NOT rm
@@ -331,7 +330,7 @@ impl Intel808x {
             // 0x04c is flagged with NXT in published microcode. Test timings indicate maybe this was changed.
             self.cycle_i(0x04c);
         }
-        self.write_operand(self.i.operand1_type, self.i.segment_override, result, ReadWriteFlag::RNI);        
+        self.write_operand(self.i.operand1_type, self.i.segment_override, result);        
     }
     
     /// NEG rm, imm
@@ -347,7 +346,7 @@ impl Intel808x {
             // 0x050 is flagged with NXT in published microcode. Test timings indicate maybe this was changed.
             self.cycle_i(0x050);
         }
-        self.write_operand(self.i.operand1_type, self.i.segment_override, result, ReadWriteFlag::RNI);        
+        self.write_operand(self.i.operand1_type, self.i.segment_override, result);        
     }
 
     /// CBW - Convert Byte to Word
@@ -386,7 +385,7 @@ impl Intel808x {
     /// Opcodes: A2, A3
     pub fn mc_064(&mut self) {
         let op2_value = self.a.x();
-        self.write_operand(self.i.operand1_type, self.i.segment_override, op2_value, ReadWriteFlag::RNI);
+        self.write_operand(self.i.operand1_type, self.i.segment_override, op2_value);
     }
 
     /// CALL FAR rm FarPtr
@@ -395,7 +394,7 @@ impl Intel808x {
 
         if let OperandType::AddressingMode(_mode, _) = self.i.operand1_type {
             self.cycle_i(0x068);
-            let (segment, offset) = self.read_operand_farptr(self.i.operand1_type, self.i.segment_override, ReadWriteFlag::Normal).unwrap();
+            let (segment, offset) = self.read_operand_farptr(self.i.operand1_type, self.i.segment_override).unwrap();
             let next_i = self.ip();
 
             self.farcall(segment, offset, true);
@@ -432,7 +431,7 @@ impl Intel808x {
 
             // Some random value seen in tests. Don't copy this.
             let offset = 0x0004;
-            let segment = self.biu_read_u16(seg, offset, ReadWriteFlag::Normal);
+            let segment = self.biu_read_u16(seg, offset);
 
             self.cycle_i(0x06a);
             self.biu_fetch_suspend();
@@ -440,7 +439,8 @@ impl Intel808x {
             self.corr();
 
             // Push CS
-            self.push_register16(Register16::CS, ReadWriteFlag::Normal);
+            self.cycle_i(0x06d);
+            self.push_register16(Register16::CS);
             let next_i = self.pc; // PC actually gets value of tmpb, which can't be determined. :(
             self.cs = segment;
 
@@ -449,7 +449,7 @@ impl Intel808x {
             cycles_mc!(self, 0x077, 0x078, 0x079);
 
             // Push next IP
-            self.push_u16(next_i, ReadWriteFlag::RNI);
+            self.push_u16(next_i);
         }
         self.jumped = true;
     }
@@ -550,7 +550,7 @@ impl Intel808x {
         cycles_mc!(self, 0x081, 0x082, MC_JUMP); 
 
         // Push return address
-        self.push_u16(ret_addr, ReadWriteFlag::RNI);
+        self.push_u16(ret_addr);
         self.jumped = true;        
     }
 
@@ -575,7 +575,7 @@ impl Intel808x {
         if self.i.operand1_type.is_address() {
             cycles_mc!(self, 0x088, 0x089);
         }
-        self.write_operand(self.i.operand1_type, self.i.segment_override, result, ReadWriteFlag::RNI);        
+        self.write_operand(self.i.operand1_type, self.i.segment_override, result);        
     }
     
     /// ROL, ROR, RCL, RCR, SHL, SHR, SAR: rm, cl
@@ -597,7 +597,7 @@ impl Intel808x {
         }
 
         let result = self.alu_bitshift_op(self.i.xi.unwrap(), op1_value, op2_value);
-        self.write_operand(self.i.operand1_type, self.i.segment_override, result, ReadWriteFlag::RNI);        
+        self.write_operand(self.i.operand1_type, self.i.segment_override, result);        
     }
 
     /// TEST rm, r
@@ -654,7 +654,7 @@ impl Intel808x {
         }
     }
 
-    /// XCHG r, rm
+    /// XCHG rm, r
     /// Opcodes 86-87
     pub fn mc_0a4(&mut self) {
         let op1_value = self.read_operand(self.i.operand1_type, self.i.segment_override);
@@ -665,8 +665,8 @@ impl Intel808x {
             cycles_mc!(self, 0x0a6, 0x0a7);
         }
         // Exchange values. Write operand2 first so we don't affect EA calculation if EA includes register being swapped.
-        self.write_operand(self.i.operand2_type, self.i.segment_override, op1_value, ReadWriteFlag::RNI);
-        self.write_operand(self.i.operand1_type, self.i.segment_override, op2_value, ReadWriteFlag::Normal);
+        self.write_operand(self.i.operand2_type, self.i.segment_override, op1_value);
+        self.write_operand(self.i.operand1_type, self.i.segment_override, op2_value);
     }
 
     // IN A, imm8
@@ -679,7 +679,7 @@ impl Intel808x {
                 self.biu_io_read_u8(op2_value as u16) as u16
             }
             InstructionWidth::Word => {
-                self.biu_io_read_u16(op2_value as u16, ReadWriteFlag::Normal)
+                self.biu_io_read_u16(op2_value as u16)
             }
         };
         
@@ -698,11 +698,11 @@ impl Intel808x {
         // Write to port
         match self.i.width {
             InstructionWidth::Byte => {
-                self.biu_io_write_u8(op1_value as u16, op2_value as u8, ReadWriteFlag::RNI);
+                self.biu_io_write_u8(op1_value as u16, op2_value as u8);
             }
             InstructionWidth::Word => {
                 // Write to consecutive ports
-                self.biu_io_write_u16(op1_value as u16, op2_value, ReadWriteFlag::RNI);
+                self.biu_io_write_u16(op1_value as u16, op2_value);
             }
         };
 
@@ -719,7 +719,7 @@ impl Intel808x {
                 self.biu_io_read_u8(address) as u16
             }
             InstructionWidth::Word => {
-                self.biu_io_read_u16(address, ReadWriteFlag::Normal)
+                self.biu_io_read_u16(address)
             }
         };
 
@@ -738,10 +738,10 @@ impl Intel808x {
 
         match self.i.width {
             InstructionWidth::Byte => {
-                self.biu_io_write_u8(address, op2_value as u8, ReadWriteFlag::RNI);
+                self.biu_io_write_u8(address, op2_value as u8);
             }
             InstructionWidth::Word => {
-                self.biu_io_write_u16(address, op2_value, ReadWriteFlag::RNI);
+                self.biu_io_write_u16(address, op2_value);
             }
         };
 
@@ -835,7 +835,7 @@ impl Intel808x {
             self.biu_fetch_suspend();
             self.cycle_i(0x0dd);
 
-            let (segment, offset) = self.read_operand_farptr(self.i.operand1_type, self.i.segment_override, ReadWriteFlag::Normal).unwrap();
+            let (segment, offset) = self.read_operand_farptr(self.i.operand1_type, self.i.segment_override).unwrap();
 
             self.cs = segment;
             self.pc = offset;
@@ -852,7 +852,7 @@ impl Intel808x {
             
             // Read the segment from Seg:0004 
             offset = 0x0004;    
-            let segment = self.biu_read_u16(seg, offset, ReadWriteFlag::Normal);
+            let segment = self.biu_read_u16(seg, offset);
 
             self.cs = segment;
             self.biu_queue_flush();
@@ -912,7 +912,7 @@ impl Intel808x {
             self.cycle_i(0x0ec);
         }
         let op_value = self.read_operand(self.i.operand2_type, self.i.segment_override);
-        self.write_operand(self.i.operand1_type, self.i.segment_override, op_value, ReadWriteFlag::RNI);
+        self.write_operand(self.i.operand1_type, self.i.segment_override, op_value);
     }
 
     /// LES - Load ES from Pointer
@@ -921,13 +921,9 @@ impl Intel808x {
         cycles_mc!(self, 0x0F0, 0x0F1);
         // Operand 2 is far pointer
         let (les_segment, les_offset) =
-            self.read_operand_farptr(
-                self.i.operand2_type,
-                self.i.segment_override,
-                ReadWriteFlag::Normal
-            ).unwrap();
+            self.read_operand_farptr(self.i.operand2_type, self.i.segment_override).unwrap();
         //log::trace!("LES instruction: Loaded {:04X}:{:04X}", les_segment, les_offset);
-        self.write_operand16(self.i.operand1_type, self.i.segment_override, les_offset, ReadWriteFlag::RNI);
+        self.write_operand16(self.i.operand1_type, self.i.segment_override, les_offset);
         self.es = les_segment;
     }
 
@@ -938,13 +934,9 @@ impl Intel808x {
 
         // Operand 2 is far pointer
         let (lds_segment, lds_offset) =
-            self.read_operand_farptr(
-                self.i.operand2_type,
-                self.i.segment_override,
-                ReadWriteFlag::RNI
-            ).unwrap();
+            self.read_operand_farptr(self.i.operand2_type, self.i.segment_override).unwrap();
         //log::trace!("LDS instruction: Loaded {:04X}:{:04X}", lds_segment, lds_offset);
-        self.write_operand16(self.i.operand1_type, self.i.segment_override, lds_offset, ReadWriteFlag::RNI);
+        self.write_operand16(self.i.operand1_type, self.i.segment_override, lds_offset);
         self.ds = lds_segment;
     }
     
@@ -981,7 +973,7 @@ impl Intel808x {
         
         cycles_mc!(self, 0x10c, 0x10d, 0x10e);
 
-        let value = self.biu_read_u8(segment, disp16, ReadWriteFlag::Normal);
+        let value = self.biu_read_u8(segment, disp16);
         
         self.set_register8(Register8::AL, value);        
     }
@@ -993,7 +985,7 @@ impl Intel808x {
     pub fn mc_11c(&mut self) {
         if self.rep_start() {
             self.string_op(self.i.mnemonic, None);
-            self.cycle_i(0x11e);
+            cycles_mc!(self, 0x11d, 0x11e);
 
             // Check for end condition (CX==0)
             if self.in_rep {
@@ -1083,7 +1075,7 @@ impl Intel808x {
     pub fn mc_12c(&mut self) {
         if self.rep_start() {
             self.string_op(self.i.mnemonic, self.i.segment_override);
-            self.cycle_i(0x130);
+            cycles_mc!(self, 0x12f, 0x130);
 
             // Check for end condition (CX==0)
             if self.in_rep {
@@ -1374,12 +1366,7 @@ impl Intel808x {
             .read_operand16(self.i.operand1_type, self.i.segment_override)
             .unwrap();
         let result = self.alu_op(self.i.xi.unwrap(), op1_value, 0);
-        self.write_operand16(
-            self.i.operand1_type,
-            self.i.segment_override,
-            result,
-            ReadWriteFlag::RNI,
-        );
+        self.write_operand16(self.i.operand1_type, self.i.segment_override, result);
     }
 
     /// INT imm8 - Software Interrupt

@@ -90,7 +90,7 @@ use crate::{
 };
 
 // Make ReadWriteFlag available to benchmarks
-pub use crate::cpu_808x::biu::ReadWriteFlag;
+pub use crate::cpu_808x::biu::WriteFlag;
 
 #[cfg(feature = "cpu_validator")]
 use crate::cpu_validator::ValidatorType;

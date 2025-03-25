@@ -46,7 +46,7 @@ impl Intel808x {
                 // No flags affected
 
                 // Write AL to [es:di]
-                self.biu_write_u8(Segment::ES, self.di, self.a.l(), ReadWriteFlag::Normal);
+                self.biu_write_u8(Segment::ES, self.di, self.a.l());
 
                 match self.get_flag(Flag::Direction) {
                     false => {
@@ -64,7 +64,7 @@ impl Intel808x {
                 // No flags affected
 
                 // Write AX to [es:di]
-                self.biu_write_u16(Segment::ES, self.di, self.a.x(), ReadWriteFlag::Normal);
+                self.biu_write_u16(Segment::ES, self.di, self.a.x());
 
                 match self.get_flag(Flag::Direction) {
                     false => {
@@ -82,7 +82,7 @@ impl Intel808x {
                 // Store byte [ds:si] in AL   (Segment overrideable)
 
                 self.set_mc_pc(0x12d);
-                let data = self.biu_read_u8(segment_base_ds, self.si, ReadWriteFlag::Normal);
+                let data = self.biu_read_u8(segment_base_ds, self.si);
 
                 self.set_register8(Register8::AL, data);
 
@@ -103,7 +103,7 @@ impl Intel808x {
                 // Store word [ds:si] in AX   (Segment overrideable)
 
                 self.set_mc_pc(0x12d);
-                let data = self.biu_read_u16(segment_base_ds, self.si, ReadWriteFlag::Normal);
+                let data = self.biu_read_u16(segment_base_ds, self.si);
 
                 self.set_register16(Register16::AX, data);
 
@@ -122,9 +122,9 @@ impl Intel808x {
             Mnemonic::MOVSB => {
                 // Store byte from [ds:si] in [es:di]  (DS Segment overrideable)
 
-                let data = self.biu_read_u8(segment_base_ds, self.si, ReadWriteFlag::Normal);
+                let data = self.biu_read_u8(segment_base_ds, self.si);
                 self.cycle_i(0x12e);
-                self.biu_write_u8(Segment::ES, self.di, data, ReadWriteFlag::Normal);
+                self.biu_write_u8(Segment::ES, self.di, data);
 
                 match self.get_flag(Flag::Direction) {
                     false => {
@@ -142,9 +142,9 @@ impl Intel808x {
             Mnemonic::MOVSW => {
                 // Store word from [ds:si] in [es:di] (DS Segment overrideable)
 
-                let data = self.biu_read_u16(segment_base_ds, self.si, ReadWriteFlag::Normal);
+                let data = self.biu_read_u16(segment_base_ds, self.si);
                 self.cycle_i(0x12e);
-                self.biu_write_u16(Segment::ES, self.di, data, ReadWriteFlag::Normal);
+                self.biu_write_u16(Segment::ES, self.di, data);
 
                 match self.get_flag(Flag::Direction) {
                     false => {
@@ -165,7 +165,7 @@ impl Intel808x {
                 // Override: ES cannot be overridden
 
                 cycles_mc!(self, 0x121, MC_JUMP);
-                let data = self.biu_read_u8(Segment::ES, self.di, ReadWriteFlag::Normal);
+                let data = self.biu_read_u8(Segment::ES, self.di);
                 cycles_mc!(self, 0x126, 0x127, 0x128);
 
                 let (result, carry, overflow, aux_carry) = self.a.l().alu_sub(data);
@@ -192,7 +192,7 @@ impl Intel808x {
                 // Override: ES cannot be overridden
 
                 cycles_mc!(self, 0x121, MC_JUMP);
-                let data = self.biu_read_u16(Segment::ES, self.di, ReadWriteFlag::Normal);
+                let data = self.biu_read_u16(Segment::ES, self.di);
                 cycles_mc!(self, 0x126, 0x127, 0x128);
 
                 let (result, carry, overflow, aux_carry) = self.a.x().alu_sub(data);
@@ -219,9 +219,9 @@ impl Intel808x {
                 // Override: DS can be overridden
 
                 self.cycle_i(0x121);
-                let dssi_op = self.biu_read_u8(segment_base_ds, self.si, ReadWriteFlag::Normal);
+                let dssi_op = self.biu_read_u8(segment_base_ds, self.si);
                 cycles_mc!(self, 0x123, 0x124);
-                let esdi_op = self.biu_read_u8(Segment::ES, self.di, ReadWriteFlag::Normal);
+                let esdi_op = self.biu_read_u8(Segment::ES, self.di);
                 cycles_mc!(self, 0x126, 0x127, 0x128);
 
                 let (result, carry, overflow, aux_carry) = dssi_op.alu_sub(esdi_op);
@@ -251,9 +251,9 @@ impl Intel808x {
                 // Override: DS can be overridden
 
                 self.cycle_i(0x121);
-                let dssi_op = self.biu_read_u16(segment_base_ds, self.si, ReadWriteFlag::Normal);
+                let dssi_op = self.biu_read_u16(segment_base_ds, self.si);
                 cycles_mc!(self, 0x123, 0x124);
-                let esdi_op = self.biu_read_u16(Segment::ES, self.di, ReadWriteFlag::Normal);
+                let esdi_op = self.biu_read_u16(Segment::ES, self.di);
                 cycles_mc!(self, 0x126, 0x127, 0x128);
 
                 let (result, carry, overflow, aux_carry) = dssi_op.alu_sub(esdi_op);

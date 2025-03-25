@@ -38,7 +38,7 @@ use crate::{
 pub const QUEUE_SIZE: usize = 4;
 pub const QUEUE_POLICY_LEN: usize = 3;
 
-pub enum ReadWriteFlag {
+pub enum WriteFlag {
     Normal,
     RNI,
 }
@@ -449,7 +449,7 @@ impl Intel808x {
         self.biu_bus_wait_finish();
     }
 
-    pub fn biu_read_u8(&mut self, seg: Segment, offset: u16, flag: ReadWriteFlag) -> u8 {
+    pub fn biu_read_u8(&mut self, seg: Segment, offset: u16) -> u8 {
         let addr = self.calc_linear_address_seg(seg, offset);
 
         self.biu_bus_begin(
@@ -461,15 +461,12 @@ impl Intel808x {
             OperandSize::Operand8,
             true,
         );
-        match flag {
-            ReadWriteFlag::Normal => self.biu_bus_wait_finish(),
-            ReadWriteFlag::RNI => self.biu_bus_wait_until_tx(),
-        };
+        self.biu_bus_wait_finish();
 
         (self.data_bus & 0x00FF) as u8
     }
 
-    pub fn biu_write_u8(&mut self, seg: Segment, offset: u16, byte: u8, flag: ReadWriteFlag) {
+    pub fn biu_write_u8(&mut self, seg: Segment, offset: u16, byte: u8) {
         let addr = self.calc_linear_address_seg(seg, offset);
 
         self.biu_bus_begin(
@@ -481,10 +478,7 @@ impl Intel808x {
             OperandSize::Operand8,
             true,
         );
-        match flag {
-            ReadWriteFlag::Normal => self.biu_bus_wait_finish(),
-            ReadWriteFlag::RNI => self.biu_bus_wait_until_tx(),
-        };
+        self.biu_bus_wait_until_tx()
     }
 
     pub fn biu_io_read_u8(&mut self, addr: u16) -> u8 {
@@ -501,7 +495,7 @@ impl Intel808x {
         (self.data_bus & 0x00FF) as u8
     }
 
-    pub fn biu_io_write_u8(&mut self, addr: u16, byte: u8, flag: ReadWriteFlag) {
+    pub fn biu_io_write_u8(&mut self, addr: u16, byte: u8) {
         self.biu_bus_begin(
             BusStatus::IoWrite,
             Segment::None,
@@ -511,15 +505,10 @@ impl Intel808x {
             OperandSize::Operand8,
             true,
         );
-        match flag {
-            ReadWriteFlag::Normal => self.biu_bus_wait_finish(),
-            ReadWriteFlag::RNI => self.biu_bus_wait_until_tx(),
-        };
-
-        //validate_write_u8!(self, addr, (self.data_bus & 0x00FF) as u8);
+        self.biu_bus_wait_until_tx()
     }
 
-    pub fn biu_io_read_u16(&mut self, addr: u16, flag: ReadWriteFlag) -> u16 {
+    pub fn biu_io_read_u16(&mut self, addr: u16) -> u16 {
         let mut word;
 
         self.biu_bus_begin(
@@ -544,18 +533,13 @@ impl Intel808x {
             OperandSize::Operand16,
             false,
         );
-
-        match flag {
-            ReadWriteFlag::Normal => self.biu_bus_wait_finish(),
-            ReadWriteFlag::RNI => self.biu_bus_wait_until_tx(),
-        };
+        self.biu_bus_wait_finish();
 
         word |= (self.data_bus & 0x00FF) << 8;
-
         word
     }
 
-    pub fn biu_io_write_u16(&mut self, addr: u16, word: u16, flag: ReadWriteFlag) {
+    pub fn biu_io_write_u16(&mut self, addr: u16, word: u16) {
         self.biu_bus_begin(
             BusStatus::IoWrite,
             Segment::None,
@@ -578,15 +562,12 @@ impl Intel808x {
             false,
         );
 
-        match flag {
-            ReadWriteFlag::Normal => self.biu_bus_wait_finish(),
-            ReadWriteFlag::RNI => self.biu_bus_wait_until_tx(),
-        };
+        self.biu_bus_wait_until_tx()
     }
 
     /// Request a word size (16-bit) bus read transfer from the BIU.
     /// The 8088 divides word transfers up into two consecutive byte size transfers.
-    pub fn biu_read_u16(&mut self, seg: Segment, offset: u16, flag: ReadWriteFlag) -> u16 {
+    pub fn biu_read_u16(&mut self, seg: Segment, offset: u16) -> u16 {
         let mut word;
         let mut addr = self.calc_linear_address_seg(seg, offset);
 
@@ -613,21 +594,15 @@ impl Intel808x {
             OperandSize::Operand16,
             false,
         );
-        match flag {
-            ReadWriteFlag::Normal => self.biu_bus_wait_finish(),
-            ReadWriteFlag::RNI => {
-                // self.bus_wait_until(TCycle::T3)
-                self.biu_bus_wait_finish()
-            }
-        };
-        word |= (self.data_bus & 0x00FF) << 8;
+        self.biu_bus_wait_finish();
 
+        word |= (self.data_bus & 0x00FF) << 8;
         word
     }
 
     /// Request a word size (16-bit) bus write transfer from the BIU.
     /// The 8088 divides word transfers up into two consecutive byte size transfers.
-    pub fn biu_write_u16(&mut self, seg: Segment, offset: u16, word: u16, flag: ReadWriteFlag) {
+    pub fn biu_write_u16(&mut self, seg: Segment, offset: u16, word: u16) {
         let mut addr = self.calc_linear_address_seg(seg, offset);
 
         // 8088 performs two consecutive byte transfers
@@ -654,10 +629,7 @@ impl Intel808x {
             false,
         );
 
-        match flag {
-            ReadWriteFlag::Normal => self.biu_bus_wait_finish(),
-            ReadWriteFlag::RNI => self.biu_bus_wait_until_tx(),
-        };
+        self.biu_bus_wait_until_tx()
     }
 
     /// If in an active bus cycle, cycle the cpu until the bus cycle has reached T4.
