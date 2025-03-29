@@ -113,6 +113,11 @@ pub const SW1_RAM_BANKS_2: u8 = 0b0000_1000;
 pub const SW1_RAM_BANKS_3: u8 = 0b0000_0100;
 pub const SW1_RAM_BANKS_4: u8 = 0b0000_0000;
 
+pub const COMPAQ_SW1_NO_FPU: u8 = 0b0000_0010;
+pub const COMPAQ_SW1_640K: u8 = 0b0000_1100;
+pub const COMPAQ_SW1_512K: u8 = 0b0000_1000;
+pub const COMPAQ_SW1_256K: u8 = 0b0000_0000;
+pub const COMPAQ_SW1_128K: u8 = 0b0000_0100;
 // SW6_5: OFF, OFF: MDA card
 // SW6_5: ON, OFF: CGA 40 Cols
 // SW6_5: OFF, ON: CGA 80 Cols
@@ -204,6 +209,18 @@ pub const PCJR_KB_BAUD: f64 = 2272.0;
 pub const PCJR_US_PER_BIT: f64 = 1_000_000.0 / PCJR_KB_BAUD;
 pub const PCJR_US_PER_HALFBIT: f64 = PCJR_US_PER_BIT / 2.0;
 
+macro_rules! reverse_bits_u8 {
+    ($x:expr) => {{
+        const fn reverse_byte(mut b: u8) -> u8 {
+            b = (b & 0xF0) >> 4 | (b & 0x0F) << 4;
+            b = (b & 0xCC) >> 2 | (b & 0x33) << 2;
+            b = (b & 0xAA) >> 1 | (b & 0x55) << 1;
+            b
+        }
+        reverse_byte($x)
+    }};
+}
+
 #[derive(Debug)]
 pub enum PortAMode {
     SwitchBlock1,
@@ -213,6 +230,7 @@ pub enum PortAMode {
 pub enum PortCMode {
     Switch2OneToFour,
     Switch2Five,
+    Switch1,
     Switch1OneToFour,
     Switch1FiveToEight,
     Tandy1000,
@@ -407,17 +425,6 @@ impl Default for Ppi {
     }
 }
 
-// This structure implements an interface for wires connected to the PPI from
-// other components. Components connected to the PPI will receive a reference
-// to this structure on creation, and can read or modify the wire state via
-// Cell's internal mutability.
-// (unimplemented)
-pub struct PpiWires {
-    timer_monitor: Cell<bool>,
-    timer_gate2: Cell<bool>,
-    speaker_monitor: Cell<bool>,
-}
-
 #[derive(Default)]
 pub struct PpiStringState {
     pub group_a_mode: String,
@@ -489,19 +496,15 @@ impl Ppi {
             machine_type,
             port_a_mode: match machine_type {
                 MachineType::Ibm5150v64K | MachineType::Ibm5150v256K => PortAMode::SwitchBlock1,
-                MachineType::Ibm5160 => PortAMode::KeyboardByte,
-                MachineType::Tandy1000 => PortAMode::KeyboardByte,
-                _ => {
-                    log::error!("Machine type: {:?} has no PPI", machine_type);
-                    PortAMode::KeyboardByte
-                }
+                _ => PortAMode::KeyboardByte,
             },
             port_c_mode: match machine_type {
                 MachineType::Ibm5150v64K | MachineType::Ibm5150v256K => PortCMode::Switch2OneToFour,
                 MachineType::Ibm5160 => PortCMode::Switch1FiveToEight,
                 MachineType::Tandy1000 => PortCMode::Switch1FiveToEight,
+                MachineType::CompaqPortable | MachineType::CompaqDeskpro => PortCMode::Switch1FiveToEight,
                 _ => {
-                    log::error!("Machine type: {:?} has no PPI", machine_type);
+                    log::error!("Machine type: {:?} has no configured PPI port C", machine_type);
                     PortCMode::Switch1FiveToEight
                 }
             },
@@ -517,6 +520,19 @@ impl Ppi {
                     !dip_sw1
                 }
                 MachineType::Tandy1000 => 0,
+                MachineType::CompaqPortable => {
+                    // Compaq Portable doesn't set switches 3 and 4 for memory size.
+                    let dip_sw1 = COMPAQ_SW1_NO_FPU | sw1_floppy_ct_bits | sw1_video_bits;
+                    log::debug!("DIP SW1: {:08b}", dip_sw1);
+
+                    !dip_sw1
+                }
+                MachineType::CompaqDeskpro => {
+                    let dip_sw1 = COMPAQ_SW1_NO_FPU | sw1_bank_bits | sw1_floppy_ct_bits | sw1_video_bits;
+                    log::debug!("DIP SW1: {:08b}", dip_sw1);
+
+                    !dip_sw1
+                }
                 _ => {
                     log::error!("Machine type: {:?} has no PPI", machine_type);
                     0
@@ -578,6 +594,16 @@ impl Ppi {
                 _ => {
                     log::error!("Invalid conventional memory size: {}", conventional_mem);
                     (SW2_V2_RAM_64K, SW1_RAM_BANKS_1)
+                }
+            },
+            MachineType::CompaqPortable | MachineType::CompaqDeskpro => match conventional_mem {
+                0x20000 => (0, COMPAQ_SW1_128K),
+                0x40000 => (0, COMPAQ_SW1_256K),
+                0x80000 => (0, COMPAQ_SW1_512K),
+                0xA0000 => (0, COMPAQ_SW1_640K),
+                _ => {
+                    log::error!("Invalid conventional memory size: {}", conventional_mem);
+                    (0, COMPAQ_SW1_128K)
                 }
             },
             _ => (0, 0),
@@ -644,13 +670,11 @@ impl Ppi {
     }
 
     pub fn turbo_bit(&self) -> bool {
-        match self.machine_type {
-            MachineType::Tandy1000 | MachineType::Ibm5150v64K | MachineType::Ibm5150v256K => false,
-            MachineType::Ibm5160 => self.port_b_byte & PORTB_SW2_SELECT != 0,
-            _ => {
-                log::error!("turbo_bit(): Machine type has no PPI!");
-                false
-            }
+        if self.machine_type.has_ppi_turbo_bit() {
+            self.port_b_byte & PORTB_SW2_SELECT != 0
+        }
+        else {
+            false
         }
     }
 
@@ -681,7 +705,9 @@ impl Ppi {
     }
 
     pub fn handle_portc_read(&self) -> u8 {
-        self.calc_port_c_value()
+        let byte = self.calc_port_c_value();
+        log::trace!("PPI: Read from Port C: {:02X}", byte);
+        byte
     }
 
     pub fn handle_porta_write(&mut self, byte: u8) {
@@ -715,7 +741,7 @@ impl Ppi {
                     self.port_a_mode = PortAMode::KeyboardByte
                 }
             }
-            MachineType::Tandy1000 | MachineType::Ibm5160 => {
+            MachineType::Ibm5160 => {
                 // 5160 Behavior only
                 if byte & PORTB_SW1_SELECT == 0 {
                     // If Bit 3 is OFF, PC0-PC3 represent SW1 S1-S4
@@ -726,6 +752,20 @@ impl Ppi {
                 }
 
                 // On the 5160, this bit clears the keyboard and suppresses IRQ1.
+                if byte & PORTB_KB_CLEAR != 0 {
+                    self.keyboard_clear_scheduled = true;
+                    self.kb_enabled = false;
+                }
+                else {
+                    self.kb_enabled = true;
+                }
+                self.port_a_mode = PortAMode::KeyboardByte;
+            }
+            MachineType::CompaqPortable
+            | MachineType::CompaqDeskpro
+            | MachineType::Tandy1000
+            | MachineType::Tandy1000SL => {
+                // On most XT-compatible systems, this bit clears the keyboard and suppresses IRQ1.
                 if byte & PORTB_KB_CLEAR != 0 {
                     self.keyboard_clear_scheduled = true;
                     self.kb_enabled = false;
@@ -778,6 +818,12 @@ impl Ppi {
                     self.kb_byte.update(byte);
                 }
             }
+            MachineType::CompaqPortable | MachineType::CompaqDeskpro => {
+                if self.kb_enabled() && self.ksr_cleared {
+                    self.ksr_cleared = false;
+                    self.kb_byte.update(byte);
+                }
+            }
             MachineType::Ibm5150v64K | MachineType::Ibm5150v256K | MachineType::Ibm5160 => {
                 // Only send a scancode if the keyboard is not actively being reset.
                 if self.kb_enabled() && self.ksr_cleared {
@@ -794,6 +840,7 @@ impl Ppi {
     pub fn kb_enabled(&self) -> bool {
         match self.machine_type {
             MachineType::Tandy1000 => true,
+            MachineType::CompaqDeskpro => true,
             MachineType::IbmPCJr => false,
             _ => self.kb_enabled && !self.kb_clock_low,
         }
@@ -836,6 +883,14 @@ impl Ppi {
                 // Tandy 1000 has no DIP switches
 
                 timer_bit | PORTC_TANDY_COLOR
+            }
+            (MachineType::CompaqPortable | MachineType::CompaqDeskpro, PortCMode::Switch1OneToFour) => {
+                //log::debug!("Compaq: read SW1 {:02X}", self.dip_sw1);
+                (self.dip_sw1 & 0x0F) | speaker_bit | timer_bit
+            }
+            (MachineType::CompaqPortable | MachineType::CompaqDeskpro, PortCMode::Switch1FiveToEight) => {
+                //log::debug!("Compaq: read SW1 {:02X}", self.dip_sw1);
+                (self.dip_sw1 >> 4 & 0x0F) | speaker_bit | timer_bit
             }
             (MachineType::IbmPCJr, _) => {
                 // TODO: Do PCJr stuff properly.

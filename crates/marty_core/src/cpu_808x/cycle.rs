@@ -34,27 +34,6 @@
 
 use crate::{cpu_808x::*, cpu_common::QueueOp};
 
-#[cfg(feature = "cpu_validator")]
-use crate::cpu_validator::{BusType, ReadType};
-
-macro_rules! validate_read_u8 {
-    ($myself: expr, $addr: expr, $data: expr, $btype: expr, $rtype: expr) => {{
-        #[cfg(feature = "cpu_validator")]
-        if let Some(ref mut validator) = &mut $myself.validator {
-            validator.emu_read_byte($addr, $data, $btype, $rtype)
-        }
-    }};
-}
-
-macro_rules! validate_write_u8 {
-    ($myself: expr, $addr: expr, $data: expr, $btype: expr) => {{
-        #[cfg(feature = "cpu_validator")]
-        if let Some(ref mut validator) = &mut $myself.validator {
-            validator.emu_write_byte($addr, $data, $btype)
-        }
-    }};
-}
-
 impl Intel808x {
     #[inline(always)]
     pub fn set_mc_pc(&mut self, instr: u16) {
@@ -104,10 +83,18 @@ impl Intel808x {
         match self.bus_status_latch {
             BusStatus::Passive => {
                 self.transfer_n = 0;
-                if let FetchState::Delayed(0) = self.fetch_state {
-                    self.fetch_state = FetchState::Normal;
-                    self.trace_comment("END_DELAY");
-                    self.biu_make_fetch_decision();
+                match self.fetch_state {
+                    FetchState::Delayed(0) => {
+                        self.fetch_state = FetchState::Normal;
+                        self.trace_comment("END_DELAY");
+                        self.biu_make_fetch_decision();
+                    }
+                    FetchState::PausedFull => {
+                        if self.queue.has_room_for_fetch() {
+                            self.biu_make_fetch_decision();
+                        }
+                    }
+                    _ => {}
                 }
             }
             BusStatus::MemRead
@@ -200,21 +187,25 @@ impl Intel808x {
                     TCycle::T3 => {
                         if self.is_last_wait_t3tw() {
                             // Do bus transfer on T3 if no wait states.
-                            self.do_bus_transfer();
+                            self.biu_do_bus_transfer();
                             self.ready = true;
                         }
                     }
                     TCycle::Tw => {
                         if self.is_last_wait_t3tw() {
-                            self.do_bus_transfer();
+                            self.biu_do_bus_transfer();
                             self.ready = true;
                         }
                     }
                     TCycle::T4 => {
                         // If we just completed a code fetch, make the byte available in the queue.
                         if let BusStatus::CodeFetch = self.bus_status_latch {
-                            self.queue.push8(self.data_bus as u8);
-                            self.pc = self.pc.wrapping_add(1);
+                            match self.bus_width {
+                                BusWidth::Byte => {
+                                    self.pc = self.pc.wrapping_add(self.queue.push8(self.data_bus as u8));
+                                }
+                                BusWidth::Word => self.pc = self.pc.wrapping_add(self.queue.push16(self.data_bus)),
+                            }
                         }
 
                         if self.final_transfer {
@@ -269,7 +260,7 @@ impl Intel808x {
                         if matches!(self.t_cycle, TCycle::Ti | TCycle::T4)
                             && !matches!(self.fetch_state, FetchState::Suspended | FetchState::Halted)
                         {
-                            self.biu_fetch_bus_begin();
+                            self.biu_bus_begin_fetch();
                             TaCycle::Td
                         }
                         else {
@@ -483,127 +474,6 @@ impl Intel808x {
                 self.dma_state = DmaState::Idle;
             }
         }
-    }
-
-    pub fn do_bus_transfer(&mut self) {
-        let byte;
-
-        match (self.bus_status_latch, self.transfer_size) {
-            (BusStatus::CodeFetch, TransferSize::Byte) => {
-                (byte, _) = self
-                    .bus
-                    .read_u8(self.address_latch as usize, self.instr_elapsed)
-                    .unwrap();
-                self.data_bus = byte as u16;
-
-                validate_read_u8!(
-                    self,
-                    self.address_latch,
-                    (self.data_bus & 0x00FF) as u8,
-                    BusType::Mem,
-                    ReadType::Code
-                );
-            }
-            (BusStatus::CodeFetch, TransferSize::Word) => {
-                (self.data_bus, _) = self
-                    .bus
-                    .read_u16(self.address_latch as usize, self.instr_elapsed)
-                    .unwrap();
-            }
-            (BusStatus::MemRead, TransferSize::Byte) => {
-                (byte, _) = self
-                    .bus
-                    .read_u8(self.address_latch as usize, self.instr_elapsed)
-                    .unwrap();
-                self.instr_elapsed = 0;
-                self.data_bus = byte as u16;
-
-                validate_read_u8!(
-                    self,
-                    self.address_latch,
-                    (self.data_bus & 0x00FF) as u8,
-                    BusType::Mem,
-                    ReadType::Data
-                );
-            }
-            (BusStatus::MemRead, TransferSize::Word) => {
-                (self.data_bus, _) = self
-                    .bus
-                    .read_u16(self.address_latch as usize, self.instr_elapsed)
-                    .unwrap();
-                self.instr_elapsed = 0;
-            }
-            (BusStatus::MemWrite, TransferSize::Byte) => {
-                self.i8288.mwtc = true;
-                _ = self
-                    .bus
-                    .write_u8(
-                        self.address_latch as usize,
-                        (self.data_bus & 0x00FF) as u8,
-                        self.instr_elapsed,
-                    )
-                    .unwrap();
-                self.instr_elapsed = 0;
-
-                validate_write_u8!(self, self.address_latch, (self.data_bus & 0x00FF) as u8, BusType::Mem);
-            }
-            (BusStatus::MemWrite, TransferSize::Word) => {
-                self.i8288.mwtc = true;
-                _ = self
-                    .bus
-                    .write_u16(self.address_latch as usize, self.data_bus, self.instr_elapsed)
-                    .unwrap();
-                self.instr_elapsed = 0;
-            }
-            (BusStatus::IoRead, TransferSize::Byte) => {
-                self.i8288.iorc = true;
-                byte = self
-                    .bus
-                    .io_read_u8((self.address_latch & 0xFFFF) as u16, self.instr_elapsed);
-                self.data_bus = byte as u16;
-                self.instr_elapsed = 0;
-
-                validate_read_u8!(
-                    self,
-                    self.address_latch,
-                    (self.data_bus & 0x00FF) as u8,
-                    BusType::Io,
-                    ReadType::Data
-                );
-            }
-            (BusStatus::IoWrite, TransferSize::Byte) => {
-                self.i8288.iowc = true;
-                self.bus.io_write_u8(
-                    (self.address_latch & 0xFFFF) as u16,
-                    (self.data_bus & 0x00FF) as u8,
-                    self.instr_elapsed,
-                    Some(&mut self.analyzer),
-                );
-                self.instr_elapsed = 0;
-
-                validate_write_u8!(self, self.address_latch, (self.data_bus & 0x00FF) as u8, BusType::Io);
-            }
-            (BusStatus::InterruptAck, TransferSize::Byte) => {
-                // The vector is read from the PIC directly before we even enter an INTA bus state, so there's
-                // nothing to do.
-
-                //log::debug!("in INTA transfer_n: {}", self.transfer_n);
-                // Deassert lock
-                if self.transfer_n == 2 {
-                    //log::debug!("deasserting lock! transfer_n: {}", self.transfer_n);
-                    self.lock = false;
-                    self.intr = false;
-                }
-                //self.transfer_n += 1;
-            }
-            _ => {
-                trace_print!(self, "Unhandled bus state!");
-                log::warn!("Unhandled bus status: {:?}!", self.bus_status_latch);
-            }
-        }
-
-        self.bus_status = BusStatus::Passive;
-        self.address_bus = (self.address_bus & !0xFF) | (self.data_bus as u32);
     }
 
     #[inline]

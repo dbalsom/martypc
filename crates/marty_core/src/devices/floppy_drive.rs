@@ -228,7 +228,8 @@ impl FloppyDiskDrive {
         *self = Self {
             drive_type: self.drive_type,
             drive_n: self.drive_n,
-            ready: self.disk_present,
+            // IBM DOS wants to see ready in ST3 even if no disk in drive.
+            ready: true,
             disk_present: self.disk_present,
             write_protected: self.write_protected,
             media_geom: self.media_geom,

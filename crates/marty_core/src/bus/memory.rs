@@ -302,35 +302,42 @@ impl BusInterface {
     }
 
     pub fn read_u16(&mut self, address: usize, cycles: u32) -> Result<(u16, u32), MemError> {
-        if address < self.memory.len() - 1 {
-            return if self.memory_mask[address] & MEM_MMIO_BIT == 0 {
-                // Address is not mapped.
-                let w: u16 = self.memory[address] as u16 | (self.memory[address + 1] as u16) << 8;
-                Ok((w, DEFAULT_WAIT_STATES))
-            }
-            else {
-                // Handle memory-mapped devices
-                match self.mmio_map_fast[address >> MMIO_MAP_SHIFT] {
-                    MmioDeviceType::Video(vid) => {
-                        if let Some(card_dispatch) = self.videocards.get_mut(&vid) {
-                            let system_ticks = self.cycles_to_ticks[cycles as usize];
-                            return Ok(card_dispatch.mmio_read_u16(address, system_ticks, Some(&self.memory)));
-                        }
-                    }
-                    MmioDeviceType::Ems => {
-                        if let Some(ems) = &mut self.ems {
-                            let (data, syswait) = MemoryMappedDevice::mmio_read_u16(ems, address, 0, None);
-                            return Ok((data, self.system_ticks_to_cpu_cycles(syswait)));
-                        }
-                    }
-                    _ => {}
-                }
-                Ok((0xFFFF, 0))
-                //return Err(MemError::MmioError);
-            };
-        }
-        Err(MemError::ReadOutOfBoundsError)
+        let (b0, wait0) = self.read_u8(address, cycles)?;
+        let (b1, wait1) = self.read_u8(address + 1, cycles)?;
+
+        Ok((((b1 as u16) << 8) | b0 as u16, wait0 + wait1))
     }
+
+    // pub fn read_u16(&mut self, address: usize, cycles: u32) -> Result<(u16, u32), MemError> {
+    //     if address < self.memory.len() - 1 {
+    //         return if self.memory_mask[address] & MEM_MMIO_BIT == 0 {
+    //             // Address is not mapped.
+    //             let w: u16 = self.memory[address] as u16 | (self.memory[address + 1] as u16) << 8;
+    //             Ok((w, DEFAULT_WAIT_STATES))
+    //         }
+    //         else {
+    //             // Handle memory-mapped devices
+    //             match self.mmio_map_fast[address >> MMIO_MAP_SHIFT] {
+    //                 MmioDeviceType::Video(vid) => {
+    //                     if let Some(card_dispatch) = self.videocards.get_mut(&vid) {
+    //                         let system_ticks = self.cycles_to_ticks[cycles as usize];
+    //                         return Ok(card_dispatch.mmio_read_u16(address, system_ticks, Some(&self.memory)));
+    //                     }
+    //                 }
+    //                 MmioDeviceType::Ems => {
+    //                     if let Some(ems) = &mut self.ems {
+    //                         let (data, syswait) = MemoryMappedDevice::mmio_read_u16(ems, address, 0, None);
+    //                         return Ok((data, self.system_ticks_to_cpu_cycles(syswait)));
+    //                     }
+    //                 }
+    //                 _ => {}
+    //             }
+    //             Ok((0xFFFF, 0))
+    //             //return Err(MemError::MmioError);
+    //         };
+    //     }
+    //     Err(MemError::ReadOutOfBoundsError)
+    // }
 
     pub fn write_u8(&mut self, address: usize, data: u8, cycles: u32) -> Result<u32, MemError> {
         if address < self.memory.len() {
@@ -369,44 +376,49 @@ impl BusInterface {
     }
 
     pub fn write_u16(&mut self, address: usize, data: u16, cycles: u32) -> Result<u32, MemError> {
-        if address < self.memory.len() - 1 {
-            return if self.memory_mask[address] & (MEM_MMIO_BIT | MEM_ROM_BIT) == 0 {
-                // Address is not mapped. Write to memory if within conventional memory size.
-                if address < self.conventional_size - 1 {
-                    self.memory[address] = (data & 0xFF) as u8;
-                    self.memory[address + 1] = (data >> 8) as u8;
-                }
-                else if address < self.conventional_size {
-                    self.memory[address] = (data & 0xFF) as u8;
-                }
-                Ok(DEFAULT_WAIT_STATES)
-            }
-            else {
-                // Handle memory-mapped devices
-                match self.mmio_map_fast[address >> MMIO_MAP_SHIFT] {
-                    MmioDeviceType::Video(vid) => {
-                        if let Some(card_dispatch) = self.videocards.get_mut(&vid) {
-                            let system_ticks = self.cycles_to_ticks[cycles as usize];
-                            return Ok(card_dispatch.mmio_write_u16(
-                                address,
-                                data,
-                                system_ticks,
-                                Some(&mut self.memory),
-                            ));
-                        }
-                    }
-                    MmioDeviceType::Ems => {
-                        if let Some(ems) = &mut self.ems {
-                            MemoryMappedDevice::mmio_write_u16(ems, address, data, 0, None);
-                        }
-                    }
-                    _ => {}
-                }
-                Ok(0)
-            };
-        }
-        Err(MemError::ReadOutOfBoundsError)
+        self.write_u8(address, (data & 0xFF) as u8, cycles)?;
+        self.write_u8(address + 1, (data >> 8) as u8, cycles)
     }
+
+    // pub fn write_u16(&mut self, address: usize, data: u16, cycles: u32) -> Result<u32, MemError> {
+    //     if address < self.memory.len() - 1 {
+    //         return if self.memory_mask[address] & (MEM_MMIO_BIT | MEM_ROM_BIT) == 0 {
+    //             // Address is not mapped. Write to memory if within conventional memory size.
+    //             if address < self.conventional_size - 1 {
+    //                 self.memory[address] = (data & 0xFF) as u8;
+    //                 self.memory[address + 1] = (data >> 8) as u8;
+    //             }
+    //             else if address < self.conventional_size {
+    //                 self.memory[address] = (data & 0xFF) as u8;
+    //             }
+    //             Ok(DEFAULT_WAIT_STATES)
+    //         }
+    //         else {
+    //             // Handle memory-mapped devices
+    //             match self.mmio_map_fast[address >> MMIO_MAP_SHIFT] {
+    //                 MmioDeviceType::Video(vid) => {
+    //                     if let Some(card_dispatch) = self.videocards.get_mut(&vid) {
+    //                         let system_ticks = self.cycles_to_ticks[cycles as usize];
+    //                         return Ok(card_dispatch.mmio_write_u16(
+    //                             address,
+    //                             data,
+    //                             system_ticks,
+    //                             Some(&mut self.memory),
+    //                         ));
+    //                     }
+    //                 }
+    //                 MmioDeviceType::Ems => {
+    //                     if let Some(ems) = &mut self.ems {
+    //                         MemoryMappedDevice::mmio_write_u16(ems, address, data, 0, None);
+    //                     }
+    //                 }
+    //                 _ => {}
+    //             }
+    //             Ok(0)
+    //         };
+    //     }
+    //     Err(MemError::ReadOutOfBoundsError)
+    // }
 
     /// Get bit flags for the specified byte at address
     #[inline]

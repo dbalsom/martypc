@@ -178,8 +178,8 @@ pub struct CpuStringState {
     pub d_fl: String,
     pub o_fl: String,
     pub piq: String,
-    pub instruction_count: String,
-    pub cycle_count: String,
+    pub instruction_count: u64,
+    pub cycle_count: u64,
     pub dma_state: String,
     pub dram_refresh_cycle_period: String,
     pub dram_refresh_cycle_num: String,
@@ -337,6 +337,7 @@ pub fn format_instruction_bytes(bytes: &[u8]) -> String {
 #[enum_dispatch]
 pub enum CpuDispatch {
     Intel808x,
+
     NecVx0,
 }
 

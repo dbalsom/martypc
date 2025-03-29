@@ -162,6 +162,12 @@ impl BusInterface {
         byte_val
     }
 
+    pub fn io_read_u16(&mut self, port: u16, cycles: u32) -> u16 {
+        let low_byte = self.io_read_u8(port, cycles);
+        let high_byte = self.io_read_u8(port + 1, cycles);
+        (low_byte as u16) | ((high_byte as u16) << 8)
+    }
+
     pub fn io_write_wait(&mut self, port: u16, _cycles: u32) -> u32 {
         let mut write_waits = None;
 
@@ -352,5 +358,13 @@ impl BusInterface {
                 e.1.writes_dirty = true;
             })
             .or_insert((resolved, IoDeviceStats::one_write()));
+    }
+
+    pub fn io_write_u16(&mut self, port: u16, data: u16, cycles: u32, _analyzer: Option<&mut LogicAnalyzer>) {
+        let low_byte = (data & 0xFF) as u8;
+        let high_byte = (data >> 8) as u8;
+
+        self.io_write_u8(port, low_byte, cycles, None);
+        self.io_write_u8(port + 1, high_byte, cycles, None);
     }
 }

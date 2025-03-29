@@ -300,6 +300,8 @@ lazy_static! {
         m.insert(MachineType::Ibm5160, vec!["ibm5160"]);
         m.insert(MachineType::IbmPCJr, vec!["ibm_pcjr"]);
         m.insert(MachineType::Tandy1000, vec!["tandy1000"]);
+        m.insert(MachineType::Tandy1000SL, vec!["tandy1000sl"]);
+        m.insert(MachineType::CompaqDeskpro, vec!["compaq_deskpro"]);
         m
     };
 
@@ -313,6 +315,8 @@ lazy_static! {
         m.insert(MachineType::Ibm5160, vec!["ibm_basic"]);
         m.insert(MachineType::IbmPCJr, vec!["pcjr_cartridge"]);
         m.insert(MachineType::Tandy1000, vec![]);
+        m.insert(MachineType::Tandy1000SL, vec![]);
+        m.insert(MachineType::CompaqDeskpro, vec![]);
         m
     };
 
@@ -442,6 +446,21 @@ lazy_static! {
                 },
             ),
             (
+                MachineType::CompaqPortable,
+                MachineDescriptor {
+                    machine_type: MachineType::CompaqPortable,
+                    ..Default::default()
+                },
+            ),
+            (
+                MachineType::CompaqDeskpro,
+                MachineDescriptor {
+                    machine_type: MachineType::CompaqDeskpro,
+                    cpu_type: CpuType::Intel8086,
+                    ..Default::default()
+                },
+            ),
+            (
                 MachineType::IbmPCJr,
                 MachineDescriptor {
                     machine_type: MachineType::IbmPCJr,
@@ -494,7 +513,36 @@ lazy_static! {
                     onboard_sound: Some((SoundChipType::Sn76489, 0xC0, ClockFactor::Divisor(4))),
                     ..Default::default()
                 },
-            )
+            ),
+            (
+                MachineType::Tandy1000SL,
+                MachineDescriptor {
+                    machine_type: MachineType::Tandy1000SL,
+                    system_crystal: IBM_PC_SYSTEM_CLOCK,
+                    timer_crystal: None,
+                    bus_crystal: IBM_PC_SYSTEM_CLOCK,
+                    open_bus_byte: 0xE8,
+                    cpu_type: CpuType::Intel8086, // SL upgraded to the 8086.
+                    cpu_factor: ClockFactor::Divisor(2),
+                    cpu_turbo_factor: ClockFactor::Divisor(3), // Reverse turbo - alternate clock slows down.
+                    bus_type: BusType::Isa8,
+                    bus_factor: ClockFactor::Divisor(1),
+                    timer_divisor: PIT_DIVISOR,
+                    have_ppi: true,
+                    a0: Some(A0Type::Tandy1000),
+                    kb_controller: KbControllerType::Ppi,
+                    pit_type: PitType::Model8253,
+                    pic_type: PicType::Single,
+                    dma_type: Some(DmaType::Single),
+                    onboard_serial: None,
+                    onboard_parallel: Some(0x378),
+                    allow_expansion_video: false,
+                    pcjr_cart_slot: false,
+                    game_port: Some(GAME_PORT_DEFAULT_IO),
+                    onboard_sound: Some((SoundChipType::Sn76489, 0xC0, ClockFactor::Divisor(4))),
+                    ..Default::default()
+                },
+            ),
         ]);
         map
     };

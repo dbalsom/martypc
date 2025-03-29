@@ -35,12 +35,44 @@ use crate::{
     cpu_common::{operands::OperandSize, QueueOp, Segment},
 };
 
+#[cfg(feature = "cpu_validator")]
+use crate::cpu_validator::{BusType, ReadType};
+
 pub const QUEUE_SIZE: usize = 4;
 pub const QUEUE_POLICY_LEN: usize = 3;
 
-pub enum WriteFlag {
-    Normal,
-    RNI,
+#[derive(Copy, Clone, Default, PartialEq, Eq)]
+pub enum BusWidth {
+    #[default]
+    Byte,
+    Word,
+}
+
+impl BusWidth {
+    pub fn fmt_width(&self) -> usize {
+        match self {
+            BusWidth::Byte => 2,
+            BusWidth::Word => 4,
+        }
+    }
+}
+
+macro_rules! validate_read_u8 {
+    ($myself: expr, $addr: expr, $data: expr, $btype: expr, $rtype: expr) => {{
+        #[cfg(feature = "cpu_validator")]
+        if let Some(ref mut validator) = &mut $myself.validator {
+            validator.emu_read_byte($addr, $data, $btype, $rtype)
+        }
+    }};
+}
+
+macro_rules! validate_write_u8 {
+    ($myself: expr, $addr: expr, $data: expr, $btype: expr) => {{
+        #[cfg(feature = "cpu_validator")]
+        if let Some(ref mut validator) = &mut $myself.validator {
+            validator.emu_write_byte($addr, $data, $btype)
+        }
+    }};
 }
 
 impl ByteQueue for Intel808x {
@@ -136,9 +168,10 @@ impl Intel808x {
         let byte;
         //trace_print!(self, "biu_queue_read()");
 
-        // If we read from the queue while prefetching is delayed, we can abort the delay state.
-        // Don't abort the delay state on T3 as it will just put us back at the policy length immediately.
-        if matches!(self.fetch_state, FetchState::Delayed(_)) && self.queue.at_policy_len() {
+        // If we read from the queue while prefetching is delayed, we can abort the delay state,
+        // if reading the queue would take us below the queue policy length.
+        if matches!(self.fetch_state, FetchState::Delayed(_)) && self.queue.at_policy_threshold() {
+            self.trace_comment("CANCEL_DELAY");
             self.fetch_state = FetchState::Delayed(0);
         }
 
@@ -205,7 +238,8 @@ impl Intel808x {
 
     #[inline]
     pub fn biu_fetch_on_queue_read(&mut self) {
-        if self.queue.at_policy_len() {
+        self.trace_comment("FOQR");
+        if self.bus_status == BusStatus::Passive && self.queue.has_room_for_fetch() {
             match self.fetch_state {
                 FetchState::Suspended => {
                     self.trace_comment("FETCH_ON_SUSP_READ");
@@ -213,7 +247,7 @@ impl Intel808x {
                 }
                 FetchState::PausedFull => {
                     if self.t_cycle == TCycle::Ti {
-                        self.trace_comment("FETCH_ON_READ");
+                        self.trace_comment("FETCH_ON_FULL_READ");
                         //self.ta_cycle = TaCycle::Ta;
                         self.ta_cycle = TaCycle::Td;
                     }
@@ -237,7 +271,7 @@ impl Intel808x {
     pub fn biu_fetch_next(&mut self) {
         // Don't fetch if we are in a string instruction that is still repeating.
         if !self.in_rep {
-            self.trace_comment("FETCH");
+            self.trace_comment("FETCH_NEXT");
             let mut fetch_timeout = 0;
 
             /*
@@ -349,13 +383,16 @@ impl Intel808x {
 
     /// Decide whether to start a code fetch this cycle. Should be called at Ti and end of T2.
     pub fn biu_make_fetch_decision(&mut self) {
+        self.trace_comment("DECIDE");
         if !self.queue.has_room_for_fetch() {
             // Queue is full, suspend fetching.
+            self.trace_comment("PAUSE_FULL");
             self.fetch_state = FetchState::PausedFull;
         }
         else if self.bus_pending != BusPendingType::EuEarly {
             // If the EU has not claimed the bus...
             if !matches!(self.fetch_state, FetchState::Suspended | FetchState::Halted) {
+                self.trace_comment("FETCH_CHECK");
                 // And prefetching isn't suspended or halted...
                 if self.queue.at_policy_len() && self.bus_status_latch == BusStatus::CodeFetch {
                     // If we are at a queue policy length during a code fetch. Delay the fetch.
@@ -370,7 +407,7 @@ impl Intel808x {
                         }
                     }
                 }
-                else {
+                else if self.ta_cycle == TaCycle::Td {
                     // The EU has not claimed the bus this m-cycle, and we are not at a queue policy length
                     // during a code fetch, and fetching is not suspended. Begin a code fetch address cycle.
                     self.trace_comment("FETCH_NORMAL");
@@ -565,9 +602,17 @@ impl Intel808x {
         self.biu_bus_wait_until_tx()
     }
 
+    #[inline(always)]
+    pub fn biu_read_u16(&mut self, seg: Segment, offset: u16) -> u16 {
+        match self.bus_width {
+            BusWidth::Byte => self.biu_read_u16_native8(seg, offset),
+            BusWidth::Word => self.biu_read_u16_native16(seg, offset),
+        }
+    }
+
     /// Request a word size (16-bit) bus read transfer from the BIU.
     /// The 8088 divides word transfers up into two consecutive byte size transfers.
-    pub fn biu_read_u16(&mut self, seg: Segment, offset: u16) -> u16 {
+    pub fn biu_read_u16_native8(&mut self, seg: Segment, offset: u16) -> u16 {
         let mut word;
         let mut addr = self.calc_linear_address_seg(seg, offset);
 
@@ -600,9 +645,39 @@ impl Intel808x {
         word
     }
 
+    pub fn biu_read_u16_native16(&mut self, seg: Segment, offset: u16) -> u16 {
+        if offset & 1 != 0 {
+            // Unaligned word read, fall back to 8-bit path.
+            return self.biu_read_u16_native8(seg, offset);
+        }
+
+        let addr = self.calc_linear_address_seg(seg, offset);
+
+        self.biu_bus_begin(
+            BusStatus::MemRead,
+            seg,
+            addr,
+            0,
+            TransferSize::Word,
+            OperandSize::Operand16,
+            true,
+        );
+        self.biu_bus_wait_finish();
+
+        self.data_bus
+    }
+
+    #[inline(always)]
+    pub fn biu_write_u16(&mut self, seg: Segment, offset: u16, word: u16) {
+        match self.bus_width {
+            BusWidth::Byte => self.biu_write_u16_native8(seg, offset, word),
+            BusWidth::Word => self.biu_write_u16_native16(seg, offset, word),
+        }
+    }
+
     /// Request a word size (16-bit) bus write transfer from the BIU.
     /// The 8088 divides word transfers up into two consecutive byte size transfers.
-    pub fn biu_write_u16(&mut self, seg: Segment, offset: u16, word: u16) {
+    pub fn biu_write_u16_native8(&mut self, seg: Segment, offset: u16, word: u16) {
         let mut addr = self.calc_linear_address_seg(seg, offset);
 
         // 8088 performs two consecutive byte transfers
@@ -629,6 +704,26 @@ impl Intel808x {
             false,
         );
 
+        self.biu_bus_wait_until_tx()
+    }
+
+    /// Request a word size (16-bit) bus write transfer from the BIU.
+    /// The 8086 can complete a word transfer in a single bus cycle.
+    pub fn biu_write_u16_native16(&mut self, seg: Segment, offset: u16, word: u16) {
+        let addr = self.calc_linear_address_seg(seg, offset);
+        if offset & 1 != 0 {
+            // Unaligned word write, fall back to 8-bit path.
+            return self.biu_write_u16_native8(seg, offset, word);
+        }
+        self.biu_bus_begin(
+            BusStatus::MemWrite,
+            seg,
+            addr,
+            word,
+            TransferSize::Word,
+            OperandSize::Operand16,
+            true,
+        );
         self.biu_bus_wait_until_tx()
     }
 
@@ -862,11 +957,17 @@ impl Intel808x {
 
     #[inline]
     pub fn biu_fetch_start(&mut self) {
-        // Only start a fetch if the EU hasn't claimed the bus, and we're not already in a fetch
-        // address cycle.
+        // Only start a fetch if the EU hasn't claimed the bus, we're not already in a fetch
+        // address cycle, and fetching is not delayed.
+        self.trace_comment("BFS");
         if self.bus_pending != BusPendingType::EuEarly && self.pl_status != BusStatus::CodeFetch {
-            self.fetch_state = FetchState::Normal;
-            self.biu_address_start(BusStatus::CodeFetch);
+            match self.fetch_state {
+                FetchState::Delayed(_) => {}
+                _ => {
+                    self.fetch_state = FetchState::Normal;
+                    self.biu_address_start(BusStatus::CodeFetch);
+                }
+            }
         }
     }
 
@@ -889,12 +990,12 @@ impl Intel808x {
 
         // Skip Tr if we aborted. (T0 of abort was our Tr)
         if self.ta_cycle == TaCycle::Ta {
-            self.trace_comment("ADDRESS_START_TS");
+            self.trace_comment("AS_TS");
             self.ta_cycle = TaCycle::Ts;
         }
         else {
             // Did not abort, start new address cycle at Tr
-            self.trace_comment("ADDRESS_START_TR");
+            self.trace_comment("AS_TR");
             self.ta_cycle = TaCycle::Tr;
         }
         self.pl_status = new_bus_status;
@@ -913,9 +1014,23 @@ impl Intel808x {
 
     /// Begin a code fetch bus cycle. This is a special case of `biu_bus_begin` that is only
     /// used for code fetches.
-    pub fn biu_fetch_bus_begin(&mut self) {
-        let addr = Intel808x::calc_linear_address(self.cs, self.pc);
+    pub fn biu_bus_begin_fetch(&mut self) {
+        let mut addr = Intel808x::calc_linear_address(self.cs, self.pc);
+
         if self.queue.has_room_for_fetch() {
+            self.operand_size = match self.fetch_size {
+                TransferSize::Byte => OperandSize::Operand8,
+                TransferSize::Word => {
+                    if addr & 1 != 0 {
+                        // Unaligned code fetch - instruct the 8086 to discard one byte of the next fetch,
+                        // while forcing fetch to even address.
+                        addr = addr & !0x1;
+                        self.queue.set_discard();
+                    }
+                    OperandSize::Operand16
+                }
+            };
+
             //trace_print!(self, "Setting address bus to PC: {:05X}", self.pc);
             self.fetch_state = FetchState::Normal;
             self.pl_status = BusStatus::Passive; // Pipeline status must always be reset on T1
@@ -928,10 +1043,6 @@ impl Intel808x {
             self.i8288.ale = true;
             self.data_bus = 0;
             self.transfer_size = self.fetch_size;
-            self.operand_size = match self.fetch_size {
-                TransferSize::Byte => OperandSize::Operand8,
-                TransferSize::Word => OperandSize::Operand16,
-            };
             self.transfer_n = 1;
             self.final_transfer = true;
         }
@@ -943,6 +1054,146 @@ impl Intel808x {
     /// word sized.
     #[inline]
     pub fn biu_is_last_transfer(&mut self) -> bool {
-        (self.transfer_size == TransferSize::Byte) || (self.transfer_n > 1)
+        (self.transfer_size == TransferSize::Word) || (self.transfer_n > 1)
+    }
+
+    pub fn biu_do_bus_transfer(&mut self) {
+        let byte;
+
+        match (self.bus_status_latch, self.transfer_size) {
+            (BusStatus::CodeFetch, TransferSize::Byte) => {
+                (byte, _) = self
+                    .bus
+                    .read_u8(self.address_latch as usize, self.instr_elapsed)
+                    .unwrap();
+                self.data_bus = byte as u16;
+
+                validate_read_u8!(
+                    self,
+                    self.address_latch,
+                    (self.data_bus & 0x00FF) as u8,
+                    BusType::Mem,
+                    ReadType::Code
+                );
+            }
+            (BusStatus::CodeFetch, TransferSize::Word) => {
+                (self.data_bus, _) = self
+                    .bus
+                    .read_u16(self.address_latch as usize, self.instr_elapsed)
+                    .unwrap();
+            }
+            (BusStatus::MemRead, TransferSize::Byte) => {
+                (byte, _) = self
+                    .bus
+                    .read_u8(self.address_latch as usize, self.instr_elapsed)
+                    .unwrap();
+                self.instr_elapsed = 0;
+                self.data_bus = byte as u16;
+
+                validate_read_u8!(
+                    self,
+                    self.address_latch,
+                    (self.data_bus & 0x00FF) as u8,
+                    BusType::Mem,
+                    ReadType::Data
+                );
+            }
+            (BusStatus::MemRead, TransferSize::Word) => {
+                (self.data_bus, _) = self
+                    .bus
+                    .read_u16(self.address_latch as usize, self.instr_elapsed)
+                    .unwrap();
+                self.instr_elapsed = 0;
+            }
+            (BusStatus::MemWrite, TransferSize::Byte) => {
+                self.i8288.mwtc = true;
+                _ = self
+                    .bus
+                    .write_u8(
+                        self.address_latch as usize,
+                        (self.data_bus & 0x00FF) as u8,
+                        self.instr_elapsed,
+                    )
+                    .unwrap();
+                self.instr_elapsed = 0;
+
+                validate_write_u8!(self, self.address_latch, (self.data_bus & 0x00FF) as u8, BusType::Mem);
+            }
+            (BusStatus::MemWrite, TransferSize::Word) => {
+                self.i8288.mwtc = true;
+                _ = self
+                    .bus
+                    .write_u16(self.address_latch as usize, self.data_bus, self.instr_elapsed)
+                    .unwrap();
+                self.instr_elapsed = 0;
+            }
+            (BusStatus::IoRead, TransferSize::Byte) => {
+                self.i8288.iorc = true;
+                byte = self
+                    .bus
+                    .io_read_u8((self.address_latch & 0xFFFF) as u16, self.instr_elapsed);
+                self.data_bus = byte as u16;
+                self.instr_elapsed = 0;
+
+                validate_read_u8!(
+                    self,
+                    self.address_latch,
+                    (self.data_bus & 0x00FF) as u8,
+                    BusType::Io,
+                    ReadType::Data
+                );
+            }
+            (BusStatus::IoRead, TransferSize::Word) => {
+                self.i8288.iorc = true;
+                self.data_bus = self
+                    .bus
+                    .io_read_u16((self.address_latch & 0xFFFF) as u16, self.instr_elapsed);
+                self.instr_elapsed = 0;
+            }
+            (BusStatus::IoWrite, TransferSize::Byte) => {
+                self.i8288.iowc = true;
+                self.bus.io_write_u8(
+                    (self.address_latch & 0xFFFF) as u16,
+                    (self.data_bus & 0x00FF) as u8,
+                    self.instr_elapsed,
+                    Some(&mut self.analyzer),
+                );
+                self.instr_elapsed = 0;
+
+                validate_write_u8!(self, self.address_latch, (self.data_bus & 0x00FF) as u8, BusType::Io);
+            }
+            (BusStatus::IoWrite, TransferSize::Word) => {
+                self.i8288.iowc = true;
+                self.bus.io_write_u16(
+                    (self.address_latch & 0xFFFF) as u16,
+                    self.data_bus,
+                    self.instr_elapsed,
+                    Some(&mut self.analyzer),
+                );
+                self.instr_elapsed = 0;
+
+                validate_write_u8!(self, self.address_latch, (self.data_bus & 0x00FF) as u8, BusType::Io);
+            }
+            (BusStatus::InterruptAck, TransferSize::Byte) => {
+                // The vector is read from the PIC directly before we even enter an INTA bus state, so there's
+                // nothing to do.
+
+                //log::debug!("in INTA transfer_n: {}", self.transfer_n);
+                // Deassert lock
+                if self.transfer_n == 2 {
+                    //log::debug!("deasserting lock! transfer_n: {}", self.transfer_n);
+                    self.lock = false;
+                    self.intr = false;
+                }
+                //self.transfer_n += 1;
+            }
+            _ => {
+                trace_print!(self, "Unhandled bus state!");
+                log::warn!("Unhandled bus status: {:?}!", self.bus_status_latch);
+            }
+        }
+
+        self.bus_status = BusStatus::Passive;
+        self.address_bus = (self.address_bus & !0xFF) | (self.data_bus as u32);
     }
 }

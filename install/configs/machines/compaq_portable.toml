@@ -33,7 +33,7 @@
 
 [[machine]]
 name = "compaq_portable"
-type = "Ibm5160"
+type = "CompaqPortable"
 rom_set = "compaq_portable_revf"
 speaker = true
 overlays = [
@@ -51,14 +51,14 @@ overlays = [
     type = "CGA"
     clock_mode = "Dynamic"
 
-    # Hard disk controller
-    [machine.hdc]
-    bus_type = "ISA"
-    type = "IbmXebec"
-    
-        # Drives connected to controller. Maximum of 2.
-        # Drive #0 - (Typically C:)
-        [[machine.hdc.drive]]
-        format = "Mfm"
-        vhd = "xebec20MB.vhd"
-        
+#    # Hard disk controller
+#    [machine.hdc]
+#    bus_type = "ISA"
+#    type = "IbmXebec"
+#
+#        # Drives connected to controller. Maximum of 2.
+#        # Drive #0 - (Typically C:)
+#        [[machine.hdc.drive]]
+#        format = "Mfm"
+#        vhd = "xebec20MB.vhd"
+#

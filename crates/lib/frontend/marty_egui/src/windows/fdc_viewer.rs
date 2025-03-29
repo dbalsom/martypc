@@ -53,18 +53,73 @@ impl FdcViewerControl {
     }
 
     pub fn draw(&mut self, ui: &mut egui::Ui, _events: &mut GuiEventQueue) {
-        MartyLayout::new(layouts::Layout::KeyValue, "fdc-status-grid").show(ui, |ui| {
-            MartyLayout::kv_row(ui, "Last Command:", None, |ui| {
-                ui.label(format!("{:?}", self.fdc_state.last_cmd));
-            });
+        let mut data_reg_out_string = String::new();
+        for byte in self.fdc_state.data_register_out.iter() {
+            data_reg_out_string.push_str(&format!("{:02X} ", byte));
+        }
+
+        let mut data_reg_in_string = String::new();
+        for byte in self.fdc_state.data_register_in.iter() {
+            data_reg_in_string.push_str(&format!("{:02X} ", byte));
+        }
+
+        #[rustfmt::skip]
+        egui::Grid::new("fdc-status-grid").striped(true).show(ui, |ui| {
+
+            ui.label("DOR:");
+            ui.label(format!("{:08b}", self.fdc_state.dor));
+            ui.end_row();
+
+            ui.label("Status register:");
+            ui.label(format!("{:08b}", self.fdc_state.status_register));
+
+            ui.label("DIO:");
+            ui.label(format!("{:?}", self.fdc_state.dio));
+
+            ui.label("MRQ:");
+            ui.label(format!("{}", if self.fdc_state.status_register & 0x80 != 0 { "1" } else { "0" }));
+            ui.end_row();
+
+            ui.label("Data register in:");
+            ui.label(data_reg_in_string);
+            ui.label("Last written:");
+            ui.label(format!("{:02X}", self.fdc_state.last_data_written));
+            ui.end_row();
+
+            ui.label("Data register out:");
+            ui.label(data_reg_out_string);
+            ui.label("Last read:");
+            ui.label(format!("{:02X}", self.fdc_state.last_data_read));
+            ui.end_row();
+
+            ui.label("Last Command:");
+            ui.label(format!(
+                "{:?} ({})",
+                self.fdc_state.last_cmd, self.fdc_state.last_cmd as u8
+            ));
+            ui.end_row();
+
+            ui.label("Current Operation:");
+            ui.label(format!("{}", self.fdc_state.operation));
+            ui.end_row();
 
             if self.fdc_state.last_status.len() > 0 {
-                MartyLayout::kv_row(ui, "Status Bytes:", None, |ui| {
-                    ui.label(format!(
-                        "{:02X} {:02X} {:02X}",
-                        self.fdc_state.last_status[0], self.fdc_state.last_status[1], self.fdc_state.last_status[2]
-                    ));
-                });
+                let st0 = self.fdc_state.last_status[0];
+                ui.label("ST0:");
+                ui.label(format!("{st0:08b} [{st0:02X}]"));
+                ui.end_row();
+            }
+            if self.fdc_state.last_status.len() > 1 {
+                let st1 = self.fdc_state.last_status[1];
+                ui.label("ST1:");
+                ui.label(format!("{st1:08b} [{st1:02X}]"));
+                ui.end_row();
+            }
+            if self.fdc_state.last_status.len() > 2 {
+                let st2 = self.fdc_state.last_status[2];
+                ui.label("ST2:");
+                ui.label(format!("{st2:08b} [{st2:02X}]"));
+                ui.end_row();
             }
         });
 

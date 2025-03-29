@@ -134,7 +134,9 @@ impl FloppyManager {
             .iter()
             .map(|f| f.location.clone())
             .collect::<Vec<PathBuf>>();
-        log::debug!("Got floppy filenames from resource: {:#?}", floppy_names);
+
+        // Verbose
+        //log::debug!("Got floppy filenames from resource: {:#?}", floppy_names);
 
         // Index mapping between 'files' vec and 'image_vec' should be maintained.
         for item in floppy_items.iter() {
@@ -184,7 +186,8 @@ impl FloppyManager {
 
     pub fn make_tree(&mut self, rm: &ResourceManager) -> Result<PathTreeNode, Error> {
         let filenames = &self.files.iter().map(|f| f.location.clone()).collect::<Vec<PathBuf>>();
-        log::debug!("FloppyManager::make_tree(): Building tree from files: {:#?}", filenames);
+        // Verbose - too many files
+        //log::debug!("FloppyManager::make_tree(): Building tree from files: {:#?}", filenames);
         let tree = rm.items_to_tree("floppy", &self.files)?;
         Ok(tree)
     }

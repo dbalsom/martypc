@@ -1,4 +1,3 @@
-#![feature(slice_take)]
 /*
     MartyPC
     https://github.com/dbalsom/martypc
@@ -24,50 +23,20 @@
     DEALINGS IN THE SOFTWARE.
 
     --------------------------------------------------------------------------
-
-    lib.rs
-
-    Main emulator core
-
 */
-#![allow(dead_code)]
-extern crate core;
 
-pub mod breakpoints;
-pub mod bus;
-pub mod bytebuf;
-pub mod bytequeue;
-pub mod channel;
-pub mod coreconfig;
-pub mod cpu_808x;
-pub mod cpu_common;
-pub mod cpu_validator;
-pub mod cpu_vx0;
-pub mod device_traits;
-pub mod device_types;
-pub mod devices;
-pub mod file_util;
-pub mod interrupt;
-pub mod keys;
-pub mod machine;
-pub mod machine_config;
-pub mod machine_types;
-pub mod memerror;
-pub mod motherboards;
-#[cfg(feature = "sound")]
-pub mod sound;
-pub mod syntax_token;
-pub mod tracelogger;
-pub mod updatable;
-pub mod util;
-pub mod vhd;
+///! Define the Compaq XT motherboard, used by the Compaq Portable and Compaq Deskpro machines.
+use super::{ppi_connector::PpiConnector, Motherboard};
+use crate::devices::dipswitch::DipSwitch;
 
-#[cfg(feature = "arduino_validator")]
-#[macro_use]
-pub mod arduino8088_client;
-#[cfg(feature = "arduino_validator")]
-#[macro_use]
-pub mod arduino8088_validator;
+pub struct CompaqXtMotherboard {
+    pub dips: Vec<DipSwitch>,
+}
 
-// Re-exported for use by frontend to populate file browser.
-pub use fluxfox::supported_extensions as supported_floppy_extensions;
+impl Motherboard for CompaqXtMotherboard {
+    fn add_dipswitch(&mut self, dip: DipSwitch) {
+        self.dips.push(dip);
+    }
+}
+
+impl PpiConnector for CompaqXtMotherboard {}

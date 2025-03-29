@@ -34,6 +34,7 @@
 use std::{
     collections::VecDeque,
     default::Default,
+    fmt::Display,
     path::{Path, PathBuf},
     sync::{Arc, RwLock},
 };
@@ -71,6 +72,8 @@ pub const FDC_DIGITAL_OUTPUT_REGISTER: u16 = 0x02;
 pub const FDC_STATUS_REGISTER: u16 = 0x04;
 pub const FDC_DATA_REGISTER: u16 = 0x05;
 
+pub const FDC_RESET_TIME: f64 = 1000.0; // 1ms in microseconds
+
 // Main Status Register Bit Definitions
 // --------------------------------------------------------------------------------
 // The first four bits encode which drives are in 'positioning' mode, ie whether
@@ -88,11 +91,11 @@ pub const FDC_STATUS_NON_DMA_MODE: u8 = 0b0010_0000;
 
 // Direction bit is checked by BIOS to tell it if the FDC is expecting a read
 // or a write to the Data register.  If this bit is set wrong the BIOS will
-// timeout waiting for it.
+// time out waiting for it.
 pub const FDC_STATUS_DIO: u8 = 0b0100_0000;
 
 // MRQ (Main Request) is also used to determine if the data port is ready to be
-// written to or read. If this bit is not set the BIOS will timeout waiting for it.
+// written to or read. If this bit is not set the BIOS will time out waiting for it.
 pub const FDC_STATUS_MRQ: u8 = 0b1000_0000;
 
 pub const DOR_DRIVE_SELECT_MASK: u8 = 0b0000_0001;
@@ -158,12 +161,15 @@ pub const ST3_DOUBLESIDED: u8 = 0b0000_1000;
 pub const ST3_HEAD: u8 = 0b0000_0100;
 
 /// Represent the state of the DIO bit of the Main Status Register in a readable way.
+#[derive(Copy, Clone, Debug, Default)]
 pub enum IoMode {
+    #[default]
     ToCpu,
     FromCpu,
 }
 
 /// Represent the various commands that the NEC FDC knows how to handle.
+#[repr(u8)]
 #[derive(Clone, Copy, Debug, Default)]
 pub enum Command {
     #[default]
@@ -226,17 +232,31 @@ pub struct OperationSpecifier {
     pub data_len: u8,
 }
 
-/// Classify operations - an Operation is intiated by any Command that does not immediately
-/// terminate, and is called on a repeated basis by the run() method until complete.
-///
-/// Operations usually involve DMA transfers.
-#[derive(Debug)]
+/// An [Operation] is initiated by any controller command that does not immediately terminate.
+/// The operation handler is called on a repeated basis by the fdc's run() method until the
+/// operation is complete or the controller is reset.
+#[derive(Copy, Clone, Debug, Default)]
 pub enum Operation {
+    #[default]
     NoOperation,
+    Reset,
     ReadData(u8, DiskChs, u8, u8, u8, u8), // Physical head, id CHS, sector_size, track_len, gap3_len, data_len
     ReadTrack(u8, DiskChs, u8, u8, u8, u8), // Physical head, CHS, sector_size, track_len, gap3_len, data_len
     WriteData(u8, DiskChs, u8, u8, u8, u8, bool), // Physical head, id CHS, sector_size, track_len, gap3_len, data_len, deleted_data
     FormatTrack(u8, u8, u8, u8, u8),              // head_select, sector_size, track_len, gap3_len, fill_byte
+}
+
+impl Display for Operation {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match self {
+            Operation::NoOperation => write!(f, "No Operation"),
+            Operation::Reset => write!(f, "Reset"),
+            Operation::ReadData(_, _chs, _, _, _, _) => write!(f, "Read Data"),
+            Operation::ReadTrack(_, _chs, _, _, _, _) => write!(f, "Read Track"),
+            Operation::WriteData(_, _chs, _, _, _, _, _) => write!(f, "Write Data"),
+            Operation::FormatTrack(_, _, _, _, _) => write!(f, "Format Track"),
+        }
+    }
 }
 
 type CommandDispatchFn = fn(&mut FloppyController) -> Continuation;
@@ -265,15 +285,25 @@ pub struct DriveHeadSelect {
 
 #[derive(Default)]
 pub struct FdcDebugState {
+    pub dor: u8,
+    pub operation: Operation,
     pub last_cmd: Command,
     pub last_status: Vec<u8>,
     pub drive_select: usize,
+    pub status_register: u8,
+    pub data_register_in: Vec<u8>,
+    pub data_register_out: Vec<u8>,
+    pub last_data_read: u8,
+    pub last_data_written: u8,
+    pub dio: IoMode,
+    pub st3: u8,
     pub cmd_log: Vec<String>,
 }
 
 pub struct FloppyController {
     us_accumulator: f64,
     watchdog_accumulator: f64,
+    reset_accumulator: f64,
     fdc_type: FdcType,
     status_byte: u8,
     reset_flag: bool,
@@ -283,6 +313,7 @@ pub struct FloppyController {
     data_register: u8,
     dma: bool,
     dor: u8,
+    dor_disabled: bool,
     busy: bool,
     dio: IoMode,
     mt: bool,
@@ -309,6 +340,9 @@ pub struct FloppyController {
 
     data_register_out: VecDeque<u8>,
     data_register_in: VecDeque<u8>,
+    last_data_read: u8,
+    last_data_written: u8,
+    last_st3: u8,
     format_buffer: VecDeque<u8>,
 
     drives: [FloppyDiskDrive; FDC_MAX_DRIVES],
@@ -398,6 +432,7 @@ impl Default for FloppyController {
         Self {
             us_accumulator: 0.0,
             watchdog_accumulator: 0.0,
+            reset_accumulator: 0.0,
             fdc_type: FdcType::IbmNec,
             status_byte: 0,
             reset_flag: false,
@@ -406,6 +441,7 @@ impl Default for FloppyController {
             data_register: 0,
             dma: true,
             dor: 0,
+            dor_disabled: false,
             busy: false,
             dio: IoMode::FromCpu,
             mt: false,
@@ -433,6 +469,9 @@ impl Default for FloppyController {
 
             data_register_out: VecDeque::new(),
             data_register_in: VecDeque::new(),
+            last_data_read: 0,
+            last_data_written: 0,
+            last_st3: 0,
             format_buffer: VecDeque::new(),
 
             drives: [
@@ -620,7 +659,7 @@ impl FloppyController {
         Ok(())
     }
 
-    pub fn handle_status_register_read(&mut self) -> u8 {
+    pub fn handle_status_register_read(&self) -> u8 {
         let mut msr_byte = 0;
         for (i, drive) in self.drives.iter().enumerate() {
             if drive.positioning {
@@ -670,13 +709,20 @@ impl FloppyController {
 
     pub fn handle_dor_write(&mut self, data: u8) {
         if data & DOR_FDC_RESET == 0 {
-            // Reset the FDC when the reset bit is *not* set
-            // Ignore all other commands
-            self.log_str(&format!("FDC Reset requested via DOR write: {:02X}", data));
-            self.reset_internal(true);
-            self.send_interrupt = true;
+            self.mrq = false;
+            self.dor_disabled = true;
         }
         else {
+            if self.dor_disabled {
+                // Reset the FDC when the reset bit is *not* set
+                // Ignore all other commands
+                self.log_str(&format!("FDC Reset requested via DOR write: {:02X}", data));
+                self.reset_accumulator = 0.0;
+                self.operation = Operation::Reset;
+                self.mrq = false;
+                self.dor_disabled = false;
+            }
+
             // Not reset. Turn drive motors on or off based on the MOTx bits in the DOR byte.
             let disk_n = data & 0x03;
             if data & DOR_MOTOR_FDD_A != 0 {
@@ -883,8 +929,9 @@ impl FloppyController {
         st2
     }
 
-    /// Generate the value of the ST3 Status Register in response to a command
-    pub fn make_st3_byte(&self, drive_select: usize) -> u8 {
+    /// Generate the value of the ST3 Status Register
+    /// ST3 is typically sent in response to Check Drive Status.
+    pub fn make_st3_byte(&mut self, drive_select: usize) -> u8 {
         // Set drive select bits DS0 & DS1
         let mut st3_byte = (drive_select & 0x03) as u8;
 
@@ -915,6 +962,8 @@ impl FloppyController {
             st3_byte |= ST3_ESIG;
         }
 
+        //log::trace!("make_st3_byte(): byte is {:02X}", st3_byte);
+        self.last_st3 = st3_byte;
         st3_byte
     }
 
@@ -924,7 +973,7 @@ impl FloppyController {
         if self.data_register_out.len() > 0 {
             out_byte = self.data_register_out.pop_front().unwrap();
             if self.data_register_out.len() == 0 {
-                //log::trace!("Popped last byte, clearing busy flag");
+                log::trace!("handle_data_register_read(): Popped last byte, clearing busy flag");
                 // CPU has read all available bytes
                 self.busy = false;
                 self.dio = IoMode::FromCpu;
@@ -932,6 +981,7 @@ impl FloppyController {
         }
 
         //log::trace!("Data Register Read: {:02X}", out_byte );
+        self.last_data_read = out_byte;
         out_byte
     }
 
@@ -990,6 +1040,7 @@ impl FloppyController {
             let command = command_byte.command();
             self.mt = command_byte.mt();
             self.command_deleted = false;
+            self.last_data_written = data;
             match command {
                 COMMAND_READ_TRACK => {
                     log::trace!("Received Read Track command: {:02}", command);
@@ -1107,6 +1158,20 @@ impl FloppyController {
 
         let mut st0_byte = ST0_INVALID_OPCODE;
 
+        let mut send_cylinder = true;
+        let last_command_was_sense = matches!(self.last_command, Command::SenseIntStatus);
+
+        // Deassert interrupt
+        self.end_interrupt = true;
+        self.last_command = Command::SenseIntStatus;
+        self.command = Command::NoCommand;
+
+        let log_str = format!(
+            "Last command: {:?}, Last error: {:?}, reset flag: {}, pending interrupt: {}",
+            self.last_command, self.last_error, self.reset_flag, self.pending_interrupt
+        );
+        self.log_cmd(Command::SenseIntStatus, "command_sense_interrupt", &log_str);
+
         if self.reset_flag {
             // FDC was just reset, answer with an ST0 for the first drive, but prepare to send up
             // to three more ST0 responses
@@ -1114,7 +1179,7 @@ impl FloppyController {
             self.reset_sense_count = 1;
             self.reset_flag = false;
         }
-        else if let Command::SenseIntStatus = self.last_command {
+        else if last_command_was_sense {
             // This Sense Interrupt command was preceded by another.
             // Advance the reset sense count to clear all drives assuming the calling code is doing
             // a four sense-interrupt sequence.
@@ -1125,14 +1190,22 @@ impl FloppyController {
             }
             else {
                 // More than four sense interrupts in a row shouldn't happen
+                log::warn!("Exceeded four sense interrupts");
                 st0_byte = ST0_INVALID_OPCODE;
-                self.reset_flag = false;
                 self.reset_sense_count = 0;
+                send_cylinder = false;
             }
         }
         else {
             // Sense interrupt in response to some other command
             if self.pending_interrupt {
+                log::trace!(
+                    "command_sense_interrupt(): Last command: {:?}, Last error: {:?}, pending interrupt: {}",
+                    self.last_command,
+                    self.last_error,
+                    self.pending_interrupt
+                );
+
                 let seek_flag = match self.last_command {
                     Command::CalibrateDrive => true,
                     Command::SeekParkHead => true,
@@ -1145,12 +1218,13 @@ impl FloppyController {
                     }
                     _ => InterruptCode::NormalTermination,
                 };
-
                 st0_byte = self.make_st0_byte(code, self.drive_select, seek_flag);
             }
             else {
+                log::warn!("Sense interrupt received without pending interrupt");
                 // Sense Interrupt without pending interrupt is invalid
                 st0_byte = ST0_INVALID_OPCODE;
+                send_cylinder = false;
             }
         }
 
@@ -1158,18 +1232,19 @@ impl FloppyController {
         let cb0 = st0_byte;
         self.data_register_out.push_back(cb0);
 
-        // Send Current Cylinder to FIFO
-        let cb1 = self.drives[self.drive_select].chsn.c();
-        self.data_register_out.push_back(cb1 as u8);
+        if send_cylinder {
+            // Send Current Cylinder to FIFO
+            let cb1 = self.drives[self.drive_select].chsn.c();
+            self.data_register_out.push_back(cb1 as u8);
+        }
 
         // We have data for CPU to read
         self.send_data_register();
-        // Deassert interrupt
-        self.end_interrupt = true;
 
-        self.last_command = Command::SenseIntStatus;
-        self.command = Command::NoCommand;
-        log::trace!("command_sense_interrupt completed.");
+        log::trace!(
+            "command_sense_interrupt() completed. Pushed {} bytes to data register.",
+            self.data_register_out.len()
+        );
     }
 
     /// Perform the Fix Drive Data command.
@@ -1210,15 +1285,13 @@ impl FloppyController {
     pub fn command_calibrate_drive(&mut self) -> Continuation {
         // A real floppy drive might fail to seek completely to cylinder 0 with one calibrate command.
         // Any point to emulating this behavior?
-        let drive_head_select = self.data_register_in.pop_front().unwrap();
-        let drive_select = (drive_head_select & 0x03) as usize;
-        let _head_select = drive_head_select >> 2 & 0x01;
+        let dhs = DriveHeadSelect::from_bytes([self.data_register_in.pop_front().unwrap()]);
 
         // Set drive select and seek to cylinder 0
-        self.drive_select = drive_select;
-        self.drives[drive_select].seek(0);
+        self.drive_select = dhs.drive() as usize;
+        self.drives[dhs.drive() as usize].seek(0);
 
-        let log_str = format!("drive_select: {}", drive_select);
+        let log_str = format!("drive_select: {}", self.drive_select);
         self.log_cmd(Command::CalibrateDrive, "command_calibrate_drive", &log_str);
 
         // Calibrate command sends interrupt when complete
@@ -2132,6 +2205,17 @@ impl FloppyController {
         }
     }
 
+    fn operation_reset(&mut self, delta_us: f64) {
+        self.reset_accumulator += delta_us;
+        if self.reset_accumulator > FDC_RESET_TIME {
+            log::trace!("FDC reset complete.");
+            self.reset_accumulator = 0.0;
+            self.reset_internal(false);
+            self.operation = Operation::NoOperation;
+            self.send_interrupt = true;
+        }
+    }
+
     /// Run the Format Track Operation
     ///
     /// DOS will program DMA for the entire track length, but we only read track_len * 4 bytes from DMA
@@ -2308,9 +2392,18 @@ impl FloppyController {
 
     pub fn get_debug_state(&self) -> FdcDebugState {
         FdcDebugState {
+            dor: self.dor,
+            operation: self.operation,
             last_cmd: self.last_command,
             last_status: self.last_status_bytes.clone(),
             drive_select: self.drive_select,
+            status_register: self.handle_status_register_read(),
+            data_register_in: self.data_register_in.clone().make_contiguous().to_vec(),
+            data_register_out: self.data_register_out.clone().make_contiguous().to_vec(),
+            last_data_read: self.last_data_read,
+            last_data_written: self.last_data_written,
+            dio: self.dio,
+            st3: self.last_st3,
             cmd_log: self.cmd_log.as_vec(),
         }
     }
@@ -2353,6 +2446,10 @@ impl FloppyController {
         match self.operation {
             Operation::NoOperation => {
                 // Do nothing
+            }
+            Operation::Reset => {
+                // Perform reset
+                self.operation_reset(us);
             }
             Operation::ReadData(h, chs, sector_size, track_len, _gap3_len, _data_len) => match self.dma {
                 true => self.operation_read_data(dma, bus, h, chs, sector_size, track_len),

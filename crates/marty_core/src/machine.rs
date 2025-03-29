@@ -770,7 +770,7 @@ impl Machine {
                     log::debug!("Mounted rom at location {:06X}", rom.addr);
                 }
                 Err(e) => {
-                    log::debug!("Failed to mount rom at location {:06X}: {}", rom.addr, e);
+                    log::debug!("Failed to mount rom {} at location {:06X}: {}", rom.md5, rom.addr, e);
                 }
             }
         }
@@ -783,8 +783,8 @@ impl Machine {
                     log::debug!("Mounted rom at location {:06X}", rom.addr);
                 }
                 Err(e) => {
-                    log::debug!("Failed to mount rom at location {:06X}: {}", rom.addr, e);
-                    return Err(anyhow!("Failed to mount rom at location {:06X}: {}", rom.addr, e));
+                    log::debug!("Failed to mount rom {} at location {:06X}: {}", rom.md5, rom.addr, e);
+                    return Err(anyhow!("Failed to mount rom {} at location {:06X}: {}", rom.md5, rom.addr, e));
                 }
             }
         }

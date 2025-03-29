@@ -630,12 +630,12 @@ impl Default for CGACard {
             mode_pending: false,
             clock_pending: false,
             display_mode: DisplayMode::Mode0TextBw40,
-            mode_enable: true,
+            mode_enable: false,
             mode_graphics: false,
             mode_bw: false,
             mode_hires_gfx: false,
-            mode_hires_txt: true,
-            mode_blinking: true,
+            mode_hires_txt: false,
+            mode_blinking: false,
             cc_palette: 0,
             cc_altcolor: 0,
             cc_overscan_color: 0,
@@ -1157,7 +1157,7 @@ impl CGACard {
     }
 
     /// Return true if the pending mode change defined by mode_byte would change from text mode to
-    /// graphics mode, or vice-versa
+    /// graphics mode, or vice versa
     fn is_deferred_mode_change(&self, new_mode_byte: u8) -> bool {
         // In general, we can determine whether we are in graphics mode or text mode by
         // checking the graphics bit, however, the graphics bit is allowed to coexist with the
@@ -1194,6 +1194,7 @@ impl CGACard {
         if clock_changed {
             // Flag the clock for pending change.  The clock can only be changed in phase with
             // LCHAR due to our dynamic clocking logic.
+            log::debug!("CGA: Clock change pending");
             self.clock_pending = true;
         }
 
@@ -1204,7 +1205,7 @@ impl CGACard {
         self.mode_hires_gfx = self.mode_byte & MODE_HIRES_GRAPHICS != 0;
         self.mode_blinking = self.mode_byte & MODE_BLINKING != 0;
 
-        // Use color control register value for overscan unless high res graphics mode,
+        // Use color control register value for overscan unless high-res graphics mode,
         // in which case overscan must be black (0).
         self.cc_overscan_color = if self.mode_hires_gfx { 0 } else { self.cc_altcolor };
 
@@ -1300,16 +1301,17 @@ impl CGACard {
     /// Handle a write to the CGA mode register. Defer the mode change if it would change
     /// from graphics mode to text mode or back (Need to measure this on real hardware)
     fn handle_mode_register(&mut self, mode_byte: u8) {
-        //log::debug!("Write to CGA mode register: {:08b}", mode_byte);
+        log::debug!("Write to CGA mode register: {:08b}", mode_byte);
         if self.is_deferred_mode_change(mode_byte) {
             // Latch the mode change and mark it pending. We will change the mode on next hsync.
-            log::trace!("deferring mode change.");
+            log::trace!("handle_mode_register(): deferring mode change.");
             self.mode_pending = true;
             self.mode_byte = mode_byte;
         }
         else {
             // We're not changing from text to graphics or vice versa, so we do not have to
             // defer the update.
+            log::trace!("handle_mode_register(): updating mode immediately");
             self.mode_byte = mode_byte;
             self.update_mode();
         }
@@ -2241,14 +2243,14 @@ impl CGACard {
         self.cur_screen_cycles = 0;
         self.last_vsync_cycles = self.cycles;
 
-        if self.cycles_per_vsync > 300000 {
-            log::trace!(
-                "do_vsync(): Excessively long frame. char_clock: {} cycles: {} beam_y: {}",
-                self.char_clock,
-                self.cycles_per_vsync,
-                self.beam_y
-            );
-        }
+        // if self.cycles_per_vsync > 300000 {
+        //     log::trace!(
+        //         "do_vsync(): Excessively long frame. char_clock: {} cycles: {} beam_y: {}",
+        //         self.char_clock,
+        //         self.cycles_per_vsync,
+        //         self.beam_y
+        //     );
+        // }
 
         // Only do a vsync if we are past the minimum scanline #.
         // A monitor will refuse to vsync too quickly.

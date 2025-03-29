@@ -45,6 +45,9 @@ pub enum MachineType {
     Ibm5160,
     IbmPCJr,
     Tandy1000,
+    Tandy1000SL,
+    CompaqPortable,
+    CompaqDeskpro,
 }
 
 impl FromStr for MachineType {
@@ -60,7 +63,25 @@ impl FromStr for MachineType {
             "ibm5160" => Ok(MachineType::Ibm5160),
             "ibm_pcjr" => Ok(MachineType::IbmPCJr),
             "tandy1000" => Ok(MachineType::Tandy1000),
+            "tandy1000sl" => Ok(MachineType::Tandy1000SL),
+            "compaq_deskpro" => Ok(MachineType::CompaqDeskpro),
             _ => Err("Bad value for model".to_string()),
+        }
+    }
+}
+
+impl MachineType {
+    pub fn has_ppi_turbo_bit(&self) -> bool {
+        match self {
+            MachineType::Ibm5150v64K => false,
+            MachineType::Ibm5150v256K => false,
+            MachineType::Ibm5160 => true,
+            MachineType::IbmPCJr => false,
+            MachineType::Tandy1000 => false,
+            MachineType::Tandy1000SL => false,
+            MachineType::CompaqPortable => false,
+            MachineType::CompaqDeskpro => false,
+            _ => false,
         }
     }
 }

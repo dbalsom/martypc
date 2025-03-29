@@ -89,9 +89,6 @@ use crate::{
     tracelogger::TraceLogger,
 };
 
-// Make ReadWriteFlag available to benchmarks
-pub use crate::cpu_808x::biu::WriteFlag;
-
 #[cfg(feature = "cpu_validator")]
 use crate::cpu_validator::ValidatorType;
 
@@ -133,6 +130,7 @@ macro_rules! gdr {
 
 use crate::{
     bus::ClockFactor,
+    cpu_808x::biu::BusWidth,
     cpu_common::{operands::OperandSize, services::CPUDebugServices, Register16, Register8},
 };
 use trace_print;
@@ -505,6 +503,7 @@ pub struct Intel808x {
     interrupt_inhibit: bool,
 
     // BIU stuff
+    bus_width: BusWidth,
     ready: bool, // READY line from 8284
     queue: InstructionQueue,
     fetch_size: TransferSize,
@@ -822,10 +821,12 @@ impl Intel808x {
             CpuSubType::Harris80C88 | CpuSubType::Intel8088 => {
                 cpu.queue.set_size(4, 1);
                 cpu.fetch_size = TransferSize::Byte;
+                cpu.bus_width = BusWidth::Byte;
             }
             CpuSubType::Intel8086 => {
                 cpu.queue.set_size(6, 2);
                 cpu.fetch_size = TransferSize::Word;
+                cpu.bus_width = BusWidth::Word;
             }
             _ => {
                 panic!("Invalid CPU subtype.")
@@ -1549,8 +1550,8 @@ impl Intel808x {
 
             piq: self.queue.to_string(),
             flags: format!("{:04}", self.flags),
-            instruction_count: format!("{}", self.instruction_count),
-            cycle_count: format!("{}", self.cycle_num),
+            instruction_count: self.instruction_count,
+            cycle_count: self.cycle_num,
             dma_state: format!("{:?}", self.dma_state),
 
             dram_refresh_cycle_period: format!("{}", self.dram_refresh_cycle_period),
@@ -2115,7 +2116,7 @@ impl Intel808x {
         self.pc = self.pc.wrapping_sub(old_len as u16);
         self.queue.flush();
         for (i, byte) in contents.iter().enumerate() {
-            if i < self.queue.get_size() {
+            if i < self.queue.size() {
                 self.queue.push8(*byte);
                 self.pc = self.pc.wrapping_add(1);
             }

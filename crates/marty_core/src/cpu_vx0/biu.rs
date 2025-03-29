@@ -202,7 +202,7 @@ impl NecVx0 {
     pub fn biu_fetch_next(&mut self) {
         // Don't fetch if we are in a string instruction that is still repeating.
         if !self.in_rep {
-            self.trace_comment("FETCH");
+            self.trace_comment("FETCH_NEXT");
             let mut fetch_timeout = 0;
 
             /*

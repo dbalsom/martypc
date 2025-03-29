@@ -1,4 +1,3 @@
-#![feature(slice_take)]
 /*
     MartyPC
     https://github.com/dbalsom/martypc
@@ -24,50 +23,24 @@
     DEALINGS IN THE SOFTWARE.
 
     --------------------------------------------------------------------------
-
-    lib.rs
-
-    Main emulator core
-
 */
-#![allow(dead_code)]
-extern crate core;
 
-pub mod breakpoints;
-pub mod bus;
-pub mod bytebuf;
-pub mod bytequeue;
-pub mod channel;
-pub mod coreconfig;
-pub mod cpu_808x;
-pub mod cpu_common;
-pub mod cpu_validator;
-pub mod cpu_vx0;
-pub mod device_traits;
-pub mod device_types;
-pub mod devices;
-pub mod file_util;
-pub mod interrupt;
-pub mod keys;
-pub mod machine;
-pub mod machine_config;
-pub mod machine_types;
-pub mod memerror;
-pub mod motherboards;
-#[cfg(feature = "sound")]
-pub mod sound;
-pub mod syntax_token;
-pub mod tracelogger;
-pub mod updatable;
-pub mod util;
-pub mod vhd;
+///! The motherboard module provides facilities for describing how components in a system
+///! are connected together.
+mod compaq_xt;
+mod ibm_5150;
+mod ibm_5160;
+mod ibm_pcjr;
+mod ppi_connector;
+mod tandy_1000;
 
-#[cfg(feature = "arduino_validator")]
-#[macro_use]
-pub mod arduino8088_client;
-#[cfg(feature = "arduino_validator")]
-#[macro_use]
-pub mod arduino8088_validator;
+use crate::{devices::dipswitch::DipSwitch, motherboards::ppi_connector::PpiConnector};
 
-// Re-exported for use by frontend to populate file browser.
-pub use fluxfox::supported_extensions as supported_floppy_extensions;
+pub trait Motherboard {
+    /// Add a dipswitch to the system. The dip switches should be added in logical order.
+    fn add_dipswitch(&mut self, _dip: DipSwitch) {}
+
+    /// Send a scancode from the keyboard to the motherboard to be dispatched to the appropriate
+    /// device.
+    fn send_scancode(&mut self, _scancode: u8) {}
+}

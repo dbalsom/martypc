@@ -110,14 +110,14 @@ impl CpuViewerControl {
             MartyLayout::kv_row(ui, "Instruction #", None, |ui| {
                 ui.horizontal(|ui| {
                     ui.add(
-                        egui::TextEdit::singleline(&mut self.cpu_state.instruction_count.as_str())
+                        egui::TextEdit::singleline(&mut self.cpu_state.instruction_count.to_string().as_str())
                             .font(egui::TextStyle::Monospace),
                     );
                 });
             });
             MartyLayout::kv_row(ui, "Cycle #", None, |ui| {
                 ui.add(
-                    egui::TextEdit::singleline(&mut self.cpu_state.cycle_count.as_str())
+                    egui::TextEdit::singleline(&mut self.cpu_state.cycle_count.to_string().as_str())
                         .font(egui::TextStyle::Monospace),
                 );
             });
@@ -568,24 +568,30 @@ impl CpuViewerControl {
     }
 
     pub fn update_state(&mut self, cpu_state: CpuStringState) {
-        let exec_state = self.exec_control.borrow_mut().get_state();
-        match exec_state {
-            ExecutionState::Running => {
-                // Accept updates anytime, when running.
-                self.cpu_state = cpu_state;
-                self.paused_updates = 0;
-            }
-            _ => {
-                // Accept one update after paused state, then stop updating.
-                // This is mainly so we can update the state of dependent registers
-                // (editing AX will update AH and AL, PC will update IP).
-                if self.paused_updates < 1 {
-                    log::trace!("Honoring update while paused!");
-                    self.reg_updated = false;
-                    self.cpu_state = cpu_state;
-                    self.paused_updates += 1;
-                }
-            }
+        // let exec_state = self.exec_control.borrow_mut().get_state();
+        // match exec_state {
+        //     ExecutionState::Running => {
+        //         // Accept updates anytime, when running.
+        //         self.cpu_state = cpu_state;
+        //         self.paused_updates = 0;
+        //     }
+        //     _ => {
+        //         // Accept one update after paused state, then stop updating.
+        //         // This is mainly so we can update the state of dependent registers
+        //         // (editing AX will update AH and AL, PC will update IP).
+        //         if self.paused_updates < 1 {
+        //             log::trace!("Honoring update while paused!");
+        //             self.reg_updated = false;
+        //             self.cpu_state = cpu_state;
+        //             self.paused_updates += 1;
+        //         }
+        //     }
+        // }
+
+        if cpu_state.cycle_count != self.cpu_state.cycle_count {
+            // Incoming state is post-reset, or has a higher cycle count, accept it.
+            self.cpu_state = cpu_state;
+            self.reg_updated = false;
         }
     }
 }
