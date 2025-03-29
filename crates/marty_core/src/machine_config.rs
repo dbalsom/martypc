@@ -301,6 +301,7 @@ lazy_static! {
         m.insert(MachineType::IbmPCJr, vec!["ibm_pcjr"]);
         m.insert(MachineType::Tandy1000, vec!["tandy1000"]);
         m.insert(MachineType::Tandy1000SL, vec!["tandy1000sl"]);
+        m.insert(MachineType::CompaqPortable, vec!["compaq_portable"]);
         m.insert(MachineType::CompaqDeskpro, vec!["compaq_deskpro"]);
         m
     };
@@ -316,6 +317,7 @@ lazy_static! {
         m.insert(MachineType::IbmPCJr, vec!["pcjr_cartridge"]);
         m.insert(MachineType::Tandy1000, vec![]);
         m.insert(MachineType::Tandy1000SL, vec![]);
+        m.insert(MachineType::CompaqPortable, vec!["ibm_basic"]);
         m.insert(MachineType::CompaqDeskpro, vec![]);
         m
     };
