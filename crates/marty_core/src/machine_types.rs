@@ -159,9 +159,9 @@ impl FloppyDriveType {
 }
 
 /// Convert MartyPC's FloppyDriveType to fluxfox's StandardFormat
-impl Into<StandardFormat> for FloppyDriveType {
-    fn into(self) -> StandardFormat {
-        match self {
+impl From<FloppyDriveType> for StandardFormat {
+    fn from(val: FloppyDriveType) -> Self {
+        match val {
             FloppyDriveType::Floppy360K => StandardFormat::PcFloppy360,
             FloppyDriveType::Floppy720K => StandardFormat::PcFloppy720,
             FloppyDriveType::Floppy12M => StandardFormat::PcFloppy1200,
@@ -205,7 +205,7 @@ impl<'de> serde::Deserialize<'de> for FloppyDriveType {
     {
         struct FloppyTypeVisitor;
 
-        impl<'de> serde::de::Visitor<'de> for FloppyTypeVisitor {
+        impl serde::de::Visitor<'_> for FloppyTypeVisitor {
             type Value = FloppyDriveType;
 
             fn expecting(&self, formatter: &mut fmt::Formatter) -> fmt::Result {

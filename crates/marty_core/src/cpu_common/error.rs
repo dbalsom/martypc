@@ -45,7 +45,7 @@ pub enum CpuError {
 impl Error for CpuError {}
 impl Display for CpuError {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        match &*self {
+        match self {
             CpuError::InvalidInstructionError(o, addr) => write!(
                 f,
                 "An invalid instruction was encountered: {:02X} at address: {:06X}",

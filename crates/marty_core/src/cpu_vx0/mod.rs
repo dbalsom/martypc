@@ -273,14 +273,11 @@ pub const REGISTER16_LUT: [Register16; 8] = [
 pub const SEGMENT_REGISTER16_LUT: [Register16; 4] = [Register16::ES, Register16::CS, Register16::SS, Register16::DS];
 
 #[derive(Debug, Copy, Clone, PartialEq)]
+#[derive(Default)]
 pub enum CpuState {
+    #[default]
     Normal,
     BreakpointHit,
-}
-impl Default for CpuState {
-    fn default() -> Self {
-        CpuState::Normal
-    }
 }
 
 #[derive(Copy, Clone, Debug)]
@@ -439,16 +436,13 @@ impl Default for InterruptDescriptor {
 }
 
 #[derive(Copy, Clone, Debug)]
+#[derive(Default)]
 pub enum TransferSize {
+    #[default]
     Byte,
     Word,
 }
 
-impl Default for TransferSize {
-    fn default() -> TransferSize {
-        TransferSize::Byte
-    }
-}
 
 #[derive(Default)]
 pub struct I8288 {
@@ -913,12 +907,7 @@ impl NecVx0 {
     pub fn is_last_wait(&self) -> bool {
         match self.t_cycle {
             TCycle::T3 | TCycle::Tw => {
-                if self.wait_states == 0 && self.dma_wait_states == 0 {
-                    true
-                }
-                else {
-                    false
-                }
+                self.wait_states == 0 && self.dma_wait_states == 0
             }
             _ => false,
         }
@@ -929,12 +918,7 @@ impl NecVx0 {
         match self.t_cycle {
             TCycle::T1 | TCycle::T2 => true,
             TCycle::T3 | TCycle::Tw => {
-                if self.wait_states > 0 || self.dma_wait_states > 0 {
-                    true
-                }
-                else {
-                    false
-                }
+                self.wait_states > 0 || self.dma_wait_states > 0
             }
             _ => false,
         }
@@ -1006,7 +990,7 @@ impl NecVx0 {
     }
 
     pub fn set_nmi(&mut self, nmi_state: bool) {
-        if nmi_state == false {
+        if !nmi_state {
             self.nmi_triggered = false;
         }
         self.nmi = nmi_state;
@@ -1647,7 +1631,6 @@ impl NecVx0 {
             }
             _ => {
                 // Unsupported breakpoint type - ignore for now
-                return;
             }
         }
     }
@@ -1689,10 +1672,7 @@ impl NecVx0 {
     }
 
     pub fn get_step_over_breakpoint(&self) -> Option<CpuAddress> {
-        match self.step_over_breakpoint {
-            Some(addr) => Some(CpuAddress::Flat(addr)),
-            None => None,
-        }
+        self.step_over_breakpoint.map(CpuAddress::Flat)
     }
 
     pub fn get_breakpoint_flag(&self) -> bool {
@@ -1711,26 +1691,23 @@ impl NecVx0 {
         let mut disassembly_string = String::new();
 
         for i in &self.instruction_history {
-            match i {
-                HistoryEntry::InstructionEntry {
+            if let HistoryEntry::InstructionEntry {
                     cs,
                     ip,
                     cycles: _,
                     interrupt,
                     jump: _,
                     i,
-                } => {
-                    let i_string = format!(
-                        "{:05X}{} [{:04X}:{:04X}] {}\n",
-                        i.address,
-                        if *interrupt { '*' } else { ' ' },
-                        *cs,
-                        *ip,
-                        i
-                    );
-                    disassembly_string.push_str(&i_string);
-                }
-                _ => {}
+                } = i {
+                let i_string = format!(
+                    "{:05X}{} [{:04X}:{:04X}] {}\n",
+                    i.address,
+                    if *interrupt { '*' } else { ' ' },
+                    *cs,
+                    *ip,
+                    i
+                );
+                disassembly_string.push_str(&i_string);
             }
         }
         disassembly_string
@@ -1889,7 +1866,7 @@ impl NecVx0 {
         log::debug!("Dumping {} bytes at address {:05X}", len, address);
         let cs_slice = self.bus.get_slice_at(address, len);
 
-        match std::fs::write(filename.clone(), &cs_slice) {
+        match std::fs::write(filename.clone(), cs_slice) {
             Ok(_) => {
                 log::debug!("Wrote memory dump: {}", filename.display())
             }

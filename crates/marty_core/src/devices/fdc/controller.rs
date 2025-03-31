@@ -774,16 +774,14 @@ impl FloppyController {
             self.dor_disabled = true;
             self.log_str(&format!("FDC Disabled via DOR write: {:02X}", data));
         }
-        else {
-            if self.dor_disabled {
-                // Reset the FDC when the reset bit is *not* set
-                // Ignore all other commands
-                self.log_str(&format!("FDC Reset requested via DOR write: {:02X}", data));
-                self.operation_accumulator = 0.0;
-                self.operation = Operation::Reset;
-                self.mrq = false;
-                self.dor_disabled = false;
-            }
+        else if self.dor_disabled {
+            // Reset the FDC when the reset bit is *not* set
+            // Ignore all other commands
+            self.log_str(&format!("FDC Reset requested via DOR write: {:02X}", data));
+            self.operation_accumulator = 0.0;
+            self.operation = Operation::Reset;
+            self.mrq = false;
+            self.dor_disabled = false;
         }
 
         // Turn drive motors on or off based on the MOTx bits in the DOR byte.
@@ -796,12 +794,7 @@ impl FloppyController {
             }
         }
 
-        if data & DOR_DMA_ENABLED != 0 {
-            self.dor_dma = true;
-        }
-        else {
-            self.dor_dma = false;
-        }
+        self.dor_dma = data & DOR_DMA_ENABLED != 0;
 
         // Select drive from DRx bits.
         let disk_n = data & 0x03;
@@ -826,16 +819,14 @@ impl FloppyController {
             self.dor_disabled = true;
             self.log_str(&format!("PCjr FDC Disabled via DOR write: {:02X}", data));
         }
-        else {
-            if self.dor_disabled {
-                // Reset the FDC when the reset bit is *not* set
-                // Ignore all other commands
-                self.log_str(&format!("PCjr FDC Reset requested via DOR write: {:02X}", data));
-                self.operation_accumulator = 0.0;
-                self.operation = Operation::Reset;
-                self.mrq = false;
-                self.dor_disabled = false;
-            }
+        else if self.dor_disabled {
+            // Reset the FDC when the reset bit is *not* set
+            // Ignore all other commands
+            self.log_str(&format!("PCjr FDC Reset requested via DOR write: {:02X}", data));
+            self.operation_accumulator = 0.0;
+            self.operation = Operation::Reset;
+            self.mrq = false;
+            self.dor_disabled = false;
         }
 
         // Not reset. Turn drive motors on or off based on the drive enable bit.
@@ -1027,9 +1018,9 @@ impl FloppyController {
     pub fn handle_data_register_read(&mut self) -> u8 {
         let mut out_byte = 0;
 
-        if self.data_register_out.len() > 0 {
+        if !self.data_register_out.is_empty() {
             out_byte = self.data_register_out.pop_front().unwrap();
-            if self.data_register_out.len() == 0 {
+            if self.data_register_out.is_empty() {
                 log::trace!("handle_data_register_read(): Popped last byte, clearing busy flag");
                 // CPU has read all available bytes
                 self.busy = false;
@@ -1754,7 +1745,7 @@ impl FloppyController {
             self.xfer_size_sectors = (track_len.saturating_sub(chs.s())) as usize + 1;
             self.xfer_completed_sectors = 0;
             // TODO: fixme for sector size
-            self.xfer_size_bytes = self.xfer_size_sectors as usize * 512;
+            self.xfer_size_bytes = self.xfer_size_sectors * 512;
 
             self.pio_bytes_left = self.xfer_size_bytes;
             self.pio_byte_count = 0;
@@ -2151,7 +2142,6 @@ impl FloppyController {
                     self.send_results_phase(InterruptCode::AbnormalTermination, self.drive_select, chs, sector_size);
                     self.operation = Operation::NoOperation;
                     self.send_interrupt = true;
-                    return;
                 }
             }
         }
@@ -2413,7 +2403,7 @@ impl FloppyController {
 
                 match self.drives[self.drive_select].command_format_track(
                     ch,
-                    &self.format_buffer.make_contiguous(),
+                    self.format_buffer.make_contiguous(),
                     gap3_len,
                     fill_byte,
                 ) {

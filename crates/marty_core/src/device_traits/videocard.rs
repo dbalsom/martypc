@@ -76,8 +76,9 @@ use serde_derive::Serialize;
 
 #[allow(dead_code)]
 #[allow(non_camel_case_types)]
-#[derive(Copy, Clone, Debug, Deserialize, PartialEq, Eq, Hash)]
+#[derive(Copy, Clone, Debug, Deserialize, PartialEq, Eq, Hash, Default)]
 pub enum VideoType {
+    #[default]
     MDA,
     CGA,
     TGA,
@@ -85,12 +86,6 @@ pub enum VideoType {
     EGA,
     #[cfg(feature = "vga")]
     VGA,
-}
-
-impl Default for VideoType {
-    fn default() -> Self {
-        VideoType::MDA
-    }
 }
 
 impl FromStr for VideoType {
@@ -124,18 +119,14 @@ pub enum VideoCardSubType {
     Hercules,
 }
 
-#[derive(Copy, Clone, Debug, Deserialize, PartialEq)]
+#[derive(Copy, Clone, Debug, Deserialize, PartialEq, Default)]
 pub enum ClockingMode {
     Default,
     Cycle,
     Character,
     Scanline,
+    #[default]
     Dynamic,
-}
-impl Default for ClockingMode {
-    fn default() -> Self {
-        ClockingMode::Dynamic
-    }
 }
 
 impl FromStr for ClockingMode {
@@ -159,13 +150,13 @@ impl FromStr for ClockingMode {
 // video card methods.
 pub enum VideoCardDispatch {
     None,
-    Mda(MDACard),
-    Cga(CGACard),
-    Tga(TGACard),
+    Mda(Box<MDACard>),
+    Cga(Box<CGACard>),
+    Tga(Box<TGACard>),
     #[cfg(feature = "ega")]
-    Ega(EGACard),
+    Ega(Box<EGACard>),
     #[cfg(feature = "vga")]
-    Vga(VGACard),
+    Vga(Box<VGACard>),
 }
 
 // This struct provides an identifier for a VideoCard, encapsulating a unique numeric id ('idx')
@@ -361,8 +352,8 @@ pub trait VideoCard {
     /// Override the clocking mode for the adapter.
     fn set_clocking_mode(&mut self, mode: ClockingMode);
 
-    /// Returns a slice of u8 representing video memory
-    //fn get_vram(&self) -> &[u8];
+    // /// Returns a slice of u8 representing video memory
+    // fn get_vram(&self) -> &[u8];
 
     /// Return the size (width, height) of the last rendered frame.
     fn get_display_size(&self) -> (u32, u32);

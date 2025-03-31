@@ -39,17 +39,14 @@ use std::{
 };
 
 #[derive(Debug)]
+#[derive(Default)]
 pub enum TraceLogger {
     FileWriter(BufWriter<File>),
     Console,
+    #[default]
     None,
 }
 
-impl Default for TraceLogger {
-    fn default() -> TraceLogger {
-        TraceLogger::None
-    }
-}
 
 impl TraceLogger {
     pub fn from_filename<S: AsRef<Path>>(filename: S) -> Self {

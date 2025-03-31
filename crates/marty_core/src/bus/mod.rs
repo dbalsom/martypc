@@ -167,7 +167,7 @@ impl Default for DeviceRunContext {
 impl DeviceRunContext {
     pub fn new(cpu_ticks: u32, factor: ClockFactor, sysclock: f64) -> Self {
         let delta_ticks = match factor {
-            ClockFactor::Divisor(n) => (cpu_ticks + (n as u32) - 1) / (n as u32),
+            ClockFactor::Divisor(n) => cpu_ticks.div_ceil(n as u32),
             ClockFactor::Multiplier(n) => cpu_ticks * (n as u32),
         };
         let mhz = match factor {
@@ -619,7 +619,7 @@ impl BusInterface {
             let entry = &mut timing_table[cycles];
 
             entry.sys_ticks = match clock_factor {
-                ClockFactor::Divisor(n) => ((cycles as u32) + (n as u32) - 1) / (n as u32),
+                ClockFactor::Divisor(n) => (cycles as u32).div_ceil(n as u32),
                 ClockFactor::Multiplier(n) => (cycles as u32) * (n as u32),
             };
             let mhz = match clock_factor {
@@ -642,13 +642,13 @@ impl BusInterface {
     }
 
     /// Set the checkpoint bit in memory flags for all checkpoints provided.
-    pub fn install_checkpoints(&mut self, checkpoints: &Vec<MachineCheckpoint>) {
+    pub fn install_checkpoints(&mut self, checkpoints: &[MachineCheckpoint]) {
         for checkpoint in checkpoints.iter() {
             self.memory_mask[checkpoint.addr as usize & 0xFFFFF] |= MEM_CP_BIT;
         }
     }
 
-    pub fn install_patch_checkpoints(&mut self, patches: &Vec<MachinePatch>) {
+    pub fn install_patch_checkpoints(&mut self, patches: &[MachinePatch]) {
         for patch in patches.iter() {
             log::debug!("Arming patch trigger [{:05X}] for patch: {}", patch.trigger, patch.desc);
             self.memory_mask[patch.trigger as usize & 0xFFFFF] |= MEM_CP_BIT;
@@ -715,7 +715,7 @@ impl BusInterface {
         let map_segs = mem_descriptor.size / MMIO_MAP_SIZE;
 
         for i in 0..map_segs {
-            self.mmio_map_fast[(mem_descriptor.address >> MMIO_MAP_SHIFT) + i] = device.clone();
+            self.mmio_map_fast[(mem_descriptor.address >> MMIO_MAP_SHIFT) + i] = device;
         }
 
         self.mmio_map.push((mem_descriptor, device));
@@ -786,7 +786,7 @@ impl BusInterface {
     /// clock divisor. If a clock Divisor is set, the dividend will be rounded upwards.
     pub(crate) fn system_ticks_to_cpu_cycles(&self, ticks: u32) -> u32 {
         match self.cpu_factor {
-            ClockFactor::Divisor(n) => (ticks + (n as u32) - 1) / (n as u32),
+            ClockFactor::Divisor(n) => ticks.div_ceil(n as u32),
             ClockFactor::Multiplier(n) => ticks * (n as u32),
         }
     }
@@ -1078,17 +1078,17 @@ impl BusInterface {
             add_io_device!(self, parallel, IoDeviceType::Parallel);
             self.parallel = Some(parallel);
         }
-        else if machine_config.parallel.len() > 0 {
+        else if !machine_config.parallel.is_empty() {
             if machine_config.parallel.len() > 1 {
                 log::warn!(
                     "Support for multiple parallel controllers is not implemented. Only the first parallel controller will be created."
                 );
             }
 
-            if let Some(controller) = machine_config.parallel.get(0) {
+            if let Some(controller) = machine_config.parallel.first() {
                 log::debug!("Creating parallel port...");
 
-                if let Some(port) = controller.port.get(0) {
+                if let Some(port) = controller.port.first() {
                     let parallel = ParallelController::new(Some(port.io_base as u16));
 
                     // Add Parallel Port ports to io_map
@@ -1123,7 +1123,7 @@ impl BusInterface {
         }
 
         // Create a Serial card if specified
-        if let Some(serial_config) = machine_config.serial.get(0) {
+        if let Some(serial_config) = machine_config.serial.first() {
             let mut out2_suppresses_int = true;
             if let MachineType::IbmPCJr = machine_desc.machine_type {
                 out2_suppresses_int = false;
@@ -1238,14 +1238,13 @@ impl BusInterface {
 
         // Create video cards
         for (i, card) in machine_config.video.iter().enumerate() {
-            let video_dispatch;
             let video_id = VideoCardId {
                 idx:   i,
                 vtype: card.video_type,
             };
 
             log::debug!("Creating video card of type: {:?}", card.video_type);
-            match card.video_type {
+            let video_dispatch = match card.video_type {
                 VideoType::MDA => {
                     let mda = MDACard::new(
                         card.video_subtype.unwrap_or(VideoCardSubType::None),
@@ -1256,13 +1255,13 @@ impl BusInterface {
                     );
                     add_io_device!(self, mda, IoDeviceType::Video(video_id));
                     add_mmio_device!(self, mda, MmioDeviceType::Video(video_id));
-                    video_dispatch = VideoCardDispatch::Mda(mda)
+                    VideoCardDispatch::Mda(Box::new(mda))
                 }
                 VideoType::CGA => {
                     let cga = CGACard::new(TraceLogger::None, clock_mode, video_frame_debug);
                     add_io_device!(self, cga, IoDeviceType::Video(video_id));
                     add_mmio_device!(self, cga, MmioDeviceType::Video(video_id));
-                    video_dispatch = VideoCardDispatch::Cga(cga)
+                    VideoCardDispatch::Cga(Box::new(cga))
                 }
                 VideoType::TGA => {
                     // Subtype can be Tandy1000 or PCJr
@@ -1270,21 +1269,21 @@ impl BusInterface {
                     let tga = TGACard::new(subtype, TraceLogger::None, clock_mode, video_frame_debug);
                     add_io_device!(self, tga, IoDeviceType::Video(video_id));
                     add_mmio_device!(self, tga, MmioDeviceType::Video(video_id));
-                    video_dispatch = VideoCardDispatch::Tga(tga)
+                    VideoCardDispatch::Tga(Box::new(tga))
                 }
                 #[cfg(feature = "ega")]
                 VideoType::EGA => {
                     let ega = EGACard::new(TraceLogger::None, clock_mode, video_frame_debug, card.dip_switch);
                     add_io_device!(self, ega, IoDeviceType::Video(video_id));
                     add_mmio_device!(self, ega, MmioDeviceType::Video(video_id));
-                    video_dispatch = VideoCardDispatch::Ega(ega)
+                    VideoCardDispatch::Ega(Box::new(ega))
                 }
                 #[cfg(feature = "vga")]
                 VideoType::VGA => {
                     let vga = VGACard::new(TraceLogger::None, clock_mode, video_frame_debug, card.dip_switch);
                     add_io_device!(self, vga, IoDeviceType::Video(video_id));
                     add_mmio_device!(self, vga, MmioDeviceType::Video(video_id));
-                    video_dispatch = VideoCardDispatch::Vga(vga)
+                    VideoCardDispatch::Vga(Box::new(vga))
                 }
                 #[allow(unreachable_patterns)]
                 _ => {
@@ -1293,13 +1292,13 @@ impl BusInterface {
                         card.video_type
                     );
                 }
-            }
+            };
 
             self.videocards.insert(video_id, video_dispatch);
             self.videocard_ids.push(video_id);
         }
 
-        self.machine_desc = Some(machine_desc.clone());
+        self.machine_desc = Some(*machine_desc);
         Ok(installed_devices)
     }
 
@@ -1455,7 +1454,7 @@ impl BusInterface {
             pit.run(
                 self,
                 DeviceRunTimeUnit::SystemTicks(sys_ticks + self.pit_ticks_advance),
-                logic_analyzer.as_mut().map(|la| &mut **la),
+                logic_analyzer.as_deref_mut(),
             );
             self.pit_ticks_advance = 0;
         }
@@ -1502,7 +1501,7 @@ impl BusInterface {
 
         // Run the serial port and mouse.
         if let Some(serial) = &mut self.serial {
-            serial.run(&mut self.pic1.as_mut().unwrap(), us);
+            serial.run(self.pic1.as_mut().unwrap(), us);
 
             if let Some(mouse) = &mut self.mouse {
                 mouse.run(serial, us);
@@ -1511,7 +1510,7 @@ impl BusInterface {
 
         // Run the parallel port
         if let Some(parallel) = &mut self.parallel {
-            parallel.run(&mut self.pic1.as_mut().unwrap(), us);
+            parallel.run(self.pic1.as_mut().unwrap(), us);
         }
 
         // Run the game port
@@ -1665,7 +1664,9 @@ impl BusInterface {
         // Reset video cards
         let vids: Vec<_> = self.videocards.keys().cloned().collect();
         for vid in vids {
-            self.video_mut(&vid).map(|video| video.reset());
+            if let Some(video) = self.video_mut(&vid) {
+                video.reset()
+            }
         }
     }
 
@@ -1748,7 +1749,7 @@ impl BusInterface {
     }
 
     pub fn primary_video(&self) -> Option<Box<&dyn VideoCard>> {
-        if self.videocard_ids.len() > 0 {
+        if !self.videocard_ids.is_empty() {
             self.video(&self.videocard_ids[0])
         }
         else {
@@ -1757,7 +1758,7 @@ impl BusInterface {
     }
 
     pub fn primary_video_mut(&mut self) -> Option<Box<&mut dyn VideoCard>> {
-        if self.videocard_ids.len() > 0 {
+        if !self.videocard_ids.is_empty() {
             let vid = self.videocard_ids[0];
             self.video_mut(&vid)
         }
@@ -1769,13 +1770,13 @@ impl BusInterface {
     pub fn video(&self, vid: &VideoCardId) -> Option<Box<&dyn VideoCard>> {
         if let Some(video_dispatch) = self.videocards.get(vid) {
             match video_dispatch {
-                VideoCardDispatch::Mda(mda) => Some(Box::new(mda as &dyn VideoCard)),
-                VideoCardDispatch::Cga(cga) => Some(Box::new(cga as &dyn VideoCard)),
-                VideoCardDispatch::Tga(tga) => Some(Box::new(tga as &dyn VideoCard)),
+                VideoCardDispatch::Mda(mda) => Some(Box::new(&**mda as &dyn VideoCard)),
+                VideoCardDispatch::Cga(cga) => Some(Box::new(&**cga as &dyn VideoCard)),
+                VideoCardDispatch::Tga(tga) => Some(Box::new(&**tga as &dyn VideoCard)),
                 #[cfg(feature = "ega")]
-                VideoCardDispatch::Ega(ega) => Some(Box::new(ega as &dyn VideoCard)),
+                VideoCardDispatch::Ega(ega) => Some(Box::new(&**ega as &dyn VideoCard)),
                 #[cfg(feature = "vga")]
-                VideoCardDispatch::Vga(vga) => Some(Box::new(vga as &dyn VideoCard)),
+                VideoCardDispatch::Vga(vga) => Some(Box::new(&**vga as &dyn VideoCard)),
                 VideoCardDispatch::None => None,
             }
         }
@@ -1787,13 +1788,13 @@ impl BusInterface {
     pub fn video_mut(&mut self, vid: &VideoCardId) -> Option<Box<&mut dyn VideoCard>> {
         if let Some(video_dispatch) = self.videocards.get_mut(vid) {
             match video_dispatch {
-                VideoCardDispatch::Mda(mda) => Some(Box::new(mda as &mut dyn VideoCard)),
-                VideoCardDispatch::Cga(cga) => Some(Box::new(cga as &mut dyn VideoCard)),
-                VideoCardDispatch::Tga(tga) => Some(Box::new(tga as &mut dyn VideoCard)),
+                VideoCardDispatch::Mda(mda) => Some(Box::new(&mut **mda as &mut dyn VideoCard)),
+                VideoCardDispatch::Cga(cga) => Some(Box::new(&mut **cga as &mut dyn VideoCard)),
+                VideoCardDispatch::Tga(tga) => Some(Box::new(&mut **tga as &mut dyn VideoCard)),
                 #[cfg(feature = "ega")]
-                VideoCardDispatch::Ega(ega) => Some(Box::new(ega as &mut dyn VideoCard)),
+                VideoCardDispatch::Ega(ega) => Some(Box::new(&mut **ega as &mut dyn VideoCard)),
                 #[cfg(feature = "vga")]
-                VideoCardDispatch::Vga(vga) => Some(Box::new(vga as &mut dyn VideoCard)),
+                VideoCardDispatch::Vga(vga) => Some(Box::new(&mut **vga as &mut dyn VideoCard)),
                 VideoCardDispatch::None => None,
             }
         }
@@ -1811,25 +1812,25 @@ impl BusInterface {
         for (vid, video_dispatch) in self.videocards.iter_mut() {
             match video_dispatch {
                 VideoCardDispatch::Mda(mda) => f(VideoCardInterface {
-                    card: Box::new(mda as &mut dyn VideoCard),
+                    card: Box::new(&mut **mda as &mut dyn VideoCard),
                     id:   *vid,
                 }),
                 VideoCardDispatch::Cga(cga) => f(VideoCardInterface {
-                    card: Box::new(cga as &mut dyn VideoCard),
+                    card: Box::new(&mut **cga as &mut dyn VideoCard),
                     id:   *vid,
                 }),
                 VideoCardDispatch::Tga(tga) => f(VideoCardInterface {
-                    card: Box::new(tga as &mut dyn VideoCard),
+                    card: Box::new(&mut **tga as &mut dyn VideoCard),
                     id:   *vid,
                 }),
                 #[cfg(feature = "ega")]
                 VideoCardDispatch::Ega(ega) => f(VideoCardInterface {
-                    card: Box::new(ega as &mut dyn VideoCard),
+                    card: Box::new(&mut **ega as &mut dyn VideoCard),
                     id:   *vid,
                 }),
                 #[cfg(feature = "vga")]
                 VideoCardDispatch::Vga(vga) => f(VideoCardInterface {
-                    card: Box::new(vga as &mut dyn VideoCard),
+                    card: Box::new(&mut **vga as &mut dyn VideoCard),
                     id:   *vid,
                 }),
                 _ => {}
@@ -1844,7 +1845,7 @@ impl BusInterface {
     pub fn enumerate_serial_ports(&self) -> Vec<SerialPortDescriptor> {
         self.serial
             .as_ref()
-            .and_then(|serial| Some(serial.enumerate_ports()))
+            .map(|serial| serial.enumerate_ports())
             .unwrap_or_default()
     }
 
@@ -1927,7 +1928,7 @@ impl BusInterface {
             })
             .collect();
 
-        token_vec.sort_by(|a, b| a.0.cmp(&b.0));
+        token_vec.sort_by(|a, b| a.0.cmp(b.0));
         token_vec.iter().map(|(_, tokens)| tokens.clone()).collect()
     }
 

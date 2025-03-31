@@ -355,12 +355,12 @@ impl IoDevice for XtIdeController {
     fn read_u8(&mut self, port: u16, _delta: DeviceRunTimeUnit) -> u8 {
         match port - self.io_base {
             HDC_DATA_REGISTER0 | HDC_DATA_REGISTER1 => {
-                let byte = self.handle_data_register_read();
+                
                 // let pos = self.sector_buffer.stream_position().unwrap();
                 // if pos == (SECTOR_SIZE as u64 - 1) {
                 //     log::debug!("{port:03X}: Sector buffer read complete #[{pos}]: {byte:02X}");
                 // }
-                byte
+                self.handle_data_register_read()
             }
             HDC_ERROR_REGISTER => self.error_register.into_bytes()[0],
             HDC_SECTOR_COUNT_REGISTER => self.sector_count_register,
@@ -1506,7 +1506,7 @@ impl XtIdeController {
         let pos = self.drives[drive_select].position_vhd();
 
         if let Some(vhd) = &mut self.drives[drive_select].vhd {
-            match vhd.read_sector(&mut self.sector_buffer.get_mut(), pos.c, pos.h, pos.s) {
+            match vhd.read_sector(self.sector_buffer.get_mut(), pos.c, pos.h, pos.s) {
                 Ok(_) => {
                     // Sector read successful.
                     // Set sector buffer cursor.
@@ -1532,7 +1532,7 @@ impl XtIdeController {
         let pos = self.drives[drive_select].position_vhd();
 
         if let Some(vhd) = &mut self.drives[drive_select].vhd {
-            match vhd.write_sector(&mut self.sector_buffer.get_ref(), pos.c, pos.h, pos.s) {
+            match vhd.write_sector(self.sector_buffer.get_ref(), pos.c, pos.h, pos.s) {
                 Ok(_) => {
                     // Sector write successful.
                     // Set sector buffer cursor.

@@ -473,7 +473,7 @@ impl Sequencer {
         sequencer_vec.push((format!("{:?}", SequencerRegister::CharacterMapSelect), VideoCardStateEntry::String(format!("{:04b}", self.character_map_select.into_bytes()[0]))));
         sequencer_vec.push((format!("{:?}", SequencerRegister::MemoryMode), VideoCardStateEntry::String(format!("{:04b}", self.memory_mode.into_bytes()[0]))));
         sequencer_vec.push((format!("{:?} [ag]", SequencerRegister::MemoryMode), VideoCardStateEntry::String(format!("{}", self.memory_mode.alpha_mode() as u8))));
-        sequencer_vec.push((format!("{:?} [em]", SequencerRegister::MemoryMode), VideoCardStateEntry::String(format!("{}", self.memory_mode.extended_memory() as u8))));
+        sequencer_vec.push((format!("{:?} [em]", SequencerRegister::MemoryMode), VideoCardStateEntry::String(format!("{}", { self.memory_mode.extended_memory() }))));
         sequencer_vec.push((format!("{:?} [oe]", SequencerRegister::MemoryMode), VideoCardStateEntry::String(format!("{:?}", self.memory_mode.odd_even()))));
         sequencer_vec.push((format!("{:?} [c4]", SequencerRegister::MemoryMode), VideoCardStateEntry::String(format!("{:?}", self.memory_mode.chain_four()))));
         sequencer_vec

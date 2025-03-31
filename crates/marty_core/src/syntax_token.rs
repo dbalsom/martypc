@@ -52,8 +52,9 @@ pub enum SyntaxFormatType {
     HighlightLine(HighlightType),
 }
 
-#[derive(Clone, Eq, PartialEq, Hash)]
+#[derive(Clone, Eq, PartialEq, Hash, Default)]
 pub enum SyntaxToken {
+    #[default]
     NullToken,
     // Generic display tokens
 
@@ -86,12 +87,6 @@ pub enum SyntaxToken {
     Displacement(String),
 
     Formatter(SyntaxFormatType),
-}
-
-impl Default for SyntaxToken {
-    fn default() -> Self {
-        SyntaxToken::NullToken
-    }
 }
 
 impl fmt::Display for SyntaxToken {
@@ -167,15 +162,13 @@ impl SyntaxTokenVec {
     }
 
     pub fn strip_whitespace(&mut self) {
-        self.0.retain(|item| match item {
-            SyntaxToken::Formatter(SyntaxFormatType::Space) => false,
-            _ => true,
-        });
+        self.0
+            .retain(|item| !matches!(item, SyntaxToken::Formatter(SyntaxFormatType::Space)));
     }
 
     pub fn retain(&mut self, list: &[SyntaxToken]) {
         let list = list.iter().cloned().collect::<std::collections::HashSet<_>>();
-        self.0.retain(|item| list.contains(&item));
+        self.0.retain(|item| list.contains(item));
     }
 
     pub fn append(&mut self, items: Vec<SyntaxToken>, start_tok: Option<SyntaxToken>, separator: Option<SyntaxToken>) {

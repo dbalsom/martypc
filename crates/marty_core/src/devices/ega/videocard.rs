@@ -92,7 +92,7 @@ impl VideoCard for EGACard {
 
     /// Return the 16-bit value computed from the CRTC's pair of Page Address registers.
     fn get_start_address(&self) -> u16 {
-        return self.crtc.start_address();
+        self.crtc.start_address()
     }
 
     /// Unimplemented for indirect rendering.
@@ -419,7 +419,7 @@ impl VideoCard for EGACard {
             let mut filename = path.to_path_buf();
             filename.push(format!("ega_plane{}.bin", i));
 
-            match std::fs::write(filename.clone(), &self.get_plane_slice(i)) {
+            match std::fs::write(filename.clone(), self.get_plane_slice(i)) {
                 Ok(_) => {
                     log::debug!("Wrote memory dump: {}", &filename.display())
                 }

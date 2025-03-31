@@ -66,6 +66,7 @@ impl FromStr for KeyboardType {
     }
 }
 #[derive(Copy, Clone, Debug, PartialEq)]
+#[derive(Default)]
 pub struct KeyboardModifiers {
     pub control: bool,
     pub alt: bool,
@@ -73,16 +74,6 @@ pub struct KeyboardModifiers {
     pub meta: bool,
 }
 
-impl Default for KeyboardModifiers {
-    fn default() -> KeyboardModifiers {
-        KeyboardModifiers {
-            control: false,
-            alt: false,
-            shift: false,
-            meta: false,
-        }
-    }
-}
 
 impl KeyboardModifiers {
     pub fn have_any(&self) -> bool {
@@ -582,7 +573,7 @@ impl Keyboard {
                 }
             }
             TranslationType::Scancode(svec) => {
-                if svec.len() > 0 {
+                if !svec.is_empty() {
                     if self.debug {
                         log::debug!(
                             "key_down(): Got scancode translation for key: {:?}: {:X?}",
@@ -683,7 +674,7 @@ impl Keyboard {
 
     /// Send the corresponding scancodes to the keyboard buffer.
     pub fn send_scancodes(&mut self, keys: &[u8]) {
-        if keys.len() > 0 {
+        if !keys.is_empty() {
             if self.kb_buffer_size > 1 {
                 // We have a keyboard buffer
                 if self.kb_buffer.len() + keys.len() >= self.kb_buffer_size {
@@ -753,7 +744,7 @@ impl Keyboard {
                 // Load proper translation if we matched. If a macro definition is present,
                 // it overrides scancode translation.
                 if matched {
-                    if trans.key_macro.len() > 0 {
+                    if !trans.key_macro.is_empty() {
                         // We have a macro.
 
                         if let Ok(keycodes) = Keyboard::keycodes_from_strings(&trans.key_macro, trans.macro_translate) {
@@ -773,23 +764,21 @@ impl Keyboard {
             // No defined translation for this key, just use default keyboard translation.
             translation = TranslationType::Scancode(self.keycode_to_scancodes(key_code));
         }
-        else {
-            if self.debug {
-                match &translation {
-                    TranslationType::Scancode(sc) => {
-                        log::debug!(
-                            "translate_keydown(): got translation from key_code: {:?} to scancodes: {:X?}",
-                            key_code,
-                            sc
-                        );
-                    }
-                    TranslationType::Keycode(kc) => {
-                        log::debug!(
-                            "translate_keydown(): got translation from key_code: {:?} to macro: {:X?}",
-                            key_code,
-                            kc
-                        );
-                    }
+        else if self.debug {
+            match &translation {
+                TranslationType::Scancode(sc) => {
+                    log::debug!(
+                        "translate_keydown(): got translation from key_code: {:?} to scancodes: {:X?}",
+                        key_code,
+                        sc
+                    );
+                }
+                TranslationType::Keycode(kc) => {
+                    log::debug!(
+                        "translate_keydown(): got translation from key_code: {:?} to macro: {:X?}",
+                        key_code,
+                        kc
+                    );
                 }
             }
         }
@@ -812,7 +801,7 @@ impl Keyboard {
                     );
                 }
 
-                translation[0] = translation[0] | 0x80;
+                translation[0] |= 0x80;
             }
             _ => {
                 unimplemented!();
@@ -830,7 +819,7 @@ impl Keyboard {
         // Update keys pressed.
         for vkey in &self.keys_pressed {
             if self.typematic && self.is_typematic_key(*vkey) {
-                if let Some(key_state) = self.kb_hash.get_mut(&vkey) {
+                if let Some(key_state) = self.kb_hash.get_mut(vkey) {
                     key_state.pressed_time += ms;
                     if key_state.pressed_time > (self.typematic_delay - self.typematic_rate) {
                         if self.debug {

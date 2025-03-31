@@ -81,9 +81,9 @@ impl NecVx0 {
         self.set_reset_vector(CpuAddress::Segmented(self.cs, self.pc));
         self.reset();
 
-        for i in 0..REGISTER16_LUT.len() {
+        for reg in REGISTER16_LUT {
             let n: u16 = get_rand!(self);
-            self.set_register16(REGISTER16_LUT[i], n);
+            self.set_register16(reg, n);
         }
 
         // Flush queue
@@ -181,7 +181,7 @@ impl NecVx0 {
                             .expect("Couldn't read stack!");
 
                         // Clear trap flag
-                        flag_word = flag_word & !CPU_FLAG_TRAP;
+                        flag_word &= !CPU_FLAG_TRAP;
 
                         self.bus_mut()
                             .write_u16(flat_addr as usize, flag_word, 0)
@@ -199,7 +199,7 @@ impl NecVx0 {
                             .expect("Couldn't read stack!");
 
                         // Clear trap flag
-                        flag_word = flag_word & !CPU_FLAG_TRAP;
+                        flag_word &= !CPU_FLAG_TRAP;
 
                         self.bus_mut()
                             .write_u16(flat_addr as usize, flag_word, 0)
@@ -382,23 +382,20 @@ impl NecVx0 {
 
         let do_rep_prefix: u8 = get_rand!(self);
 
-        match (opcode, extension) {
-            (0xF6 | 0xF7, 0x07) => {
-                // IDIV
-                // REP prefixes on IDIV invert quotient (undocumented)
-                match do_rep_prefix {
-                    0..=0x5 => {
-                        // Inject REP prefix at 5% probability
-                        instr.push_front(0xF2); // REPNZ
-                    }
-                    0x06..=0x10 => {
-                        // Inject REP prefix at 5% probability
-                        instr.push_front(0xF3); // REPZ
-                    }
-                    _ => {}
+        if let (0xF6 | 0xF7, 0x07) = (opcode, extension) {
+            // IDIV
+            // REP prefixes on IDIV invert quotient (undocumented)
+            match do_rep_prefix {
+                0..=0x5 => {
+                    // Inject REP prefix at 5% probability
+                    instr.push_front(0xF2); // REPNZ
                 }
+                0x06..=0x10 => {
+                    // Inject REP prefix at 5% probability
+                    instr.push_front(0xF3); // REPZ
+                }
+                _ => {}
             }
-            _ => {}
         }
 
         // Add a segment override prefix with 50% probability
@@ -430,16 +427,12 @@ impl NecVx0 {
 
             // Filter out invalid forms of some instructions that cannot
             // reasonably be validated.
-            match (opcode, extension) {
-                // FE & FF group opcode
-                (0xFE | 0xFF, 0x03 | 0x05) => {
-                    // FE.3 FE.5 FF.3 FF.5 CALLF
-                    if modrm_byte & 0xC0 == 0xC0 {
-                        // Reg form, invalid.
-                        continue;
-                    }
+            if let (0xFE | 0xFF, 0x03 | 0x05) = (opcode, extension) {
+                // FE.3 FE.5 FF.3 FF.5 CALLF
+                if modrm_byte & 0xC0 == 0xC0 {
+                    // Reg form, invalid.
+                    continue;
                 }
-                _ => {}
             }
 
             modrm_valid = true;

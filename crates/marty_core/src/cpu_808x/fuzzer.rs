@@ -167,7 +167,7 @@ impl Intel808x {
                     .expect("Couldn't read stack!");
 
                 // Clear trap flag
-                flag_word = flag_word & !CPU_FLAG_TRAP;
+                flag_word &= !CPU_FLAG_TRAP;
 
                 self.bus_mut()
                     .write_u16(flat_addr as usize, flag_word, 0)
@@ -185,7 +185,7 @@ impl Intel808x {
                     .expect("Couldn't read stack!");
 
                 // Clear trap flag
-                flag_word = flag_word & !CPU_FLAG_TRAP;
+                flag_word &= !CPU_FLAG_TRAP;
 
                 self.bus_mut()
                     .write_u16(flat_addr as usize, flag_word, 0)
@@ -303,23 +303,20 @@ impl Intel808x {
 
         let do_rep_prefix: u8 = get_rand!(self);
 
-        match (opcode, extension) {
-            (0xF6 | 0xF7, 0x07) => {
-                // IDIV
-                // REP prefixes on IDIV invert quotient (undocumented)
-                match do_rep_prefix {
-                    0..=0x5 => {
-                        // Inject REP prefix at 5% probability
-                        instr.push_front(0xF2); // REPNZ
-                    }
-                    0x06..=0x10 => {
-                        // Inject REP prefix at 5% probability
-                        instr.push_front(0xF3); // REPZ
-                    }
-                    _ => {}
+        if let (0xF6 | 0xF7, 0x07) = (opcode, extension) {
+            // IDIV
+            // REP prefixes on IDIV invert quotient (undocumented)
+            match do_rep_prefix {
+                0..=0x5 => {
+                    // Inject REP prefix at 5% probability
+                    instr.push_front(0xF2); // REPNZ
                 }
+                0x06..=0x10 => {
+                    // Inject REP prefix at 5% probability
+                    instr.push_front(0xF3); // REPZ
+                }
+                _ => {}
             }
-            _ => {}
         }
 
         // Add a segment override prefix with 50% probability

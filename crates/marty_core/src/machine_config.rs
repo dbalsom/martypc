@@ -435,7 +435,8 @@ lazy_static! {
     /// Eventually we will want to move these machine definitions into a config file
     /// so that people can define custom architectures.
     pub static ref MACHINE_DESCS: HashMap<MachineType, MachineDescriptor> = {
-        let map = HashMap::from([
+        
+        HashMap::from([
             (
                 MachineType::Ibm5150v64K,
                 MachineDescriptor {
@@ -555,8 +556,7 @@ lazy_static! {
                     ..Default::default()
                 },
             ),
-        ]);
-        map
+        ])
     };
 }
 
@@ -566,7 +566,7 @@ pub fn get_machine_descriptor(machine_type: MachineType) -> Option<&'static Mach
 
 pub fn normalize_conventional_memory(config: &MachineConfiguration) -> Result<u32, Error> {
     let mut conventional_memory = config.memory.conventional.size;
-    conventional_memory = conventional_memory & 0xfffff000; // Normalize to 4K boundary
+    conventional_memory &= 0xfffff000; // Normalize to 4K boundary
 
     // For 5150 machines we set conventional memory to the next largest valid DIP value
     let new_conventional_memory = match config.machine_type {

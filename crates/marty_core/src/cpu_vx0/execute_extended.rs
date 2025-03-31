@@ -356,11 +356,11 @@ impl NecVx0 {
                         // Always read in r2 since there will always be at least one bit preserved in the second word.
                         word_mask = !(0xFFFF >> trailing_bits);
                         word_data = self.biu_read_u16(Segment::ES, self.di.wrapping_add(2), ReadWriteFlag::Normal) & word_mask;
-                        ax_bits = ax_bits >> (16 - bit_idx);
+                        ax_bits >>= 16 - bit_idx;
                         let write2 = word_data | ax_bits;
                         
                         // Write second word.
-                        self.biu_write_u16(Segment::ES, self.di, write2 as u16, ReadWriteFlag::Normal);
+                        self.biu_write_u16(Segment::ES, self.di, write2, ReadWriteFlag::Normal);
                         if trailing_bits == 0 {
                             // We reached the end of the dword boundary, so we need to increment di again to point to the next dword.
                             self.set_register16(Register16::DI, self.di.wrapping_add(2));

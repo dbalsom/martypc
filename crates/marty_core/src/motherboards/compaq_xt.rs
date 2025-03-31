@@ -25,7 +25,7 @@
     --------------------------------------------------------------------------
 */
 
-///! Define the Compaq XT motherboard, used by the Compaq Portable and Compaq Deskpro machines.
+//! Define the Compaq XT motherboard, used by the Compaq Portable and Compaq Deskpro machines.
 use super::{ppi_connector::PpiConnector, Motherboard};
 use crate::devices::dipswitch::DipSwitch;
 

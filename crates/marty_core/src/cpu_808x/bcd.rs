@@ -65,9 +65,9 @@ impl Intel808x {
         // Handle undefined flag behavior. Determined by testing against real 8088.
         self.set_flag_state(Flag::Zero, new_al == 0);
         self.set_flag_state(Flag::Parity, PARITY_TABLE[new_al as usize]);
-        self.set_flag_state(Flag::Overflow, old_al >= 0x7A && old_al <= 0x7F);
+        self.set_flag_state(Flag::Overflow, (0x7A..=0x7F).contains(&old_al));
 
-        if old_al >= 0x7A && old_al <= 0xF9 {
+        if (0x7A..=0xF9).contains(&old_al) {
             self.set_flag(Flag::Sign);
         }
         else {
@@ -107,7 +107,7 @@ impl Intel808x {
         self.set_flag_state(Flag::Zero, new_al == 0);
         self.set_flag_state(Flag::Parity, PARITY_TABLE[new_al as usize]);
 
-        if old_af && old_al >= 0x80 && old_al <= 0x85 {
+        if old_af && (0x80..=0x85).contains(&old_al) {
             self.set_flag(Flag::Overflow);
         }
         if !old_af && old_al >= 0x80 {
@@ -201,22 +201,13 @@ impl Intel808x {
         self.clear_flag(Flag::Overflow);
 
         match (old_af, old_cf) {
-            (false, false) => match self.a.l() {
-                0x9A..=0xDF => self.set_flag(Flag::Overflow),
-                _ => {}
-            },
+            (false, false) => if let 0x9A..=0xDF = self.a.l() { self.set_flag(Flag::Overflow) },
             (true, false) => match self.a.l() {
                 0x80..=0x85 | 0xA0..=0xE5 => self.set_flag(Flag::Overflow),
                 _ => {}
             },
-            (false, true) => match self.a.l() {
-                0x80..=0xDF => self.set_flag(Flag::Overflow),
-                _ => {}
-            },
-            (true, true) => match self.a.l() {
-                0x80..=0xE5 => self.set_flag(Flag::Overflow),
-                _ => {}
-            },
+            (false, true) => if let 0x80..=0xDF = self.a.l() { self.set_flag(Flag::Overflow) },
+            (true, true) => if let 0x80..=0xE5 = self.a.l() { self.set_flag(Flag::Overflow) },
         }
 
         self.clear_flag(Flag::Carry);

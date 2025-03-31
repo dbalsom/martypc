@@ -101,7 +101,7 @@ impl EGACard {
 
         for i in 0..8 {
             let buf_i = i - self.pel_pan_latch as usize;
-            self.buf[self.back_buf][self.rba + buf_i] = self.sequencer.read_linear((self.vma * 8 & 0x7FFFF) + i);
+            self.buf[self.back_buf][self.rba + buf_i] = self.sequencer.read_linear(((self.vma * 8) & 0x7FFFF) + i);
         }
     }
 
@@ -109,7 +109,7 @@ impl EGACard {
         let mut span64 = 0;
         for i in 0..8 {
             let pixel = self.ac.palette_registers
-                [(self.sequencer.read_linear((self.vma * 8 & 0x7FFFF) + i) & 0x0F) as usize]
+                [(self.sequencer.read_linear(((self.vma * 8) & 0x7FFFF) + i) & 0x0F) as usize]
                 .four_to_six;
             span64 |= (pixel as u64) << ((7 - i) * 8);
         }
@@ -120,7 +120,7 @@ impl EGACard {
         let mut span64 = 0;
         for i in 0..8 {
             let pixel = self.ac.palette_registers
-                [(self.sequencer.read_linear((self.vma * 8 & 0x7FFFF) + i) & 0x0F) as usize]
+                [(self.sequencer.read_linear(((self.vma * 8) & 0x7FFFF) + i) & 0x0F) as usize]
                 .six;
             span64 |= (pixel as u64) << ((7 - i) * 8);
         }
@@ -136,7 +136,7 @@ impl EGACard {
             let buf_i = i - self.pel_pan_latch as usize;
 
             let attr_color = self.ac.palette_registers
-                [(self.sequencer.read_linear((self.vma * 8 & 0x7FFFF) + i) & 0x0F) as usize]
+                [(self.sequencer.read_linear(((self.vma * 8) & 0x7FFFF) + i) & 0x0F) as usize]
                 .six;
             self.buf[self.back_buf][self.rba + buf_i] = attr_color;
         }
@@ -165,7 +165,7 @@ impl EGACard {
             let buf_i = (i * 2) - (self.pel_pan_latch * 2) as usize;
 
             let attr_color = self.ac.palette_registers
-                [(self.sequencer.read_linear((self.vma * 8 & 0x7FFFF) + i) & 0x3F) as usize]
+                [(self.sequencer.read_linear(((self.vma * 8) & 0x7FFFF) + i) & 0x3F) as usize]
                 .six;
             self.buf[self.back_buf][self.rba + buf_i] = attr_color;
             self.buf[self.back_buf][self.rba + buf_i + 1] = attr_color;

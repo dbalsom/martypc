@@ -727,7 +727,7 @@ impl FloppyDiskDrive {
 
     pub fn read_operation_buf(&mut self) -> u8 {
         let byte_buf = &mut [0u8];
-        self.operation_buf.read(byte_buf).unwrap();
+        self.operation_buf.read_exact(byte_buf).unwrap();
 
         byte_buf[0]
     }
@@ -737,7 +737,7 @@ impl FloppyDiskDrive {
             .seek(std::io::SeekFrom::Start(offset as u64))
             .unwrap();
         let byte_buf = &mut [0u8];
-        self.operation_buf.read(byte_buf).unwrap();
+        self.operation_buf.read_exact(byte_buf).unwrap();
 
         byte_buf[0]
     }
@@ -760,10 +760,10 @@ impl FloppyDiskDrive {
         self.motor_on = false;
     }
 
-    /// Return whether the specified chs is valid for the disk in the drive.
-    /// Note this is different from checking if the id is valid for a seek, for which there is a
-    /// separate function. We can seek a bit beyond the end of a disk, as well as seek with no
-    /// disk in the drive.
+    // Return whether the specified chs is valid for the disk in the drive.
+    // Note this is different from checking if the id is valid for a seek, for which there is a
+    // separate function. We can seek a bit beyond the end of a disk, as well as seek with no
+    // disk in the drive.
     // pub fn is_id_valid(&self, chs: DiskChs) -> bool {
     //     if let Some(image) = &self.disk_image {
     //         image.is_id_valid(chs)

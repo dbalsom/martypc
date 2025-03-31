@@ -631,7 +631,7 @@ impl Machine {
                         sound_sources = result.sound_sources;
                     } else {
                         log::debug!("Installed devices.");
-                        { _ = &result; () }
+                        { _ = &result;  }
                     }
                 }
             }
@@ -1063,7 +1063,7 @@ impl Machine {
     }
 
     pub fn floppy_image_state(&mut self) -> Option<Vec<Option<FloppyImageState>>> {
-        self.cpu.bus_mut().fdc_mut().as_mut().and_then(|fdc| Some(fdc.get_image_state()))
+        self.cpu.bus_mut().fdc_mut().as_mut().map(|fdc| fdc.get_image_state())
     }
 
     pub fn floppy_image(&mut self, drive_idx: usize) -> (Option<Arc<RwLock<DiskImage>>>, u64) {
@@ -1224,7 +1224,7 @@ impl Machine {
     /// clock divisor.
     fn system_ticks_to_cpu_cycles(&self, ticks: u32) -> u32 {
         match self.cpu_factor {
-            ClockFactor::Divisor(n) => (ticks + (n as u32) - 1) / (n as u32),
+            ClockFactor::Divisor(n) => ticks.div_ceil(n as u32),
             ClockFactor::Multiplier(n) => ticks * (n as u32),
         }
     }
@@ -1610,7 +1610,7 @@ impl Machine {
             }
         };
 
-        timer_ticks as u32 * timer_multiplier
+        timer_ticks * timer_multiplier
     }
 
     /// Called to update machine once per frame. This can be used to update the state of devices that don't require
@@ -1624,39 +1624,36 @@ impl Machine {
             spc.update();
         }
 
-        match self.machine_type {
-            MachineType::Ibm5160 => {
-                // Only do turbo if there is a ppi_turbo option.
-                if let Some(ppi_turbo) = self.machine_config.ppi_turbo {
-                    // Turbo button overrides soft-turbo.
-                    if !self.turbo_button {
-                        if let Some(ppi) = self.cpu.bus_mut().ppi_mut() {
-                            let turbo_bit = ppi_turbo == ppi.turbo_bit();
+        if self.machine_type == MachineType::Ibm5160 {
+            // Only do turbo if there is a ppi_turbo option.
+            if let Some(ppi_turbo) = self.machine_config.ppi_turbo {
+                // Turbo button overrides soft-turbo.
+                if !self.turbo_button {
+                    if let Some(ppi) = self.cpu.bus_mut().ppi_mut() {
+                        let turbo_bit = ppi_turbo == ppi.turbo_bit();
 
-                            if turbo_bit != self.turbo_bit {
-                                // Turbo bit has changed.
-                                match turbo_bit {
-                                    true => {
-                                        self.next_cpu_factor = Some(self.machine_desc.cpu_turbo_factor);
-                                        device_events.push(DeviceEvent::TurboToggled(true));
-                                    }
-                                    false => {
-                                        self.next_cpu_factor = Some(self.machine_desc.cpu_factor);
-                                        device_events.push(DeviceEvent::TurboToggled(false));
-                                    }
+                        if turbo_bit != self.turbo_bit {
+                            // Turbo bit has changed.
+                            match turbo_bit {
+                                true => {
+                                    self.next_cpu_factor = Some(self.machine_desc.cpu_turbo_factor);
+                                    device_events.push(DeviceEvent::TurboToggled(true));
                                 }
-                                log::debug!(
-                                    "Set turbo state to: {} New cpu factor is {:?}",
-                                    turbo_bit,
-                                    self.next_cpu_factor
-                                );
+                                false => {
+                                    self.next_cpu_factor = Some(self.machine_desc.cpu_factor);
+                                    device_events.push(DeviceEvent::TurboToggled(false));
+                                }
                             }
-                            self.turbo_bit = turbo_bit;
+                            log::debug!(
+                                "Set turbo state to: {} New cpu factor is {:?}",
+                                turbo_bit,
+                                self.next_cpu_factor
+                            );
                         }
+                        self.turbo_bit = turbo_bit;
                     }
                 }
             }
-            _ => {}
         }
 
         device_events
@@ -1746,7 +1743,7 @@ impl Machine {
         };
 
         // Attempt to open file
-        let file_opt = File::create(&filename);
+        let file_opt = File::create(filename);
         let file = match file_opt {
             Ok(f) => f,
             Err(e) => {

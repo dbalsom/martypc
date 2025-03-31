@@ -64,18 +64,13 @@ impl Cpu for Intel808x {
 
     #[inline]
     fn set_end_address(&mut self, address: CpuAddress) {
-        let end_addr;
-        match address {
-            CpuAddress::Segmented(segment, offset) => {
-                end_addr = Intel808x::calc_linear_address(segment, offset);
-            }
-            CpuAddress::Flat(addr) => {
-                end_addr = addr;
-            }
+        let end_addr = match address {
+            CpuAddress::Segmented(segment, offset) => Intel808x::calc_linear_address(segment, offset),
+            CpuAddress::Flat(addr) => addr,
             _ => {
                 panic!("Invalid CpuAddress for end address.");
             }
-        }
+        };
         self.set_end_address(end_addr as usize);
     }
 
@@ -297,7 +292,7 @@ impl Cpu for Intel808x {
 
                 // Flush the trace log file on stopping trace so that we can immediately
                 // see results otherwise buffered
-                if state == false {
+                if !state {
                     self.trace_flush();
                 }
             }

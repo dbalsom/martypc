@@ -143,7 +143,7 @@ impl MemoryMappedDevice for LotechEmsCard {
         let (ho_byte, wait2) = MemoryMappedDevice::mmio_read_u8(self, address + 1, 0, cpumem);
 
         log::warn!("Unsupported 16 bit read from VRAM");
-        return ((ho_byte as u16) << 8 | lo_byte as u16, wait1 + wait2);
+        ((ho_byte as u16) << 8 | lo_byte as u16, wait1 + wait2)
     }
 
     fn mmio_peek_u8(&self, address: usize, _cpumem: Option<&[u8]>) -> u8 {

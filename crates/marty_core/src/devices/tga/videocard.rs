@@ -118,7 +118,7 @@ impl VideoCard for TGACard {
         let height = self.crtc_vertical_displayed as u32 * (self.crtc_maximum_scanline_address as u32 + 1);
 
         if self.mode_hires_gfx {
-            width = width * 2;
+            width *= 2;
         }
         (width, height)
     }
@@ -238,7 +238,7 @@ impl VideoCard for TGACard {
 
     /// Return the 16-bit value computed from the CRTC's pair of Page Address registers.
     fn get_start_address(&self) -> u16 {
-        return (self.crtc_start_address_ho as u16) << 8 | self.crtc_start_address_lo as u16;
+        (self.crtc_start_address_ho as u16) << 8 | self.crtc_start_address_lo as u16
     }
 
     fn get_cursor_info(&self) -> CursorInfo {

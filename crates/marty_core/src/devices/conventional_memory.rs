@@ -25,7 +25,7 @@
     --------------------------------------------------------------------------
 */
 
-///! A simple conventional memory region, that may be read-only or read-write.
+//! A simple conventional memory region, that may be read-only or read-write.
 use crate::bus::{MemRangeDescriptor, MemoryMappedDevice, OPEN_BUS_BYTE};
 
 pub struct ConventionalMemory {

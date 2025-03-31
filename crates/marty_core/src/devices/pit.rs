@@ -294,26 +294,26 @@ impl Default for Channel {
             c: 0,
             clocks: 0,
             ptype: PitType::Model8253,
-            mode: Updatable::Dirty(ChannelMode::InterruptOnTerminalCount, false),
-            rw_mode: Updatable::Dirty(RwMode::Lsb, false),
+            mode: Updatable::new(ChannelMode::InterruptOnTerminalCount),
+            rw_mode: Updatable::new(RwMode::Lsb),
             channel_state: ChannelState::WaitingForReload,
             cycles_in_state: 0,
-            count_register: Updatable::Dirty(0, false),
+            count_register: Updatable::new(0),
             load_state: LoadState::WaitingForLsb,
             load_type: LoadType::InitialLoad,
             load_mask: 0xFFFF,
-            reload_value: Updatable::Dirty(0, false),
-            counting_element: Updatable::Dirty(0, false),
+            reload_value: Updatable::new(0),
+            counting_element: Updatable::new(0),
             ce_undefined: false,
             armed: false,
             read_state: ReadState::NoRead,
             count_is_latched: false,
-            output: Updatable::Dirty(false, false),
+            output: Updatable::new(false),
             output_on_reload: false,
             reload_on_trigger: false,
-            output_latch: Updatable::Dirty(0, false),
+            output_latch: Updatable::new(0),
             bcd_mode: false,
-            gate: Updatable::Dirty(false, false),
+            gate: Updatable::new(false),
             incomplete_reload: false,
             dirty: false,
             ticked: false,
@@ -451,7 +451,7 @@ impl Channel {
     }
 
     pub fn set_gate(&mut self, new_state: bool, bus: &mut BusInterface) {
-        if (*self.gate == false) && (new_state == true) {
+        if (!(*self.gate)) && (new_state) {
             // Rising edge of input gate.
             // This is ignored if we are waiting for a reload value.
             if self.channel_state != ChannelState::WaitingForReload {
@@ -477,7 +477,7 @@ impl Channel {
                 }
             }
         }
-        else if (*self.gate == true) && (new_state == false) {
+        else if (*self.gate) && (!new_state) {
             // Falling edge of input gate.
             // This is ignored if we are waiting for a reload value.
             if self.channel_state != ChannelState::WaitingForReload {
@@ -734,10 +734,7 @@ impl Channel {
             return;
         }
 
-        if (self.channel_state == ChannelState::WaitingForLoadTrigger)
-            && (self.cycles_in_state == 0)
-            && (self.armed == true)
-        {
+        if (self.channel_state == ChannelState::WaitingForLoadTrigger) && (self.cycles_in_state == 0) && (self.armed) {
             // First cycle of kWaitingForLoadTrigger. An undefined value is loaded into the counting element.
             self.counting_element.update(0x03);
             self.ce_undefined = true;
@@ -1121,7 +1118,7 @@ impl ProgrammableIntervalTimer {
         self.timewarp = DeviceRunTimeUnit::SystemTicks(0);
 
         for tick in 0..do_ticks {
-            self.tick(bus, tick + warp_ticks, analyzer.as_mut().map(|a| &mut **a));
+            self.tick(bus, tick + warp_ticks, analyzer.as_deref_mut());
         }
     }
 

@@ -431,7 +431,7 @@ impl NecVx0 {
             DmaState::Operating(cycles) => {
                 // the DMA controller has control of the bus now.
                 // Run DMA transfer cycles.
-                *cycles = *cycles + 1;
+                *cycles += 1;
                 match *cycles {
                     1 => {
                         // DMAWAIT asserted after S1

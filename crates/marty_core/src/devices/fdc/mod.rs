@@ -25,7 +25,7 @@
     --------------------------------------------------------------------------
 */
 
-///! Implementation of floppy disk controllers.
+//! Implementation of floppy disk controllers.
 pub mod controller;
 mod data_adapter;
 

@@ -616,11 +616,11 @@ impl AttributeController {
     }
 
     pub fn read_pel_data(&mut self) -> u8 {
-        let byte;
+        
         let color = self.color_pel_read_address as usize;
         let rgb_idx = self.color_pel_read_address_color as usize;
 
-        byte = self.color_registers[color][rgb_idx];
+        let byte = self.color_registers[color][rgb_idx];
 
         // Automatically increment to next color register, cycling through
         // Red, Green and Blue registers per Read Index

@@ -25,8 +25,8 @@
     --------------------------------------------------------------------------
 */
 #![allow(unused_imports)]
-///! The motherboard module provides facilities for describing how components in a system
-///! are connected together.
+//! The motherboard module provides facilities for describing how components in a system
+//! are connected together.
 mod compaq_xt;
 mod ibm_5150;
 mod ibm_5160;

@@ -133,7 +133,7 @@ impl BusInterface {
                     }
                 }
                 IoDeviceType::Video(vid) => {
-                    if let Some(video_dispatch) = self.videocards.get_mut(&vid) {
+                    if let Some(video_dispatch) = self.videocards.get_mut(vid) {
                         byte = Some(video_dispatch.io_read_u8(port, DeviceRunTimeUnit::SystemTicks(sys_ticks)));
                     }
                 }
@@ -172,7 +172,10 @@ impl BusInterface {
         let mut write_waits = None;
 
         // Currently only the SN76489 sound chip has a custom write wait time.
+        #[allow(clippy::collapsible_match)]
         if let Some(device_id) = self.io_map.get(&port) {
+            // Match may be expanded later
+            #[allow(clippy::single_match)]
             match device_id {
                 IoDeviceType::Sn76489 => {
                     if let Some(sn76489) = &mut self.sn76489 {
@@ -322,7 +325,7 @@ impl BusInterface {
                     }
                 }
                 IoDeviceType::Video(vid) => {
-                    if let Some(video_dispatch) = self.videocards.get_mut(&vid) {
+                    if let Some(video_dispatch) = self.videocards.get_mut(vid) {
                         video_dispatch.io_write_u8(
                             port,
                             data,

@@ -55,16 +55,11 @@ use crate::{
     tracelogger::TraceLogger,
 };
 
-#[derive(Copy, Clone)]
+#[derive(Copy, Clone, Default)]
 enum RwSlotType {
+    #[default]
     Mem,
     Io,
-}
-
-impl Default for RwSlotType {
-    fn default() -> Self {
-        RwSlotType::Mem
-    }
 }
 
 // A device can have a maximum of 4 operations to handle between calls to run().
@@ -202,7 +197,7 @@ const STATUS_VERTICAL_RETRACE: u8 = 0b0000_1000;
 // Include the standard 8x8 CGA font.
 // TODO: Support alternate font with thinner glyphs? It was normally not accessible except
 //       by soldering a jumper
-const CGA_FONT: &'static [u8] = include_bytes!("../../../assets/cga_8by8.bin");
+const CGA_FONT: &[u8] = include_bytes!("../../../assets/cga_8by8.bin");
 const CGA_FONT_SPAN: usize = 256; // Font bitmap is 2048 bits wide (256 * 8 characters)
 
 const CGA_HCHAR_CLOCK: u8 = 8;
@@ -365,10 +360,10 @@ const CGA_APERTURES: [DisplayAperture; 4] = [
     },
 ];
 
-const CROPPED_STRING: &str = &formatcp!("Cropped: {}x{}", CGA_APERTURE_CROPPED_W, CGA_APERTURE_CROPPED_H);
-const ACCURATE_STRING: &str = &formatcp!("Accurate: {}x{}", CGA_APERTURE_NORMAL_W, CGA_APERTURE_NORMAL_H);
-const FULL_STRING: &str = &formatcp!("Full: {}x{}", CGA_APERTURE_FULL_W, CGA_APERTURE_FULL_H);
-const DEBUG_STRING: &str = &formatcp!("Debug: {}x{}", CGA_APERTURE_DEBUG_W, CGA_APERTURE_DEBUG_H);
+const CROPPED_STRING: &str = formatcp!("Cropped: {}x{}", CGA_APERTURE_CROPPED_W, CGA_APERTURE_CROPPED_H);
+const ACCURATE_STRING: &str = formatcp!("Accurate: {}x{}", CGA_APERTURE_NORMAL_W, CGA_APERTURE_NORMAL_H);
+const FULL_STRING: &str = formatcp!("Full: {}x{}", CGA_APERTURE_FULL_W, CGA_APERTURE_FULL_H);
+const DEBUG_STRING: &str = formatcp!("Debug: {}x{}", CGA_APERTURE_DEBUG_W, CGA_APERTURE_DEBUG_H);
 
 const CGA_APERTURE_DESCS: [DisplayApertureDesc; 4] = [
     DisplayApertureDesc {
@@ -764,19 +759,16 @@ impl Default for CGACard {
 
 impl CGACard {
     pub fn new(trace_logger: TraceLogger, clock_mode: ClockingMode, _video_frame_debug: bool) -> Self {
-        let mut cga = Self::default();
-
-        cga.trace_logger = trace_logger;
-        //cga.debug = video_frame_debug;
-
-        if let ClockingMode::Default = clock_mode {
-            cga.clock_mode = ClockingMode::Dynamic;
+        CGACard {
+            clock_mode: if let ClockingMode::Default = clock_mode {
+                ClockingMode::Dynamic
+            }
+            else {
+                clock_mode
+            },
+            trace_logger,
+            ..Self::default()
         }
-        else {
-            cga.clock_mode = clock_mode;
-        }
-
-        cga
     }
 
     /// Reset CGA state (on reboot, for example)
@@ -843,7 +835,7 @@ impl CGACard {
                 self.tick_char();
 
                 // Tick any remaining cycles
-                for _ in 0..(ticks - phase_offset - self.char_clock as u32) {
+                for _ in 0..(ticks - phase_offset - self.char_clock) {
                     self.tick();
                 }
             }
@@ -891,7 +883,7 @@ impl CGACard {
     }
 
     fn set_lp_latch(&mut self) {
-        if self.lightpen_latch == false {
+        if !self.lightpen_latch {
             // Low to high transition of light pen latch, set latch addr.
             log::debug!("Updating lightpen latch address");
             self.lightpen_addr = self.vma;
@@ -1382,13 +1374,11 @@ impl CGACard {
         if self.mode_bw && self.mode_graphics && !self.mode_hires_gfx {
             self.cc_palette = 4; // Select Red, Cyan and White palette (undocumented)
         }
+        else if self.cc_register & CC_PALETTE_BIT != 0 {
+            self.cc_palette = 2; // Select Magenta, Cyan, White palette
+        }
         else {
-            if self.cc_register & CC_PALETTE_BIT != 0 {
-                self.cc_palette = 2; // Select Magenta, Cyan, White palette
-            }
-            else {
-                self.cc_palette = 0; // Select Red, Green, 'Yellow' palette
-            }
+            self.cc_palette = 0; // Select Red, Green, 'Yellow' palette
         }
 
         if self.cc_register & CC_BRIGHT_BIT != 0 {
@@ -1567,8 +1557,8 @@ impl CGACard {
     pub fn get_lowres_gfx_lchar(&self, row: u8) -> (&(u64, u64), &(u64, u64)) {
         let base_addr = self.get_gfx_addr(row);
         (
-            &CGA_LOWRES_GFX_TABLE[self.cc_palette as usize][self.mem[base_addr] as usize],
-            &CGA_LOWRES_GFX_TABLE[self.cc_palette as usize][self.mem[base_addr + 1] as usize],
+            &CGA_LOWRES_GFX_TABLE[self.cc_palette][self.mem[base_addr] as usize],
+            &CGA_LOWRES_GFX_TABLE[self.cc_palette][self.mem[base_addr + 1] as usize],
         )
     }
 
@@ -1579,8 +1569,8 @@ impl CGACard {
     #[inline]
     pub fn get_gfx_addr(&self, row: u8) -> usize {
         let row_offset = (row as usize & 0x01) << 12;
-        let addr = (self.vma & 0x0FFF | row_offset) << 1;
-        addr
+
+        (self.vma & 0x0FFF | row_offset) << 1
     }
 
     pub fn get_screen_ticks(&self) -> u64 {

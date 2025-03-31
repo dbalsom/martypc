@@ -461,7 +461,7 @@ impl Intel808x {
         let mut tmpc: u16 = al as u16; // 150 A->tmpc     | LRCY tmpc
         let mut carry;
         let aux_carry: bool;
-        let zf;
+        
 
         carry = tmpc & 0x80 != 0; // LRCY is just checking MSB of tmpc
         let mut tmpb: u16 = operand as u16; // 151: M->tmpb    | X0 PREIMUL
@@ -554,7 +554,7 @@ impl Intel808x {
         // JMP
 
         cycles_mc!(self, 0x155, 0x156, MC_JUMP, 0x1d2, 0x1d3, MC_JUMP);
-        zf = sigma == 0;
+        let zf = sigma == 0;
 
         // 1d0:                | Z 8  (jump if zero)
         if zf {
@@ -572,8 +572,8 @@ impl Intel808x {
         }
 
         // 157: tmpa-> X        | RNI
-        let product = tmpa << 8 | (tmpc & 0xFF);
-        product
+        
+        tmpa << 8 | (tmpc & 0xFF)
     }
 
     /// Microcode routine for multiplication, 16 bit
@@ -584,10 +584,10 @@ impl Intel808x {
         let mut tmpa: u16;
         let mut tmpc: u16 = ax; // 158 XA->tmpc     | LRCY tmpc
         let mut carry;
-        let zf;
+        
 
         carry = tmpc & 0x8000 != 0; // LRCY is just checking msb
-        let mut tmpb: u16 = operand as u16; // 159: M->tmpb    | X0 PREIMUL
+        let mut tmpb: u16 = operand; // 159: M->tmpb    | X0 PREIMUL
         cycles_mc!(self, 0x158, 0x159);
 
         // PREIMUL if signed == true
@@ -671,7 +671,7 @@ impl Intel808x {
         // 1d3: SIGMA->.       | UNC 12  | F  (Set flags)
         // JMP
         cycles_mc!(self, 0x15d, 0x15e, MC_JUMP, 0x1d2, 0x1d3, MC_JUMP);
-        zf = sigma == 0;
+        let zf = sigma == 0;
 
         // 1d0:                | Z 8  (jump if zero)
         if zf {

@@ -3788,7 +3788,6 @@ dependencies = [
  "md5",
  "pollster 0.4.0",
  "regex",
- "ringbuf 0.3.3",
  "serde",
  "serde_derive",
  "strum",

@@ -421,10 +421,7 @@ impl Intel808x {
                 // indicates PASV or HALT and !LOCK. (1,1) (Note, bus goes PASV after T2)
 
                 if (self.bus_status == BusStatus::Passive)
-                    || match self.t_cycle {
-                        TCycle::T3 | TCycle::Tw | TCycle::T4 => true,
-                        _ => false,
-                    }
+                    || matches!(self.t_cycle, TCycle::T3 | TCycle::Tw | TCycle::T4)
                 {
                     // S0 & S1 are idle. Issue hold acknowledge if LOCK not asserted.
                     if !self.lock {
@@ -444,7 +441,7 @@ impl Intel808x {
             DmaState::Operating(cycles) => {
                 // the DMA controller has control of the bus now.
                 // Run DMA transfer cycles.
-                *cycles = *cycles + 1;
+                *cycles += 1;
                 match *cycles {
                     1 => {
                         // DMAWAIT asserted after S1
@@ -470,7 +467,6 @@ impl Intel808x {
             }
             DmaState::End => {
                 // DMA transfer has completed. Deassert DACK and reset state to idle.
-
                 self.dma_state = DmaState::Idle;
             }
         }
@@ -486,8 +482,8 @@ impl Intel808x {
     #[inline]
     pub fn cycles_i(&mut self, ct: u32, instrs: &[u16]) {
         assert!(ct as usize <= instrs.len());
-        for i in 0..ct as usize {
-            self.cycle_i(instrs[i]);
+        for mc_i in instrs.iter() {
+            self.cycle_i(*mc_i);
         }
     }
 

@@ -188,7 +188,9 @@ pub struct CpuStringState {
 }
 
 #[derive(Copy, Clone, Debug, Deserialize, Eq, PartialEq, Hash)]
+#[derive(Default)]
 pub enum CpuType {
+    #[default]
     Intel8088,
     Intel8086,
     NecV20,
@@ -242,7 +244,9 @@ pub enum CycleTraceMode {
 }
 
 #[derive(Copy, Clone, Debug, Deserialize, PartialEq)]
+#[derive(Default)]
 pub enum TraceMode {
+    #[default]
     None,
     CycleText,
     CycleCsv,
@@ -266,17 +270,7 @@ impl FromStr for TraceMode {
         }
     }
 }
-impl Default for TraceMode {
-    fn default() -> Self {
-        TraceMode::None
-    }
-}
 
-impl Default for CpuType {
-    fn default() -> Self {
-        CpuType::Intel8088
-    }
-}
 
 #[derive(Debug)]
 pub enum CpuOption {

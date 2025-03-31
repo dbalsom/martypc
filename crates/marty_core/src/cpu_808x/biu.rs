@@ -878,7 +878,7 @@ impl Intel808x {
 
         // Wait for any current bus cycle to terminate. If no bus cycle is in progress, this is a
         // no-op.
-        let _ = self.biu_bus_wait_finish();
+        self.biu_bus_wait_finish();
 
         // Wait for any fetch delay to complete.
         let was_delay = self.biu_bus_wait_delay();
@@ -1024,7 +1024,7 @@ impl Intel808x {
                     if addr & 1 != 0 {
                         // Unaligned code fetch - instruct the 8086 to discard one byte of the next fetch,
                         // while forcing fetch to even address.
-                        addr = addr & !0x1;
+                        addr &= !0x1;
                         self.queue.set_discard();
                     }
                     OperandSize::Operand16

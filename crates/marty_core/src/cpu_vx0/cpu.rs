@@ -468,7 +468,7 @@ impl Cpu for NecVx0 {
 
                 // Flush the trace log file on stopping trace so that we can immediately
                 // see results otherwise buffered
-                if state == false {
+                if !state {
                     self.trace_flush();
                 }
             }

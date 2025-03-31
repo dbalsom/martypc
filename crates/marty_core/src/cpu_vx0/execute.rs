@@ -441,7 +441,7 @@ impl NecVx0 {
             0x6A => {
                 // PUSH imm8
                 let imm8 = self.read_operand8(self.i.operand1_type, None).unwrap() as i8 as i16 as u16;
-                self.push_u16(imm8 as u16, ReadWriteFlag::RNI);
+                self.push_u16(imm8, ReadWriteFlag::RNI);
             }
             0x6B => {
                 // IMUL r16, r/m16, imm8
@@ -934,7 +934,7 @@ impl NecVx0 {
                 
                 self.math_op16(Mnemonic::TEST,  op1_value, op2_value);
             }
-            0xAA | 0xAB | 0xAC | 0xAD=> {
+            0xAA..=0xAD=> {
                 // STOSB,STOSW,LODSB,LODSW
 
                 if self.rep_start() {

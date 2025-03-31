@@ -94,7 +94,7 @@ impl IoDevice for CGACard {
         delta: DeviceRunTimeUnit,
         _analyzer: Option<&mut LogicAnalyzer>,
     ) {
-        let debug_port = (if port == 0x3D5 { true } else { false }) && self.debug;
+        let debug_port = port == 0x3D5 && self.debug;
 
         // Catch up to CPU state.
         let _ticks = self.catch_up(delta, debug_port);

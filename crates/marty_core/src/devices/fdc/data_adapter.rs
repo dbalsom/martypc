@@ -24,10 +24,12 @@
 
     --------------------------------------------------------------------------
 */
+
+//! The DataAdapter is designed to abstract away the differences between DMA and non-DMA (PIO)
+//! transfers for a floppy disk controller implementation.
+
 use crate::devices::fdc::controller::DataMode;
 
-///! The DataAdapter is designed to abstract away the differences between DMA and non-DMA (PIO)
-///! transfers for a floppy disk controller implementation.
 #[derive(Copy, Clone, Debug)]
 pub enum TransferState {
     Idle,

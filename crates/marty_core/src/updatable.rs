@@ -36,7 +36,7 @@
     Updatable as a visual representation of how 'fresh' the data is.
 
 */
-#[rustfmt::skip]
+
 use std::ops::{Deref, DerefMut};
 
 /// A generic enum type that can hold values that are intended to update a
@@ -45,81 +45,40 @@ use std::ops::{Deref, DerefMut};
 /// Aging8 has a u8 frame age parameter.
 #[allow(dead_code)]
 #[derive(Clone, Debug)]
-pub enum Updatable<T> {
-    Dirty(T, bool),
-    DirtyAging(T, bool, u8),
-    Aging8(T, u8),
+pub struct Updatable<T> {
+    val:   T,
+    dirty: bool,
 }
 
 impl<T> Updatable<T> {
     pub fn is_dirty(&self) -> bool {
-        match self {
-            Updatable::Dirty(_, d) => *d,
-            Updatable::DirtyAging(_, d, _) => *d,
-            _ => false,
-        }
+        self.dirty
     }
 }
 
-impl<'a, T: 'a + std::cmp::PartialEq> Updatable<T> {
+impl<T: PartialEq> Updatable<T> {
+    pub fn new(val: T) -> Self {
+        Updatable { val, dirty: false }
+    }
     #[inline]
-    pub fn update(&'a mut self, newval: T) {
-        match self {
-            Updatable::Dirty(t, d) => {
-                if *t != newval {
-                    *t = newval;
-                    *d = true;
-                }
-            }
-            Updatable::DirtyAging(t, d, i) => {
-                if *t != newval {
-                    *t = newval;
-                    *d = true;
-                    *i = 0;
-                }
-            }
-            Updatable::Aging8(t, i) => {
-                if *t != newval {
-                    *t = newval;
-                    *i = 0
-                }
-            }
+    pub fn update(&mut self, newval: T) {
+        if self.val != newval {
+            self.val = newval;
+            self.dirty = true;
         }
     }
     #[inline]
-    pub fn set(&'a mut self, newval: T) {
-        match self {
-            Updatable::Dirty(t, d) => {
-                *t = newval;
-                *d = true;
-            }
-            Updatable::DirtyAging(t, d, i) => {
-                *t = newval;
-                *d = true;
-                *i = 0;
-            }
-            Updatable::Aging8(t, i) => {
-                *t = newval;
-                *i = 0
-            }
-        }
-    }
-    pub fn clean(&'a mut self) {
-        match self {
-            Updatable::Dirty(_, d) => *d = false,
-            Updatable::DirtyAging(_, d, _) => {
-                *d = false;
-            }
-            _ => {}
-        }
+    pub fn set(&mut self, newval: T) {
+        self.val = newval;
+        self.dirty = true;
     }
     #[inline]
-    pub fn get(&'a self) -> &'a T {
-        match self {
-            Updatable::Dirty(t, _) => t,
-            Updatable::DirtyAging(t, _, _) => t,
-            Updatable::Aging8(t, _) => t,
-        }
+    pub fn clean(&mut self) {
+        self.dirty = false;
+    }
+    #[inline]
+    pub fn get(&self) -> &T {
+        &self.val
     }
 }
 
@@ -127,21 +86,13 @@ impl<T> Deref for Updatable<T> {
     type Target = T;
     #[inline]
     fn deref(&self) -> &T {
-        match self {
-            Updatable::Dirty(t, _) => t,
-            Updatable::DirtyAging(t, _, _) => t,
-            Updatable::Aging8(t, _) => t,
-        }
+        &self.val
     }
 }
 
 impl<T> DerefMut for Updatable<T> {
     #[inline]
     fn deref_mut(&mut self) -> &mut T {
-        match self {
-            Updatable::Dirty(t, _) => t,
-            Updatable::DirtyAging(t, _, _) => t,
-            Updatable::Aging8(t, _) => t,
-        }
+        &mut self.val
     }
 }

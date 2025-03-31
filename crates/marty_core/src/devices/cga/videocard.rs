@@ -114,7 +114,7 @@ impl VideoCard for CGACard {
         let height = self.crtc_vertical_displayed as u32 * (self.crtc_maximum_scanline_address as u32 + 1);
 
         if self.mode_hires_gfx {
-            width = width * 2;
+            width *= 2;
         }
         (width, height)
     }
@@ -234,7 +234,7 @@ impl VideoCard for CGACard {
 
     /// Return the 16-bit value computed from the CRTC's pair of Page Address registers.
     fn get_start_address(&self) -> u16 {
-        return (self.crtc_start_address_ho as u16) << 8 | self.crtc_start_address_lo as u16;
+        (self.crtc_start_address_ho as u16) << 8 | self.crtc_start_address_lo as u16
     }
 
     fn get_cursor_info(&self) -> CursorInfo {
@@ -434,7 +434,7 @@ impl VideoCard for CGACard {
 
         match self.clock_mode {
             ClockingMode::Character | ClockingMode::Dynamic => {
-                if self.cycles & self.char_clock_mask as u64 != 0 {
+                if self.cycles & self.char_clock_mask != 0 {
                     log::warn!(
                         "out of phase with char clock: {} mask: {:02X} \
                         cycles: {} out of phase: {} \
@@ -538,7 +538,7 @@ impl VideoCard for CGACard {
         let mut filename = path.to_path_buf();
         filename.push("cga_mem.bin");
 
-        match std::fs::write(filename.clone(), &*self.mem) {
+        match std::fs::write(filename.clone(), *self.mem) {
             Ok(_) => {
                 log::debug!("Wrote memory dump: {}", filename.display())
             }
@@ -568,7 +568,7 @@ impl VideoCard for CGACard {
         for _ in 0..rows {
             let mut line = String::new();
             line.extend(
-                self.mem[row_addr..(row_addr + (columns * 2) & 0x3fff)]
+                self.mem[row_addr..((row_addr + (columns * 2)) & 0x3fff)]
                     .iter()
                     .step_by(2)
                     .filter_map(|&byte| {

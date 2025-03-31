@@ -337,7 +337,7 @@ impl SerialPort {
 
     /// Convert the integer divisor value into baud rate
     fn divisor_to_baud(divisor: u16) -> u16 {
-        return ((SERIAL_CLOCK * 1_000_000.0) / divisor as f64 / 16.0) as u16;
+        ((SERIAL_CLOCK * 1_000_000.0) / divisor as f64 / 16.0) as u16
     }
 
     /// Sets the value of us_per_byte, the microsecond delay between sending a byte out of the
@@ -393,7 +393,7 @@ impl SerialPort {
     fn rx_buffer_read(&mut self) -> u8 {
         // If DSLAB, send Divisor Latch LSB
         if self.divisor_latch_access {
-            return (self.divisor & 0xFF) as u8;
+            (self.divisor & 0xFF) as u8
         }
         else {
             // Read the byte in the RX buffer
@@ -803,7 +803,7 @@ impl SerialPort {
 
         state.insert(
             "Display Name:",
-            SyntaxToken::StateString(format!("{}", self.name.clone()), false, 0),
+            SyntaxToken::StateString(self.name.clone().to_string(), false, 0),
         );
         state.insert(
             "Line Status Register:",

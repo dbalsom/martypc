@@ -85,14 +85,11 @@ impl IoDevice for A0Register {
     ) {
         self.a0_byte = data;
         log::debug!("A0 NMI Control Register Write: {:08b}", data);
-        match self.a0type {
-            A0Type::PCJr => {
-                self.nmi_enabled = (data & 0x80) != 0;
-                self.ir_test_ena = (data & 0x40) != 0;
-                self.clock_1_select = (data & 0x20) != 0;
-                self.hrq_disable = (data & 0x10) != 0;
-            }
-            _ => {}
+        if let A0Type::PCJr = self.a0type {
+            self.nmi_enabled = (data & 0x80) != 0;
+            self.ir_test_ena = (data & 0x40) != 0;
+            self.clock_1_select = (data & 0x20) != 0;
+            self.hrq_disable = (data & 0x10) != 0;
         }
     }
 
@@ -121,12 +118,7 @@ impl A0Register {
 
     pub fn set_nmi_latch(&mut self, state: bool) {
         log::debug!("Setting nmi latch: {}, enabled: {}", state, self.nmi_enabled);
-        if state && self.nmi_enabled {
-            self.nmi_latch = true;
-        }
-        else {
-            self.nmi_latch = false;
-        }
+        self.nmi_latch = state && self.nmi_enabled;
     }
 
     pub fn is_nmi_enabled(&self) -> bool {

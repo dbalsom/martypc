@@ -666,7 +666,7 @@ impl NecVx0 {
     /// terminating cycle and the beginning of execution will overlap with T4.
     pub fn biu_bus_wait_until_tx(&mut self) -> u32 {
         let mut bus_cycles_elapsed = 0;
-        return match self.bus_status_latch {
+        match self.bus_status_latch {
             BusStatus::MemRead
             | BusStatus::MemWrite
             | BusStatus::IoRead
@@ -720,7 +720,7 @@ impl NecVx0 {
                 bus_cycles_elapsed
             }
             _ => 0,
-        };
+        }
     }
 
     /// Begins a new bus cycle of the specified type.

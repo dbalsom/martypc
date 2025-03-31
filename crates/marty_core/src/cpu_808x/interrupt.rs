@@ -130,49 +130,46 @@ impl Intel808x {
     */
     #[allow(dead_code)]
     pub fn log_interrupt(&self, interrupt: u8) {
-        match interrupt {
-            0x10 => {
-                // Video Services
-                match self.a.h() {
-                    0x00 => {
-                        log::trace!(
-                            "CPU: Video Interrupt: {:02X} (AH:{:02X} Set video mode) Video Mode: {:02X}",
-                            interrupt,
-                            self.a.h(),
-                            self.a.l()
-                        );
-                    }
-                    0x01 => {
-                        log::trace!(
-                            "CPU: Video Interrupt: {:02X} (AH:{:02X} Set text-mode cursor shape: CH:{:02X}, CL:{:02X})",
-                            interrupt,
-                            self.a.h(),
-                            self.c.h(),
-                            self.c.l()
-                        );
-                    }
-                    0x02 => {
-                        log::trace!("CPU: Video Interrupt: {:02X} (AH:{:02X} Set cursor position): Page:{:02X} Row:{:02X} Col:{:02X}",
-                            interrupt, self.a.h(), self.b.h(), self.d.h(), self.d.l());
-                    }
-                    0x09 => {
-                        log::trace!("CPU: Video Interrupt: {:02X} (AH:{:02X} Write character and attribute): Char:'{}' Page:{:02X} Color:{:02x} Ct:{:02}", 
-                            interrupt, self.a.h(), self.a.l() as char, self.b.h(), self.b.l(), self.c.x());
-                    }
-                    0x10 => {
-                        log::trace!(
-                            "CPU: Video Interrupt: {:02X} (AH:{:02X} Write character): Char:'{}' Page:{:02X} Ct:{:02}",
-                            interrupt,
-                            self.a.h(),
-                            self.a.l() as char,
-                            self.b.h(),
-                            self.c.x()
-                        );
-                    }
-                    _ => {}
+        if interrupt == 0x10 {
+            // Video Services
+            match self.a.h() {
+                0x00 => {
+                    log::trace!(
+                        "CPU: Video Interrupt: {:02X} (AH:{:02X} Set video mode) Video Mode: {:02X}",
+                        interrupt,
+                        self.a.h(),
+                        self.a.l()
+                    );
                 }
+                0x01 => {
+                    log::trace!(
+                        "CPU: Video Interrupt: {:02X} (AH:{:02X} Set text-mode cursor shape: CH:{:02X}, CL:{:02X})",
+                        interrupt,
+                        self.a.h(),
+                        self.c.h(),
+                        self.c.l()
+                    );
+                }
+                0x02 => {
+                    log::trace!("CPU: Video Interrupt: {:02X} (AH:{:02X} Set cursor position): Page:{:02X} Row:{:02X} Col:{:02X}",
+                        interrupt, self.a.h(), self.b.h(), self.d.h(), self.d.l());
+                }
+                0x09 => {
+                    log::trace!("CPU: Video Interrupt: {:02X} (AH:{:02X} Write character and attribute): Char:'{}' Page:{:02X} Color:{:02x} Ct:{:02}", 
+                        interrupt, self.a.h(), self.a.l() as char, self.b.h(), self.b.l(), self.c.x());
+                }
+                0x10 => {
+                    log::trace!(
+                        "CPU: Video Interrupt: {:02X} (AH:{:02X} Write character): Char:'{}' Page:{:02X} Ct:{:02}",
+                        interrupt,
+                        self.a.h(),
+                        self.a.l() as char,
+                        self.b.h(),
+                        self.c.x()
+                    );
+                }
+                _ => {}
             }
-            _ => {}
         };
     }
 

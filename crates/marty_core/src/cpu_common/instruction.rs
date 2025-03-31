@@ -136,7 +136,7 @@ impl Display for Instruction {
         let sego_prefix = override_prefix_to_string(self);
         if let Some(so) = sego_prefix {
             instruction_string.push_str(&so);
-            instruction_string.push_str(" ");
+            instruction_string.push(' ');
         }
 
         // Add other prefixes (rep(x), lock, etc)
@@ -145,7 +145,7 @@ impl Display for Instruction {
 
         if let Some(p) = prefix {
             instruction_string.push_str(&p);
-            instruction_string.push_str(" ");
+            instruction_string.push(' ');
         }
         instruction_string.push_str(&mnemonic);
 
@@ -158,13 +158,13 @@ impl Display for Instruction {
         };
 
         let op1 = operand_to_string(self, OperandSelect::FirstOperand, op_size);
-        if op1.len() > 0 {
-            instruction_string.push_str(" ");
+        if !op1.is_empty() {
+            instruction_string.push(' ');
             instruction_string.push_str(&op1);
         }
 
         let op2: String = operand_to_string(self, OperandSelect::SecondOperand, op_size);
-        if op2.len() > 0 {
+        if !op2.is_empty() {
             instruction_string.push_str(", ");
             instruction_string.push_str(&op2);
         }
@@ -639,7 +639,7 @@ fn tokenize_operand(i: &Instruction, op: OperandSelect, lvalue: OperandSize) -> 
                 op_vec.push(seg_token);
                 op_vec.push(SyntaxToken::Colon);
 
-                if ea_vec[0].len() > 0 {
+                if !ea_vec[0].is_empty() {
                     // Have first component of ea
                     op_vec.push(SyntaxToken::Register(ea_vec[0].to_string()));
                 }
@@ -648,13 +648,13 @@ fn tokenize_operand(i: &Instruction, op: OperandSelect, lvalue: OperandSize) -> 
                     op_vec.push(SyntaxToken::Displacement(format!("{}", disp)));
                 }
 
-                if ea_vec[1].len() > 0 {
+                if !ea_vec[1].is_empty() {
                     // Have second component of ea
                     op_vec.push(SyntaxToken::PlusSign);
                     op_vec.push(SyntaxToken::Register(ea_vec[1].to_string()));
                 }
 
-                if ea_vec[0].len() > 0 {
+                if !ea_vec[0].is_empty() {
                     // Have at least one ea component. Add +displacement if present.
                     if let Some(disp) = disp_opt {
                         // TODO: Generate +/- as tokens for displacement?

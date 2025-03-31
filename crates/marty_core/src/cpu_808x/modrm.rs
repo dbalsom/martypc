@@ -300,7 +300,7 @@ impl ModRmByte {
             );
 
             // Load any displacement
-            (disp, disp_size) = ModRmByte::read_displacement(&modrm, bytes);
+            (disp, disp_size) = ModRmByte::read_displacement(modrm, bytes);
 
             bytes.wait_i(
                 modrm.post_disp_cost as u32,

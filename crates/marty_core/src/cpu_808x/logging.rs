@@ -124,10 +124,7 @@ impl Intel808x {
     }
 
     pub fn emit_header(&mut self) {
-        match self.trace_mode {
-            TraceMode::CycleSigrok => self.trace_print(AnalyzerEntry::emit_header()),
-            _ => {}
-        }
+        if self.trace_mode == TraceMode::CycleSigrok { self.trace_print(AnalyzerEntry::emit_header()) }
     }
 
     pub fn push_analyzer_entry(&mut self) {

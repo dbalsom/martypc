@@ -84,7 +84,7 @@ impl CpuBuilder {
                         #[cfg(feature = "cpu_validator")]
                         self.validator_baud.take().unwrap_or_default(),
                     );
-                    return Ok(cpu.into());
+                    Ok(cpu.into())
                 }
                 CpuType::Intel8086 => {
                     let cpu = Intel808x::new(
@@ -102,7 +102,7 @@ impl CpuBuilder {
                         #[cfg(feature = "cpu_validator")]
                         self.validator_baud.take().unwrap_or_default(),
                     );
-                    return Ok(cpu.into());
+                    Ok(cpu.into())
                 }
                 CpuType::NecV20 => {
                     let cpu = NecVx0::new(
@@ -118,7 +118,7 @@ impl CpuBuilder {
                         #[cfg(feature = "cpu_validator")]
                         self.validator_baud.take().unwrap_or_default(),
                     );
-                    return Ok(cpu.into());
+                    Ok(cpu.into())
                 }
                 _ => {
                     bail!("Unimplemented CPU type: {:?}", cpu_type);

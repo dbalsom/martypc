@@ -297,14 +297,11 @@ pub const SREGISTER_LUT: [Register16; 8] = [
 ];
 
 #[derive(Debug, Copy, Clone, PartialEq)]
+#[derive(Default)]
 pub enum CpuState {
+    #[default]
     Normal,
     BreakpointHit,
-}
-impl Default for CpuState {
-    fn default() -> Self {
-        CpuState::Normal
-    }
 }
 
 #[derive(Copy, Clone, Debug)]
@@ -1180,7 +1177,7 @@ impl Intel808x {
     }
 
     pub fn set_nmi(&mut self, nmi_state: bool) {
-        if nmi_state == false {
+        if !nmi_state {
             self.nmi_triggered = false;
         }
         self.nmi = nmi_state;
@@ -1826,7 +1823,6 @@ impl Intel808x {
             }
             _ => {
                 // Unsupported breakpoint type - ignore for now
-                return;
             }
         }
     }
@@ -1868,10 +1864,7 @@ impl Intel808x {
     }
 
     pub fn get_step_over_breakpoint(&self) -> Option<CpuAddress> {
-        match self.step_over_breakpoint {
-            Some(addr) => Some(CpuAddress::Flat(addr)),
-            None => None,
-        }
+        self.step_over_breakpoint.map(CpuAddress::Flat)
     }
 
     pub fn get_breakpoint_flag(&self) -> bool {
@@ -1890,26 +1883,23 @@ impl Intel808x {
         let mut disassembly_string = String::new();
 
         for i in &self.instruction_history {
-            match i {
-                HistoryEntry::InstructionEntry {
+            if let HistoryEntry::InstructionEntry {
                     cs,
                     ip,
                     cycles: _,
                     interrupt,
                     jump: _,
                     i,
-                } => {
-                    let i_string = format!(
-                        "{:05X}{} [{:04X}:{:04X}] {}\n",
-                        i.address,
-                        if *interrupt { '*' } else { ' ' },
-                        *cs,
-                        *ip,
-                        i
-                    );
-                    disassembly_string.push_str(&i_string);
-                }
-                _ => {}
+                } = i {
+                let i_string = format!(
+                    "{:05X}{} [{:04X}:{:04X}] {}\n",
+                    i.address,
+                    if *interrupt { '*' } else { ' ' },
+                    *cs,
+                    *ip,
+                    i
+                );
+                disassembly_string.push_str(&i_string);
             }
         }
         disassembly_string
@@ -2069,7 +2059,7 @@ impl Intel808x {
         log::debug!("Dumping {} bytes at address {:05X}", len, address);
         let cs_slice = self.bus.get_slice_at(address, len);
 
-        match std::fs::write(filename.clone(), &cs_slice) {
+        match std::fs::write(filename.clone(), cs_slice) {
             Ok(_) => {
                 log::debug!("Wrote memory dump: {}", filename.display())
             }

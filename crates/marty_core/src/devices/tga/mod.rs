@@ -59,16 +59,11 @@ mod mmio;
 mod tablegen;
 mod videocard;
 
-#[derive(Copy, Clone)]
+#[derive(Copy, Clone, Default)]
 enum RwSlotType {
+    #[default]
     Mem,
     Io,
-}
-
-impl Default for RwSlotType {
-    fn default() -> Self {
-        RwSlotType::Mem
-    }
 }
 
 // A device can have a maximum of 4 operations to handle between calls to run().
@@ -92,6 +87,12 @@ pub struct TModeControlRegister {
     pub fourbpp_mode: bool,
     #[skip]
     unused: B3,
+}
+
+impl Default for TModeControlRegister {
+    fn default() -> Self {
+        TModeControlRegister::new()
+    }
 }
 
 #[bitfield]
@@ -189,7 +190,7 @@ const US_PER_CLOCK: f64 = 1.0 / CGA_CLOCK;
     This produces vertical overscan borders of 26 pixels and horizontal borders of 96 pixels
     The Area5150 demo manages to squeeze out a 768 pixel horizontal resolution mode from
     the CGA. This is accomplished with a HorizontalDisplayed value of 96. (96 * 8 = 768)
-    I am assuming this is the highest value we will actually ever encounter and anything
+    I am assuming this is the highest value we will ever encounter and anything
     wider might not sync to a real monitor.
 */
 
@@ -482,10 +483,10 @@ const TGA_APERTURES: [[DisplayAperture; 4]; 2] = [
     ],
 ];
 
-const CROPPED_STRING: &str = &formatcp!("Cropped: {}x{}", TGA_APERTURE_CROPPED_W, TGA_APERTURE_CROPPED_H);
-const ACCURATE_STRING: &str = &formatcp!("Accurate: {}x{}", TGA_APERTURE_ACCURATE_W, TGA_APERTURE_ACCURATE_H);
-const FULL_STRING: &str = &formatcp!("Full: {}x{}", TGA_APERTURE_FULL_W, TGA_APERTURE_FULL_H);
-const DEBUG_STRING: &str = &formatcp!("Debug: {}x{}", TGA_APERTURE_DEBUG_W, TGA_APERTURE_DEBUG_H);
+const CROPPED_STRING: &str = formatcp!("Cropped: {}x{}", TGA_APERTURE_CROPPED_W, TGA_APERTURE_CROPPED_H);
+const ACCURATE_STRING: &str = formatcp!("Accurate: {}x{}", TGA_APERTURE_ACCURATE_W, TGA_APERTURE_ACCURATE_H);
+const FULL_STRING: &str = formatcp!("Full: {}x{}", TGA_APERTURE_FULL_W, TGA_APERTURE_FULL_H);
+const DEBUG_STRING: &str = formatcp!("Debug: {}x{}", TGA_APERTURE_DEBUG_W, TGA_APERTURE_DEBUG_H);
 
 const TGA_APERTURE_DESCS: [DisplayApertureDesc; 4] = [
     DisplayApertureDesc {
@@ -1071,7 +1072,7 @@ impl TGACard {
     }
 
     fn set_lp_latch(&mut self) {
-        if self.lightpen_latch == false {
+        if !self.lightpen_latch {
             // Low to high transition of light pen latch, set latch addr.
             log::debug!("Updating lightpen latch address");
             self.lightpen_addr = self.vma;
@@ -1863,8 +1864,8 @@ impl TGACard {
     pub fn get_lowres_gfx_mchar(&self, row: u8, cpumem: &[u8]) -> (&(u64, u64), &(u64, u64)) {
         let base_addr = self.get_gfx_addr(row);
         (
-            &CGA_LOWRES_GFX_TABLE[self.cc_palette as usize][self.crt_mem(cpumem)[base_addr] as usize],
-            &CGA_LOWRES_GFX_TABLE[self.cc_palette as usize][self.crt_mem(cpumem)[base_addr + 1] as usize],
+            &CGA_LOWRES_GFX_TABLE[self.cc_palette][self.crt_mem(cpumem)[base_addr] as usize],
+            &CGA_LOWRES_GFX_TABLE[self.cc_palette][self.crt_mem(cpumem)[base_addr + 1] as usize],
         )
     }
 
@@ -1886,8 +1887,8 @@ impl TGACard {
             0 => 0,
             _ => (row as usize & 0x01) << 12,
         };
-        let addr = (self.vma & 0x0FFF | row_offset) << 1;
-        addr
+        
+        (self.vma & 0x0FFF | row_offset) << 1
     }
 
     /// Calculate the byte address given the current value of vma; given that the address
@@ -1901,8 +1902,8 @@ impl TGACard {
             0 => 0,
             _ => (row as usize & 0x03) << 12,
         };
-        let addr = (self.vma & 0x0FFF | row_offset) << 1;
-        addr
+        
+        (self.vma & 0x0FFF | row_offset) << 1
     }
 
     pub fn get_screen_ticks(&self) -> u64 {

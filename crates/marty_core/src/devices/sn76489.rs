@@ -206,11 +206,9 @@ impl Default for Oscilloscope {
 impl Oscilloscope {
     /// Update the scope without a change in the Y-axis.
     pub fn update_flat(&mut self, tick: u64) {
-        if self.points.len() < MAX_SCOPE_SAMPLES {
-            if self.last_tick != tick {
-                self.points.push((tick, self.last_vol));
-                self.last_tick = tick;
-            }
+        if self.points.len() < MAX_SCOPE_SAMPLES && self.last_tick != tick {
+            self.points.push((tick, self.last_vol));
+            self.last_tick = tick;
         }
     }
     /// Update the scope upon a change of the Y axis (output or volume change)
@@ -520,7 +518,7 @@ impl Sn76489 {
         while self.sn_tick_accumulator >= self.ticks_per_sample {
             self.sn_tick_accumulator -= self.ticks_per_sample;
             let sample = self.sample();
-            self.sample_sender.send(sample.into()).unwrap();
+            self.sample_sender.send(sample).unwrap();
         }
     }
 
@@ -613,16 +611,14 @@ impl IoDevice for Sn76489 {
                 // LSB is set, this is a write to an attenuation register.
                 self.attenuation_registers[self.selected_channel].set(data);
             }
+            else if self.selected_channel < 3 {
+                // One of the tone channels is selected.
+                // 1st write to frequency Register
+                self.tone_channels[self.selected_channel].set_freq_1st(data);
+            }
             else {
-                if self.selected_channel < 3 {
-                    // One of the tone channels is selected.
-                    // 1st write to frequency Register
-                    self.tone_channels[self.selected_channel].set_freq_1st(data);
-                }
-                else {
-                    // The noise channel is selected.
-                    self.noise_channel.set(data);
-                }
+                // The noise channel is selected.
+                self.noise_channel.set(data);
             }
         }
         else {

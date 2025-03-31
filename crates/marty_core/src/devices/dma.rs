@@ -84,41 +84,32 @@ pub enum PriorityMode {
 }
 
 #[derive(Debug)]
+#[derive(Default)]
 pub enum ServiceMode {
+    #[default]
     Demand,
     Single,
     Block,
     Cascade,
 }
-impl Default for ServiceMode {
-    fn default() -> Self {
-        ServiceMode::Demand
-    }
-}
 #[derive(Debug)]
+#[derive(Default)]
 pub enum AddressMode {
+    #[default]
     Increment,
     Decrement,
 }
-impl Default for AddressMode {
-    fn default() -> Self {
-        AddressMode::Increment
-    }
-}
 
 #[derive(Debug)]
+#[derive(Default)]
 pub enum TransferType {
+    #[default]
     Verify,
     Write,
     Read,
     Illegal,
 }
 
-impl Default for TransferType {
-    fn default() -> Self {
-        TransferType::Verify
-    }
-}
 
 #[derive(Default)]
 pub struct DMAChannel {
@@ -610,7 +601,7 @@ impl DMAController {
         }
 
         let size: usize = self.channels[channel].base_word_count_reg as usize + 1;
-        return size;
+        size
     }
 
     pub fn get_dma_transfer_address(&self, channel: usize) -> usize {

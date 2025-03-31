@@ -637,8 +637,8 @@ pub const DECODE: [InstTemplate; 352] = [
 impl Intel808x {
     #[rustfmt::skip]
     pub fn decode(bytes: &mut impl ByteQueue, peek: bool) -> Result<Instruction, Box<dyn std::error::Error>> {
-        let operand1_type: OperandType;
-        let operand2_type: OperandType;
+        
+        
 
         // Read an initial byte as our opcode or first prefix
         let mut opcode = bytes.q_read_u8(QueueType::First, QueueReader::Biu);
@@ -710,8 +710,8 @@ impl Intel808x {
         }
 
         // Resolve operand templates into OperandTypes
-        operand1_type = op_lu.operand1.resolve_operand(bytes, modrm, displacement, &mut size, peek);
-        operand2_type = op_lu.operand2.resolve_operand(bytes, modrm, displacement, &mut size, peek);
+        let operand1_type: OperandType = op_lu.operand1.resolve_operand(bytes, modrm, displacement, &mut size, peek);
+        let operand2_type: OperandType = op_lu.operand2.resolve_operand(bytes, modrm, displacement, &mut size, peek);
 
         Ok(Instruction {
             decode_idx,

@@ -39,7 +39,7 @@ impl MemoryMappedDevice for TGACard {
     fn get_read_wait(&mut self, _address: usize, cycles: u32) -> u32 {
         // Look up wait states given the last ticked clock cycle + elapsed cycles
         // passed in.
-        let phase = (self.cycles + cycles as u64 + 1) as usize & (0x0F as usize);
+        let phase = (self.cycles + cycles as u64 + 1) as usize & 0x0F_usize;
         let waits = WAIT_TABLE[phase];
 
         trace!(self, "READ_U8 (T2): PHASE: {:02X}, WAITS: {}", phase, waits);
@@ -49,7 +49,7 @@ impl MemoryMappedDevice for TGACard {
     fn get_write_wait(&mut self, _address: usize, cycles: u32) -> u32 {
         // Look up wait states given the last ticked clock cycle + elapsed cycles
         // passed in.
-        let phase = (self.cycles + cycles as u64 + 1) as usize & (0x0F as usize);
+        let phase = (self.cycles + cycles as u64 + 1) as usize & 0x0F_usize;
         let waits = WAIT_TABLE[phase];
 
         trace!(self, "WRITE_U8 (T2): PHASE: {:02X}, WAITS: {}", phase, waits);
@@ -112,7 +112,7 @@ impl MemoryMappedDevice for TGACard {
         let (ho_byte, wait2) = MemoryMappedDevice::mmio_read_u8(self, address + 1, 0, cpumem);
 
         log::warn!("Unsupported 16 bit read from VRAM");
-        return ((ho_byte as u16) << 8 | lo_byte as u16, wait1 + wait2);
+        ((ho_byte as u16) << 8 | lo_byte as u16, wait1 + wait2)
     }
 
     fn mmio_write_u16(&mut self, _address: usize, _data: u16, _cycles: u32, _cpumem: Option<&mut [u8]>) -> u32 {

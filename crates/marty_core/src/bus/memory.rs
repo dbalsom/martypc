@@ -616,9 +616,7 @@ impl BusInterface {
 
         if address >= self.memory.len() {
             // Start address is invalid. Send only an error token.
-            let mut linevec = Vec::new();
-
-            linevec.push(SyntaxToken::ErrorString("REQUEST OUT OF BOUNDS".to_string()));
+            let linevec = vec![SyntaxToken::ErrorString("REQUEST OUT OF BOUNDS".to_string())];
             vec.push(linevec);
 
             return vec;
@@ -642,8 +640,7 @@ impl BusInterface {
             ));
 
             // Build hex byte value tokens
-            let mut i = 0;
-            for addr in dump_addr_row {
+            for (i, addr) in dump_addr_row.iter().enumerate() {
                 let byte = self.peek_u8(*addr).unwrap();
 
                 if (display_address + i) == cursor {
@@ -664,12 +661,10 @@ impl BusInterface {
                         0,
                     ));
                 }
-                i += 1;
             }
 
             // Build ASCII representation tokens
-            let mut i = 0;
-            for addr in dump_addr_row {
+            for (i, addr) in dump_addr_row.iter().enumerate() {
                 let byte = self.peek_u8(*addr).unwrap();
 
                 let char_str = match byte {
@@ -683,7 +678,6 @@ impl BusInterface {
                     char_str,
                     0,
                 ));
-                i += 1;
             }
 
             vec.push(line_vec);

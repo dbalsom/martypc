@@ -163,8 +163,6 @@ branch = "buffer_size"
 #git = "https://github.com/dbalsom/egui_martypc.git"
 #branch = "0_24_2_winit_0_29_15"
 
-
-
 [profile.release]
 opt-level = 3
 

@@ -331,15 +331,15 @@ impl GraphicsController {
                 match self.graphics_mode.odd_even() {
                     OddEvenModeComplement::Sequential => {
                         let plane = self.graphics_read_map_select as usize;
-                        let byte = seq.read_u8(plane, offset, a0);
-                        byte
+                        
+                        seq.read_u8(plane, offset, a0)
                     }
                     OddEvenModeComplement::OddEven => {
                         // If selected plane is 0 or 1, choose 0 or 1 based on a0.
                         // If selected plane is 2 or 3, choose 2 or 3 based on a0.
                         let plane = (self.graphics_read_map_select as usize & !0x01) | a0;
-                        let byte = seq.read_u8(plane, offset, a0);
-                        byte
+                        
+                        seq.read_u8(plane, offset, a0)
                     }
                 }
             }
@@ -347,8 +347,8 @@ impl GraphicsController {
                 // In Read Mode 1, the processor reads the result of a comparison with the value in the
                 // Color Compare register, from the set of enabled planes in the Color Don't Care register
                 self.get_pixels(seq, offset);
-                let comparison = self.pixel_op_compare();
-                comparison
+                
+                self.pixel_op_compare()
             }
         }
     }
@@ -435,7 +435,6 @@ impl GraphicsController {
             }
             WriteMode::Invalid => {
                 log::warn!("Invalid write mode!");
-                return;
             }
         }
     }
@@ -465,7 +464,7 @@ impl GraphicsController {
                 }
             }
             OddEvenModeComplement::OddEven => {
-                f(self, seq, 0 + a0);
+                f(self, seq, a0);
                 f(self, seq, 2 + a0);
             }
         }
