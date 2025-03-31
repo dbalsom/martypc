@@ -99,6 +99,7 @@ use crate::{
 
 use crate::devices::sn76489::Sn76489;
 
+use crate::{bus::dispatch::MemoryDispatch, devices::conventional_memory::ConventionalMemory};
 use anyhow::Error;
 #[cfg(feature = "sound")]
 use crossbeam_channel::unbounded;
@@ -416,6 +417,7 @@ pub enum MmioDeviceType {
     Vga,
     Rom,
     Ems,
+    MemoryExpansion(usize),
     Cart,
 }
 
@@ -447,6 +449,8 @@ pub struct BusInterface {
     io_map: FxHashMap<u16, IoDeviceType>,
     io_desc_map: FxHashMap<u16, String>,
     io_stats: FxHashMap<u16, (bool, IoDeviceStats)>,
+
+    memory_expansions: Vec<MemoryDispatch>,
     ppi: Option<Box<Ppi>>,
     a0: Option<A0Register>,
     a0_data: u8,
@@ -532,6 +536,8 @@ impl Default for BusInterface {
             io_map: FxHashMap::default(),
             io_desc_map: FxHashMap::default(),
             io_stats: FxHashMap::default(),
+
+            memory_expansions: Vec::new(),
             ppi: None,
             a0: None,
             a0_data: 0,
@@ -907,6 +913,30 @@ impl BusInterface {
         let conventional_memory = normalize_conventional_memory(machine_config)?;
         self.set_conventional_size(conventional_memory as usize);
         self.open_bus_byte = machine_desc.open_bus_byte;
+
+        // Create memory expansion cards.
+
+        for (ec_idx, expansion_card_config) in machine_config.conventional_expansion.iter().enumerate() {
+            log::debug!(
+                "Installing memory expansion card({}) address: {:05X} size: {:05X}",
+                ec_idx,
+                expansion_card_config.address,
+                expansion_card_config.size
+            );
+            let mut expansion_card = ConventionalMemory::new(
+                expansion_card_config.address as usize,
+                expansion_card_config.size as usize,
+                expansion_card_config.wait_states,
+                false,
+            );
+            add_mmio_device!(
+                self,
+                expansion_card,
+                MmioDeviceType::MemoryExpansion(self.memory_expansions.len())
+            );
+            self.memory_expansions
+                .push(MemoryDispatch::Conventional(expansion_card));
+        }
 
         // Create the A0 register if specified.
         // TODO: Wrap this up in a motherboard device type?

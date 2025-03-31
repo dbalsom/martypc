@@ -30,29 +30,28 @@
 
 */
 
-use crate::machine_types::{
-    EmsType,
-    FdcType,
-    FloppyDriveType,
-    HardDiskControllerType,
-    HardDriveFormat,
-    MachineType,
-    ParallelControllerType,
-    SerialControllerType,
-    SerialMouseType,
-    SoundType,
-};
-use anyhow::{anyhow, Error};
-use lazy_static::lazy_static;
-use std::collections::HashMap;
-
 use crate::{
     bus::ClockFactor,
     cpu_common::CpuType,
     device_traits::videocard::VideoType,
     devices::{keyboard::KeyboardType, pit::PitType},
+    machine_types::{
+        EmsType,
+        FdcType,
+        FloppyDriveType,
+        HardDiskControllerType,
+        HardDriveFormat,
+        MachineType,
+        ParallelControllerType,
+        SerialControllerType,
+        SerialMouseType,
+        SoundType,
+    },
     tracelogger::TraceLogger,
 };
+use anyhow::{anyhow, Error};
+use lazy_static::lazy_static;
+use std::collections::HashMap;
 
 use crate::{device_traits::videocard::VideoCardSubType, devices::a0::A0Type};
 use serde_derive::Deserialize;
@@ -117,10 +116,11 @@ pub enum DmaType {
     Chained,
 }
 
-#[derive(Copy, Clone, Debug)]
+#[derive(Copy, Clone, Debug, Deserialize)]
 pub enum BusType {
     Isa8,
     Isa16,
+    PCjr,
 }
 
 // Machine Configuration file types
@@ -269,6 +269,15 @@ pub struct MediaConfig {
     pub hdd:    Option<Vec<HardDriveImage>>,
 }
 
+#[derive(Clone, Debug, Deserialize)]
+pub struct ConventionalExpansionConfig {
+    #[serde(rename = "type")]
+    pub bus_type: BusType,
+    pub address: u32,
+    pub size: u32,
+    pub wait_states: u32,
+}
+
 #[derive(Clone, Debug, Default)]
 pub struct MachineConfiguration {
     pub speaker: bool,
@@ -286,6 +295,7 @@ pub struct MachineConfiguration {
     pub game_port: Option<GamePortConfig>,
     pub fdc: Option<FloppyControllerConfig>,
     pub hdc: Option<HardDriveControllerConfig>,
+    pub conventional_expansion: Vec<ConventionalExpansionConfig>,
     pub media: Option<MediaConfig>,
 }
 

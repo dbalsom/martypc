@@ -245,5 +245,17 @@ name = "game_port"
     # Don't change this unless you know what you are doing.
     # Everything expects the game port to be at 0x201.
     io_base = 0x201
-    
-    
+
+# The IBM PCjr was expanded via 'sidecars' which were essentially a custom slot for the ISA bus, where you would
+# daisy-chain peripherals that matched the profile of the PCjr's case. Chain a bunch of these together, and you
+# would start to have a quite ridiculous contraption on your desk.
+# The most common expansion is a memory sidecar, which upgrades the PCjr's RAM. This sidecar here is a 512K
+# memory sidecar which will upgrade a PCjr to a full 640K of RAM. This expansion memory could operate at 0 wait states
+# which made it much faster than the built-in RAM.
+[[overlay]]
+name = "pcjr_memory_sidecar"
+    [[overlay.conventional_expansion]]
+    type = "PCjr"
+    address = 0x20000
+    size = 0x80000
+    wait_states = 0

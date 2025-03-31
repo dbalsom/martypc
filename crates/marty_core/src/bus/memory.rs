@@ -249,6 +249,9 @@ impl BusInterface {
                             return Ok((data, 0));
                         }
                     }
+                    MmioDeviceType::MemoryExpansion(mem_id) => {
+                        return Ok(self.memory_expansions[mem_id].mmio_read_u8(address, system_ticks, None));
+                    }
                     _ => {}
                 }
                 Err(MemError::MmioError)
@@ -292,6 +295,10 @@ impl BusInterface {
                             let data = MemoryMappedDevice::mmio_peek_u8(cart_slot, address, None);
                             return Ok(data);
                         }
+                    }
+                    MmioDeviceType::MemoryExpansion(mem_id) => {
+                        let data = self.memory_expansions[mem_id].mmio_peek_u8(address, None);
+                        return Ok(data);
                     }
                     _ => {}
                 }
@@ -366,6 +373,9 @@ impl BusInterface {
                         if let Some(ems) = &mut self.ems {
                             MemoryMappedDevice::mmio_write_u8(ems, address, data, 0, None);
                         }
+                    }
+                    MmioDeviceType::MemoryExpansion(mem_id) => {
+                        return Ok(self.memory_expansions[mem_id].mmio_write_u8(address, data, 0, None));
                     }
                     _ => {}
                 }

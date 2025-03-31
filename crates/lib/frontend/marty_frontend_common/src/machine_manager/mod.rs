@@ -38,6 +38,7 @@ use crate::resource_manager::ResourceManager;
 use marty_core::{
     device_traits::videocard::VideoType,
     machine_config::{
+        ConventionalExpansionConfig,
         CpuConfig,
         EmsMemoryConfig,
         FloppyControllerConfig,
@@ -93,6 +94,7 @@ pub struct MachineConfigFileEntry {
     serial_mouse: Option<SerialMouseConfig>,
     game_port: Option<GamePortConfig>,
     media: Option<MediaConfig>,
+    conventional_expansion: Option<Vec<ConventionalExpansionConfig>>,
 }
 
 #[derive(Clone, Debug, Deserialize)]
@@ -110,6 +112,7 @@ pub struct MachineConfigFileOverlayEntry {
     keyboard: Option<KeyboardConfig>,
     serial_mouse: Option<SerialMouseConfig>,
     game_port: Option<GamePortConfig>,
+    conventional_expansion: Option<Vec<ConventionalExpansionConfig>>,
     // TODO: Support media in overlay?
     #[allow(unused)]
     media: Option<MediaConfig>,
@@ -432,6 +435,10 @@ impl MachineConfigFileEntry {
             log::debug!("Applying game port overlay: {:?}", game_port);
             self.game_port = Some(game_port);
         }
+        if let Some(conventional_expansion) = overlay.conventional_expansion {
+            log::debug!("Applying conventional expansion overlay: {:?}", conventional_expansion);
+            self.conventional_expansion = Some(conventional_expansion);
+        }
     }
 
     pub fn to_machine_config(&self) -> MachineConfiguration {
@@ -451,6 +458,7 @@ impl MachineConfigFileEntry {
             keyboard: self.keyboard.clone(),
             serial_mouse: self.serial_mouse.clone(),
             game_port: self.game_port.clone(),
+            conventional_expansion: self.conventional_expansion.clone().unwrap_or_default(),
             media: self.media.clone(),
         }
     }

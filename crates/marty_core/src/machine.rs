@@ -58,7 +58,7 @@ use crate::{
     device_traits::videocard::{VideoCard, VideoCardId, VideoCardInterface, VideoCardState, VideoOption},
     devices::{
         dma::DMAControllerStringState,
-        fdc::FloppyController,
+        fdc::controller::FloppyController,
         hdc::xebec::HardDiskController,
         hdc::xtide::XtIdeController,
         keyboard::KeyboardModifiers,
@@ -139,15 +139,23 @@ pub enum ExecutionState {
 
 impl ExecutionState {
     /// Can we Step from the current state?
+    #[inline]
     pub fn can_step(&self) -> bool {
         matches!(self, ExecutionState::Paused | ExecutionState::BreakpointHit | ExecutionState::StepOverHit)
     }
     /// Can we Run from the current state?
+    #[inline]
     pub fn can_run(&self) -> bool {
         matches!(self, ExecutionState::Paused | ExecutionState::BreakpointHit | ExecutionState::StepOverHit)
     }
     /// Can we Pause from the current state?
+    #[inline]
     pub fn can_pause(&self) -> bool {
+        matches!(self, ExecutionState::Running)
+    }
+    /// Are we running?
+    #[inline]
+    pub fn is_running(&self) -> bool {
         matches!(self, ExecutionState::Running)
     }
 }

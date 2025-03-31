@@ -35,6 +35,7 @@ pub mod a0;
 pub mod adlib;
 pub mod cartridge_slots;
 pub mod cga;
+pub mod conventional_memory;
 pub mod dipswitch;
 pub mod dma;
 #[cfg(feature = "ega")]

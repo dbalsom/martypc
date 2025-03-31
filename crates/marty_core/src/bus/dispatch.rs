@@ -31,7 +31,43 @@ use crate::{
     bus::{BusInterface, DeviceRunTimeUnit, IoDevice, MemoryMappedDevice, NO_IO_BYTE},
     cpu_common::LogicAnalyzer,
     device_traits::videocard::VideoCardDispatch,
+    devices::{conventional_memory::ConventionalMemory, lotech_ems::LotechEmsCard},
 };
+
+pub enum MemoryDispatch {
+    Conventional(ConventionalMemory),
+    Ems(LotechEmsCard),
+}
+
+impl MemoryDispatch {
+    pub fn mmio_peek_u8(&self, address: usize, cpumem: Option<&[u8]>) -> u8 {
+        match self {
+            MemoryDispatch::Conventional(conventional) => conventional.mmio_peek_u8(address, cpumem),
+            MemoryDispatch::Ems(ems) => ems.mmio_peek_u8(address, cpumem),
+        }
+    }
+
+    pub fn mmio_read_u8(&mut self, address: usize, ticks: u32, cpumem: Option<&[u8]>) -> (u8, u32) {
+        match self {
+            MemoryDispatch::Conventional(conventional) => conventional.mmio_read_u8(address, ticks, cpumem),
+            MemoryDispatch::Ems(ems) => ems.mmio_read_u8(address, ticks, cpumem),
+        }
+    }
+
+    pub fn mmio_write_u8(&mut self, address: usize, data: u8, ticks: u32, cpumem: Option<&mut [u8]>) -> u32 {
+        match self {
+            MemoryDispatch::Conventional(conventional) => conventional.mmio_write_u8(address, data, ticks, cpumem),
+            MemoryDispatch::Ems(ems) => ems.mmio_write_u8(address, data, ticks, cpumem),
+        }
+    }
+
+    pub fn mmio_read_wait(&mut self, address: usize, system_ticks: u32) -> u32 {
+        match self {
+            MemoryDispatch::Conventional(conventional) => conventional.get_read_wait(address, system_ticks),
+            MemoryDispatch::Ems(ems) => ems.get_read_wait(address, system_ticks),
+        }
+    }
+}
 
 impl VideoCardDispatch {
     pub fn io_read_u8(&mut self, port: u16, delta: DeviceRunTimeUnit) -> u8 {
