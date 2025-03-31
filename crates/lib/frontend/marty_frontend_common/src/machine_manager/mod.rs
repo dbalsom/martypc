@@ -36,7 +36,6 @@ use std::{
 
 use crate::resource_manager::ResourceManager;
 use marty_core::{
-    device_traits::videocard::VideoType,
     machine_config::{
         ConventionalExpansionConfig,
         CpuConfig,
@@ -56,6 +55,9 @@ use marty_core::{
     },
     machine_types::{HardDiskControllerType, MachineType},
 };
+
+#[cfg(any(feature = "ega", feature = "vga"))]
+use marty_core::device_traits::videocard::VideoType;
 
 use anyhow::Error;
 use serde_derive::Deserialize;

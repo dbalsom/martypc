@@ -130,13 +130,12 @@ impl FloppyManager {
         // Retrieve all items from the floppy resource paths.
         let floppy_items = rm.enumerate_items("floppy", None, true, true, Some(self.extensions.clone()))?;
 
+        // Verbose tracing
         let floppy_names = floppy_items
             .iter()
             .map(|f| f.location.clone())
             .collect::<Vec<PathBuf>>();
-
-        // Verbose
-        //log::debug!("Got floppy filenames from resource: {:#?}", floppy_names);
+        log::trace!("Got floppy filenames from resource: {:#?}", floppy_names);
 
         // Index mapping between 'files' vec and 'image_vec' should be maintained.
         for item in floppy_items.iter() {
@@ -185,9 +184,10 @@ impl FloppyManager {
     }
 
     pub fn make_tree(&mut self, rm: &ResourceManager) -> Result<PathTreeNode, Error> {
+        // Verbose tracing
         let filenames = &self.files.iter().map(|f| f.location.clone()).collect::<Vec<PathBuf>>();
-        // Verbose - too many files
-        //log::debug!("FloppyManager::make_tree(): Building tree from files: {:#?}", filenames);
+        log::trace!("FloppyManager::make_tree(): Building tree from files: {:#?}", filenames);
+
         let tree = rm.items_to_tree("floppy", &self.files)?;
         Ok(tree)
     }
@@ -464,7 +464,7 @@ impl FloppyManager {
                     dst_root_dir,
                     rm,
                     &files_visited,
-                    &mut |rm: &mut ResourceManager, path: &Path| {
+                    &mut |_rm: &mut ResourceManager, path: &Path| {
                         // This callback strips the first directory entry back off the tree (.\\)
                         // and converts backslashes to forward slashes.
 

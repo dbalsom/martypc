@@ -60,8 +60,6 @@ pub type DynDisplayTargetSurface = Arc<
     >,
 >;
 
-#[cfg(feature = "use_egui_backend")]
-use egui;
 #[cfg(not(feature = "use_wgpu"))]
 pub type DynDisplayTargetSurface = Arc<
     RwLock<

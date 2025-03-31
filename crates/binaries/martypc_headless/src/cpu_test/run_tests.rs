@@ -77,6 +77,7 @@ use crate::cpu_test::common::{
     MetadataFile,
     RegisterValidationResult,
 };
+
 use marty_core::{
     bytequeue::ByteQueue,
     cpu_808x::{Cpu, *},
