@@ -1,5 +1,5 @@
-# romdef_ibm.toml
-# Main ROM definition file for MartyPC.
+# romdef_ibm_pcjr.toml
+# IBM PCjr ROM definition file for MartyPC.
 #
 # You can create your own ROM definition files. MartyPC will attempt to load
 # all toml files found in the rom directory.
@@ -128,8 +128,8 @@
 
 
 # ----------------------------------------------------------------------------
-# System BIOS for IBM PCJr 
-# There was only one revision of the BIOS for IBM PCJr, not counting 3rd party
+# System BIOS for IBM PCjr
+# There was only one revision of the BIOS for IBM PCjr, not counting 3rd party
 # BIOS replacement cartridges.
 # ----------------------------------------------------------------------------
 [[romset]]
@@ -173,7 +173,7 @@ checkpoint = [
 ]
 
 # ----------------------------------------------------------------------------
-# System BIOS for IBM PCJr
+# System BIOS for IBM PCjr
 # Alternate 64K single-file ROM definition
 # ----------------------------------------------------------------------------
 [[romset]]
@@ -270,4 +270,18 @@ priority = 0
 provides = ["pcjr_cartridge"]
 rom = [
     { md5 = "6d4f8c3a149ba5d5b160dc81ef4a46c2", addr = 0xE0000, size = 0x10000, chip = "cart1" },
+]
+
+# ----------------------------------------------------------------------------
+# jr-IDE
+# The jr-IDE is a hard disk controller for the PCJr. It has a built-in RTC,
+# 1MB of SRAM and 512KB of flash.
+# ----------------------------------------------------------------------------
+[[romset]]
+alias = "jr_ide"
+desc = "jr-IDE 2012/11/12"
+priority = 0
+provides = ["jr_ide"]
+rom = [
+    { md5 = "00c6b11cf56dfd7187a98e154778e1e0", addr = 0xC0000, size = 0x2000, chip = "jr_ide" },
 ]

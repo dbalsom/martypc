@@ -164,6 +164,7 @@ basedir = "."
 paths = [
     { resource = "machine", path = "$basedir$/configs/machines", recurse = true },
     { resource = "keyboard_layout", path = "$basedir$/configs/keyboard_layouts", recurse = false },
+    { resource = "romdef", path = "$basedir$/configs/rom_definitions", recurse = true },
     { resource = "rom", path = "$basedir$/media/roms", recurse = true },
     { resource = "hdd", path = "$basedir$/media/hdds", recurse = true },
     { resource = "autofloppy", path = "$basedir$/mount/floppy", create = true, recurse = false },
