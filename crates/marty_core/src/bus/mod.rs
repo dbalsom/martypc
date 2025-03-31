@@ -923,7 +923,7 @@ impl BusInterface {
                 expansion_card_config.address,
                 expansion_card_config.size
             );
-            let mut expansion_card = ConventionalMemory::new(
+            let expansion_card = ConventionalMemory::new(
                 expansion_card_config.address as usize,
                 expansion_card_config.size as usize,
                 expansion_card_config.wait_states,

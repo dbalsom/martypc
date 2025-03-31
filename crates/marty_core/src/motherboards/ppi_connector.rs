@@ -42,7 +42,7 @@ pub trait PpiConnector {
     }
 
     /// Write a byte to the specified port.
-    fn write(&mut self, _port: PpiPort, data: u8) {
+    fn write(&mut self, _port: PpiPort, _data: u8) {
         // Do nothing by default
     }
 }

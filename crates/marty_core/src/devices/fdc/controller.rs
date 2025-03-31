@@ -1749,7 +1749,7 @@ impl FloppyController {
         self.last_error = DriveError::NoError;
     }
 
-    fn operation_read_data_pio(&mut self, bus: &mut BusInterface, h: u8, chs: DiskChs, n: u8, track_len: u8) {
+    fn operation_read_data_pio(&mut self, _bus: &mut BusInterface, h: u8, chs: DiskChs, n: u8, track_len: u8) {
         if !self.operation_init {
             self.xfer_size_sectors = (track_len.saturating_sub(chs.s())) as usize + 1;
             self.xfer_completed_sectors = 0;
