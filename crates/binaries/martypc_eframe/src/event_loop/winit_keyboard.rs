@@ -130,25 +130,30 @@ pub fn handle_winit_key_event(
                     // TODO: widgets seems to lose focus before 'enter' is processed in a text entry,
                     //       passing the enter keycode to the emulator
 
-                    // ignore host typematic repeat
-                    if !repeat {
-                        return match state {
-                            ElementState::Pressed => {
-                                emu.machine.key_press(keycode.to_internal(), emu.kb_data.modifiers);
-                                if emu.flags.debug_keyboard {
-                                    println!("Window: {:?} Key pressed: {:?}", window_id, keycode);
-                                    //log::debug!("Key pressed, keycode: {:?}: xt: {:02X}", keycode, keycode);
+                    // Only send keystrokes to the machine if it is running. This avoids sending keystrokes
+                    // to the machine when interacting with the debugger.
+                    // TODO: Make this optional?
+                    if emu.exec_control.borrow_mut().get_state().is_running() {
+                        // ignore host typematic repeat
+                        if !repeat {
+                            return match state {
+                                ElementState::Pressed => {
+                                    emu.machine.key_press(keycode.to_internal(), emu.kb_data.modifiers);
+                                    if emu.flags.debug_keyboard {
+                                        println!("Window: {:?} Key pressed: {:?}", window_id, keycode);
+                                        //log::debug!("Key pressed, keycode: {:?}: xt: {:02X}", keycode, keycode);
+                                    }
+                                    true
                                 }
-                                true
-                            }
-                            ElementState::Released => {
-                                emu.machine.key_release(keycode.to_internal());
-                                if emu.flags.debug_keyboard {
-                                    println!("Window: {:?} Key released: {:?}", window_id, keycode);
+                                ElementState::Released => {
+                                    emu.machine.key_release(keycode.to_internal());
+                                    if emu.flags.debug_keyboard {
+                                        println!("Window: {:?} Key released: {:?}", window_id, keycode);
+                                    }
+                                    true
                                 }
-                                true
-                            }
-                        };
+                            };
+                        }
                     }
                 }
             }
