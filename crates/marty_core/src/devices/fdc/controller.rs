@@ -73,6 +73,7 @@ pub const FDC_STATUS_REGISTER: u16 = 0x04;
 pub const FDC_DATA_REGISTER: u16 = 0x05;
 
 pub const FDC_RESET_TIME: f64 = 1000.0; // 1ms in microseconds
+pub const FDC_SEEK_TIME: f64 = 10000.0; // 10ms in microseconds
 
 // Main Status Register Bit Definitions
 // --------------------------------------------------------------------------------
@@ -119,18 +120,18 @@ pub const WATCHDOG_TIMEOUT: f64 = 3_000_000.0; // 3 seconds in microseconds
 
 pub const COMMAND_MASK: u8 = 0b0001_1111;
 pub const COMMAND_SKIP_BIT: u8 = 0b0010_0000;
-pub const COMMAND_READ_TRACK: u8 = 0x02;
-pub const COMMAND_WRITE_DATA: u8 = 0x05;
-pub const COMMAND_READ_DATA: u8 = 0x06;
-pub const COMMAND_WRITE_DELETED_DATA: u8 = 0x09;
-pub const COMMAND_READ_DELETED_DATA: u8 = 0x0C;
-pub const COMMAND_FORMAT_TRACK: u8 = 0x0D;
 
+pub const COMMAND_READ_TRACK: u8 = 0x02;
 pub const COMMAND_FIX_DRIVE_DATA: u8 = 0x03;
 pub const COMMAND_CHECK_DRIVE_STATUS: u8 = 0x04;
+pub const COMMAND_WRITE_DATA: u8 = 0x05;
+pub const COMMAND_READ_DATA: u8 = 0x06;
 pub const COMMAND_CALIBRATE_DRIVE: u8 = 0x07;
 pub const COMMAND_SENSE_INT_STATUS: u8 = 0x08;
+pub const COMMAND_WRITE_DELETED_DATA: u8 = 0x09;
 pub const COMMAND_READ_SECTOR_ID: u8 = 0x0A;
+pub const COMMAND_READ_DELETED_DATA: u8 = 0x0C;
+pub const COMMAND_FORMAT_TRACK: u8 = 0x0D;
 pub const COMMAND_SEEK_HEAD: u8 = 0x0F;
 
 pub const ST0_HEAD_ACTIVE: u8 = 0b0000_0100;
@@ -173,20 +174,28 @@ pub enum IoMode {
 #[derive(Clone, Copy, Debug, Default)]
 pub enum Command {
     #[default]
-    NoCommand,
-    ReadTrack,
-    WriteData,
-    ReadData,
-    WriteDeletedSector,
-    ReadDeletedSector,
-    FormatTrack,
-    FixDriveData,
-    CheckDriveStatus,
-    CalibrateDrive,
-    SenseIntStatus,
-    ReadSectorID,
-    SeekParkHead,
-    Invalid,
+    NoCommand = 0x00,
+    ReadTrack = 0x02,
+    WriteData = 0x05,
+    ReadData = 0x06,
+    WriteDeletedSector = 0x09,
+    ReadDeletedSector = 0x0c,
+    FormatTrack = 0x0d,
+    FixDriveData = 0x03,
+    CheckDriveStatus = 0x04,
+    CalibrateDrive = 0x07,
+    SenseIntStatus = 0x08,
+    ReadSectorID = 0x0a,
+    SeekParkHead = 0x0f,
+    Invalid = 0xff,
+}
+
+/// Represents the current phase of the controller operation.
+#[derive(Copy, Clone, Debug)]
+pub enum ControllerPhase {
+    CommandPhase,
+    ExecutionPhase,
+    ResultPhase,
 }
 
 /// Encapsulates a result from a command or operation execution and used to build a
@@ -232,6 +241,13 @@ pub struct OperationSpecifier {
     pub data_len: u8,
 }
 
+#[derive(Copy, Clone, Debug, Default)]
+pub enum DataMode {
+    #[default]
+    Pio,
+    Dma,
+}
+
 /// An [Operation] is initiated by any controller command that does not immediately terminate.
 /// The operation handler is called on a repeated basis by the fdc's run() method until the
 /// operation is complete or the controller is reset.
@@ -240,6 +256,8 @@ pub enum Operation {
     #[default]
     NoOperation,
     Reset,
+    Calibrate,
+    Seek,
     ReadData(u8, DiskChs, u8, u8, u8, u8), // Physical head, id CHS, sector_size, track_len, gap3_len, data_len
     ReadTrack(u8, DiskChs, u8, u8, u8, u8), // Physical head, CHS, sector_size, track_len, gap3_len, data_len
     WriteData(u8, DiskChs, u8, u8, u8, u8, bool), // Physical head, id CHS, sector_size, track_len, gap3_len, data_len, deleted_data
@@ -251,6 +269,8 @@ impl Display for Operation {
         match self {
             Operation::NoOperation => write!(f, "No Operation"),
             Operation::Reset => write!(f, "Reset"),
+            Operation::Calibrate => write!(f, "Calibrate"),
+            Operation::Seek => write!(f, "Seek"),
             Operation::ReadData(_, _chs, _, _, _, _) => write!(f, "Read Data"),
             Operation::ReadTrack(_, _chs, _, _, _, _) => write!(f, "Read Track"),
             Operation::WriteData(_, _chs, _, _, _, _, _) => write!(f, "Write Data"),
@@ -283,9 +303,24 @@ pub struct DriveHeadSelect {
     unused:    B5,
 }
 
+#[bitfield]
+#[derive(Copy, Clone)]
+pub struct StepRateHeadUnload {
+    pub head_unload: B4,
+    pub step_rate:   B4,
+}
+
+#[bitfield]
+#[derive(Copy, Clone)]
+pub struct HeadLoadDma {
+    pub non_dma:   bool,
+    pub head_load: B7,
+}
+
 #[derive(Default)]
 pub struct FdcDebugState {
     pub dor: u8,
+    pub data_mode: DataMode,
     pub operation: Operation,
     pub last_cmd: Command,
     pub last_status: Vec<u8>,
@@ -301,9 +336,10 @@ pub struct FdcDebugState {
 }
 
 pub struct FloppyController {
+    phase: ControllerPhase,
     us_accumulator: f64,
     watchdog_accumulator: f64,
-    reset_accumulator: f64,
+    operation_accumulator: f64,
     fdc_type: FdcType,
     status_byte: u8,
     reset_flag: bool,
@@ -311,9 +347,10 @@ pub struct FloppyController {
     mrq: bool,
 
     data_register: u8,
-    dma: bool,
     dor: u8,
+    dor_dma: bool,
     dor_disabled: bool,
+    dma: bool,
     busy: bool,
     dio: IoMode,
     mt: bool,
@@ -430,18 +467,20 @@ impl IoDevice for FloppyController {
 impl Default for FloppyController {
     fn default() -> Self {
         Self {
+            phase: ControllerPhase::CommandPhase,
             us_accumulator: 0.0,
             watchdog_accumulator: 0.0,
-            reset_accumulator: 0.0,
+            operation_accumulator: 0.0,
             fdc_type: FdcType::IbmNec,
             status_byte: 0,
             reset_flag: false,
             reset_sense_count: 0,
             mrq: true,
             data_register: 0,
-            dma: true,
+            dor_dma: true,
             dor: 0,
             dor_disabled: false,
+            dma: true,
             busy: false,
             dio: IoMode::FromCpu,
             mt: false,
@@ -529,6 +568,7 @@ impl FloppyController {
     /// Reset the Floppy Drive Controller
     pub fn reset_internal(&mut self, internal: bool) {
         // TODO: Implement in terms of Default
+        self.phase = ControllerPhase::CommandPhase;
         self.status_byte = 0;
         self.drive_select = 0;
         self.reset_flag = true;
@@ -564,6 +604,8 @@ impl FloppyController {
         if !internal {
             self.cmd_log.clear();
         }
+
+        self.log_str("FDC Reset!");
     }
 
     pub fn decode_sector_size(code: u8) -> usize {
@@ -707,119 +749,134 @@ impl FloppyController {
         self.drives[drive_select].write_protected = write_protected;
     }
 
+    pub fn set_phase(&mut self, new_phase: ControllerPhase) {
+        use ControllerPhase::*;
+        match (&self.phase, &new_phase) {
+            (CommandPhase, ExecutionPhase) => {
+                self.phase = ExecutionPhase;
+            }
+            (ExecutionPhase, ResultPhase) => {
+                self.phase = ResultPhase;
+            }
+            (ResultPhase, CommandPhase) => {
+                self.phase = CommandPhase;
+            }
+            _ => {
+                log::error!("set_phase(): Bad phase transition: {:?}->{:?}", self.phase, new_phase);
+            }
+        }
+    }
+
     pub fn handle_dor_write(&mut self, data: u8) {
+        // Handle controller enable bit
         if data & DOR_FDC_RESET == 0 {
             self.mrq = false;
             self.dor_disabled = true;
+            self.log_str(&format!("FDC Disabled via DOR write: {:02X}", data));
         }
         else {
             if self.dor_disabled {
                 // Reset the FDC when the reset bit is *not* set
                 // Ignore all other commands
                 self.log_str(&format!("FDC Reset requested via DOR write: {:02X}", data));
-                self.reset_accumulator = 0.0;
+                self.operation_accumulator = 0.0;
                 self.operation = Operation::Reset;
                 self.mrq = false;
                 self.dor_disabled = false;
             }
+        }
 
-            // Not reset. Turn drive motors on or off based on the MOTx bits in the DOR byte.
-            let disk_n = data & 0x03;
-            if data & DOR_MOTOR_FDD_A != 0 {
-                self.motor_on(0);
+        // Turn drive motors on or off based on the MOTx bits in the DOR byte.
+        for i in 0..4 {
+            if data & (0x10 << i) != 0 {
+                self.motor_on(i);
             }
             else {
-                self.motor_off(0);
-            }
-            if data & DOR_MOTOR_FDD_B != 0 {
-                self.motor_on(1);
-            }
-            else {
-                self.motor_off(1);
-            }
-            if data & DOR_MOTOR_FDD_C != 0 {
-                self.motor_on(2);
-            }
-            else {
-                self.motor_off(2);
-            }
-            if data & DOR_MOTOR_FDD_D != 0 {
-                self.motor_on(3);
-            }
-            else {
-                self.motor_off(3);
-            }
-
-            if data & DOR_DMA_ENABLED != 0 {
-                self.dma = true;
-            }
-            else {
-                self.dma = false;
-            }
-
-            // Select drive from DRx bits.
-            if self.drives[disk_n as usize].motor_on {
-                log::debug!("Drive {} selected, motor on", disk_n);
-                self.drive_select = disk_n as usize;
-                self.drives[disk_n as usize].motor_on = true;
-            }
-            else {
-                // It's valid to write to the dor without turning a motor on.
-                // In this case the FDC can be re-enabled, but with no drive selected.
+                self.motor_off(i);
             }
         }
+
+        if data & DOR_DMA_ENABLED != 0 {
+            self.dor_dma = true;
+        }
+        else {
+            self.dor_dma = false;
+        }
+
+        // Select drive from DRx bits.
+        let disk_n = data & 0x03;
+        self.drive_select = disk_n as usize;
+        if self.drives[disk_n as usize].motor_on {
+            log::debug!("Drive {} selected, motor on", disk_n);
+            self.drives[disk_n as usize].motor_on = true;
+        }
+        else {
+            log::debug!("Drive {} selected, motor off", disk_n);
+        }
+
         self.dor = data;
     }
 
     pub fn handle_dor_write_jr(&mut self, data: u8) {
+        // Handle controller enable bit
         if data & DOR_JRFDC_RESET == 0 {
             // Reset the FDC when the reset bit is *not* set
             // Ignore all other commands
-            log::debug!("PCJr FDC Reset requested: {:02X}", data);
-            self.log_str("PCJr FDC Reset requested");
-            self.reset_internal(true);
-            self.send_interrupt = true;
+            self.mrq = false;
+            self.dor_disabled = true;
+            self.log_str(&format!("PCjr FDC Disabled via DOR write: {:02X}", data));
         }
         else {
-            // Not reset. Turn drive motors on or off based on the drive enable bit.
-            if data & DOR_JRFDC_MOTOR != 0 {
-                self.motor_on(0);
-            }
-            else {
-                self.motor_off(0);
-            }
-
-            if data & DOR_DMA_ENABLED != 0 {
-                log::error!("PCJr FDC DMA was erroneously enabled");
-                self.dma = true;
-            }
-            else {
-                self.dma = false;
-            }
-
-            if data & DOR_JRFDC_WATCHDOG_ENABLE != 0 {
-                log::debug!("PCJr FDC Watchdog enabled");
-                self.watchdog_enabled = true;
-            }
-            else {
-                self.watchdog_enabled = false;
-                self.watchdog_triggered = false;
-                self.watchdog_accumulator = 0.0;
-                self.end_interrupt = true;
-            }
-
-            // Watchdog trigger is set on falling edge of trigger bit.
-            if data & DOR_JRFDC_WATCHDOG_TRIGGER != 0 {
-                self.watchdog_trigger_bit = true;
-            }
-            else {
-                if self.watchdog_trigger_bit {
-                    log::debug!("PCJr FDC Watchdog triggered");
-                    self.watchdog_triggered = true;
-                }
-                self.watchdog_trigger_bit = false;
+            if self.dor_disabled {
+                // Reset the FDC when the reset bit is *not* set
+                // Ignore all other commands
+                self.log_str(&format!("PCjr FDC Reset requested via DOR write: {:02X}", data));
+                self.operation_accumulator = 0.0;
+                self.operation = Operation::Reset;
+                self.mrq = false;
+                self.dor_disabled = false;
             }
         }
+
+        // Not reset. Turn drive motors on or off based on the drive enable bit.
+        if data & DOR_JRFDC_MOTOR != 0 {
+            self.motor_on(0);
+        }
+        else {
+            self.motor_off(0);
+        }
+
+        if data & DOR_DMA_ENABLED != 0 {
+            log::error!("PCJr FDC DMA was erroneously enabled");
+            self.dor_dma = true;
+        }
+        else {
+            self.dor_dma = false;
+        }
+
+        if data & DOR_JRFDC_WATCHDOG_ENABLE != 0 {
+            log::debug!("PCJr FDC Watchdog enabled");
+            self.watchdog_enabled = true;
+        }
+        else {
+            self.watchdog_enabled = false;
+            self.watchdog_triggered = false;
+            self.watchdog_accumulator = 0.0;
+            self.end_interrupt = true;
+        }
+
+        // Watchdog trigger is set on falling edge of trigger bit.
+        if data & DOR_JRFDC_WATCHDOG_TRIGGER != 0 {
+            self.watchdog_trigger_bit = true;
+        }
+        else {
+            if self.watchdog_trigger_bit {
+                log::debug!("PCJr FDC Watchdog triggered");
+                self.watchdog_triggered = true;
+            }
+            self.watchdog_trigger_bit = false;
+        }
+
         self.dor = data;
     }
 
@@ -1034,13 +1091,13 @@ impl FloppyController {
     /// during calls to the fdc run() method during ticks. This is to support operations that take some period of
     /// time like DMA transfers.
     pub fn handle_data_register_write(&mut self, data: u8) {
+        self.last_data_written = data;
         //log::trace!("Data Register Write");
         if !self.receiving_command {
             let command_byte = CommandByte::from_bytes([data]);
             let command = command_byte.command();
             self.mt = command_byte.mt();
             self.command_deleted = false;
-            self.last_data_written = data;
             match command {
                 COMMAND_READ_TRACK => {
                     log::trace!("Received Read Track command: {:02}", command);
@@ -1157,14 +1214,7 @@ impl FloppyController {
         */
 
         let mut st0_byte = ST0_INVALID_OPCODE;
-
         let mut send_cylinder = true;
-        let last_command_was_sense = matches!(self.last_command, Command::SenseIntStatus);
-
-        // Deassert interrupt
-        self.end_interrupt = true;
-        self.last_command = Command::SenseIntStatus;
-        self.command = Command::NoCommand;
 
         let log_str = format!(
             "Last command: {:?}, Last error: {:?}, reset flag: {}, pending interrupt: {}",
@@ -1179,7 +1229,7 @@ impl FloppyController {
             self.reset_sense_count = 1;
             self.reset_flag = false;
         }
-        else if last_command_was_sense {
+        else if matches!(self.last_command, Command::SenseIntStatus) {
             // This Sense Interrupt command was preceded by another.
             // Advance the reset sense count to clear all drives assuming the calling code is doing
             // a four sense-interrupt sequence.
@@ -1238,7 +1288,11 @@ impl FloppyController {
             self.data_register_out.push_back(cb1 as u8);
         }
 
+        self.last_command = Command::SenseIntStatus;
         // We have data for CPU to read
+        self.last_status_bytes[0] = st0_byte;
+        self.command = Command::NoCommand;
+        self.end_interrupt = true;
         self.send_data_register();
 
         log::trace!(
@@ -1248,15 +1302,21 @@ impl FloppyController {
     }
 
     /// Perform the Fix Drive Data command.
-    /// We don't do anything currently with the provided values which are only useful for real drive timings.
+    /// We don't do anything currently with the provided values which are only useful for real drive timings,
+    /// except for the ndma bit which controls DMA/PIO mode.
     pub fn command_fix_drive_data(&mut self) -> Continuation {
-        let steprate_unload = self.data_register_in.pop_front().unwrap();
-        let headload_ndm = self.data_register_in.pop_front().unwrap();
+        let steprate_unload = StepRateHeadUnload::from_bytes([self.data_register_in.pop_front().unwrap()]);
+        let headload_ndm = HeadLoadDma::from_bytes([self.data_register_in.pop_front().unwrap()]);
 
         let log_str = format!(
-            "steprate_unload: {:08b}, headload_ndm: {:08b}",
-            steprate_unload, headload_ndm
+            "step rate: {:04b} unload_time: {:04b}, head_load: {:07b} pio_mode: {}",
+            steprate_unload.step_rate(),
+            steprate_unload.head_unload(),
+            headload_ndm.head_load(),
+            headload_ndm.non_dma(),
         );
+
+        self.dma = !headload_ndm.non_dma();
         self.log_cmd(Command::FixDriveData, "command_fix_drive_data", &log_str);
 
         Continuation::CommandComplete
@@ -1294,9 +1354,11 @@ impl FloppyController {
         let log_str = format!("drive_select: {}", self.drive_select);
         self.log_cmd(Command::CalibrateDrive, "command_calibrate_drive", &log_str);
 
-        // Calibrate command sends interrupt when complete
+        // Set up Calibrate operation
         self.send_interrupt = true;
-        Continuation::CommandComplete
+        self.operation = Operation::Calibrate;
+        self.last_command = Command::CalibrateDrive;
+        Continuation::ContinueAsOperation
     }
 
     /// Performs a Seek for the specified drive to the specified cylinder and head.
@@ -1374,7 +1436,7 @@ impl FloppyController {
             // Start read operation
             self.operation = Operation::ReadTrack(dhs.head(), chs, sector_size, track_len, gap3_len, data_len);
 
-            if self.dma {
+            if self.dor_dma {
                 // Clear MRQ until operation completion so there is no attempt to read result values
                 self.mrq = false;
 
@@ -1463,7 +1525,7 @@ impl FloppyController {
             // Start read operation
             self.operation = Operation::ReadData(dhs.head(), chs, sector_size, eot, gap3_len, data_len);
 
-            if self.dma {
+            if self.dor_dma {
                 // Clear MRQ until operation completion so there is no attempt to read result values
                 self.mrq = false;
                 // DMA now in progress
@@ -1541,7 +1603,7 @@ impl FloppyController {
                 self.command_deleted,
             );
 
-            if self.dma {
+            if self.dor_dma {
                 // Clear MRQ until operation completion so there is no attempt to read result values
                 self.mrq = false;
 
@@ -1596,7 +1658,7 @@ impl FloppyController {
         self.operation_init = false;
         self.operation = Operation::FormatTrack(head_select, sector_size, track_len, gap3_len, fill_byte);
 
-        if self.dma {
+        if self.dor_dma {
             // Clear MRQ until operation completion so there is no attempt to read result values
             self.mrq = false;
 
@@ -1687,7 +1749,7 @@ impl FloppyController {
         self.last_error = DriveError::NoError;
     }
 
-    fn operation_read_data_pio(&mut self, chs: DiskChs, sector_size: u8, track_len: u8) {
+    fn operation_read_data_pio(&mut self, bus: &mut BusInterface, h: u8, chs: DiskChs, n: u8, track_len: u8) {
         if !self.operation_init {
             self.xfer_size_sectors = (track_len.saturating_sub(chs.s())) as usize + 1;
             self.xfer_completed_sectors = 0;
@@ -1698,6 +1760,39 @@ impl FloppyController {
             self.pio_byte_count = 0;
             self.pio_sector_byte_count = 0;
             self.operation_init = true;
+
+            let mt = self.mt;
+            let skip_flag = self.command_skip;
+            let xfer_sectors = self.xfer_size_sectors;
+            match self
+                .selected_drive_mut()
+                .command_read_data(mt, h, chs, xfer_sectors, n, 0, 0, 0, skip_flag)
+            {
+                Ok(read_result) => {
+                    log::trace!("Read sector command accepted, new chs: {}", read_result.new_chs);
+                    self.operation_final_chs = read_result.new_chs;
+
+                    if read_result.not_found {
+                        self.send_results_phase(InterruptCode::AbnormalTermination, self.drive_select, chs, n);
+                        self.operation = Operation::NoOperation;
+                        self.send_interrupt = true;
+                        return;
+                    }
+
+                    // We can read 0 sectors if there is bad IDAM CRC.
+                    if read_result.sectors_read == 0 {
+                        self.pio_bytes_left = 0;
+                        self.xfer_size_sectors = 0;
+                    }
+                }
+                Err(e) => {
+                    log::warn!("Read sector command failed: {:?}", e);
+                    self.send_results_phase(InterruptCode::AbnormalTermination, self.drive_select, chs, n);
+                    self.operation = Operation::NoOperation;
+                    self.send_interrupt = true;
+                    return;
+                }
+            }
         }
 
         if self.pio_bytes_left > 0 {
@@ -1749,12 +1844,7 @@ impl FloppyController {
             let new_chs = DiskChs::new(new_c, new_h, new_s);
 
             // Terminate normally by sending results registers
-            self.send_results_phase(
-                InterruptCode::NormalTermination,
-                self.drive_select,
-                new_chs,
-                sector_size,
-            );
+            self.send_results_phase(InterruptCode::NormalTermination, self.drive_select, new_chs, n);
 
             log::trace!(
                 "operation_read_sector_pio completed ({} bytes transferred): new chsn: {} drive: {}",
@@ -2206,11 +2296,21 @@ impl FloppyController {
     }
 
     fn operation_reset(&mut self, delta_us: f64) {
-        self.reset_accumulator += delta_us;
-        if self.reset_accumulator > FDC_RESET_TIME {
-            log::trace!("FDC reset complete.");
-            self.reset_accumulator = 0.0;
+        self.operation_accumulator += delta_us;
+        if self.operation_accumulator > FDC_RESET_TIME {
+            log::trace!("FDC Operation Reset complete.");
+            self.operation_accumulator = 0.0;
             self.reset_internal(false);
+            self.operation = Operation::NoOperation;
+            self.send_interrupt = true;
+        }
+    }
+
+    fn operation_seek(&mut self, delta_us: f64) {
+        self.operation_accumulator += delta_us;
+        if self.operation_accumulator > FDC_SEEK_TIME {
+            log::trace!("FDC Operation Seek/Calibrate complete");
+            self.operation_accumulator = 0.0;
             self.operation = Operation::NoOperation;
             self.send_interrupt = true;
         }
@@ -2393,6 +2493,10 @@ impl FloppyController {
     pub fn get_debug_state(&self) -> FdcDebugState {
         FdcDebugState {
             dor: self.dor,
+            data_mode: match self.dor & 0x08 != 0 {
+                true => DataMode::Dma,
+                false => DataMode::Pio,
+            },
             operation: self.operation,
             last_cmd: self.last_command,
             last_status: self.last_status_bytes.clone(),
@@ -2451,9 +2555,12 @@ impl FloppyController {
                 // Perform reset
                 self.operation_reset(us);
             }
+            Operation::Calibrate | Operation::Seek => {
+                self.operation_seek(us);
+            }
             Operation::ReadData(h, chs, sector_size, track_len, _gap3_len, _data_len) => match self.dma {
                 true => self.operation_read_data(dma, bus, h, chs, sector_size, track_len),
-                false => self.operation_read_data_pio(chs, sector_size, track_len),
+                false => self.operation_read_data_pio(bus, h, chs, sector_size, track_len),
             },
             Operation::WriteData(h, chs, sector_size, track_len, _gap3_len, _data_len, deleted) => {
                 self.operation_write_data(dma, bus, h, chs, sector_size, track_len, deleted)
