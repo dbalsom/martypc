@@ -331,7 +331,6 @@ macro_rules! impl_corx {
 
                 // The main corx loop is between 181-186.
                 loop {
-                    //println!("  >> impl corx: tmpa: {} tmpc: {}", tmpa, tmpc);
                     cpu.cycle_i(0x181); // 181:    | NCY 8 (jump if no carry)
 
                     if carry {
@@ -359,13 +358,11 @@ macro_rules! impl_corx {
                     // It's not explicitly explained where the internal counter is updated.
                     // I am just assuming it is decremented once per loop here.
                     internal_counter -= 1;
-
                     cpu.cycle_i(MC_JUMP); // 186: (jump) 1 cycle delay to return to top of loop.
                 }
 
                 // Fall through line 186
                 cycles_mc!(cpu, 0x187, MC_RTN); // 187 'RTN', return delay cycle
-
                 (tmpa, tmpc)
             }
         }
