@@ -110,7 +110,7 @@ macro_rules! impl_postidiv {
             ) -> Result<(u16, u16), bool> {
                 let mut tmpa = self as u16;
                 let mut sigma: u16;
-                let mut sigma_next: u16;
+
                 cpu.cycle_i(0x1c4);
                 // 1c4:         | NCY INT0
                 if !carry {
@@ -122,7 +122,7 @@ macro_rules! impl_postidiv {
                 // 1c5:                | LRCY tmpb
                 // 1c6: SIGMA->.       | NEG tmpa
                 (_, carry, _) = (tmpb as Self).alu_rcl(1, false);
-                (sigma_next, _, _, _) = tmpa.alu_neg();
+                (sigma, _, _, _) = tmpa.alu_neg();
 
                 cycles_mc!(cpu, 0x1c5, 0x1c6, 0x1c7);
                 // 1c7:                | NCY 5
@@ -133,7 +133,6 @@ macro_rules! impl_postidiv {
                 else {
                     // Divisor is negative
                     // 1c8: SIGMA->tmpa
-                    sigma = sigma_next as u16;
                     tmpa = sigma; // if tmpb was negative (msb was set), set tmpa to NEG tempa (flip sign)
                     cpu.cycle_i(0x1c8);
                 }
