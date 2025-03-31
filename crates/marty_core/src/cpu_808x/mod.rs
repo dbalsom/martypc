@@ -2047,8 +2047,9 @@ impl Intel808x {
         }
     }
 
-    #[inline]
+    #[inline(always)]
     pub fn trace_comment(&mut self, comment: &'static str) {
+        #[cfg(feature = "cpu_trace_comments")]
         if self.trace_enabled && (self.trace_mode == TraceMode::CycleText) {
             self.trace_comment.push(comment);
         }
