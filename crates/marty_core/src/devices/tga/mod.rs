@@ -1447,6 +1447,8 @@ impl TGACard {
                         DisplayMode::Mode3TextCo80
                     }
                 };
+
+                self.mode_byte = vmode_byte;
             }
             VideoCardSubType::Tandy1000 => {
                 self.mode_hires_txt = self.mode_byte & MODE_HIRES_TEXT != 0;
@@ -1573,7 +1575,7 @@ impl TGACard {
                 }
                 (_, false, true) => {
                     // Low-res 160x200, 4bpp graphics.
-                    (4, TGA_LCHAR_CLOCK as u32, 0x1F, 0x3F, VideoModeSize::Mode16k)
+                    (2, TGA_MCHAR_CLOCK as u32, 0x0F, 0x1F, VideoModeSize::Mode16k)
                 }
                 (true, true, false) => {
                     // High-res 620x200, 2bpp graphics.
@@ -1880,7 +1882,10 @@ impl TGACard {
     /// CRTC is set. This effectively creates a 0x2000 byte offset for odd character rows.
     #[inline]
     pub fn get_gfx_addr_16k(&self, row: u8) -> usize {
-        let row_offset = (row as usize & 0x01) << 12;
+        let row_offset = match self.page_register.address_mode() {
+            0 => 0,
+            _ => (row as usize & 0x01) << 12,
+        };
         let addr = (self.vma & 0x0FFF | row_offset) << 1;
         addr
     }
@@ -1892,7 +1897,10 @@ impl TGACard {
     /// This effectively creates 4 banks of video memory at 8k intervals.
     #[inline]
     pub fn get_gfx_addr_32k(&self, row: u8) -> usize {
-        let row_offset = (row as usize & 0x03) << 12;
+        let row_offset = match self.page_register.address_mode() {
+            0 => 0,
+            _ => (row as usize & 0x03) << 12,
+        };
         let addr = (self.vma & 0x0FFF | row_offset) << 1;
         addr
     }
@@ -2144,8 +2152,11 @@ impl TGACard {
                 else if self.mode_hires_gfx {
                     self.draw_gfx_mode_hchar_1bpp(cpumem);
                 }
-                else if self.mode_4bpp {
+                else if self.mode_4bpp & self.mode_hires_txt {
                     self.draw_gfx_mode_4bpp_char(cpumem);
+                }
+                else if self.mode_4bpp {
+                    self.draw_gfx_mode_4bpp_lchar(cpumem);
                 }
                 else {
                     self.draw_gfx_mode_2bpp_mchar(cpumem);
@@ -2184,7 +2195,7 @@ impl TGACard {
         }
 
         // Update position to next pixel and character column.
-        if self.mode_4bpp {
+        if self.mode_4bpp & self.mode_hires_txt {
             self.beam_x += 4 * self.clock_divisor as u32;
             self.rba += 4 * self.clock_divisor as usize;
         }
@@ -2786,14 +2797,14 @@ impl TGACard {
 
     pub fn video_array_select(&mut self, data: u8) {
         self.video_array_address = (data & 0x1F) as usize;
-        log::debug!("TGA Video Array Select: {:02X}", self.video_array_address);
+        log::trace!("TGA Video Array Select: {:02X}", self.video_array_address);
     }
 
     pub fn video_array_write(&mut self, data: u8) {
         match (self.video_array_address, self.subtype) {
             (0x00, VideoCardSubType::IbmPCJr) => {
                 self.jr_mode_control = JrModeControlRegister::from_bytes([data]);
-                log::warn!(
+                log::trace!(
                     "Write to TGA(PCJr) Mode Control: {:02X} {:?}",
                     data,
                     self.jr_mode_control
@@ -2817,7 +2828,7 @@ impl TGACard {
             (0x03, VideoCardSubType::Tandy1000) => {
                 // Tandy1000 Mode control register
                 self.t_mode_control = TModeControlRegister::from_bytes([data]);
-                log::warn!("Write to TGA Mode Control: {:02X} {:?}", data, self.t_mode_control);
+                log::trace!("Write to TGA Mode Control: {:02X} {:?}", data, self.t_mode_control);
                 self.mode_4bpp = self.t_mode_control.fourbpp_mode();
                 self.mode_pending = true;
                 self.clock_pending = true;
@@ -2825,7 +2836,7 @@ impl TGACard {
             (0x03, VideoCardSubType::IbmPCJr) => {
                 // Tandy1000 Mode control register
                 self.jr_mode_control2 = JrModeControlRegister2::from_bytes([data]);
-                log::warn!("Write to TGA Mode Control: {:02X} {:?}", data, self.jr_mode_control2);
+                log::trace!("Write to TGA Mode Control: {:02X} {:?}", data, self.jr_mode_control2);
                 self.mode_blinking = self.jr_mode_control2.blink();
 
                 self.mode_pending = true;
@@ -2833,7 +2844,7 @@ impl TGACard {
             }
 
             (0x10..=0x1F, _) => {
-                log::debug!("Write to TGA palette register: {:02X}", data);
+                log::trace!("Write to TGA palette register: {:02X}", data);
                 let pal_idx = self.video_array_address - 0x10;
                 self.palette_registers[pal_idx] = data & 0x0F;
             }
@@ -2843,7 +2854,7 @@ impl TGACard {
 
     pub fn page_register_write(&mut self, data: u8) {
         self.page_register = TPageRegister::from_bytes([data]);
-        log::debug!("TGA Page Register: {:?}", self.page_register);
+        log::trace!("TGA Page Register: {:?}", self.page_register);
         match self.mode_size {
             VideoModeSize::Mode16k => {
                 // Select 16K page for CPU
