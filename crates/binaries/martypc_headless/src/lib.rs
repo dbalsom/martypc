@@ -53,7 +53,7 @@ use crate::run_benchmark::run_benchmark;
 #[cfg(feature = "arduino_validator")]
 use crate::{cpu_test::gen_tests::run_gentests, cpu_test::process_tests::run_processtests, run_fuzzer::run_fuzzer};
 
-#[cfg(feature = "cpu_validator")]
+#[cfg(feature = "cpu_tests")]
 use crate::cpu_test::run_tests::run_runtests;
 
 use marty_config::TestMode;
@@ -572,12 +572,17 @@ pub fn run() {
         #[cfg(not(feature = "arduino_validator"))]
         _ => {}
     }
-    #[cfg(not(feature = "cpu_validator"))]
-    {
-        if !matches!(config.tests.test_mode, None | Some(TestMode::None)) {
-            eprintln!("Test mode not supported without validator feature.");
+
+    #[cfg(feature = "cpu_tests")]
+    match config.tests.test_mode {
+        Some(TestMode::Run) => {
+            return run_runtests(config);
+        }
+        Some(_) => {
+            eprintln!("Specified test mode not supported without `cpu_validator` feature.");
             std::process::exit(1);
         }
+        _ => {}
     }
 
     if config.emulator.benchmark_mode {

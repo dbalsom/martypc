@@ -35,5 +35,5 @@ pub mod common;
 pub mod gen_tests;
 #[cfg(feature = "arduino_validator")]
 pub mod process_tests;
-#[cfg(feature = "cpu_validator")]
+#[cfg(feature = "cpu_tests")]
 pub mod run_tests;

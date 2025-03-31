@@ -94,12 +94,7 @@ use crate::cpu_validator::ValidatorType;
 
 #[cfg(feature = "cpu_validator")]
 use crate::cpu_validator::{
-    AccessType,
-    BusCycle,
-    BusState,
     CpuValidator,
-    CycleState,
-    VRegisters,
     ValidatorMode,
     ValidatorResult,
     VAL_ALLOW_ONE,
@@ -107,6 +102,9 @@ use crate::cpu_validator::{
     VAL_NO_FLAGS,
     VAL_NO_WRITES,
 };
+
+#[cfg(any(feature = "cpu_validator", feature = "cpu_collect_cycle_states"))]
+use crate::cpu_validator::{AccessType, BusCycle, BusState, CycleState, VRegisters};
 
 #[cfg(feature = "arduino_validator")]
 use crate::arduino8088_validator::ArduinoValidator;
@@ -597,9 +595,9 @@ pub struct Intel808x {
 
     #[cfg(feature = "cpu_validator")]
     validator: Option<Box<dyn CpuValidator>>,
-    #[cfg(feature = "cpu_validator")]
+    #[cfg(any(feature = "cpu_validator", feature = "cpu_collect_cycle_states"))]
     vregs: VRegisters,
-    #[cfg(feature = "cpu_validator")]
+    #[cfg(any(feature = "cpu_validator", feature = "cpu_collect_cycle_states"))]
     cycle_states: Vec<CycleState>,
     #[cfg(feature = "cpu_validator")]
     validator_state: CpuValidatorState,
@@ -1024,6 +1022,9 @@ impl Intel808x {
         #[cfg(feature = "cpu_validator")]
         {
             self.validator_state = CpuValidatorState::Uninitialized;
+        }
+        #[cfg(any(feature = "cpu_validator", feature = "cpu_collect_cycle_states"))]
+        {
             self.cycle_states.clear();
         }
 
@@ -1121,7 +1122,7 @@ impl Intel808x {
         }
     }
 
-    #[cfg(feature = "cpu_validator")]
+    #[cfg(any(feature = "cpu_validator", feature = "cpu_collect_cycle_states"))]
     pub fn get_cycle_state(&mut self) -> CycleState {
         let mut q = [0; 4];
         self.queue.to_slice(&mut q);
@@ -1284,7 +1285,7 @@ impl Intel808x {
             != 0
     }
 
-    #[cfg(feature = "cpu_validator")]
+    #[cfg(any(feature = "cpu_validator", feature = "cpu_collect_cycle_states"))]
     pub fn get_vregisters(&self) -> VRegisters {
         VRegisters {
             ax:    self.a.x(),
@@ -1742,7 +1743,7 @@ impl Intel808x {
     }
 
     /// Removes any cycle states at address 0
-    #[cfg(feature = "cpu_validator")]
+    #[cfg(any(feature = "cpu_validator", feature = "cpu_collect_cycle_states"))]
     fn clear_reset_cycle_states(&mut self) {
         self.cycle_states.retain(|&x| x.addr != 0);
     }

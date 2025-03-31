@@ -224,7 +224,7 @@ impl Intel808x {
             self.do_cycle_trace();
         }
 
-        #[cfg(feature = "cpu_validator")]
+        #[cfg(any(feature = "cpu_validator", feature = "cpu_collect_cycle_states"))]
         {
             let cycle_state = self.get_cycle_state();
             self.cycle_states.push(cycle_state);
@@ -491,7 +491,7 @@ impl Intel808x {
         }
     }
 
-    #[cfg(feature = "cpu_validator")]
+    #[cfg(any(feature = "cpu_validator", feature = "cpu_collect_cycle_states"))]
     pub fn get_cycle_states_internal(&self) -> &Vec<CycleState> {
         &self.cycle_states
     }

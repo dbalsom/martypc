@@ -52,7 +52,9 @@ pub use mnemonic::Mnemonic;
 pub use operands::OperandType;
 
 #[cfg(feature = "cpu_validator")]
-use crate::cpu_validator::{CpuValidator, CycleState, VRegisters};
+use crate::cpu_validator::CpuValidator;
+#[cfg(any(feature = "cpu_validator", feature = "cpu_collect_cycle_states"))]
+use crate::cpu_validator::{CycleState, VRegisters};
 
 use crate::{
     breakpoints::{BreakPointType, StopWatchData},
@@ -423,7 +425,7 @@ pub trait Cpu {
     fn dump_instruction_history_tokens(&self) -> Vec<Vec<SyntaxToken>>;
     fn dump_call_stack(&self) -> String;
     fn get_service_event(&mut self) -> Option<ServiceEvent>;
-    #[cfg(feature = "cpu_validator")]
+    #[cfg(any(feature = "cpu_validator", feature = "cpu_collect_cycle_states"))]
     fn get_cycle_states(&self) -> &Vec<CycleState>;
     fn get_cycle_trace(&self) -> &Vec<String>;
     fn get_cycle_trace_tokens(&self) -> &Vec<Vec<SyntaxToken>>;
@@ -455,7 +457,7 @@ pub trait Cpu {
     fn trace_flush(&mut self);
 
     // Validation methods
-    #[cfg(feature = "cpu_validator")]
+    #[cfg(any(feature = "cpu_validator", feature = "cpu_collect_cycle_states"))]
     fn get_vregisters(&self) -> VRegisters;
     #[cfg(feature = "cpu_validator")]
     fn get_validator(&self) -> &Option<Box<dyn CpuValidator>>;

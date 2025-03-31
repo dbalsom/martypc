@@ -63,9 +63,12 @@ use crate::{
 };
 
 #[cfg(feature = "cpu_validator")]
-use crate::cpu_validator::{CpuValidator, CycleState, VRegisters};
+use crate::cpu_validator::CpuValidator;
 #[cfg(feature = "cpu_validator")]
 use crate::cpu_vx0::CpuValidatorState;
+
+#[cfg(any(feature = "cpu_validator", feature = "cpu_collect_cycle_states"))]
+use crate::cpu_validator::{CycleState, VRegisters};
 
 impl Cpu for NecVx0 {
     fn reset(&mut self) {
@@ -210,6 +213,9 @@ impl Cpu for NecVx0 {
         #[cfg(feature = "cpu_validator")]
         {
             self.validator_state = CpuValidatorState::Uninitialized;
+        }
+        #[cfg(any(feature = "cpu_validator", feature = "cpu_collect_cycle_states"))]
+        {
             self.cycle_states.clear();
         }
 
@@ -219,6 +225,11 @@ impl Cpu for NecVx0 {
     #[inline]
     fn set_reset_vector(&mut self, address: CpuAddress) {
         self.set_reset_vector(address);
+    }
+
+    #[inline]
+    fn set_reset_queue_contents(&mut self, contents: Vec<u8>) {
+        self.set_reset_queue_contents(contents);
     }
 
     #[inline]
@@ -251,11 +262,6 @@ impl Cpu for NecVx0 {
     #[inline]
     fn step(&mut self, skip_breakpoint: bool) -> Result<(StepResult, u32), CpuError> {
         self.step(skip_breakpoint)
-    }
-
-    #[inline]
-    fn set_reset_queue_contents(&mut self, contents: Vec<u8>) {
-        self.set_reset_queue_contents(contents);
     }
 
     #[inline]
@@ -361,7 +367,7 @@ impl Cpu for NecVx0 {
     }
 
     #[inline]
-    #[cfg(feature = "cpu_validator")]
+    #[cfg(any(feature = "cpu_validator", feature = "cpu_collect_cycle_states"))]
     fn get_cycle_states(&self) -> &Vec<CycleState> {
         self.get_cycle_states_internal()
     }
@@ -372,12 +378,6 @@ impl Cpu for NecVx0 {
 
     fn get_cycle_trace_tokens(&self) -> &Vec<Vec<SyntaxToken>> {
         self.get_cycle_trace_tokens()
-    }
-
-    #[inline]
-    #[cfg(feature = "cpu_validator")]
-    fn get_vregisters(&self) -> VRegisters {
-        self.get_vregisters()
     }
 
     #[inline]
@@ -512,6 +512,12 @@ impl Cpu for NecVx0 {
 
     fn trace_flush(&mut self) {
         self.trace_flush();
+    }
+
+    #[inline]
+    #[cfg(any(feature = "cpu_validator", feature = "cpu_collect_cycle_states"))]
+    fn get_vregisters(&self) -> VRegisters {
+        self.get_vregisters_internal()
     }
 
     #[cfg(feature = "cpu_validator")]

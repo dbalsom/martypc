@@ -98,8 +98,6 @@ use crate::cpu_validator::{
     BusCycle,
     BusState,
     CpuValidator,
-    CycleState,
-    VRegisters,
     ValidatorMode,
     ValidatorResult,
     VAL_ALLOW_ONE,
@@ -107,6 +105,9 @@ use crate::cpu_validator::{
     VAL_NO_FLAGS,
     VAL_NO_WRITES,
 };
+
+#[cfg(any(feature = "cpu_validator", feature = "cpu_collect_cycle_states"))]
+use crate::cpu_validator::{CycleState, VRegisters};
 
 #[cfg(feature = "arduino_validator")]
 use crate::arduino8088_validator::ArduinoValidator;
@@ -606,9 +607,9 @@ pub struct NecVx0 {
 
     #[cfg(feature = "cpu_validator")]
     validator: Option<Box<dyn CpuValidator>>,
-    #[cfg(feature = "cpu_validator")]
+    #[cfg(any(feature = "cpu_validator", feature = "cpu_collect_cycle_states"))]
     vregs: VRegisters,
-    #[cfg(feature = "cpu_validator")]
+    #[cfg(any(feature = "cpu_validator", feature = "cpu_collect_cycle_states"))]
     cycle_states: Vec<CycleState>,
     #[cfg(feature = "cpu_validator")]
     validator_state: CpuValidatorState,
@@ -1097,8 +1098,8 @@ impl NecVx0 {
             != 0
     }
 
-    #[cfg(feature = "cpu_validator")]
-    pub fn get_vregisters(&self) -> VRegisters {
+    #[cfg(any(feature = "cpu_validator", feature = "cpu_collect_cycle_states"))]
+    pub fn get_vregisters_internal(&self) -> VRegisters {
         VRegisters {
             ax:    self.a.x(),
             bx:    self.b.x(),

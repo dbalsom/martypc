@@ -400,7 +400,7 @@ fn run_tests(
     // TODO: Make cycle state collection a CPU option instead of relying on
     //       cpu_validator feature
     let mut cpu;
-    #[cfg(feature = "cpu_validator")]
+    #[cfg(feature = "cpu_tests")]
     {
         use marty_core::cpu_validator::ValidatorMode;
         cpu = match CpuBuilder::new()
@@ -408,10 +408,6 @@ fn run_tests(
             //.with_cpu_subtype(CpuSubType::Intel8088)
             .with_trace_mode(trace_mode)
             .with_trace_logger(trace_logger)
-            .with_validator_type(ValidatorType::None)
-            .with_validator_mode(ValidatorMode::Instruction)
-            .with_validator_logger(validator_trace)
-            .with_validator_baud(config.validator.baud_rate.unwrap_or(1_000_000))
             .build()
         {
             Ok(cpu) => cpu,
@@ -421,9 +417,9 @@ fn run_tests(
             }
         }
     };
-    #[cfg(not(feature = "cpu_validator"))]
+    #[cfg(not(feature = "cpu_tests"))]
     {
-        panic!("Validator feature not enabled!")
+        panic!("`cpu_tests` feature not enabled!")
     };
 
     // Enable cycle tracing, if specified. This can help in debugging test failures.

@@ -44,5 +44,6 @@ criterion = "0.5.1"
 default = ["use_serialport"]
 use_serialport = ["marty_core/serialport"]
 devtools = []
-cpu_validator = ["marty_core/cpu_validator"]
+cpu_validator = ["cpu_tests", "marty_core/cpu_validator"]
+cpu_tests = ["marty_core/cpu_collect_cycle_states"]
 arduino_validator = []

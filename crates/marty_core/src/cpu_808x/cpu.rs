@@ -43,7 +43,9 @@ use crate::cpu_common::{Disassembly, LogicAnalyzer, Register8, TraceMode};
 #[cfg(feature = "cpu_validator")]
 use crate::cpu_808x::CpuValidatorState;
 #[cfg(feature = "cpu_validator")]
-use crate::cpu_validator::{CpuValidator, CycleState, VRegisters};
+use crate::cpu_validator::CpuValidator;
+#[cfg(any(feature = "cpu_validator", feature = "cpu_collect_cycle_states"))]
+use crate::cpu_validator::{CycleState, VRegisters};
 
 impl Cpu for Intel808x {
     fn reset(&mut self) {
@@ -194,7 +196,7 @@ impl Cpu for Intel808x {
     }
 
     #[inline]
-    #[cfg(feature = "cpu_validator")]
+    #[cfg(any(feature = "cpu_validator", feature = "cpu_collect_cycle_states"))]
     fn get_cycle_states(&self) -> &Vec<CycleState> {
         self.get_cycle_states_internal()
     }
@@ -344,7 +346,7 @@ impl Cpu for Intel808x {
     }
 
     #[inline]
-    #[cfg(feature = "cpu_validator")]
+    #[cfg(any(feature = "cpu_validator", feature = "cpu_collect_cycle_states"))]
     fn get_vregisters(&self) -> VRegisters {
         self.get_vregisters()
     }
