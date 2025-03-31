@@ -35,7 +35,7 @@
 #![allow(dead_code)]
 
 use modular_bitfield::{bitfield, BitfieldSpecifier};
-use std::{cell::Cell, collections::BTreeMap};
+use std::collections::BTreeMap;
 
 use crate::{
     bus::{BusInterface, DeviceRunTimeUnit, IoDevice, NO_IO_BYTE},
@@ -208,18 +208,6 @@ pub const PORTC_PCJR_KB_CABLE_DETACHED: u8 = 0b1000_0000;
 pub const PCJR_KB_BAUD: f64 = 2272.0;
 pub const PCJR_US_PER_BIT: f64 = 1_000_000.0 / PCJR_KB_BAUD;
 pub const PCJR_US_PER_HALFBIT: f64 = PCJR_US_PER_BIT / 2.0;
-
-macro_rules! reverse_bits_u8 {
-    ($x:expr) => {{
-        const fn reverse_byte(mut b: u8) -> u8 {
-            b = (b & 0xF0) >> 4 | (b & 0x0F) << 4;
-            b = (b & 0xCC) >> 2 | (b & 0x33) << 2;
-            b = (b & 0xAA) >> 1 | (b & 0x55) << 1;
-            b
-        }
-        reverse_byte($x)
-    }};
-}
 
 #[derive(Debug)]
 pub enum PortAMode {
