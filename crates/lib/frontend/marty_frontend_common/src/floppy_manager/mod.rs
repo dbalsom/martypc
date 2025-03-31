@@ -176,9 +176,8 @@ impl FloppyManager {
             }
         }
 
-        for dir in &self.autofloppy_dir_vec {
-            println!("Found autofloppy directory: {:?}", dir.name);
-        }
+        let autofloppy_dir_names: Vec<OsString> = self.autofloppy_dir_vec.iter().map(|dir| dir.name.clone()).collect();
+        println!("Found autofloppy directories: {:?}", &autofloppy_dir_names);
 
         Ok(true)
     }
