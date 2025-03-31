@@ -181,13 +181,12 @@ macro_rules! impl_cord {
                 let mut tmpa: u16 = a;
                 let tmpb: u16 = b;
                 let mut tmpc: u16 = c;
-                let mut sigma: u16;
+
                 let mut sigma_s: Self;
 
                 let mut carry;
                 let mut overflow;
                 let mut aux_carry;
-                let mut carry_sub;
 
                 // 188:           | SUBT tmpa
                 (sigma_s, carry, overflow, aux_carry) = (tmpa as Self).alu_sub(tmpb as Self);
@@ -213,19 +212,13 @@ macro_rules! impl_cord {
 
                 // The main CORD loop is between 18b and 196.
                 while internal_counter > 0 {
-                    //println!("ic: {} tmpa: {} tmpb: {} tmpc: {}", internal_counter, tmpa, tmpb, tmpc);
                     // 18c: SIGMA->tmpc | RCLY tmpa
                     (sigma_s, carry, _) = (tmpc as Self).alu_rcl(1, carry);
                     tmpc = sigma_s as u16;
 
                     // 18d: SIGMA->tmpa | SUBT tmpa
                     (sigma_s, carry, _) = (tmpa as Self).alu_rcl(1, carry);
-                    sigma = sigma_s as u16;
-
-                    // 18e:
                     tmpa = sigma_s as u16;
-                    (sigma_s, carry_sub, overflow, aux_carry) = (tmpa as Self).alu_sub(tmpb as Self);
-                    sigma = sigma_s as u16;
 
                     cycles_mc!(cpu, 0x18b, 0x18c, 0x18d, 0x18e);
 
@@ -236,15 +229,13 @@ macro_rules! impl_cord {
                         // 195:              | RCY
                         carry = false;
                         // 196: SIGMA->tmpa  | NCZ 3
-                        (sigma_s, carry_sub, overflow, aux_carry) = (tmpa as Self).alu_sub(tmpb as Self);
-                        sigma = sigma_s as u16;
+                        (sigma_s, _, _, _) = (tmpa as Self).alu_sub(tmpb as Self);
+                        tmpa = sigma_s as u16;
 
-                        tmpa = sigma;
                         internal_counter -= 1;
                         if internal_counter > 0 {
                             // 196: SIGMA->tmpa  | NCZ 3
                             cpu.cycle_i(MC_JUMP);
-                            //println!("  cord(): in CORD: tmpa: {:04x} tmpc: {:04x}", tmpa, tmpc);
                             continue;
                         }
                         else {
@@ -261,7 +252,6 @@ macro_rules! impl_cord {
                         cpu.set_flag_state(Flag::AuxCarry, aux_carry);
                         cpu.set_flag_state(Flag::Overflow, overflow);
                         cpu.set_flag_state(Flag::Carry, carry);
-                        carry = carry_sub;
                         cpu.set_szp_flags_from_result(sigma_s as u16);
 
                         cycles_mc!(cpu, 0x18f, 0x190);
@@ -270,12 +260,11 @@ macro_rules! impl_cord {
                         if !carry {
                             cycles_mc!(cpu, MC_JUMP, 0x196);
                             // 196: SIGMA->tmpa    | NCZ 3
-                            (sigma_s, carry_sub, overflow, aux_carry) = (tmpa as Self).alu_sub(tmpb as Self);
+                            (sigma_s, _, _, _) = (tmpa as Self).alu_sub(tmpb as Self);
                             tmpa = sigma_s as u16;
                             internal_counter -= 1;
                             if internal_counter > 0 {
                                 cpu.cycle_i(MC_JUMP);
-                                //println!("  cord(): in CORD: tmpa: {:04x} tmpc: {:04x}", tmpa, tmpc);
                                 continue; // JMP to 3
                             }
                             else {
@@ -289,7 +278,6 @@ macro_rules! impl_cord {
                             internal_counter -= 1;
                             if internal_counter > 0 {
                                 cpu.cycle_i(MC_JUMP);
-                                //println!("  cord(): in CORD: tmpa: {:04x} tmpc: {:04x}", tmpa, tmpc);
                                 continue; // JMP to 3
                             }
                             else {
@@ -297,7 +285,6 @@ macro_rules! impl_cord {
                             }
                         }
                     }
-                    //println!("  cord(): in CORD: tmpa: {:04x} tmpc: {:04x}", tmpa, tmpc);
                 }
 
                 // 192
@@ -309,10 +296,7 @@ macro_rules! impl_cord {
                 // 194: SIGMA->no dest | RTN
                 (_, carry, _) = (tmpc as Self).alu_rcl(1, carry);
                 cpu.set_flag_state(Flag::Carry, carry);
-
                 cycles_mc!(cpu, 0x192, 0x193, 0x194, MC_RTN);
-                //println!("cord_finish(): tmpc: {} tmpa: {}", tmpc, tmpa);
-
                 Ok((tmpc, tmpa, carry))
             }
         }
