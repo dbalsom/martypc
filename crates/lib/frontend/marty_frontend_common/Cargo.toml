@@ -27,7 +27,6 @@ toml = "0.8"
 web-time.workspace = true
 strum.workspace = true
 strum_macros.workspace = true
-ringbuf = "0.3.3"
 crossbeam-channel.workspace = true
 pollster = "0.4"
 
