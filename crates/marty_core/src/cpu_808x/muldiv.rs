@@ -400,9 +400,7 @@ macro_rules! impl_cor_negate {
 
                 // Skip flag will skip to 1bb (line 7), such as when entering NEGATE from PREIDIV
                 if !skip {
-                    (sigma, carry, _, _) = tmpc.alu_neg();
-                    //(sigma_s, carry, _, _) = (tmpc as Self).alu_neg(); // 1b6
-                    //sigma = sigma_s as u16;
+                    (sigma, carry, _, _) = tmpc.alu_neg(); // 1b6
                     tmpc = sigma;
 
                     if carry {
@@ -410,9 +408,7 @@ macro_rules! impl_cor_negate {
                         cycles_mc!(cpu, 0x1b6, 0x1b7, 0x1b8, MC_JUMP, 0x1ba);
                     }
                     else {
-                        (sigma, _, _, _) = tmpa.alu_neg();
-                        //(sigma_s, _, _, _) = (tmpa as Self).alu_neg(); // 1b8, 1b9, 1ba: SIGMA->tmpa | CF1
-                        //sigma = sigma_s as u16;
+                        (sigma, _, _, _) = tmpa.alu_neg(); // 1b8, 1b9, 1ba: SIGMA->tmpa | CF1
                         cycles_mc!(cpu, 0x1b6, 0x1b7, 0x1b8, 0x1b9, 0x1ba);
                     }
 
@@ -422,18 +418,11 @@ macro_rules! impl_cor_negate {
 
                 // 1bb:     | LRCY tmpb
                 // 1bc: SIGMA->tmpb  | NEG tmpb
-                //(_, carry) = rcl_u8_with_carry(tmpb as u8, 1, carry); // Set carry flag if tmpb is negative
                 carry = tmpb & (1 << (<$prim>::BITS - 1)) != 0; // LRCY is just checking msb of tmpb
                 cpu.set_flag_state(Flag::Carry, carry);
-
-                //println!("  NEGATE: tmpb: {:04X} carry: {}", tmpb, carry);
-
                 (sigma, next_carry, _, _) = tmpb.alu_neg();
-                //(sigma, next_carry, _, _) = (tmpb as Self).alu_neg();
-                //sigma = sigma_s as u16;
 
                 cycles_mc!(cpu, 0x1bb, 0x1bc, 0x1bd);
-                //println!("  NEGATE: a: {:04x} b: {:04x} c:{:04x} tmpb Carry flag is : {}", tmpa, tmpb, tmpc, carry);
                 // 1bd:             | NCY 11
                 if !carry {
                     // tmpb was positive
@@ -444,7 +433,7 @@ macro_rules! impl_cor_negate {
                 }
                 else {
                     // tmpb was negative
-                    //println!("  NEGATE: tmpb was negative");
+
                     // 1be: SIGMA->tmpb  | CF1 RTN
                     _ = next_carry;
                     tmpb = sigma; // tmpb = NEG tmpb
@@ -462,8 +451,6 @@ impl_cor_negate!(u8);
 impl_cor_negate!(u16);
 
 impl Intel808x {
-    #[allow(dead_code)]
-    #[allow(unused_assignments)] // This isn't pretty, but we are trying to mirror the microcode
     /// Microcode routine for multiplication, 8 bit
     /// Accepts al and 8-bit operand, returns 16 bit product (for AX)
     pub fn mul8(&mut self, al: u8, operand: u8, signed: bool, mut negate: bool) -> u16 {
@@ -473,9 +460,9 @@ impl Intel808x {
         let mut tmpa: u16;
         let mut tmpc: u16 = al as u16; // 150 A->tmpc     | LRCY tmpc
         let mut carry;
+        let aux_carry: bool;
         let zf;
 
-        //(_, carry) = rcl_u8_with_carry(tmpc as u8, 1, carry);
         carry = tmpc & 0x80 != 0; // LRCY is just checking MSB of tmpc
         let mut tmpb: u16 = operand as u16; // 151: M->tmpb    | X0 PREIMUL
         cycles_mc!(self, 0x150, 0x151);
@@ -503,14 +490,7 @@ impl Intel808x {
 
         // 152:            | UNC CORX
         cycles_mc!(self, 0x152, MC_JUMP);
-
         (tmpa, tmpc) = (tmpb as u8).corx(self, tmpb, tmpc, carry);
-        //let (accum, tmpc8) = self.corx8(tmpb as u8, tmpc as u8, carry);
-
-        //println!("impl corx: {} {}, corx8: {} {}", tmpa2, tmpc2, accum, tmpc8);
-        //println!("corx: {}, {}", accum, tmpc8);
-        //tmpa = accum as u16;
-        //tmpc = tmpc8 as u16;
 
         // 153:            | F1 NEGATE  (REP prefix negates product)
         self.cycle_i(0x153);
@@ -519,9 +499,7 @@ impl Intel808x {
         // -------------------------------------------------------------------------
         if negate {
             self.cycle_i(MC_JUMP); // Jump to NEGATE
-                                   //println!("PRE-NEG: a: {:04x} b: {:04x} c:{:04x} tmpb Carry flag is : {}", tmpa, tmpb, tmpc, carry);
-            (tmpa, tmpb, tmpc, carry, negate) = (tmpa as u8).cor_negate(self, tmpb, tmpc, negate, false);
-            //println!("POST-NEG2: a: {:04x} b: {:04x} c:{:04x} tmpb Carry flag is : {}", tmpa2, tmpb2, tmpc2, carry2);
+            (tmpa, _, tmpc, _, _) = (tmpa as u8).cor_negate(self, tmpb, tmpc, negate, false);
         }
 
         // 154:                | X0 IMULCOF
@@ -532,12 +510,9 @@ impl Intel808x {
         if signed {
             self.cycle_i(MC_JUMP); // JMP
             tmpb = 0;
-            //(_, carry) = rcl_u8_with_carry(tmpc as u8, 1, carry);  // Test if tmpc is negative
             carry = tmpc & 0x80 != 0; // LRCY is just checking msb of tmpc
 
-            //(sigma8, _, _, _) = (tmpa as u8).alu_adc(tmpb as u8, carry);
-            let aux_carry: bool;
-            (sigma, carry, _, aux_carry) = tmpa.alu_adc(tmpb, carry);
+            (sigma, _, _, aux_carry) = tmpa.alu_adc(tmpb, carry);
             cycles_mc!(self, 0x1cd, 0x1ce, 0x1cf);
             // SET FLAGS HERE
             self.set_flag_state(Flag::AuxCarry, aux_carry);
@@ -560,8 +535,6 @@ impl Intel808x {
             // 155: tmpc -> A      | X0 7
             // JUMP
             // 157: tmpa -> X      | RNI
-
-            //self.cycles_i(3, &[0x155, MC_JUMP, 0x157]);
             cycles_mc!(self, 0x155, MC_JUMP);
 
             let product = tmpa << 8 | (tmpc & 0xFF);
@@ -581,9 +554,6 @@ impl Intel808x {
         // JMP
 
         cycles_mc!(self, 0x155, 0x156, MC_JUMP, 0x1d2, 0x1d3, MC_JUMP);
-
-        // SET FLAGS HERE
-
         zf = sigma == 0;
 
         // 1d0:                | Z 8  (jump if zero)
@@ -601,15 +571,13 @@ impl Intel808x {
             cycles_mc!(self, 0x1d0, 0x1d1, MC_JUMP);
         }
 
-        //self.cycle_i(0x157); // 157: tmpa-> X        | RNI
-
+        // 157: tmpa-> X        | RNI
         let product = tmpa << 8 | (tmpc & 0xFF);
         product
     }
 
     /// Microcode routine for multiplication, 16 bit
     /// Accepts ax and 16-bit operand, returns 32 bit product in two parts (for DX:AX)
-    #[allow(unused_assignments)]
     pub fn mul16(&mut self, ax: u16, operand: u16, signed: bool, mut negate: bool) -> (u16, u16) {
         let mut sigma: u16;
 
@@ -618,7 +586,6 @@ impl Intel808x {
         let mut carry;
         let zf;
 
-        //(_, carry) = rcl_u16_with_carry(tmpc, 1, carry); // SIGMA isn't used? Just setting carry flag(?)
         carry = tmpc & 0x8000 != 0; // LRCY is just checking msb
         let mut tmpb: u16 = operand as u16; // 159: M->tmpb    | X0 PREIMUL
         cycles_mc!(self, 0x158, 0x159);
@@ -646,10 +613,7 @@ impl Intel808x {
 
         // 15a:            | UNC CORX
         cycles_mc!(self, 0x15a, MC_JUMP);
-
         (tmpa, tmpc) = tmpb.corx(self, tmpb, tmpc, carry);
-        //(tmpa, tmpc) = self.corx16(tmpb, tmpc, carry);
-        //println!("a: {} c: {} , a: {} c: {}", tmpa2, tmpc2, tmpa, tmpc);
 
         // 15b:            | F1 NEGATE  (REP prefix negates product)
         self.cycle_i(0x15b);
@@ -658,7 +622,7 @@ impl Intel808x {
         // -------------------------------------------------------------------------
         if negate {
             self.cycle_i(MC_JUMP); // Jump to NEGATE
-            (tmpa, tmpb, tmpc, carry, negate) = tmpa.cor_negate(self, tmpb, tmpc, negate, false);
+            (tmpa, _, tmpc, _, _) = tmpa.cor_negate(self, tmpb, tmpc, negate, false);
         }
 
         // 15c:                | X0 IMULCOF
@@ -669,8 +633,7 @@ impl Intel808x {
         if signed {
             self.cycle_i(MC_JUMP); // JMP
             tmpb = 0; // 1cd
-                      //(_, carry) = rcl_u16_with_carry(tmpc, 1, carry);  // Test if tmpc is negative
-            carry = tmpc & 0x8000 != 0; // 1cd: LRCY is just checking msb of tmpc
+            carry = tmpc & 0x8000 != 0; // 1cd: LRCY is just checking sign of tmpc
             let aux_carry: bool;
             (sigma, _, _, aux_carry) = tmpa.alu_adc(tmpb, carry);
             cycles_mc!(self, 0x1cd, 0x1ce, 0x1cf);
@@ -694,7 +657,6 @@ impl Intel808x {
             // 15d: tmpc -> A      | X0 7
             // JUMP
             // 15f: tmpa -> X      | RNI
-            //self.cycles_i(3, &[0x15d, MC_JUMP, 0x15f]);
             cycles_mc!(self, 0x15d, MC_JUMP);
             return (tmpa, tmpc);
         }
@@ -727,7 +689,6 @@ impl Intel808x {
         }
 
         // 157: tmpa-> X        | RNI
-        //self.cycle_i(0x157);
 
         (tmpa, tmpc)
     }
