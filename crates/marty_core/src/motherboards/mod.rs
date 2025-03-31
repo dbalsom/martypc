@@ -24,7 +24,7 @@
 
     --------------------------------------------------------------------------
 */
-
+#![allow(unused_imports)]
 ///! The motherboard module provides facilities for describing how components in a system
 ///! are connected together.
 mod compaq_xt;
