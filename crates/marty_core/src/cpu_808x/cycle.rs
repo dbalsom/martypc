@@ -433,7 +433,7 @@ impl Intel808x {
             DmaState::HoldA => {
                 // DMA Hold Acknowledge has been issued. DMA controller will enter S1
                 // on next cycle, if no bus wait states are present.
-                if self.bus_wait_states == 0 && self.io_wait_states == 0 {
+                if self.bus_wait_states < 2 && self.io_wait_states == 0 {
                     self.dma_state = DmaState::Operating(0);
                     self.dma_aen = true;
                 }
