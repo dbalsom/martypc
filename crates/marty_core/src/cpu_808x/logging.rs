@@ -124,12 +124,14 @@ impl Intel808x {
     }
 
     pub fn emit_header(&mut self) {
-        if self.trace_mode == TraceMode::CycleSigrok { self.trace_print(AnalyzerEntry::emit_header()) }
+        if self.trace_mode == TraceMode::CycleSigrok {
+            self.trace_print(AnalyzerEntry::emit_header())
+        }
     }
 
     pub fn push_analyzer_entry(&mut self) {
         if self.analyzer.need_flush() {
-            log::debug!("Emitting {} analyzer entries", self.analyzer.entries.len());
+            //log::debug!("Emitting {} analyzer entries", self.analyzer.entries.len());
             self.emit_analyzer_entries();
             //self.analyzer.flush();
         }
