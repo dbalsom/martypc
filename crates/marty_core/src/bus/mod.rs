@@ -407,7 +407,7 @@ impl MmioData {
     }
 }
 
-#[derive(Copy, Clone, PartialEq)]
+#[derive(Copy, Clone, Debug, PartialEq)]
 pub enum MmioDeviceType {
     None,
     Memory,
@@ -695,8 +695,10 @@ impl BusInterface {
 
     /// Register a memory-mapped device.
     ///
-    /// The MemoryMappedDevice trait's read & write methods will be called instead for memory in the range
-    /// specified withing MemRangeDescriptor.
+    /// The [MemoryMappedDevice] trait's read & write methods will be called instead for memory in
+    /// the range specified by the device's [MemRangeDescriptor].
+    ///
+    /// Ranges must have a granularity no less than MMIO_MAP_SIZE (8K).
     pub fn register_map(&mut self, device: MmioDeviceType, mem_descriptor: MemRangeDescriptor) {
         if mem_descriptor.address < self.mmio_data.first_map {
             self.mmio_data.first_map = mem_descriptor.address;
@@ -714,6 +716,13 @@ impl BusInterface {
         assert_eq!(mem_descriptor.size % MMIO_MAP_SIZE, 0);
         let map_segs = mem_descriptor.size / MMIO_MAP_SIZE;
 
+        log::debug!(
+            "register_map: Registering memory map for device: {:?} at {:#X} size: {:#X}, ({} segments)",
+            device,
+            mem_descriptor.address,
+            mem_descriptor.size,
+            map_segs
+        );
         for i in 0..map_segs {
             self.mmio_map_fast[(mem_descriptor.address >> MMIO_MAP_SHIFT) + i] = device;
         }
@@ -744,6 +753,7 @@ impl BusInterface {
         for byte_ref in &mut self.memory {
             *byte_ref = self.open_bus_byte;
         }
+
         // Then clear conventional memory
         for byte_ref in &mut self.memory[0..self.conventional_size] {
             *byte_ref = 0;
