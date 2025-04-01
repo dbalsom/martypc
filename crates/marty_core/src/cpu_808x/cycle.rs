@@ -482,7 +482,7 @@ impl Intel808x {
     #[inline]
     pub fn cycles_i(&mut self, ct: u32, instrs: &[u16]) {
         assert!(ct as usize <= instrs.len());
-        for mc_i in instrs.iter() {
+        for mc_i in instrs.iter().take(ct as usize) {
             self.cycle_i(*mc_i);
         }
     }
