@@ -65,7 +65,8 @@ impl MemoryMappedDevice for ConventionalMemory {
         self.wait_states
     }
 
-    fn mmio_read_u8(&mut self, offset: usize, _cycles: u32, _cpumem: Option<&[u8]>) -> (u8, u32) {
+    fn mmio_read_u8(&mut self, address: usize, _cycles: u32, _cpumem: Option<&[u8]>) -> (u8, u32) {
+        let offset = address - self.base_address;
         if offset < self.size {
             (self.data[offset], self.wait_states)
         }
@@ -79,7 +80,8 @@ impl MemoryMappedDevice for ConventionalMemory {
     }
 
     #[inline]
-    fn mmio_peek_u8(&self, offset: usize, _cpumem: Option<&[u8]>) -> u8 {
+    fn mmio_peek_u8(&self, address: usize, _cpumem: Option<&[u8]>) -> u8 {
+        let offset = address - self.base_address;
         if offset < self.size {
             self.data[offset]
         }
@@ -97,7 +99,8 @@ impl MemoryMappedDevice for ConventionalMemory {
         self.wait_states
     }
 
-    fn mmio_write_u8(&mut self, offset: usize, data: u8, _cycles: u32, _cpumem: Option<&mut [u8]>) -> u32 {
+    fn mmio_write_u8(&mut self, address: usize, data: u8, _cycles: u32, _cpumem: Option<&mut [u8]>) -> u32 {
+        let offset = address - self.base_address;
         if !self.read_only && offset < self.size {
             self.data[offset] = data;
             self.wait_states
@@ -112,16 +115,12 @@ impl MemoryMappedDevice for ConventionalMemory {
     }
 
     fn get_mapping(&self) -> Vec<MemRangeDescriptor> {
-        let mut mapping = Vec::new();
-
-        mapping.push(MemRangeDescriptor {
+        vec![MemRangeDescriptor {
             address: self.base_address,
             size: self.size,
             cycle_cost: self.wait_states,
             read_only: false,
             priority: 0,
-        });
-
-        mapping
+        }]
     }
 }
