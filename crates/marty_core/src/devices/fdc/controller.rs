@@ -1247,11 +1247,7 @@ impl FloppyController {
                     self.pending_interrupt
                 );
 
-                let seek_flag = match self.last_command {
-                    Command::CalibrateDrive => true,
-                    Command::SeekParkHead => true,
-                    _ => false,
-                };
+                let seek_flag = matches!(self.last_command, Command::CalibrateDrive | Command::SeekParkHead);
 
                 let code = match self.last_error {
                     DriveError::BadRead | DriveError::BadWrite | DriveError::BadSeek => {
