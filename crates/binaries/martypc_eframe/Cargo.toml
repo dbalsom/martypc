@@ -129,4 +129,4 @@ vga = ["marty_core/vga", "marty_frontend_common/vga", "marty_videocard_renderer/
 opl = ["marty_core/opl"]
 # enable dev stuff, including logging in release.
 # !! Warning, may be unstable or completely broken !!
-devmode = []
+devmode = ["marty_core/cpu_trace_comments"]
