@@ -535,11 +535,8 @@ impl BusInterface {
 
         if address >= self.memory.len() {
             // Start address is invalid. Send only an error token.
-            let mut linevec = Vec::new();
-
-            linevec.push(SyntaxToken::ErrorString("REQUEST OUT OF BOUNDS".to_string()));
+            let linevec = vec![SyntaxToken::ErrorString("REQUEST OUT OF BOUNDS".to_string())];
             vec.push(linevec);
-
             return vec;
         }
         else if address + size >= self.memory.len() {
