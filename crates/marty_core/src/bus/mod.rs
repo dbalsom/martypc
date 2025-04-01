@@ -787,6 +787,7 @@ impl BusInterface {
     pub(crate) fn system_ticks_to_cpu_cycles(&self, ticks: u32) -> u32 {
         match self.cpu_factor {
             ClockFactor::Divisor(n) => ticks.div_ceil(n as u32),
+            //ClockFactor::Divisor(n) => (ticks + (n as u32) - 1) / (n as u32),
             ClockFactor::Multiplier(n) => ticks * (n as u32),
         }
     }
