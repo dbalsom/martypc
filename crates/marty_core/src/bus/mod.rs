@@ -99,7 +99,10 @@ use crate::{
 
 use crate::devices::sn76489::Sn76489;
 
-use crate::{bus::dispatch::MemoryDispatch, devices::conventional_memory::ConventionalMemory};
+use crate::{
+    bus::dispatch::MemoryDispatch,
+    devices::{conventional_memory::ConventionalMemory, hdc::jr_ide::JrIdeController},
+};
 use anyhow::Error;
 #[cfg(feature = "sound")]
 use crossbeam_channel::unbounded;
@@ -419,6 +422,7 @@ pub enum MmioDeviceType {
     Ems,
     MemoryExpansion(usize),
     Cart,
+    JrIde,
 }
 
 // Main bus struct.
@@ -467,6 +471,7 @@ pub struct BusInterface {
     fdc: Option<Box<FloppyController>>,
     hdc: Option<Box<HardDiskController>>,
     xtide: Option<Box<XtIdeController>>,
+    jride: Option<Box<JrIdeController>>,
     mouse: Option<Mouse>,
     ems: Option<LotechEmsCard>,
     cart_slot: Option<CartridgeSlot>,
@@ -554,6 +559,7 @@ impl Default for BusInterface {
             fdc: None,
             hdc: None,
             xtide: None,
+            jride: None,
             mouse: None,
             ems: None,
             cart_slot: None,
@@ -1078,6 +1084,12 @@ impl BusInterface {
                     add_io_device!(self, xtide, IoDeviceType::HardDiskController);
                     self.xtide = Some(Box::new(xtide));
                 }
+                HardDiskControllerType::JrIde => {
+                    let jride = JrIdeController::new(None, None, 2);
+                    add_io_device!(self, jride, IoDeviceType::HardDiskController);
+                    add_mmio_device!(self, jride, MmioDeviceType::JrIde);
+                    self.jride = Some(Box::new(jride));
+                }
             }
         }
 
@@ -1499,11 +1511,17 @@ impl BusInterface {
             self.hdc = Some(hdc);
         }
         // Run the XT-IDE controller, passing it DMA controller while DMA is still unattached.
+        // (No, it doesn't need the DMA controller. A future version might)
         if let Some(mut xtide) = self.xtide.take() {
             xtide.run(&mut dma1, self, us);
             self.xtide = Some(xtide);
         }
-
+        // Run the JR-IDE controller, passing it DMA controller while DMA is still unattached.
+        // (No, it doesn't need the DMA controller. A future version might)
+        if let Some(mut jride) = self.jride.take() {
+            jride.run(&mut dma1, self, us);
+            self.jride = Some(jride);
+        }
         // Run the DMA controller.
         dma1.run(self);
 
@@ -1739,6 +1757,10 @@ impl BusInterface {
         &mut self.xtide
     }
 
+    pub fn jride_mut(&mut self) -> &mut Option<Box<JrIdeController>> {
+        &mut self.jride
+    }
+
     pub fn cart_slot_mut(&mut self) -> &mut Option<CartridgeSlot> {
         &mut self.cart_slot
     }
@@ -1875,6 +1897,9 @@ impl BusInterface {
         }
         else if let Some(xtide) = &self.xtide {
             xtide.drive_ct()
+        }
+        else if let Some(jride) = &self.jride {
+            jride.drive_ct()
         }
         else {
             0

@@ -25,8 +25,7 @@
     --------------------------------------------------------------------------
 */
 
-//! An implementation of an XT-IDE controller in PIO mode.
-//! Specifically, this implementation is of an XT-IDE revision 2.
+//! An implementation of an JR-IDE controller for the IBM PCjr.
 
 #![allow(dead_code)]
 
@@ -43,13 +42,29 @@ use crate::{
     vhd::VirtualHardDisk,
 };
 
-use crate::devices::{ata::ata_error::AtaError, dma};
+use crate::{
+    bus::{MemRangeDescriptor, MemoryMappedDevice},
+    device_types::disk::Disk,
+    devices::{ata::ata_error::AtaError, dma},
+};
 use core::fmt::Display;
 
 pub const DRIVE_CT: usize = 2;
 
 // Public consts
 pub const DEFAULT_IO_BASE: u16 = 0x300;
+pub const DEFAULT_ADDRESS_BASE: usize = 0xC0000;
+
+pub const DATA_WINDOW_OFFSET: usize = 0x3A00;
+pub const DATA_WINDOW_SIZE: usize = 0x200;
+pub const CS0_REGISTER_FILE_OFFSET: usize = 0x3C00;
+pub const CS1_REGISTER_FILE_OFFSET: usize = 0x3C08;
+pub const FILL_ENABLE_REGISTER: usize = 0x3C10;
+pub const WINDOW_ENABLE_REGISTER: usize = 0x3C11;
+pub const SCRATCH_RAM: usize = 0x3C12;
+pub const SCRATCH_RAM_SIZE: usize = 1006; // 3C12-3FFF
+pub const MAP_SIZE: usize = 0x600;
+pub const MAP_END_OFFSET: usize = 0x4000;
 
 pub const HDC_IRQ: u8 = 0x05;
 pub const HDC_DMA: usize = 0x03;
@@ -129,39 +144,7 @@ impl Display for ControllerError {
     }
 }
 
-#[allow(dead_code)]
-#[derive(Copy, Clone, Debug)]
-pub enum State {
-    Reset,
-    WaitingForCommand,
-    ReceivingCommand,
-    ExecutingCommand,
-    HaveCommandResult,
-    HaveCommandStatus,
-    HaveSenseBytes,
-}
-
-#[repr(u8)]
-#[allow(dead_code)]
-#[derive(Copy, Clone, Debug)]
-pub enum Command {
-    None,
-    ReadSectorRetry = 0x20,
-    ReadSector = 0x21,
-    ReadVerifySector = 0x40,
-    WriteSector = 0x30,
-    Recalibrate = 0x10,
-    Seek = 0x70,
-    IdentifyDrive = 0xEC,
-    SetFeatures = 0xEF,
-    ReadMultiple = 0xC4,
-    WriteMultiple = 0xC5,
-    ReadMultipleMode,
-}
-
-type CommandDispatchFn = fn(&mut XtIdeController, &mut BusInterface) -> Continuation;
-
-impl IoDevice for XtIdeController {
+impl IoDevice for JrIdeController {
     fn read_u8(&mut self, port: u16, _delta: DeviceRunTimeUnit) -> u8 {
         match port - self.io_base {
             HDC_DATA_REGISTER0 | HDC_DATA_REGISTER1 => {
@@ -281,8 +264,9 @@ pub struct DeviceControlBlock {
 }
 
 #[allow(dead_code)]
-pub struct XtIdeController {
+pub struct JrIdeController {
     io_base: u16,
+    base_address: usize,
     drives: Box<[AtaDevice; DRIVE_CT]>,
     drive_ct: usize,
     drive_select: usize,
@@ -293,18 +277,27 @@ pub struct XtIdeController {
     last_error: ControllerError,
     last_error_drive: usize,
     error_flag: bool,
+
+    scratch_ram: Vec<u8>,
 }
 
-impl Default for XtIdeController {
+impl Default for JrIdeController {
     fn default() -> Self {
         let mut default_disks = Vec::new();
         // Loop because VHD isn't Clone
-        for _ in 0..DRIVE_CT {
-            default_disks.push(AtaDevice::default());
+        for d_idx in 0..DRIVE_CT {
+            default_disks.push(AtaDevice::new(
+                d_idx,
+                Disk::new(DriveGeometry::default()),
+                None,
+                true,
+                None,
+            ));
         }
         let disk_box = default_disks.into_boxed_slice();
         Self {
             io_base: DEFAULT_IO_BASE,
+            base_address: 0xC0000,
             drives: disk_box.try_into().unwrap(),
             drive_ct: 1,
             drive_select: 0,
@@ -315,14 +308,17 @@ impl Default for XtIdeController {
             last_error: ControllerError::NoError,
             last_error_drive: 0,
             error_flag: false,
+
+            scratch_ram: vec![0; SCRATCH_RAM_SIZE],
         }
     }
 }
 
-impl XtIdeController {
-    pub fn new(io_base: Option<u16>, drive_ct: usize) -> Self {
+impl JrIdeController {
+    pub fn new(io_base: Option<u16>, base_address: Option<usize>, drive_ct: usize) -> Self {
         Self {
             io_base: io_base.unwrap_or(DEFAULT_IO_BASE),
+            base_address: base_address.unwrap_or(DEFAULT_ADDRESS_BASE),
             drive_ct,
             ..Default::default()
         }
@@ -367,6 +363,7 @@ impl XtIdeController {
                 log::error!("Error setting VHD: {}", e);
                 ControllerError::AtaError(e)
             })?;
+            log::debug!("Set VHD!");
         }
         else {
             return Err(ControllerError::UnsupportedVHD);
@@ -466,5 +463,183 @@ impl XtIdeController {
         for drive in self.drives.iter_mut() {
             drive.run(dma, bus, us);
         }
+    }
+}
+
+impl MemoryMappedDevice for JrIdeController {
+    fn get_read_wait(&mut self, address: usize, _cycles: u32) -> u32 {
+        0
+    }
+
+    fn mmio_read_u8(&mut self, address: usize, _cycles: u32, cpumem: Option<&[u8]>) -> (u8, u32) {
+        let offset = address - self.base_address;
+        match offset {
+            0..DATA_WINDOW_OFFSET => (cpumem.unwrap()[address], 0),
+            DATA_WINDOW_OFFSET..CS0_REGISTER_FILE_OFFSET => {
+                let buffer_offset = offset - DATA_WINDOW_OFFSET;
+                if buffer_offset < DATA_WINDOW_SIZE {
+                    let byte = self.drives[0].sector_buffer()[buffer_offset];
+                    log::trace!("Read from sector buffer: {offset:04X} [{byte:02X}]");
+                    if buffer_offset == (DATA_WINDOW_SIZE - 1) {
+                        log::debug!("Sector buffer read complete!");
+                        self.drives[0].sector_buffer_mark_read();
+                    }
+                    (byte, 0)
+                }
+                else {
+                    log::error!("Read from sector buffer out of range: {offset:04X}");
+                    (0, 0)
+                }
+            }
+            CS0_REGISTER_FILE_OFFSET..CS1_REGISTER_FILE_OFFSET => {
+                let reg = offset & 0x07;
+                let byte = self.drives[0].register_read(reg as u8);
+                log::debug!("Read from CS0 register [{reg:X}]: {:02X}", byte);
+                (byte, 0)
+            }
+            CS1_REGISTER_FILE_OFFSET..FILL_ENABLE_REGISTER => {
+                let reg = offset & 0x07;
+                log::debug!("Read from CS1 register [{reg:X}]");
+                (0, 0)
+            }
+            FILL_ENABLE_REGISTER => {
+                log::debug!("Read from fill enable register: {offset:04X}");
+                (0, 0)
+            }
+            WINDOW_ENABLE_REGISTER => {
+                log::debug!("Read from window enable register: {offset:04X}");
+                (0, 0)
+            }
+            SCRATCH_RAM..MAP_END_OFFSET => {
+                let ram_offset = offset - SCRATCH_RAM;
+                if ram_offset < SCRATCH_RAM_SIZE {
+                    let byte = self.scratch_ram[ram_offset];
+                    log::debug!("Read from scratch RAM: {offset:04X} [{byte:02X}]",);
+                    (byte, 0)
+                }
+                else {
+                    log::error!("Read from scratch RAM out of range: {offset:04X}");
+                    (0, 0)
+                }
+            }
+            _ => {
+                log::error!("Read from invalid address: {offset:04X}");
+                (0, 0)
+            }
+        }
+    }
+
+    fn mmio_read_u16(&mut self, address: usize, _cycles: u32, _cpumem: Option<&[u8]>) -> (u16, u32) {
+        log::warn!("Unsupported 16-bit read from address {address:04X}");
+        (0, 0)
+    }
+
+    fn mmio_peek_u8(&self, address: usize, cpumem: Option<&[u8]>) -> u8 {
+        let offset = address - self.base_address;
+        match offset {
+            ..DATA_WINDOW_OFFSET => cpumem.unwrap()[address],
+            DATA_WINDOW_OFFSET..CS0_REGISTER_FILE_OFFSET => {
+                let buffer_offset = offset - DATA_WINDOW_OFFSET;
+                if buffer_offset < DATA_WINDOW_SIZE {
+                    let byte = self.drives[0].sector_buffer()[buffer_offset];
+                    byte
+                }
+                else {
+                    log::error!("Read from sector buffer out of range: {offset:04X}");
+                    0
+                }
+            }
+            CS0_REGISTER_FILE_OFFSET..CS1_REGISTER_FILE_OFFSET => {
+                let reg = offset & 0x07;
+                log::debug!("Peek from CS0 register [{reg:X}]");
+                0
+            }
+            CS1_REGISTER_FILE_OFFSET..FILL_ENABLE_REGISTER => {
+                log::debug!("Peek from CS1 register file: {offset:04X}");
+                0
+            }
+            FILL_ENABLE_REGISTER => {
+                log::debug!("Peek from fill enable register: {offset:04X}");
+                0
+            }
+            WINDOW_ENABLE_REGISTER => {
+                log::debug!("Peek from window enable register: {offset:04X}");
+                0
+            }
+            SCRATCH_RAM..MAP_END_OFFSET => {
+                log::debug!("Peek from scratch RAM: {offset:04X}");
+                0
+            }
+            _ => {
+                log::error!("Peek from invalid address: {offset:04X}");
+                0
+            }
+        }
+    }
+
+    fn mmio_peek_u16(&self, address: usize, _cpumem: Option<&[u8]>) -> u16 {
+        0
+    }
+
+    fn get_write_wait(&mut self, address: usize, cycles: u32) -> u32 {
+        0
+    }
+
+    fn mmio_write_u8(&mut self, address: usize, data: u8, _cycles: u32, cpumem: Option<&mut [u8]>) -> u32 {
+        let offset = address - self.base_address;
+        match offset {
+            ..DATA_WINDOW_OFFSET => 0,
+            DATA_WINDOW_OFFSET..CS0_REGISTER_FILE_OFFSET => {
+                log::debug!("Write to data window: {offset:04X}");
+                0
+            }
+            CS0_REGISTER_FILE_OFFSET..CS1_REGISTER_FILE_OFFSET => {
+                let reg = offset & 0x07;
+                log::debug!("Write to CS0 register {reg:X}: [{data:02X}]");
+                self.drives[0].register_write(reg as u8, data, None);
+                0
+            }
+            CS1_REGISTER_FILE_OFFSET..FILL_ENABLE_REGISTER => {
+                log::debug!("Write to CS1 register file: {offset:04X}");
+                0
+            }
+            FILL_ENABLE_REGISTER => {
+                log::debug!("Write to fill enable register: {offset:04X}");
+                0
+            }
+            WINDOW_ENABLE_REGISTER => {
+                log::debug!("Write to window enable register: {offset:04X}");
+                0
+            }
+            SCRATCH_RAM..MAP_END_OFFSET => {
+                let ram_offset = offset - SCRATCH_RAM;
+                if ram_offset < SCRATCH_RAM_SIZE {
+                    log::debug!("Write to scratch RAM: {offset:04X} [{:02X}]", data);
+                    self.scratch_ram[ram_offset] = data;
+                }
+                else {
+                    log::error!("Write to scratch RAM out of range: {offset:04X}");
+                }
+                0
+            }
+            _ => {
+                log::error!("Write to invalid address: {offset:04X}");
+                0
+            }
+        }
+    }
+
+    fn mmio_write_u16(&mut self, address: usize, data: u16, _cycles: u32, _cpumem: Option<&mut [u8]>) -> u32 {
+        0
+    }
+
+    fn get_mapping(&self) -> Vec<MemRangeDescriptor> {
+        vec![MemRangeDescriptor {
+            address: self.base_address,
+            size: MAP_END_OFFSET,
+            cycle_cost: 0,
+            read_only: false,
+            priority: 0,
+        }]
     }
 }

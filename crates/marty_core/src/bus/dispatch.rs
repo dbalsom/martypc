@@ -28,11 +28,67 @@
 //! Enum-based dispatch for devices on the system bus.
 
 use crate::{
-    bus::{BusInterface, DeviceRunTimeUnit, IoDevice, MemoryMappedDevice, NO_IO_BYTE},
+    bus::{BusInterface, DeviceRunTimeUnit, IoDevice, MemoryMappedDevice, NO_IO_BYTE, OPEN_BUS_BYTE},
     cpu_common::LogicAnalyzer,
     device_traits::videocard::VideoCardDispatch,
-    devices::{conventional_memory::ConventionalMemory, lotech_ems::LotechEmsCard},
+    devices::{
+        conventional_memory::ConventionalMemory,
+        hdc::{jr_ide::JrIdeController, xebec::HardDiskController, xtide::XtIdeController},
+        lotech_ems::LotechEmsCard,
+    },
 };
+
+pub enum HdcDispatch {
+    Xebec(HardDiskController),
+    XtIde(XtIdeController),
+    JrIde(JrIdeController),
+}
+
+impl HdcDispatch {
+    pub fn io_read_u8(&mut self, port: u16, delta: DeviceRunTimeUnit) -> u8 {
+        match self {
+            HdcDispatch::Xebec(hdc) => IoDevice::read_u8(hdc, port, delta),
+            HdcDispatch::XtIde(xtide) => IoDevice::read_u8(xtide, port, delta),
+            HdcDispatch::JrIde(jride) => IoDevice::read_u8(jride, port, delta),
+        }
+    }
+
+    pub fn io_write_u8(
+        &mut self,
+        port: u16,
+        data: u8,
+        bus: Option<&mut BusInterface>,
+        delta: DeviceRunTimeUnit,
+        analyzer: Option<&mut LogicAnalyzer>,
+    ) {
+        match self {
+            HdcDispatch::Xebec(hdc) => IoDevice::write_u8(hdc, port, data, bus, delta, analyzer),
+            HdcDispatch::XtIde(xtide) => IoDevice::write_u8(xtide, port, data, bus, delta, analyzer),
+            HdcDispatch::JrIde(jride) => IoDevice::write_u8(jride, port, data, bus, delta, analyzer),
+        }
+    }
+
+    pub fn mmio_peek_u8(&self, address: usize, cpumem: Option<&[u8]>) -> u8 {
+        match self {
+            HdcDispatch::JrIde(jride) => MemoryMappedDevice::mmio_peek_u8(jride, address, cpumem),
+            _ => OPEN_BUS_BYTE,
+        }
+    }
+
+    pub fn mmio_read_u8(&mut self, address: usize, ticks: u32, cpumem: Option<&[u8]>) -> (u8, u32) {
+        match self {
+            HdcDispatch::JrIde(jride) => MemoryMappedDevice::mmio_read_u8(jride, address, ticks, cpumem),
+            _ => (OPEN_BUS_BYTE, 0),
+        }
+    }
+
+    pub fn mmio_write_u8(&mut self, address: usize, data: u8, ticks: u32, cpumem: Option<&mut [u8]>) -> u32 {
+        match self {
+            HdcDispatch::JrIde(jride) => MemoryMappedDevice::mmio_write_u8(jride, address, data, ticks, cpumem),
+            _ => 0,
+        }
+    }
+}
 
 pub enum MemoryDispatch {
     Conventional(ConventionalMemory),

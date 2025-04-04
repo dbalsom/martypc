@@ -259,3 +259,22 @@ name = "pcjr_memory_sidecar"
     address = 0x20000
     size = 0x80000
     wait_states = 0
+
+[[overlay]]
+name = "jride"
+    # Hard disk controller
+    [overlay.hdc]
+    bus_type = "PCjr"
+    type = "JrIde"
+
+        [[overlay.hdc.drive]]
+        format = "Mfm"
+        vhd = "pcjr_ide.vhd"
+
+    [[overlay.conventional_expansion]]
+    type = "PCjr"
+    address = 0x20000
+    # This will provide the PCjr with 736K of available RAM.
+    # The PCjr BIOS will only count up to 640K during POST.
+    size = 0x98000
+    wait_states = 0

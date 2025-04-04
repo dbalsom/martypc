@@ -80,6 +80,7 @@ use crate::devices::fdc::FdcDebugState;
 use crate::devices::floppy_drive::FloppyImageState;
 
 use ringbuf::{Consumer};
+use crate::devices::hdc::jr_ide::JrIdeController;
 
 pub const STEP_OVER_TIMEOUT: u32 = 320000;
 
@@ -977,6 +978,10 @@ impl Machine {
 
     pub fn xtide_mut(&mut self) -> &mut Option<Box<XtIdeController>> {
         self.cpu.bus_mut().xtide_mut()
+    }
+
+    pub fn jride_mut(&mut self) -> &mut Option<Box<JrIdeController>> {
+        self.cpu.bus_mut().jride_mut()
     }
 
     pub fn cart_slot(&mut self) -> &mut Option<CartridgeSlot> { self.cpu.bus_mut().cart_slot_mut() }

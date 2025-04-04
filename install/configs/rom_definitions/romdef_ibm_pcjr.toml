@@ -136,7 +136,7 @@
 alias = "ibm_pcjr"
 desc = "IBM 4860 PCJr"
 priority = 0
-provides = ["bios", "ibm_pcjr", "ibm_basic"]
+provides = ["bios", "ibm_pcjr", "ibm_basic", "expansion"]
 oem_for = ["ibm_pcjr"]
 rom = [
     { md5 = "e698e58445afa5add5ba92d7f9761c04", addr = 0xF0000, size = 0x8000, chip = "XX1" },
@@ -180,7 +180,7 @@ checkpoint = [
 alias = "ibm_pcjr_64k"
 desc = "IBM 4860 PCJr"
 priority = 0
-provides = ["bios", "ibm_pcjr", "ibm_basic"]
+provides = ["bios", "ibm_pcjr", "ibm_basic", "expansion"]
 oem_for = ["ibm_pcjr"]
 rom = [
     { md5 = "6338a9808445de12109a2389b71ee2eb", addr = 0xF0000, size = 65536, chip = "u33" }
@@ -278,10 +278,10 @@ rom = [
 # 1MB of SRAM and 512KB of flash.
 # ----------------------------------------------------------------------------
 [[romset]]
-alias = "jr_ide"
+alias = "jride"
 desc = "jr-IDE 2012/11/12"
 priority = 0
-provides = ["jr_ide"]
+provides = ["jride"]
 rom = [
-    { md5 = "00c6b11cf56dfd7187a98e154778e1e0", addr = 0xC0000, size = 0x2000, chip = "jr_ide" },
+    { md5 = "00c6b11cf56dfd7187a98e154778e1e0", addr = 0xC0000, size = 0x2000, chip = "jride" },
 ]

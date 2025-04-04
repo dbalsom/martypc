@@ -23,15 +23,11 @@
     DEALINGS IN THE SOFTWARE.
 
     --------------------------------------------------------------------------
-
-    devices::types::mod.rs
-
-    Module to organize all device types
-
 */
 
-pub mod chs;
-pub mod disk;
-pub mod fdc;
-pub mod geometry;
-pub mod hdc;
+//! This module defines an ATA device and associated data types.
+pub mod ata_device;
+pub mod ata_error;
+pub mod ata_identification;
+pub mod ata_register16;
+pub mod ata_string;

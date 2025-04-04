@@ -37,7 +37,6 @@ type = "IbmPCJr"
 rom_set = "ibm_pcjr"
 speaker = true
 overlays = [
-    "pcjr_memory_sidecar",
     "microsoft_serial_mouse",
 ]
 

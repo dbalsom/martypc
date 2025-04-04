@@ -240,6 +240,7 @@ pub enum FdcType {
 pub enum HardDiskControllerType {
     IbmXebec,
     XtIde,
+    JrIde,
 }
 
 impl FromStr for HardDiskControllerType {
@@ -250,6 +251,8 @@ impl FromStr for HardDiskControllerType {
     {
         match s.to_lowercase().as_str() {
             "ibmxebec" => Ok(HardDiskControllerType::IbmXebec),
+            "xtide" => Ok(HardDiskControllerType::XtIde),
+            "jride" => Ok(HardDiskControllerType::JrIde),
             _ => Err("Bad value for HardDiskControllerType".to_string()),
         }
     }

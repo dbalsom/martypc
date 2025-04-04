@@ -480,6 +480,26 @@ impl Emulator {
                         }
                     }
                 }
+                else if let Some(jride) = self.machine.jride_mut() {
+                    match jride.set_vhd(drive_idx, vhd) {
+                        Ok(_) => {
+                            log::info!(
+                                "VHD image {:?} successfully loaded into virtual drive: {}",
+                                vhd_os_name,
+                                drive_idx
+                            );
+
+                            if let Some(idx) = vhd_idx {
+                                if let Some(selection) = self.vhd_manager.get_vhd_path(idx) {
+                                    self.gui.set_hdd_selection(drive_idx, Some(idx), Some(selection));
+                                }
+                            }
+                        }
+                        Err(err) => {
+                            log::error!("Error mounting VHD: {}", err);
+                        }
+                    }
+                }
                 else {
                     log::error!("Couldn't load VHD: No Hard Disk Controller present!");
                 }

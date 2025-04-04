@@ -41,14 +41,14 @@ pub const FDC_VIEWER_LINES: usize = 27;
 
 pub struct FdcViewerControl {
     log_string: String,
-    fdc_state:  FdcDebugState,
+    fdc_state: FdcDebugState,
 }
 
 impl FdcViewerControl {
     pub fn new() -> Self {
         Self {
             log_string: String::new(),
-            fdc_state:  Default::default(),
+            fdc_state: Default::default(),
         }
     }
 
@@ -66,6 +66,10 @@ impl FdcViewerControl {
         #[rustfmt::skip]
         egui::Grid::new("fdc-status-grid").striped(true).show(ui, |ui| {
 
+            ui.label("Interrupt line:");
+            ui.label(format!("{}", if self.fdc_state.intr { "1" } else { "0" }));
+            ui.end_row();        
+    
             ui.label("DOR:");
             ui.label(format!("{:08b}", self.fdc_state.dor));
             ui.end_row();
@@ -134,8 +138,7 @@ impl FdcViewerControl {
 
         let log_slice = if self.fdc_state.cmd_log.len() > FDC_VIEWER_LINES {
             &self.fdc_state.cmd_log[self.fdc_state.cmd_log.len() - FDC_VIEWER_LINES..]
-        }
-        else {
+        } else {
             &self.fdc_state.cmd_log
         };
 

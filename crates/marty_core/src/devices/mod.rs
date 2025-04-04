@@ -33,6 +33,7 @@
 pub mod a0;
 #[cfg(feature = "opl")]
 pub mod adlib;
+mod ata;
 pub mod cartridge_slots;
 pub mod cga;
 pub mod conventional_memory;

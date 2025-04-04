@@ -319,6 +319,7 @@ pub struct HeadLoadDma {
 
 #[derive(Default)]
 pub struct FdcDebugState {
+    pub intr: bool,
     pub dor: u8,
     pub data_mode: DataMode,
     pub operation: Operation,
@@ -2478,6 +2479,7 @@ impl FloppyController {
 
     pub fn get_debug_state(&self) -> FdcDebugState {
         FdcDebugState {
+            intr: self.pending_interrupt,
             dor: self.dor,
             data_mode: match self.dor & 0x08 != 0 {
                 true => DataMode::Dma,

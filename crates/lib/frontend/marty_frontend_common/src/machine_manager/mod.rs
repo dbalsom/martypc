@@ -308,7 +308,7 @@ impl MachineConfigFileEntry {
         Some(self.rom_set.clone())
     }
 
-    /// Returns a a tuple of vectors of strings representing the required and optional ROM features for this
+    /// Returns a tuple of vectors of strings representing the required and optional ROM features for this
     /// configuration
     pub fn get_rom_requirements(&self) -> Result<(Vec<String>, Vec<String>), Error> {
         let mut req_set: HashSet<String> = HashSet::new();
@@ -347,6 +347,14 @@ impl MachineConfigFileEntry {
                     }
                     if req_set.insert(String::from("xtide")) {
                         req_vec.push(String::from("xtide"));
+                    }
+                }
+                HardDiskControllerType::JrIde => {
+                    if req_set.insert(String::from("expansion")) {
+                        req_vec.push(String::from("expansion"));
+                    }
+                    if req_set.insert(String::from("jride")) {
+                        req_vec.push(String::from("jride"));
                     }
                 }
             }
