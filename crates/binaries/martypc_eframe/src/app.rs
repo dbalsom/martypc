@@ -631,7 +631,10 @@ impl eframe::App for MartyApp {
                                 let (dx, dy) = motion.into();
                                 emu.mouse_data.frame_delta_x += dx;
                                 emu.mouse_data.frame_delta_y += dy;
-                                emu.mouse_data.have_update = true;
+
+                                if dx != 0.0 || dy != 0.0 {
+                                    emu.mouse_data.have_update = true;
+                                }
                             }
                             /// Handle mouse buttons
                             if i.pointer.button_pressed(egui::PointerButton::Primary) {
