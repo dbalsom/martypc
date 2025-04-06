@@ -731,7 +731,7 @@ impl eframe::App for MartyApp {
                                         ctx.send_viewport_cmd(ViewportCommand::CursorVisible(false));
 
                                         *capture_state = Some(true);
-                                        dtc_ref.set_grabbed(true);
+                                        dtc_ref.set_grabbed(true, emu.mouse_data.capture_mode);
 
                                         gui.toasts()
                                             .info("Mouse captured! Middle-click to release.")
@@ -744,7 +744,7 @@ impl eframe::App for MartyApp {
                                     ctx.send_viewport_cmd(ViewportCommand::CursorVisible(true));
 
                                     *capture_state = Some(false);
-                                    dtc_ref.set_grabbed(false);
+                                    dtc_ref.set_grabbed(false, emu.mouse_data.capture_mode);
 
                                     gui.toasts()
                                         .info("Mouse released!")
@@ -787,7 +787,7 @@ impl eframe::App for MartyApp {
                                 ctx.send_viewport_cmd(ViewportCommand::CursorVisible(false));
 
                                 *capture_state = Some(true);
-                                dtc_ref.set_grabbed(true);
+                                dtc_ref.set_grabbed(true, emu.mouse_data.capture_mode);
 
                                 gui.toasts()
                                     .info("Mouse captured! Middle-click to release.")
@@ -800,7 +800,7 @@ impl eframe::App for MartyApp {
                             ctx.send_viewport_cmd(ViewportCommand::CursorVisible(true));
 
                             *capture_state = Some(false);
-                            dtc_ref.set_grabbed(false);
+                            dtc_ref.set_grabbed(false, emu.mouse_data.capture_mode);
 
                             gui.toasts()
                                 .info("Mouse released!")

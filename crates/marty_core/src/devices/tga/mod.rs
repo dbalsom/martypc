@@ -603,10 +603,13 @@ pub struct TGACard {
     crtc_start_address: usize,
     crtc_start_address_ho: u8,
     crtc_start_address_lo: u8,
-    crtc_cursor_address_lo: u8,
     crtc_cursor_address_ho: u8,
+    crtc_cursor_address_lo: u8,
+    crtc_lightpen_latch_ho: u8,
+    crtc_lightpen_latch_lo: u8,
     crtc_cursor_address: usize,
     crtc_frame_address: usize,
+    crtc_ticks_since_vsync: u32,
     in_crtc_hblank: bool,
     in_crtc_vblank: bool,
     in_crtc_vsync: bool,
@@ -677,9 +680,6 @@ pub struct TGACard {
     trace_logger:  TraceLogger,
     debug_counter: u64,
 
-    lightpen_latch: bool,
-    lightpen_addr:  usize,
-
     // TGA stuff
     do_vsync: bool,
     intr: bool,
@@ -700,6 +700,13 @@ pub struct TGACard {
     address_flipflop: bool,
     a0: u8,
     aperture_base: usize,
+
+    lightpen_pos: (u32, u32),
+    lightpen_tick: u32,
+    lightpen_trigger_tick: Option<u32>,
+    lightpen_latch: bool,
+    lightpen_addr: usize,
+    lightpen_switch: bool,
 }
 
 #[derive(Debug)]
@@ -814,10 +821,13 @@ impl Default for TGACard {
             crtc_start_address: 0,
             crtc_start_address_ho: 0,
             crtc_start_address_lo: 0,
-            crtc_cursor_address_lo: 0,
             crtc_cursor_address_ho: 0,
+            crtc_cursor_address_lo: 0,
+            crtc_lightpen_latch_ho: 0,
+            crtc_lightpen_latch_lo: 0,
             crtc_cursor_address: 0,
             crtc_frame_address: 0,
+            crtc_ticks_since_vsync: 0,
 
             in_crtc_hblank: false,
             in_crtc_vblank: false,
@@ -896,9 +906,6 @@ impl Default for TGACard {
             trace_logger:  TraceLogger::None,
             debug_counter: 0,
 
-            lightpen_latch: false,
-            lightpen_addr:  0,
-
             // TGA stuff
             do_vsync: false,
             intr: false,
@@ -919,6 +926,13 @@ impl Default for TGACard {
             address_flipflop: true,
             a0: 0,
             aperture_base: 0,
+
+            lightpen_pos: (0, 0),
+            lightpen_tick: 0,
+            lightpen_trigger_tick: None,
+            lightpen_latch: false,
+            lightpen_addr: 0,
+            lightpen_switch: false,
         }
     }
 }
@@ -1075,7 +1089,7 @@ impl TGACard {
         if !self.lightpen_latch {
             // Low to high transition of light pen latch, set latch addr.
             log::debug!("Updating lightpen latch address");
-            self.lightpen_addr = self.vma;
+            self.latch_lightpen();
         }
 
         self.lightpen_latch = true;
@@ -1084,6 +1098,15 @@ impl TGACard {
     fn clear_lp_latch(&mut self) {
         log::debug!("clearing lightpen latch");
         self.lightpen_latch = false;
+    }
+
+    fn latch_lightpen(&mut self) {
+        log::debug!("latch_lightpen(): updating lightpen registers");
+        // Latch lightpen address
+        self.lightpen_latch = true;
+        self.lightpen_addr = self.vma;
+        self.crtc_lightpen_latch_lo = (self.lightpen_addr & 0xFF) as u8;
+        self.crtc_lightpen_latch_ho = ((self.lightpen_addr >> 8) & 0xFF) as u8;
     }
 
     fn get_cursor_span(&self) -> (u8, u8) {
@@ -1317,19 +1340,11 @@ impl TGACard {
                 //log::debug!("CGA: Read from CRTC register: {:?}: {:02}", self.crtc_register_selected, self.crtc_cursor_address_lo );
                 self.crtc_cursor_address_lo
             }
-            CRTCRegister::LightPenPositionL => {
-                let byte = (self.lightpen_addr & 0xFF) as u8;
-                log::debug!("read LpL: {:02X}", byte);
-                byte
-            }
-            CRTCRegister::LightPenPositionH => {
-                let byte = ((self.lightpen_addr >> 8) & 0x3F) as u8;
-                log::debug!("read LpH: {:02X}", byte);
-                byte
-            }
+            CRTCRegister::LightPenPositionL => self.crtc_lightpen_latch_lo,
+            CRTCRegister::LightPenPositionH => self.crtc_lightpen_latch_ho,
             _ => {
                 log::debug!(
-                    "CGA: Read from unsupported CRTC register: {:?}",
+                    "TGA: Read from unsupported CRTC register: {:?}",
                     self.crtc_register_selected
                 );
                 0
@@ -1658,7 +1673,9 @@ impl TGACard {
         }
 
         // This bit is logically reversed, i.e., 0 is switch on
-        //byte |= STATUS_LIGHTPEN_SWITCH_STATUS;
+        if !self.lightpen_switch {
+            byte |= STATUS_LIGHTPEN_SWITCH_STATUS;
+        }
 
         // Video MUX bits for TGA/PCJr.
         // The PCJr POST tests the mux bit by drawing a line of full-block characters to the top row
@@ -1887,7 +1904,7 @@ impl TGACard {
             0 => 0,
             _ => (row as usize & 0x01) << 12,
         };
-        
+
         (self.vma & 0x0FFF | row_offset) << 1
     }
 
@@ -1902,7 +1919,7 @@ impl TGACard {
             0 => 0,
             _ => (row as usize & 0x03) << 12,
         };
-        
+
         (self.vma & 0x0FFF | row_offset) << 1
     }
 
@@ -2730,11 +2747,21 @@ impl TGACard {
                 }
             }
         }
+
+        self.crtc_ticks_since_vsync = self.crtc_ticks_since_vsync.wrapping_add(1);
+        if let Some(trigger_tick) = self.lightpen_trigger_tick {
+            if self.crtc_ticks_since_vsync == trigger_tick {
+                // Trigger lightpen
+                self.latch_lightpen();
+                self.lightpen_trigger_tick = None;
+            }
+        }
     }
 
     pub fn do_vsync(&mut self) {
         self.in_crtc_vsync = false;
 
+        self.crtc_ticks_since_vsync = 0;
         self.cycles_per_vsync = self.cur_screen_cycles;
         self.cur_screen_cycles = 0;
         self.last_vsync_cycles = self.cycles;

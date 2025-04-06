@@ -38,7 +38,7 @@ pub fn render_frame(emu: &mut Emulator, dm: &mut EFrameDisplayManager) {
     // First, run each renderer to resolve all videocard views.
     // Every renderer will have an associated card and backend.
     dm.for_each_renderer(|renderer, vid, backend_buf| {
-        if let Some(videocard) = emu.machine.bus_mut().video_mut(&vid) {
+        if let Some(mut videocard) = emu.machine.bus_mut().video_mut(&vid) {
             // Check if the emulator is paused - if paused, optionally select the back buffer
             // so we can watch the raster beam draw
             let mut beam_pos = None;
@@ -75,7 +75,21 @@ pub fn render_frame(emu: &mut Emulator, dm: &mut EFrameDisplayManager) {
                 extents,
                 beam_pos,
                 videocard.get_palette(),
-            )
+            );
+
+            // Since we have the card and renderer together here, this is a good time to update
+            // the card with the light pen position.
+            if renderer.cursor_state() {
+                let light_pen_pos = renderer.cursor_pos_absolute(&extents);
+
+                if let Some(light_pen_latch_pos) = renderer.cursor_latch_absolute(&extents) {
+                    videocard.light_pen_trigger(light_pen_latch_pos.0, light_pen_latch_pos.1);
+                }
+                else {
+                    videocard.set_light_pen_pos(light_pen_pos.0, light_pen_pos.1);
+                }
+                videocard.set_light_pen_state(emu.mouse_data.l_button_is_pressed);
+            }
         }
     });
 

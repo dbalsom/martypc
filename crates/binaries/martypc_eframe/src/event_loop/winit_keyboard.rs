@@ -199,14 +199,14 @@ pub fn process_hotkeys(
                     Ok(mut dtc_lock) => {
                         if !dtc_lock.grabbed() {
                             // Mouse cursor is not grabbed, grab it.
-                            dtc_lock.set_grabbed(true);
+                            dtc_lock.set_grabbed(true, emu.mouse_data.capture_mode);
                             emu.mouse_data.is_captured = true;
                             ctx.send_viewport_cmd(ViewportCommand::CursorGrab(GRAB_MODE));
                             ctx.send_viewport_cmd(ViewportCommand::CursorVisible(false));
                         }
                         else {
                             // Mouse cursor is grabbed, un-grab it.
-                            dtc_lock.set_grabbed(false);
+                            dtc_lock.set_grabbed(false, emu.mouse_data.capture_mode);
                             emu.mouse_data.is_captured = false;
                             ctx.send_viewport_cmd(ViewportCommand::CursorGrab(CursorGrab::None));
                             ctx.send_viewport_cmd(ViewportCommand::CursorVisible(true));

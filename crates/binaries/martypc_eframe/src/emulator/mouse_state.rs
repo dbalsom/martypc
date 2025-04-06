@@ -1,4 +1,5 @@
 use crate::input;
+use marty_frontend_common::marty_common::types::ui::MouseCaptureMode;
 
 #[allow(dead_code)]
 pub struct MouseData {
@@ -6,6 +7,7 @@ pub struct MouseData {
     pub l_button_id: u32,
     pub r_button_id: u32,
     pub is_captured: bool,
+    pub capture_mode: MouseCaptureMode,
     pub have_update: bool,
     pub l_button_was_pressed: bool,
     pub l_button_was_released: bool,
@@ -24,6 +26,7 @@ impl MouseData {
             l_button_id: input::get_mouse_buttons(reverse_buttons).0,
             r_button_id: input::get_mouse_buttons(reverse_buttons).1,
             is_captured: false,
+            capture_mode: MouseCaptureMode::Mouse,
             have_update: false,
             l_button_was_pressed: false,
             l_button_was_released: false,

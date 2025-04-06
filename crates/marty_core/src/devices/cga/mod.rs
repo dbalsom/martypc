@@ -247,7 +247,7 @@ const CGA_HBLANK_DEBUG_COLOR: u8 = CgaColor::Blue as u8;
 const CGA_VBLANK_DEBUG_COLOR: u8 = CgaColor::Yellow as u8;
 const CGA_DISABLE_DEBUG_COLOR: u8 = CgaColor::Green as u8;
 const CGA_OVERSCAN_DEBUG_COLOR: u8 = CgaColor::Green as u8;
-
+const CGA_LIGHTPEN_DEBUG_COLOR: u8 = CgaColor::Cyan as u8;
 /*
 const CGA_FILL_COLOR: u8 = 4;
 const CGA_SCANLINE_COLOR: u8 = 13;
@@ -476,10 +476,14 @@ pub struct CGACard {
     crtc_start_address: usize,
     crtc_start_address_ho: u8,
     crtc_start_address_lo: u8,
-    crtc_cursor_address_lo: u8,
     crtc_cursor_address_ho: u8,
+    crtc_cursor_address_lo: u8,
+    crtc_lightpen_latch_ho: u8,
+    crtc_lightpen_latch_lo: u8,
+
     crtc_cursor_address: usize,
     crtc_frame_address: usize,
+    crtc_ticks_since_vsync: u32,
     in_crtc_hblank: bool,
     in_crtc_vblank: bool,
     in_crtc_vsync: bool,
@@ -551,8 +555,12 @@ pub struct CGACard {
     trace_logger:  TraceLogger,
     debug_counter: u64,
 
+    lightpen_pos: (u32, u32),
+    lightpen_tick: u32,
+    lightpen_trigger_tick: Option<u32>,
     lightpen_latch: bool,
-    lightpen_addr:  usize,
+    lightpen_addr: usize,
+    lightpen_switch: bool,
 
     out_of_sync: bool,
 }
@@ -668,8 +676,11 @@ impl Default for CGACard {
             crtc_start_address_lo: 0,
             crtc_cursor_address_lo: 0,
             crtc_cursor_address_ho: 0,
+            crtc_lightpen_latch_ho: 0,
+            crtc_lightpen_latch_lo: 0,
             crtc_cursor_address: 0,
             crtc_frame_address: 0,
+            crtc_ticks_since_vsync: 0,
 
             in_crtc_hblank: false,
             in_crtc_vblank: false,
@@ -749,8 +760,12 @@ impl Default for CGACard {
             trace_logger:  TraceLogger::None,
             debug_counter: 0,
 
+            lightpen_pos: (0, 0),
+            lightpen_tick: 0,
+            lightpen_trigger_tick: None,
             lightpen_latch: false,
-            lightpen_addr:  0,
+            lightpen_addr: 0,
+            lightpen_switch: false,
 
             out_of_sync: false,
         }
@@ -885,8 +900,7 @@ impl CGACard {
     fn set_lp_latch(&mut self) {
         if !self.lightpen_latch {
             // Low to high transition of light pen latch, set latch addr.
-            log::debug!("Updating lightpen latch address");
-            self.lightpen_addr = self.vma;
+            self.latch_lightpen();
         }
 
         self.lightpen_latch = true;
@@ -1128,16 +1142,8 @@ impl CGACard {
                 //log::debug!("CGA: Read from CRTC register: {:?}: {:02}", self.crtc_register_selected, self.crtc_cursor_address_lo );
                 self.crtc_cursor_address_lo
             }
-            CRTCRegister::LightPenPositionL => {
-                let byte = (self.lightpen_addr & 0xFF) as u8;
-                log::debug!("read LpL: {:02X}", byte);
-                byte
-            }
-            CRTCRegister::LightPenPositionH => {
-                let byte = ((self.lightpen_addr >> 8) & 0x3F) as u8;
-                log::debug!("read LpH: {:02X}", byte);
-                byte
-            }
+            CRTCRegister::LightPenPositionL => self.crtc_lightpen_latch_lo,
+            CRTCRegister::LightPenPositionH => self.crtc_lightpen_latch_ho,
             _ => {
                 log::debug!(
                     "CGA: Read from unsupported CRTC register: {:?}",
@@ -1347,7 +1353,9 @@ impl CGACard {
         }
 
         // This bit is logically reversed, i.e., 0 is switch on
-        //byte |= STATUS_LIGHTPEN_SWITCH_STATUS;
+        if !self.lightpen_switch {
+            byte |= STATUS_LIGHTPEN_SWITCH_STATUS;
+        }
 
         trace_regs!(self);
         trace!(
@@ -1688,7 +1696,12 @@ impl CGACard {
             if self.in_display_area {
                 // Draw current character row
                 if !self.mode_graphics {
-                    self.draw_text_mode_hchar();
+                    if self.lightpen_tick == self.crtc_ticks_since_vsync {
+                        self.draw_solid_hchar(CGA_LIGHTPEN_DEBUG_COLOR);
+                    }
+                    else {
+                        self.draw_text_mode_hchar();
+                    }
                 }
                 else if self.mode_hires_gfx {
                     self.draw_hires_gfx_mode_char();
@@ -2224,9 +2237,28 @@ impl CGACard {
                 }
             }
         }
+
+        self.crtc_ticks_since_vsync = self.crtc_ticks_since_vsync.wrapping_add(1);
+        if let Some(trigger_tick) = self.lightpen_trigger_tick {
+            if self.crtc_ticks_since_vsync == trigger_tick {
+                // Trigger lightpen
+                self.latch_lightpen();
+                self.lightpen_trigger_tick = None;
+            }
+        }
+    }
+
+    fn latch_lightpen(&mut self) {
+        log::debug!("latch_lightpen(): updating lightpen registers");
+        // Latch lightpen address
+        self.lightpen_latch = true;
+        self.lightpen_addr = self.vma;
+        self.crtc_lightpen_latch_lo = (self.lightpen_addr & 0xFF) as u8;
+        self.crtc_lightpen_latch_ho = ((self.lightpen_addr >> 8) & 0xFF) as u8;
     }
 
     pub fn do_vsync(&mut self) {
+        self.crtc_ticks_since_vsync = 0;
         self.in_crtc_vsync = false;
 
         self.cycles_per_vsync = self.cur_screen_cycles;

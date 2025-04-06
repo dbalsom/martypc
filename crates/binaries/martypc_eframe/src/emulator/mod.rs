@@ -62,6 +62,7 @@ use marty_egui::{state::GuiState, GuiBoolean, GuiWindow};
 use marty_frontend_common::{
     cartridge_manager::CartridgeManager,
     floppy_manager::FloppyManager,
+    marty_common::types::ui::MouseCaptureMode,
     resource_manager::ResourceManager,
     rom_manager::RomManager,
     thread_events::{FileOpenContext, FileSelectionContext, FrontendThreadEvent},

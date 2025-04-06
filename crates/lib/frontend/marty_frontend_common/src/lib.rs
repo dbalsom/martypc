@@ -70,6 +70,7 @@ pub type JoyKeyEntry = types::joykeys::JoyKeyEntry;
 pub type RelativeDirectory = types::floppy::RelativeDirectory;
 
 pub use async_exec::exec_async;
+pub use marty_common;
 
 #[derive(Copy, Clone, Debug, Default, PartialEq, Deserialize)]
 pub enum BenchmarkEndCondition {

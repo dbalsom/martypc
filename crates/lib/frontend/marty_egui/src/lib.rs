@@ -72,6 +72,7 @@ use marty_core::{
     machine::MachineState,
 };
 
+use marty_common::types::ui::MouseCaptureMode;
 use marty_core::cpu_common::Register16;
 use marty_display_common::display_manager::{DisplayTargetType, DtHandle};
 use marty_videocard_renderer::CompositeParams;
@@ -184,6 +185,7 @@ pub enum GuiEnum {
     SerialPortBridge(usize),
     AudioMuted(bool),
     AudioVolume(f32),
+    MouseCaptureMode(MouseCaptureMode),
 }
 
 fn create_default_variant(ge: GuiEnum) -> GuiEnum {
@@ -198,6 +200,7 @@ fn create_default_variant(ge: GuiEnum) -> GuiEnum {
         GuiEnum::SerialPortBridge(_) => GuiEnum::SerialPortBridge(Default::default()),
         GuiEnum::AudioMuted(_) => GuiEnum::AudioMuted(false),
         GuiEnum::AudioVolume(_) => GuiEnum::AudioVolume(0.5),
+        GuiEnum::MouseCaptureMode(_) => GuiEnum::MouseCaptureMode(Default::default()),
     }
 }
 

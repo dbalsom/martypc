@@ -125,7 +125,7 @@ use egui::{Context, ViewportId};
 use egui_wgpu::wgpu;
 
 use anyhow::{anyhow, Error};
-
+use marty_common::types::ui::MouseCaptureMode;
 // use winit::{
 //     dpi::{LogicalSize, PhysicalSize},
 //     event_loop::{ActiveEventLoop, ControlFlow, EventLoop},
@@ -499,8 +499,14 @@ impl DisplayTargetContext {
         self.mouse_grabbed
     }
 
-    pub fn set_grabbed(&mut self, grabbed: bool) {
+    pub fn set_grabbed(&mut self, grabbed: bool, capture_mode: MouseCaptureMode) {
         self.mouse_grabbed = grabbed;
+
+        if let MouseCaptureMode::LightPen = capture_mode {
+            if let Some(renderer) = &mut self.renderer {
+                renderer.set_cursor_state(grabbed)
+            }
+        }
     }
 
     pub fn set_on_top(&mut self, on_top: bool) {

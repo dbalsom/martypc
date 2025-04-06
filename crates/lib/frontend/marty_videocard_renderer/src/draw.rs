@@ -127,6 +127,18 @@ impl VideoRenderer {
             ),
         }
 
+        // Draw OSD cursor (light pen, etc)
+        if self.osd_cursor {
+            VideoRenderer::draw_cursor(
+                first_pass_buf,
+                self.params.render.w,
+                self.params.render.w,
+                self.params.render.h,
+                self.osd_cursor_pos.0,
+                self.osd_cursor_pos.1,
+            );
+        }
+
         // Draw raster beam position if provided
         if let Some(beam) = beam_pos {
             let beam_x = beam.0 - extents.apertures[self.params.aperture as usize].x;
@@ -141,6 +153,8 @@ impl VideoRenderer {
                 self.params.render.w,
                 self.params.render.h,
                 beam_y,
+                None,
+                None,
             );
             VideoRenderer::draw_vertical_xor_line(
                 first_pass_buf,
@@ -148,6 +162,8 @@ impl VideoRenderer {
                 self.params.render.w,
                 self.params.render.h,
                 beam_x,
+                None,
+                None,
             );
         }
 
@@ -235,14 +251,25 @@ impl VideoRenderer {
         }
     }
 
-    pub fn draw_horizontal_xor_line(frame: &mut [u8], w: u32, span: u32, h: u32, y: u32) {
+    pub fn draw_horizontal_xor_line(
+        frame: &mut [u8],
+        w: u32,
+        span: u32,
+        h: u32,
+        y: u32,
+        start: Option<i32>,
+        end: Option<i32>,
+    ) {
         if y > (h - 1) {
             return;
         }
 
         let frame_row0_offset = (y * (span * 4)) as usize;
 
-        for x in 0..w {
+        let start = start.unwrap_or(0).clamp(0, w as i32) as u32;
+        let end = end.unwrap_or(w as i32).clamp(0, w as i32) as u32;
+
+        for x in start..end {
             let fo0 = frame_row0_offset + (x * 4) as usize;
 
             let r = frame[fo0];
@@ -280,14 +307,25 @@ impl VideoRenderer {
         }
     }
 
-    pub fn draw_vertical_xor_line(frame: &mut [u8], w: u32, span: u32, h: u32, x: u32) {
+    pub fn draw_vertical_xor_line(
+        frame: &mut [u8],
+        w: u32,
+        span: u32,
+        h: u32,
+        x: u32,
+        start: Option<i32>,
+        end: Option<i32>,
+    ) {
         if x > (w - 1) {
             return;
         }
 
         let frame_x0_offset = (x * 4) as usize;
 
-        for y in 0..h {
+        let start = start.unwrap_or(0).clamp(0, h as i32) as u32;
+        let end = end.unwrap_or(h as i32).clamp(0, h as i32) as u32;
+
+        for y in start..end {
             let fo0 = frame_x0_offset + (y * (span * 4)) as usize;
 
             let r = frame[fo0];
@@ -300,7 +338,32 @@ impl VideoRenderer {
         }
     }
 
-    /// Set the alpha component of each pixel in a the specified buffer.
+    pub fn draw_cursor(frame: &mut [u8], w: u32, span: u32, h: u32, x: u32, y: u32) {
+        const CURSOR_SIZE: i32 = 32;
+        const CURSOR_APERTURE: i32 = 4;
+
+        let half_aperture = CURSOR_APERTURE / 2;
+        let half_cursor: i32 = CURSOR_SIZE / 2;
+
+        let horiz_start0: i32 = x as i32 - (half_cursor + 1);
+        let horiz_end0 = horiz_start0 + half_cursor - half_aperture + 1;
+
+        let horiz_start1: i32 = x as i32 + half_aperture + 1;
+        let horiz_end1 = x as i32 + half_cursor + 1;
+
+        let vert_start0: i32 = y as i32 - (half_cursor + 1);
+        let vert_end0 = vert_start0 + half_cursor - half_aperture + 1;
+
+        let vert_start1 = y as i32 + half_aperture + 1;
+        let vert_end1 = y as i32 + half_cursor + 1;
+
+        VideoRenderer::draw_horizontal_xor_line(frame, w, span, h, y, Some(horiz_start0), Some(horiz_end0));
+        VideoRenderer::draw_horizontal_xor_line(frame, w, span, h, y, Some(horiz_start1), Some(horiz_end1));
+        VideoRenderer::draw_vertical_xor_line(frame, w, span, h, x, Some(vert_start0), Some(vert_end0));
+        VideoRenderer::draw_vertical_xor_line(frame, w, span, h, x, Some(vert_start1), Some(vert_end1));
+    }
+
+    /// Set the alpha component of each pixel in the specified buffer.
     pub fn set_alpha(frame: &mut [u8], w: u32, h: u32, a: u8) {
         //log::warn!("set_alpha: h: {}", h);
 

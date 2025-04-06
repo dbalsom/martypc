@@ -37,6 +37,7 @@ use display_manager_eframe::{DisplayManager, EFrameDisplayManager};
 use marty_core::{bus::DeviceEvent, cpu_common::ServiceEvent, machine::MachineEvent};
 use marty_frontend_common::{
     constants::{LONG_NOTIFICATION_TIME, NORMAL_NOTIFICATION_TIME, SHORT_NOTIFICATION_TIME},
+    marty_common::types::ui::MouseCaptureMode,
     thread_events::FrontendThreadEvent,
     timestep_manager::{MachinePerfStats, TimestepManager},
 };
@@ -97,12 +98,29 @@ pub fn process_update(emu: &mut Emulator, dm: &mut EFrameDisplayManager, tm: &mu
                         emuc.mouse_data.r_button_was_pressed
                     };
 
-                    mouse.update(
-                        l_button_state,
-                        r_button_state,
-                        emuc.mouse_data.frame_delta_x,
-                        emuc.mouse_data.frame_delta_y,
-                    );
+                    emuc.mouse_data.l_button_is_pressed = l_button_state;
+                    emuc.mouse_data.r_button_is_pressed = r_button_state;
+
+                    match emuc.mouse_data.capture_mode {
+                        MouseCaptureMode::Mouse => {
+                            mouse.update(
+                                l_button_state,
+                                r_button_state,
+                                emuc.mouse_data.frame_delta_x,
+                                emuc.mouse_data.frame_delta_y,
+                            );
+                        }
+                        MouseCaptureMode::LightPen => {
+                            // Update renderer here
+                            dmc.with_primary_renderer_mut(|renderer| {
+                                renderer.update_cursor(
+                                    emuc.mouse_data.frame_delta_x,
+                                    emuc.mouse_data.frame_delta_y,
+                                    l_button_state,
+                                )
+                            });
+                        }
+                    }
 
                     // Reset mouse for next frame
                     emuc.mouse_data.reset();

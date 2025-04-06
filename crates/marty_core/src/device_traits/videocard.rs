@@ -456,4 +456,17 @@ pub trait VideoCard {
     /// Return a vector of Strings representing the current text on screen. If the adapter is not in
     /// text mode, an empty vector should be returned.
     fn get_text_mode_strings(&self) -> Vec<String>;
+
+    /// Set the position of an attached light pen.
+    fn set_light_pen_pos(&mut self, _x: u32, _y: u32) {
+        // Default implementation does nothing
+    }
+
+    fn set_light_pen_state(&mut self, _state: bool) {
+        // Default implementation does nothing
+    }
+
+    fn light_pen_trigger(&mut self, _x: u32, _y: u32) {
+        // Default implementation does nothing
+    }
 }

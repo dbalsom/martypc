@@ -107,6 +107,7 @@ use marty_frontend_common::{
 use egui::ColorImage;
 use egui_notify::{Anchor, Toasts};
 use fluxfox::{DiskImage, DiskImageFileFormat, StandardFormat};
+use marty_common::types::ui::MouseCaptureMode;
 use serde::{Deserialize, Serialize};
 #[cfg(feature = "use_serialport")]
 use serialport::SerialPortInfo;
@@ -375,7 +376,13 @@ impl GuiState {
         let option_floats: HashMap<GuiFloat, f32> =
             [(GuiFloat::EmulationSpeed, 1.0f32), (GuiFloat::MouseSpeed, 0.5f32)].into();
 
-        let option_enums = HashMap::new();
+        let mut option_enums = HashMap::new();
+
+        let capture_option = GuiEnum::MouseCaptureMode(MouseCaptureMode::Mouse);
+        option_enums.insert(
+            (GuiVariableContext::default(), discriminant(&capture_option)),
+            capture_option,
+        );
 
         Self {
             event_queue: GuiEventQueue::new(),

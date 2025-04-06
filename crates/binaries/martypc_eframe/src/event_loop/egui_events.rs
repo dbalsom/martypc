@@ -85,6 +85,8 @@ use marty_frontend_common::timestep_manager::{TimestepManager, TimestepUpdate};
 #[cfg(not(target_arch = "wasm32"))]
 use std::thread::spawn;
 
+use marty_frontend_common::marty_common::types::ui::MouseCaptureMode;
+
 //noinspection RsBorrowChecker
 pub fn handle_egui_event(
     emu: &mut Emulator,
@@ -240,7 +242,13 @@ pub fn handle_egui_event(
                     }
                     _ => {}
                 },
-                GuiVariableContext::Global => {}
+                GuiVariableContext::Global => match op {
+                    GuiEnum::MouseCaptureMode(mode) => {
+                        log::debug!("Got mouse capture mode update event: {:?}", mode);
+                        emu.mouse_data.capture_mode = *mode;
+                    }
+                    _ => {}
+                },
                 _ => {
                     log::warn!("Unhandled enum context: {:?}", ctx);
                 }
