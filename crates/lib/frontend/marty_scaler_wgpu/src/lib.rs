@@ -36,6 +36,7 @@
 */
 
 use bytemuck::{Pod, Zeroable};
+use std::default::Default;
 
 // Reexport trait items
 pub use marty_frontend_common::color::MartyColor;
@@ -50,7 +51,7 @@ use marty_display_common::display_scaler::{
 };
 
 use ultraviolet::Mat4;
-use wgpu::{util::DeviceExt, TextureDescriptor};
+use wgpu::{util::DeviceExt, TextureDescriptor, TextureFormat::Rgba8Unorm};
 
 /// A logical texture size for a window surface.
 #[derive(Debug)]
@@ -73,22 +74,6 @@ struct CrtParamUniform {
     mono_color: [f32; 4],
 }
 
-#[repr(C)]
-#[derive(Clone, Copy, Debug, Default, bytemuck::Pod, bytemuck::Zeroable)]
-pub struct Vertex {
-    /// Logical pixel coordinates
-    /// (0,0) is the top left corner of the screen
-    pub pos: [f32; 2], // 64 bit
-
-    /// sRGBA with premultiplied alpha
-    //pub color: u32, // 32 bit
-
-    /// Normalized texture coordinates.
-    /// (0, 0) is the top left corner of the texture
-    /// (1, 1) is the bottom right corner of the texture
-    pub uv: [f32; 2],
-}
-
 impl Default for CrtParamUniform {
     fn default() -> Self {
         Self {
@@ -105,12 +90,28 @@ impl Default for CrtParamUniform {
     }
 }
 
+#[repr(C)]
+#[derive(Clone, Copy, Debug, Default, bytemuck::Pod, bytemuck::Zeroable)]
+pub struct Vertex {
+    /// Logical pixel coordinates
+    /// (0,0) is the top left corner of the screen
+    pub pos: [f32; 2], // 64 bit
+
+    /// sRGBA with premultiplied alpha
+    //pub color: u32, // 32 bit
+
+    /// Normalized texture coordinates.
+    /// (0, 0) is the top left corner of the texture
+    /// (1, 1) is the bottom right corner of the texture
+    pub uv: [f32; 2],
+}
+
 #[derive(Copy, Clone, Debug)]
 struct ScalingMatrix {
     transform: Mat4,
 }
 #[repr(C)]
-#[derive(Copy, Clone, Debug, Pod, Zeroable)]
+#[derive(Copy, Clone, Debug, Default, Pod, Zeroable)]
 struct ScalerOptionsUniform {
     mode: u32,
     hres: u32,
@@ -118,6 +119,8 @@ struct ScalerOptionsUniform {
     pad2: u32,
     crt_params: CrtParamUniform,
     fill_color: [f32; 4],
+    texture_order: u32,
+    _padding: [u32; 3], // 12 bytes to pad struct to 96 bytes
 }
 
 #[allow(dead_code)]
@@ -221,6 +224,7 @@ pub struct MartyScaler {
     effect: ScalerEffect,
     #[allow(dead_code)]
     crt_params: CrtParamUniform,
+    texture_order: u32,
 }
 
 impl MartyScaler {
@@ -495,6 +499,11 @@ impl MartyScaler {
                 a: 1.0,
             },
             crt_params: Default::default(),
+            texture_order: match texture_format {
+                wgpu::TextureFormat::Rgba8Unorm | wgpu::TextureFormat::Rgba8UnormSrgb => 0,
+                wgpu::TextureFormat::Bgra8Unorm | wgpu::TextureFormat::Bgra8UnormSrgb => 1,
+                _ => 0,
+            },
         }
     }
 
@@ -527,6 +536,8 @@ impl MartyScaler {
                 a: 0.0,
             }
             .into(),
+            texture_order: 0, // RGBA
+            ..Default::default()
         };
         bytemuck::bytes_of(&uniform_struct).to_vec()
     }
@@ -576,6 +587,8 @@ impl MartyScaler {
             pad2: 0,
             crt_params,
             fill_color: MartyColor::from(self.fill_color).into(),
+            texture_order: self.texture_order,
+            ..Default::default()
         };
 
         bytemuck::bytes_of(&uniform_struct).to_vec()
@@ -881,7 +894,7 @@ impl DisplayScaler<wgpu::Device, wgpu::Queue, wgpu::Texture> for MartyScaler {
         else if update_uniform {
             return true;
         }
-        return false;
+        false
     }
 
     /*
