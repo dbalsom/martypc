@@ -58,7 +58,7 @@ use crate::{
     device_traits::videocard::{VideoCard, VideoCardId, VideoCardInterface, VideoCardState, VideoOption},
     devices::{
         dma::DMAControllerStringState,
-        fdc::FloppyController,
+        fdc::controller::FloppyController,
         hdc::xebec::HardDiskController,
         hdc::xtide::XtIdeController,
         keyboard::KeyboardModifiers,
@@ -80,6 +80,7 @@ use crate::devices::fdc::FdcDebugState;
 use crate::devices::floppy_drive::FloppyImageState;
 
 use ringbuf::{Consumer};
+use crate::devices::hdc::jr_ide::JrIdeController;
 
 pub const STEP_OVER_TIMEOUT: u32 = 320000;
 
@@ -139,15 +140,23 @@ pub enum ExecutionState {
 
 impl ExecutionState {
     /// Can we Step from the current state?
+    #[inline]
     pub fn can_step(&self) -> bool {
         matches!(self, ExecutionState::Paused | ExecutionState::BreakpointHit | ExecutionState::StepOverHit)
     }
     /// Can we Run from the current state?
+    #[inline]
     pub fn can_run(&self) -> bool {
         matches!(self, ExecutionState::Paused | ExecutionState::BreakpointHit | ExecutionState::StepOverHit)
     }
     /// Can we Pause from the current state?
+    #[inline]
     pub fn can_pause(&self) -> bool {
+        matches!(self, ExecutionState::Running)
+    }
+    /// Are we running?
+    #[inline]
+    pub fn is_running(&self) -> bool {
         matches!(self, ExecutionState::Running)
     }
 }
@@ -487,7 +496,8 @@ pub struct Machine {
     turbo_bit: bool,
     turbo_button: bool,
     cpu_factor: ClockFactor,
-    next_cpu_factor: ClockFactor,
+    cpu_clock_period: f64,
+    next_cpu_factor: Option<ClockFactor>,
     cpu_cycles: u64,
     cpu_instructions: u64,
     system_ticks: u64,
@@ -563,7 +573,7 @@ impl Machine {
         let mut cpu;
 
         cfg_if::cfg_if! {
-            if #[cfg(feature =  "cpu_validator")] {
+            if #[cfg(feature="cpu_validator")] {
                 cpu = match CpuBuilder::new()
                     .with_cpu_type(resolved_cpu_type)
                     .with_trace_mode(trace_mode)
@@ -598,60 +608,16 @@ impl Machine {
         // Set bus options from core configuration now that CPU has created the bus
         cpu.bus_mut().set_options(core_config.get_title_hacks());
 
-        // Set up Ringbuffer for PIT channel #2 sampling for PC speaker
-        /*        
-        let speaker_buf_size = ((pit::PIT_MHZ * 1_000_000.0) * (BUFFER_MS as f64 / 1000.0)) as usize;
-        let speaker_buf: RingBuffer<u8> = RingBuffer::new(speaker_buf_size);
-        let (speaker_buf_producer, speaker_buf_consumer) = speaker_buf.split();
-
-        let mut sample_rate = 44000;
-        if let Some(sound_player) = &sound_player {
-            sample_rate = sound_player.sample_rate();
-        }
-        let pit_ticks_per_sample = (pit::PIT_MHZ * 1_000_000.0) / sample_rate as f64;
-
-        let pit_data = PitData {
-            buffer_consumer: speaker_buf_consumer,
-            ticks_per_sample: pit_ticks_per_sample,
-            samples_produced: 0,
-            log_file: pit_output_file_option,
-            logging_triggered: false,
-            fractional_part: pit_ticks_per_sample.fract(),
-            next_sample_size: pit_ticks_per_sample.trunc() as usize,
-        };
-
-        // open a file to write the sound to
-        //let mut debug_snd_file = File::create("output.pcm").expect("Couldn't open debug pcm file");
-
-        log::trace!(
-            "Sample rate: {} pit_ticks_per_sample: {}",
-            sample_rate,
-            pit_ticks_per_sample
-        );
-        
-         */
-
-        // Create the video trace file, if specified
-        //let video_trace = TraceLogger::None;
-        /*
-        if let Some(trace_filename) = &config.get_video_trace_file() {
-            video_trace = TraceLogger::from_filename(&trace_filename);
-        }
-        */
-
-        //let have_audio = core_config.get_audio_enabled() && sound_config.enabled;
-
         // Install devices
-
         cfg_if::cfg_if! {
             if #[cfg(feature = "sound")] {
                 let install_result = cpu
                     .bus_mut()
-                    .install_devices(&machine_desc, &machine_config, &sound_config, core_config.get_terminal_port());
+                    .install_devices(&machine_desc, &machine_config, &sound_config, core_config.get_terminal_port(), core_config.get_cpu_dram_refresh_simulation());
             } else {
                 let install_result = cpu
                     .bus_mut()
-                    .install_devices(&machine_desc, &machine_config, core_config.get_terminal_port());
+                    .install_devices(&machine_desc, &machine_config, core_config.get_terminal_port(), core_config.get_cpu_dram_refresh_simulation());
             }
         }
 
@@ -666,7 +632,7 @@ impl Machine {
                         sound_sources = result.sound_sources;
                     } else {
                         log::debug!("Installed devices.");
-                        { _ = &result; () }
+                        { _ = &result;  }
                     }
                 }
             }
@@ -729,7 +695,7 @@ impl Machine {
             patch_map = rom_manifest.patch_map();
         }
 
-        Ok(Machine {
+        let mut machine = Machine {
             machine_type,
             machine_desc,
             machine_config,
@@ -750,7 +716,8 @@ impl Machine {
             turbo_bit: false,
             turbo_button: false,
             cpu_factor,
-            next_cpu_factor: cpu_factor,
+            next_cpu_factor: None,
+            cpu_clock_period: 0.0,
             cpu_cycles: 0,
             cpu_instructions: 0,
             system_ticks: 0,
@@ -762,7 +729,10 @@ impl Machine {
             disassembly: Disassembly::default(),
             disassembly_listing: BTreeMap::new(),
             disassembly_listing_file,
-        })
+        };
+
+        machine.set_cpu_factor(cpu_factor);
+        Ok(machine)
     }
 
     #[cfg(feature = "sound")]
@@ -809,7 +779,7 @@ impl Machine {
                     log::debug!("Mounted rom at location {:06X}", rom.addr);
                 }
                 Err(e) => {
-                    log::debug!("Failed to mount rom at location {:06X}: {}", rom.addr, e);
+                    log::debug!("Failed to mount rom {} at location {:06X}: {}", rom.md5, rom.addr, e);
                 }
             }
         }
@@ -822,8 +792,8 @@ impl Machine {
                     log::debug!("Mounted rom at location {:06X}", rom.addr);
                 }
                 Err(e) => {
-                    log::debug!("Failed to mount rom at location {:06X}: {}", rom.addr, e);
-                    return Err(anyhow!("Failed to mount rom at location {:06X}: {}", rom.addr, e));
+                    log::debug!("Failed to mount rom {} at location {:06X}: {}", rom.md5, rom.addr, e);
+                    return Err(anyhow!("Failed to mount rom {} at location {:06X}: {}", rom.md5, rom.addr, e));
                 }
             }
         }
@@ -987,27 +957,31 @@ impl Machine {
     pub fn set_turbo_mode(&mut self, state: bool) {
         self.turbo_button = state;
         if state {
-            self.next_cpu_factor = self.machine_desc.cpu_turbo_factor;
+            self.next_cpu_factor = Some(self.machine_desc.cpu_turbo_factor);
         } else {
-            self.next_cpu_factor = self.machine_desc.cpu_factor;
+            self.next_cpu_factor = Some(self.machine_desc.cpu_factor);
         }
         log::debug!(
             "Set turbo button to: {} New cpu factor is {:?}",
             state,
-            self.next_cpu_factor
+            self.next_cpu_factor.unwrap()
         );
     }
 
-    pub fn fdc(&mut self) -> &mut Option<FloppyController> {
+    pub fn fdc(&mut self) -> &mut Option<Box<FloppyController>> {
         self.cpu.bus_mut().fdc_mut()
     }
 
-    pub fn hdc_mut(&mut self) -> &mut Option<HardDiskController> {
+    pub fn hdc_mut(&mut self) -> &mut Option<Box<HardDiskController>> {
         self.cpu.bus_mut().hdc_mut()
     }
 
-    pub fn xtide_mut(&mut self) -> &mut Option<XtIdeController> {
+    pub fn xtide_mut(&mut self) -> &mut Option<Box<XtIdeController>> {
         self.cpu.bus_mut().xtide_mut()
+    }
+
+    pub fn jride_mut(&mut self) -> &mut Option<Box<JrIdeController>> {
+        self.cpu.bus_mut().jride_mut()
     }
 
     pub fn cart_slot(&mut self) -> &mut Option<CartridgeSlot> { self.cpu.bus_mut().cart_slot_mut() }
@@ -1094,7 +1068,7 @@ impl Machine {
     }
 
     pub fn floppy_image_state(&mut self) -> Option<Vec<Option<FloppyImageState>>> {
-        self.cpu.bus_mut().fdc_mut().as_mut().and_then(|fdc| Some(fdc.get_image_state()))
+        self.cpu.bus_mut().fdc_mut().as_mut().map(|fdc| fdc.get_image_state())
     }
 
     pub fn floppy_image(&mut self, drive_idx: usize) -> (Option<Arc<RwLock<DiskImage>>>, u64) {
@@ -1223,16 +1197,20 @@ impl Machine {
         self.reload_pending = state;
     }
 
-    #[inline]
-    /// Convert a count of CPU cycles to microseconds based on the current CPU clock
-    /// divisor and system crystal speed.
-    fn cpu_cycles_to_us(&self, cycles: u32) -> f64 {
+    fn set_cpu_factor(&mut self, new_factor: ClockFactor) {
+        self.cpu_factor = new_factor;
         let mhz = match self.cpu_factor {
             ClockFactor::Divisor(n) => self.machine_desc.system_crystal / (n as f64),
             ClockFactor::Multiplier(n) => self.machine_desc.system_crystal * (n as f64),
         };
+        self.cpu_clock_period = 1.0 / mhz
+    }
 
-        1.0 / mhz * cycles as f64
+    #[inline]
+    /// Convert a count of CPU cycles to microseconds based on the current CPU clock
+    /// divisor and system crystal speed.
+    fn cpu_cycles_to_us(&self, cycles: u32) -> f64 {
+        cycles as f64 * self.cpu_clock_period
     }
 
     #[inline]
@@ -1251,7 +1229,7 @@ impl Machine {
     /// clock divisor.
     fn system_ticks_to_cpu_cycles(&self, ticks: u32) -> u32 {
         match self.cpu_factor {
-            ClockFactor::Divisor(n) => (ticks + (n as u32) - 1) / (n as u32),
+            ClockFactor::Divisor(n) => ticks.div_ceil(n as u32),
             ClockFactor::Multiplier(n) => ticks * (n as u32),
         }
     }
@@ -1270,9 +1248,10 @@ impl Machine {
         let mut instr_count = 0;
 
         // Update cpu factor.
-        let new_factor = self.next_cpu_factor;
-        self.cpu_factor = new_factor;
-        self.bus_mut().set_cpu_factor(new_factor);
+        if let Some(new_factor) = self.next_cpu_factor {
+            self.set_cpu_factor(new_factor);
+            self.bus_mut().set_cpu_factor(new_factor);
+        }
 
         // Don't run this iteration if we're pending a ROM reload
         if self.reload_pending {
@@ -1381,11 +1360,6 @@ impl Machine {
         while cycles_elapsed < cycle_target_adj {
             let fake_cycles: u32 = 7;
             let mut cpu_cycles;
-
-            // if self.cpu.is_error() {
-            //     break;
-            // }
-
             let flat_address = self.cpu.flat_ip_disassembly();
 
             // Match checkpoints. The first check is against a simple bit flag so that we do not 
@@ -1411,19 +1385,6 @@ impl Machine {
                     self.bus_mut().install_patch(&mut patch);
                     self.rom_manifest.patches[cp] = patch;
                 }
-
-                /*
-                if let Some(cp) = self.rom_manager.get_checkpoint(flat_address) {
-                    log::debug!("ROM CHECKPOINT: [{:05X}] {}", flat_address, cp);
-                }
-
-                // Check for patching checkpoint & install patches
-                if self.rom_manager.is_patch_checkpoint(flat_address) {
-                    log::debug!("ROM PATCH CHECKPOINT: [{:05X}] Installing ROM patches...", flat_address);
-                    self.rom_manager.install_patch(self.cpu.bus_mut(), flat_address);
-                }
-
-                 */
             }
 
             let mut step_over_target = None;
@@ -1486,12 +1447,6 @@ impl Machine {
             }
 
             skip_breakpoint = false;
-
-            // This is not reliable. A rotate by CL can take a long time.
-            // if cpu_cycles > 200 {
-            //     log::warn!("CPU instruction took too long! Cycles: {}", cpu_cycles);
-            // }
-
             instr_count += 1;
             cycles_elapsed += cpu_cycles;
             self.cpu_cycles += cpu_cycles as u64;
@@ -1638,12 +1593,6 @@ impl Machine {
             }
         }
 
-        // Sample the PIT channel #2 for sound
-        /*        
-        while self.speaker_buf_producer.len() >= self.pit_data.next_sample_size {
-            self.pit_buf_to_sound_buf();
-        }*/
-
         // Query interrupt line after device processing.
         let intr = self.cpu.bus_mut().pic_mut().as_ref().unwrap().query_interrupt_line();
 
@@ -1666,7 +1615,7 @@ impl Machine {
             }
         };
 
-        timer_ticks as u32 * timer_multiplier
+        timer_ticks * timer_multiplier
     }
 
     /// Called to update machine once per frame. This can be used to update the state of devices that don't require
@@ -1680,39 +1629,36 @@ impl Machine {
             spc.update();
         }
 
-        match self.machine_type {
-            MachineType::Ibm5160 => {
-                // Only do turbo if there is a ppi_turbo option.
-                if let Some(ppi_turbo) = self.machine_config.ppi_turbo {
-                    // Turbo button overrides soft-turbo.
-                    if !self.turbo_button {
-                        if let Some(ppi) = self.cpu.bus_mut().ppi_mut() {
-                            let turbo_bit = ppi_turbo == ppi.turbo_bit();
+        if self.machine_type == MachineType::Ibm5160 {
+            // Only do turbo if there is a ppi_turbo option.
+            if let Some(ppi_turbo) = self.machine_config.ppi_turbo {
+                // Turbo button overrides soft-turbo.
+                if !self.turbo_button {
+                    if let Some(ppi) = self.cpu.bus_mut().ppi_mut() {
+                        let turbo_bit = ppi_turbo == ppi.turbo_bit();
 
-                            if turbo_bit != self.turbo_bit {
-                                // Turbo bit has changed.
-                                match turbo_bit {
-                                    true => {
-                                        self.next_cpu_factor = self.machine_desc.cpu_turbo_factor;
-                                        device_events.push(DeviceEvent::TurboToggled(true));
-                                    }
-                                    false => {
-                                        self.next_cpu_factor = self.machine_desc.cpu_factor;
-                                        device_events.push(DeviceEvent::TurboToggled(false));
-                                    }
+                        if turbo_bit != self.turbo_bit {
+                            // Turbo bit has changed.
+                            match turbo_bit {
+                                true => {
+                                    self.next_cpu_factor = Some(self.machine_desc.cpu_turbo_factor);
+                                    device_events.push(DeviceEvent::TurboToggled(true));
                                 }
-                                log::debug!(
-                                    "Set turbo state to: {} New cpu factor is {:?}",
-                                    turbo_bit,
-                                    self.next_cpu_factor
-                                );
+                                false => {
+                                    self.next_cpu_factor = Some(self.machine_desc.cpu_factor);
+                                    device_events.push(DeviceEvent::TurboToggled(false));
+                                }
                             }
-                            self.turbo_bit = turbo_bit;
+                            log::debug!(
+                                "Set turbo state to: {} New cpu factor is {:?}",
+                                turbo_bit,
+                                self.next_cpu_factor
+                            );
                         }
+                        self.turbo_bit = turbo_bit;
                     }
                 }
             }
-            _ => {}
         }
 
         device_events
@@ -1802,7 +1748,7 @@ impl Machine {
         };
 
         // Attempt to open file
-        let file_opt = File::create(&filename);
+        let file_opt = File::create(filename);
         let file = match file_opt {
             Ok(f) => f,
             Err(e) => {

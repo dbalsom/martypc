@@ -45,7 +45,7 @@ pub use surface::EFrameBackendSurface;
 
 use std::sync::{Arc, RwLock};
 
-use marty_scaler_null::DisplayScaler;
+use marty_display_common::display_scaler::DisplayScaler;
 
 use anyhow::Error;
 use egui;

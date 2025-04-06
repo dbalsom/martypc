@@ -149,7 +149,7 @@ impl Intel808x {
             // instruction.
             // This of course now requires decoding each instruction twice, but cycle tracing is pretty slow
             // anyway.
-            if self.trace_mode == TraceMode::CycleText {
+            if self.trace_enabled && self.trace_mode == TraceMode::CycleText {
                 self.bus.seek(instruction_address as usize);
                 self.i = match Intel808x::decode(&mut self.bus, true) {
                     Ok(i) => i,
@@ -506,6 +506,16 @@ impl Intel808x {
         self.vregs = self.get_vregisters();
     }
 
+    #[inline]
+    #[cfg(not(feature = "cpu_validator"))]
+    pub fn validate_init(&mut self) {
+        #[cfg(feature = "cpu_collect_cycle_states")]
+        {
+            self.clear_reset_cycle_states();
+            self.vregs = self.get_vregisters();
+        }
+    }
+
     #[cfg(feature = "cpu_validator")]
     pub fn validate_begin(&mut self, instruction_address: u32) {
         let v_address = Intel808x::calc_linear_address(self.vregs.cs, self.vregs.ip);
@@ -550,7 +560,7 @@ impl Intel808x {
                 if let ExecutionResult::ExceptionError(CpuException::DivideError) = self.exec_result {
                     // In the case of a divide exception, undefined flags get pushed to the stack.
                     // So until we figure out the actual logic behind setting those undefined flags,
-                    // we can't validate writes. Also the cycle timing seems to vary a little when
+                    // we can't validate writes. Also, the cycle timing seems to vary a little when
                     // executing int0, so allow a one cycle variance.
                     v_flags |= VAL_NO_WRITES | VAL_NO_FLAGS | VAL_ALLOW_ONE;
                 }

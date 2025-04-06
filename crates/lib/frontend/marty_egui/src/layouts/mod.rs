@@ -83,6 +83,7 @@ impl MartyLayout {
     }
 
     fn key_value_layout<F: FnOnce(&mut egui::Ui)>(&self, ui: &mut egui::Ui, content: F) -> InnerResponse<()> {
+        //log::debug!("{}", format!("ml_{}", self.id_str));
         egui::Grid::new(format!("ml_{}", self.id_str))
             .num_columns(2)
             .striped(false)

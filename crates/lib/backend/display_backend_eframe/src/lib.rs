@@ -47,7 +47,7 @@ pub use display_backend_trait::{
 };
 pub use surface::EFrameBackendSurface;
 
-use marty_scaler_null::DisplayScaler;
+use marty_display_common::display_scaler::DisplayScaler;
 
 use anyhow::{anyhow, Error};
 use display_backend_trait::DisplayTargetSurface;

@@ -26,11 +26,9 @@
 */
 
 // Reexport trait items
-use marty_frontend_common::display_scaler::ScalerGeometry;
-pub use marty_frontend_common::{
-    color::MartyColor,
-    display_scaler::{DisplayScaler, ScalerEffect, ScalerFilter, ScalerMode, ScalerOption},
-};
+use marty_display_common::display_scaler::{DisplayScaler, ScalerGeometry, ScalerMode, ScalerOption};
+
+pub use marty_frontend_common::color::MartyColor;
 
 #[cfg(feature = "use_egui_backend")]
 use egui::TextureHandle;

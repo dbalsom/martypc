@@ -34,6 +34,8 @@
 */
 #![allow(dead_code)]
 
+use crate::cpu_common::instruction::InstructionWidth;
+
 /// Technically a PLA, the Group Decode ROM emits 15 signals given an 8-bit opcode for output.
 /// These signals are encoded as a bitfield.
 pub const GDR_IO: u16 = 0b0000_0000_0000_0001; // Instruction is an I/O instruction
@@ -59,7 +61,7 @@ impl GdrEntry {
     pub fn new(data: u16) -> Self {
         Self(data)
     }
-    #[inline]
+    #[inline(always)]
     pub fn get(&self) -> u16 {
         self.0
     }
@@ -74,6 +76,15 @@ impl GdrEntry {
     #[inline(always)]
     pub fn w_valid(&self) -> bool {
         self.0 & GDR_W_VALID != 0
+    }
+    #[inline(always)]
+    pub fn width(&self, opcode: u8) -> InstructionWidth {
+        if self.w_valid() && opcode & 1 != 0 {
+            InstructionWidth::Word
+        }
+        else {
+            InstructionWidth::Byte
+        }
     }
     #[inline(always)]
     pub fn d_valid(&self) -> bool {

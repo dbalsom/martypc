@@ -62,6 +62,8 @@ use path_manager::PathManager;
 use anyhow::Error;
 use regex::Regex;
 pub use tree::TreeNode as PathTreeNode;
+
+#[cfg(feature = "use_url")]
 use url::Url;
 
 pub type AsyncResourceReadResult = dyn Future<Output = Result<Vec<u8>, anyhow::Error>> + Send;
@@ -109,6 +111,7 @@ impl ResourceItem {
 
 pub struct ResourceManager {
     pub pm: PathManager,
+    #[cfg(feature = "use_url")]
     pub base_url: Option<Url>,
     pub ignore_dirs: Vec<String>,
     pub overlays: Vec<ArchiveOverlay<std::io::Cursor<Vec<u8>>>>,
@@ -120,6 +123,7 @@ impl ResourceManager {
     pub fn new(base_path: PathBuf) -> Self {
         Self {
             pm: PathManager::new(base_path),
+            #[cfg(feature = "use_url")]
             base_url: None,
             ignore_dirs: Vec::new(),
             overlays: Vec::new(),
@@ -128,6 +132,7 @@ impl ResourceManager {
         }
     }
 
+    #[cfg(feature = "use_url")]
     pub fn set_base_url(&mut self, base_url: &Url) {
         self.base_url = Some(base_url.clone());
     }

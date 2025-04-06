@@ -124,15 +124,14 @@ impl Intel808x {
     }
 
     pub fn emit_header(&mut self) {
-        match self.trace_mode {
-            TraceMode::CycleSigrok => self.trace_print(AnalyzerEntry::emit_header()),
-            _ => {}
+        if self.trace_mode == TraceMode::CycleSigrok {
+            self.trace_print(AnalyzerEntry::emit_header())
         }
     }
 
     pub fn push_analyzer_entry(&mut self) {
         if self.analyzer.need_flush() {
-            log::debug!("Emitting {} analyzer entries", self.analyzer.entries.len());
+            //log::debug!("Emitting {} analyzer entries", self.analyzer.entries.len());
             self.emit_analyzer_entries();
             //self.analyzer.flush();
         }
@@ -318,12 +317,13 @@ impl Intel808x {
         let is_reading = self.i8288.mrdc | self.i8288.iorc;
         let is_writing = self.i8288.mwtc | self.i8288.iowc;
 
+        let data_w: usize = self.bus_width.fmt_width();
         let mut xfer_str = "      ".to_string();
         if is_reading {
-            xfer_str = format!("<-r {:02X}", self.data_bus);
+            xfer_str = format!("<-r {:0data_w$X}", self.data_bus);
         }
         else if is_writing {
-            xfer_str = format!("w-> {:02X}", self.data_bus);
+            xfer_str = format!("w-> {:0data_w$X}", self.data_bus);
         }
 
         // Handle queue activity
@@ -394,9 +394,11 @@ impl Intel808x {
 
         let (slot0bus, slot0t, slot1bus, slot1t) = self.get_pl_slot_strings();
 
+        let xfer_size = 4 + data_w;
+        let queue_size = self.queue.size() * 2;
         if short {
             cycle_str = format!(
-                "{:04} {:02}[{:05X}] {:02} {}{} M:{}{}{} I:{}{}{} |{:5}| {:04} {:02} | {:06} | {:<14}| {:1}{:1}{:1}[{:08}] {} | {:03} | {}",
+                "{:04} {:02}[{:05X}] {:02} {}{} M:{}{}{} I:{}{}{} |{:5}| {:04} {:02} | {:0xfer_size$} | {:<14}| {:1}{:1}{:1}[{:queue_size$}] {} | {:03} | {}",
                 self.instr_cycle,
                 ale_str,
                 self.address_latch,
@@ -420,7 +422,7 @@ impl Intel808x {
         }
         else {
             cycle_str = format!(
-                "{:08}:{:04} {:02}[{:05X}] {:02} {}{}{} M:{}{}{} I:{}{}{} |{:5}| {:04} {:02} | {:04} {:02} {:04} {:02} | {:06} | {:<8}| {:<10} | {:1}{:1}{:1}[{:08}] {} | {}: {} | {}",
+                "{:08}:{:04} {:02}[{:05X}] {:02} {}{}{} M:{}{}{} I:{}{}{} |{:5}| {:04} {:02} | {:04} {:02} {:04} {:02} | {:0xfer_size$} | {:<8}| {:<10} | {:1}{:1}{:1}[{:queue_size$}] {} | {}: {} | {}",
                 self.cycle_num,
                 self.instr_cycle,
                 ale_str,

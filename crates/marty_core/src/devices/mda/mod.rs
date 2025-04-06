@@ -163,7 +163,7 @@ const STATUS_VIDEO: u8 = 0b0000_1000;
 // Hercules only
 const STATUS_NO_VRETRACE: u8 = 0b1000_0000;
 
-const MDA_FONT: &'static [u8] = include_bytes!("../../../assets/mda_8by14.bin");
+const MDA_FONT: &[u8] = include_bytes!("../../../assets/mda_8by14.bin");
 const MDA_FONT_SPAN: usize = 256; // Font bitmap is 2048 bits wide (256 * 8 characters)
 
 const MDA_CHAR_CLOCK: u8 = 9;
@@ -313,10 +313,10 @@ const MDA_APERTURES: [DisplayAperture; 4] = [
     },
 ];
 
-const CROPPED_STRING: &str = &formatcp!("Cropped: {}x{}", MDA_APERTURE_CROPPED_W, MDA_APERTURE_CROPPED_H);
-const ACCURATE_STRING: &str = &formatcp!("Accurate: {}x{}", MDA_APERTURE_NORMAL_W, MDA_APERTURE_NORMAL_H);
-const FULL_STRING: &str = &formatcp!("Full: {}x{}", MDA_APERTURE_FULL_W, MDA_APERTURE_FULL_H);
-const DEBUG_STRING: &str = &formatcp!("Debug: {}x{}", MDA_APERTURE_DEBUG_W, MDA_APERTURE_DEBUG_H);
+const CROPPED_STRING: &str = formatcp!("Cropped: {}x{}", MDA_APERTURE_CROPPED_W, MDA_APERTURE_CROPPED_H);
+const ACCURATE_STRING: &str = formatcp!("Accurate: {}x{}", MDA_APERTURE_NORMAL_W, MDA_APERTURE_NORMAL_H);
+const FULL_STRING: &str = formatcp!("Full: {}x{}", MDA_APERTURE_FULL_W, MDA_APERTURE_FULL_H);
+const DEBUG_STRING: &str = formatcp!("Debug: {}x{}", MDA_APERTURE_DEBUG_W, MDA_APERTURE_DEBUG_H);
 
 const MDA_APERTURE_DESCS: [DisplayApertureDesc; 4] = [
     DisplayApertureDesc {
@@ -714,7 +714,7 @@ impl MDACard {
     fn reset_private(&mut self) {
         let trace_logger = std::mem::replace(&mut self.trace_logger, TraceLogger::None);
         let hblank_fn = std::mem::replace(&mut self.hblank_fn, Box::new(|| 10));
-        let lpt = std::mem::replace(&mut self.lpt, None);
+        let lpt = self.lpt.take();
 
         // Save non-default values
         *self = Self {
@@ -779,7 +779,7 @@ impl MDACard {
                 self.tick_hchar();
 
                 // Tick any remaining cycles
-                for _ in 0..(ticks - phase_offset - self.char_clock as u32) {
+                for _ in 0..(ticks - phase_offset - self.char_clock) {
                     self.tick();
                 }
             }
@@ -827,7 +827,7 @@ impl MDACard {
     }
 
     fn set_lp_latch(&mut self) {
-        if self.lightpen_latch == false {
+        if !self.lightpen_latch {
             // Low to high transition of light pen latch, set latch addr.
             log::debug!("Updating lightpen latch address");
             self.lightpen_addr = self.vma;
@@ -1003,8 +1003,8 @@ impl MDACard {
 
         // Calculate byte offset
         let glyph_offset: usize = (row_masked as usize * MDA_FONT_SPAN) + glyph as usize;
-        let pixel = (MDA_FONT[glyph_offset] & (0x80 >> col)) != 0;
-        pixel
+        
+        (MDA_FONT[glyph_offset] & (0x80 >> col)) != 0
     }
 
     /// Fetch the character and attribute for the specified CRTC address.
@@ -1137,7 +1137,7 @@ impl MDACard {
         }
 
         // Update position to next pixel and character column.
-        self.beam_x += self.char_clock as u32;
+        self.beam_x += self.char_clock;
         self.rba += self.char_clock as usize;
 
         // If we have reached the right edge of the 'monitor', return the raster position

@@ -13,9 +13,8 @@ crate-type = ["lib"]
 [dependencies]
 marty_common = { path = "../../../marty_common" }
 marty_web_helpers = { path = "../marty_web_helpers" }
-#display_manager_wgpu = { path = "../../frontend/display_manager_wgpu", optional = true }
-display_backend_trait = { path = "../../backend/display_backend_trait" }
-marty_videocard_renderer = { path = "../marty_videocard_renderer" }
+
+marty_videocard_renderer = { path = "../marty_videocard_renderer", optional = true }
 marty_core = { path = "../../../marty_core", default-features = false }
 fluxfox = { workspace = true, default-features = false }
 anyhow.workspace = true
@@ -28,7 +27,6 @@ toml = "0.8"
 web-time.workspace = true
 strum.workspace = true
 strum_macros.workspace = true
-ringbuf = "0.3.3"
 crossbeam-channel.workspace = true
 pollster = "0.4"
 
@@ -53,10 +51,10 @@ default-features = false
 features = ["chrono", "std", "alloc"]
 
 [features]
-default = ["use_url", "use_egui", "use_display"]
+default = []
 ega = []
 vga = []
 use_url = ["dep:url"]
-use_wgpu = ["dep:wgpu", "display_backend_trait/use_wgpu"]
-use_egui = ["dep:egui"]
+use_wgpu = ["dep:wgpu", "dep:marty_videocard_renderer"]
+use_egui = ["dep:egui", "dep:marty_videocard_renderer"]
 use_display = []

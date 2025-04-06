@@ -46,19 +46,12 @@ pub enum ListingEntry {
     },
 }
 
+#[derive(Default)]
 pub struct CPUDebugServices {
     pub listing_filename: Option<PathBuf>,
     pub listing: BTreeMap<(u16, u16), ListingEntry>,
 }
 
-impl Default for CPUDebugServices {
-    fn default() -> Self {
-        CPUDebugServices {
-            listing_filename: None,
-            listing: BTreeMap::new(),
-        }
-    }
-}
 
 impl CPUDebugServices {
     pub fn new(listing_path: Option<PathBuf>) -> Self {

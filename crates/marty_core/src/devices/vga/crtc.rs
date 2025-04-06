@@ -1033,7 +1033,7 @@ impl VgaCrtc {
                 // Set vma to starting position for next character row
                 // TODO: Offset is multiplied by 2 in byte mode, by 4 in word mode
 
-                self.vma_sl = self.vma_sl + self.crtc_offset as u16 * 2;
+                self.vma_sl += self.crtc_offset as u16 * 2;
                 self.vma = self.vma_sl;
 
                 // Load next char + attr
@@ -1200,14 +1200,12 @@ impl VgaCrtc {
             }
         }
 
-        if self.status.vsync {
-            if (self.slc & EGA_VSYNC_MASK) == self.crtc_vertical_retrace_end.vertical_retrace_end() as u16 {
-                // We are leaving vsync period, generate a frame
-                self.status.begin_vsync = true;
-                self.status.vsync = false;
-                self.monitor_vsync = false;
-                return;
-            }
+        if self.status.vsync && (self.slc & EGA_VSYNC_MASK) == self.crtc_vertical_retrace_end.vertical_retrace_end() as u16 {
+            // We are leaving vsync period, generate a frame
+            self.status.begin_vsync = true;
+            self.status.vsync = false;
+            self.monitor_vsync = false;
+            return;
         }
 
         // Restrict HSLC to 9-bit range.

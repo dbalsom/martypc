@@ -27,7 +27,7 @@
 
 use crate::{state::GuiState, GuiEnum, GuiEvent, GuiVariable, GuiVariableContext, GuiWindow};
 use marty_core::device_traits::videocard::VideoType;
-use marty_frontend_common::display_manager::{DisplayTargetType, DtHandle};
+use marty_display_common::display_manager::{DisplayTargetType, DtHandle};
 
 use strum::IntoEnumIterator;
 
@@ -172,7 +172,10 @@ impl GuiState {
         }
 
         // CGA-specific options.
-        if matches!(self.display_info[usize::from(display)].vtype, Some(VideoType::CGA)) {
+        if matches!(
+            self.display_info[usize::from(display)].vtype,
+            Some(VideoType::CGA) | Some(VideoType::TGA)
+        ) {
             let mut state_changed = false;
             let mut new_state = false;
 

@@ -153,7 +153,7 @@ pub const EGA_8BIT_TABLE: [u64; 256] = {
 
 /// Constant initializer to unpack all possible 8 bit patterns
 /// in all 16 possible colors into 64 bit values for fast drawing.
-pub const EGA_HIRES_GFX_TABLE: [[u64; 256]; 16] = {
+pub static EGA_HIRES_GFX_TABLE: [[u64; 256]; 16] = {
     let mut table: [[u64; 256]; 16] = [[0; 256]; 16];
     let mut glyph;
     let mut color: usize = 0;

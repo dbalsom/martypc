@@ -75,7 +75,7 @@ pub enum VirtualHardDiskError {
 impl Error for VirtualHardDiskError {}
 impl Display for VirtualHardDiskError {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        match &*self {
+        match self {
             VirtualHardDiskError::FileExists => write!(
                 f,
                 "Creation of VHD failed as the file already exists (Will not overwrite)."
@@ -288,12 +288,12 @@ impl VHDFileFooter {
     fn calculate_footer_checksum(buf: &[u8]) -> u32 {
         let mut sum: u32 = 0;
 
-        for i in 0..VHD_CHECKSUM_OFFSET {
-            sum += buf[i] as u32;
+        for byte in buf.iter().take(VHD_CHECKSUM_OFFSET) {
+            sum += *byte as u32;
         }
         // Skip checksum field
-        for i in (VHD_CHECKSUM_OFFSET + 4)..VHD_FOOTER_LEN {
-            sum += buf[i] as u32;
+        for byte in buf.iter().take(VHD_FOOTER_LEN).skip(VHD_CHECKSUM_OFFSET + 4) {
+            sum += *byte as u32;
         }
 
         // Return one's compliment of sum
@@ -321,7 +321,7 @@ impl VirtualHardDisk {
         // Read in the entire footer
         vhd_file.read_exact(&mut trailer_buf)?;
 
-        let footer = VHDFileFooter::parse_vhd_footer(&mut trailer_buf)?;
+        let footer = VHDFileFooter::parse_vhd_footer(&trailer_buf)?;
 
         Ok(VirtualHardDisk {
             vhd_file,
@@ -366,7 +366,7 @@ impl VirtualHardDisk {
             // Read requested past last sector in file
             bail!(VirtualHardDiskError::InvalidSeek);
         }
-        self.vhd_file.seek(SeekFrom::Start(read_offset as u64))?;
+        self.vhd_file.seek(SeekFrom::Start(read_offset))?;
         self.vhd_file.read_exact(buf)?;
 
         //log::debug!("Read sector from VHD at offset: {} read buf: {:X?}", read_offset, buf);
@@ -416,7 +416,7 @@ pub fn create_vhd(filename: OsString, c: u16, h: u8, s: u8) -> Result<File, anyh
     let n_sectors = c as u32 * h as u32 * s as u32;
 
     for _ in 0..n_sectors {
-        vhd_file.write(&write_buf)?;
+        vhd_file.write_all(&write_buf)?;
     }
 
     let footer = VHDFileFooter::new(c, h, s, uuid);
@@ -424,7 +424,7 @@ pub fn create_vhd(filename: OsString, c: u16, h: u8, s: u8) -> Result<File, anyh
     // Since the length of a VHD footer == a sector size, re-use sector buf
     VHDFileFooter::make_vhd_footer_bytes(&mut write_buf, footer);
 
-    vhd_file.write(&write_buf)?;
+    vhd_file.write_all(&write_buf)?;
 
     Ok(vhd_file)
 }

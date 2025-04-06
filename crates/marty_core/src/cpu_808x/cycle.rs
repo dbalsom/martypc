@@ -34,27 +34,6 @@
 
 use crate::{cpu_808x::*, cpu_common::QueueOp};
 
-#[cfg(feature = "cpu_validator")]
-use crate::cpu_validator::{BusType, ReadType};
-
-macro_rules! validate_read_u8 {
-    ($myself: expr, $addr: expr, $data: expr, $btype: expr, $rtype: expr) => {{
-        #[cfg(feature = "cpu_validator")]
-        if let Some(ref mut validator) = &mut $myself.validator {
-            validator.emu_read_byte($addr, $data, $btype, $rtype)
-        }
-    }};
-}
-
-macro_rules! validate_write_u8 {
-    ($myself: expr, $addr: expr, $data: expr, $btype: expr) => {{
-        #[cfg(feature = "cpu_validator")]
-        if let Some(ref mut validator) = &mut $myself.validator {
-            validator.emu_write_byte($addr, $data, $btype)
-        }
-    }};
-}
-
 impl Intel808x {
     #[inline(always)]
     pub fn set_mc_pc(&mut self, instr: u16) {
@@ -104,10 +83,18 @@ impl Intel808x {
         match self.bus_status_latch {
             BusStatus::Passive => {
                 self.transfer_n = 0;
-                if let FetchState::Delayed(0) = self.fetch_state {
-                    self.fetch_state = FetchState::Normal;
-                    self.trace_comment("END_DELAY");
-                    self.biu_make_fetch_decision();
+                match self.fetch_state {
+                    FetchState::Delayed(0) => {
+                        self.fetch_state = FetchState::Normal;
+                        self.trace_comment("END_DELAY");
+                        self.biu_make_fetch_decision();
+                    }
+                    FetchState::PausedFull => {
+                        if self.queue.has_room_for_fetch() {
+                            self.biu_make_fetch_decision();
+                        }
+                    }
+                    _ => {}
                 }
             }
             BusStatus::MemRead
@@ -174,7 +161,10 @@ impl Intel808x {
                                 self.io_wait_states = 1;
                             }
                             BusStatus::IoWrite => {
-                                self.io_wait_states = 1;
+                                //self.io_wait_states = 1;
+                                self.io_wait_states = self
+                                    .bus
+                                    .io_write_wait((self.address_latch & 0xFFFF) as u16, self.instr_elapsed);
                             }
                             _ => {}
                         }
@@ -183,9 +173,6 @@ impl Intel808x {
                             //trace_print!(self, "Suppressing wait states!");
                             self.io_wait_states = 0;
                             self.bus_wait_states = 0;
-                        }
-                        else if self.have_wait_states() {
-                            self.ready = false;
                         }
 
                         // A prefetch decision is made at the end of T2 of the last bus cycle of an atomic
@@ -197,21 +184,25 @@ impl Intel808x {
                     TCycle::T3 => {
                         if self.is_last_wait_t3tw() {
                             // Do bus transfer on T3 if no wait states.
-                            self.do_bus_transfer();
+                            self.biu_do_bus_transfer();
                             self.ready = true;
                         }
                     }
                     TCycle::Tw => {
                         if self.is_last_wait_t3tw() {
-                            self.do_bus_transfer();
+                            self.biu_do_bus_transfer();
                             self.ready = true;
                         }
                     }
                     TCycle::T4 => {
                         // If we just completed a code fetch, make the byte available in the queue.
                         if let BusStatus::CodeFetch = self.bus_status_latch {
-                            self.queue.push8(self.data_bus as u8);
-                            self.pc = self.pc.wrapping_add(1);
+                            match self.bus_width {
+                                BusWidth::Byte => {
+                                    self.pc = self.pc.wrapping_add(self.queue.push8(self.data_bus as u8));
+                                }
+                                BusWidth::Word => self.pc = self.pc.wrapping_add(self.queue.push16(self.data_bus)),
+                            }
                         }
 
                         if self.final_transfer {
@@ -230,7 +221,7 @@ impl Intel808x {
             self.do_cycle_trace();
         }
 
-        #[cfg(feature = "cpu_validator")]
+        #[cfg(any(feature = "cpu_validator", feature = "cpu_collect_cycle_states"))]
         {
             let cycle_state = self.get_cycle_state();
             self.cycle_states.push(cycle_state);
@@ -266,7 +257,7 @@ impl Intel808x {
                         if matches!(self.t_cycle, TCycle::Ti | TCycle::T4)
                             && !matches!(self.fetch_state, FetchState::Suspended | FetchState::Halted)
                         {
-                            self.biu_fetch_bus_begin();
+                            self.biu_bus_begin_fetch();
                             TaCycle::Td
                         }
                         else {
@@ -338,7 +329,12 @@ impl Intel808x {
                     _ => TCycle::T2,
                 }
             }
-            TCycle::T2 => TCycle::T3,
+            TCycle::T2 => {
+                if self.have_wait_states() {
+                    self.ready = false;
+                }
+                TCycle::T3
+            }
             TCycle::Tw | TCycle::T3 => {
                 // If no wait states have been reported, advance to T3, otherwise go to Tw
                 if self.have_wait_states() {
@@ -348,10 +344,10 @@ impl Intel808x {
                     // Only drain IO wait states when DMA is not active. When DMA is on, the 8288
                     // outputs are suppressed. This means that IO and DMA wait states cannot overlap -
                     // an IO device would gain no benefit from the wait state it can't see or detect
-                    // if self.dma_wait_states == 0 {
-                    //     self.io_wait_states = self.io_wait_states.saturating_sub(1);
-                    // }
-                    self.io_wait_states = self.io_wait_states.saturating_sub(1);
+                    if self.dma_wait_states == 0 {
+                        self.io_wait_states = self.io_wait_states.saturating_sub(1);
+                    }
+                    //self.io_wait_states = self.io_wait_states.saturating_sub(1);
 
                     TCycle::Tw
                 }
@@ -427,10 +423,7 @@ impl Intel808x {
                 // indicates PASV or HALT and !LOCK. (1,1) (Note, bus goes PASV after T2)
 
                 if (self.bus_status == BusStatus::Passive)
-                    || match self.t_cycle {
-                        TCycle::T3 | TCycle::Tw | TCycle::T4 => true,
-                        _ => false,
-                    }
+                    || matches!(self.t_cycle, TCycle::T3 | TCycle::Tw | TCycle::T4)
                 {
                     // S0 & S1 are idle. Issue hold acknowledge if LOCK not asserted.
                     if !self.lock {
@@ -442,7 +435,8 @@ impl Intel808x {
             DmaState::HoldA => {
                 // DMA Hold Acknowledge has been issued. DMA controller will enter S1
                 // on next cycle, if no bus wait states are present.
-                if self.bus_wait_states == 0 && self.io_wait_states == 0 {
+                if self.bus_wait_states < 2 && self.io_wait_states < 2 {
+                    //if self.bus_wait_states < 2 {
                     self.dma_state = DmaState::Operating(0);
                     self.dma_aen = true;
                 }
@@ -450,7 +444,7 @@ impl Intel808x {
             DmaState::Operating(cycles) => {
                 // the DMA controller has control of the bus now.
                 // Run DMA transfer cycles.
-                *cycles = *cycles + 1;
+                *cycles += 1;
                 match *cycles {
                     1 => {
                         // DMAWAIT asserted after S1
@@ -476,131 +470,9 @@ impl Intel808x {
             }
             DmaState::End => {
                 // DMA transfer has completed. Deassert DACK and reset state to idle.
-
                 self.dma_state = DmaState::Idle;
             }
         }
-    }
-
-    pub fn do_bus_transfer(&mut self) {
-        let byte;
-
-        match (self.bus_status_latch, self.transfer_size) {
-            (BusStatus::CodeFetch, TransferSize::Byte) => {
-                (byte, _) = self
-                    .bus
-                    .read_u8(self.address_latch as usize, self.instr_elapsed)
-                    .unwrap();
-                self.data_bus = byte as u16;
-
-                validate_read_u8!(
-                    self,
-                    self.address_latch,
-                    (self.data_bus & 0x00FF) as u8,
-                    BusType::Mem,
-                    ReadType::Code
-                );
-            }
-            (BusStatus::CodeFetch, TransferSize::Word) => {
-                (self.data_bus, _) = self
-                    .bus
-                    .read_u16(self.address_latch as usize, self.instr_elapsed)
-                    .unwrap();
-            }
-            (BusStatus::MemRead, TransferSize::Byte) => {
-                (byte, _) = self
-                    .bus
-                    .read_u8(self.address_latch as usize, self.instr_elapsed)
-                    .unwrap();
-                self.instr_elapsed = 0;
-                self.data_bus = byte as u16;
-
-                validate_read_u8!(
-                    self,
-                    self.address_latch,
-                    (self.data_bus & 0x00FF) as u8,
-                    BusType::Mem,
-                    ReadType::Data
-                );
-            }
-            (BusStatus::MemRead, TransferSize::Word) => {
-                (self.data_bus, _) = self
-                    .bus
-                    .read_u16(self.address_latch as usize, self.instr_elapsed)
-                    .unwrap();
-                self.instr_elapsed = 0;
-            }
-            (BusStatus::MemWrite, TransferSize::Byte) => {
-                self.i8288.mwtc = true;
-                _ = self
-                    .bus
-                    .write_u8(
-                        self.address_latch as usize,
-                        (self.data_bus & 0x00FF) as u8,
-                        self.instr_elapsed,
-                    )
-                    .unwrap();
-                self.instr_elapsed = 0;
-
-                validate_write_u8!(self, self.address_latch, (self.data_bus & 0x00FF) as u8, BusType::Mem);
-            }
-            (BusStatus::MemWrite, TransferSize::Word) => {
-                self.i8288.mwtc = true;
-                _ = self
-                    .bus
-                    .write_u16(self.address_latch as usize, self.data_bus, self.instr_elapsed)
-                    .unwrap();
-                self.instr_elapsed = 0;
-            }
-            (BusStatus::IoRead, TransferSize::Byte) => {
-                self.i8288.iorc = true;
-                byte = self
-                    .bus
-                    .io_read_u8((self.address_latch & 0xFFFF) as u16, self.instr_elapsed);
-                self.data_bus = byte as u16;
-                self.instr_elapsed = 0;
-
-                validate_read_u8!(
-                    self,
-                    self.address_latch,
-                    (self.data_bus & 0x00FF) as u8,
-                    BusType::Io,
-                    ReadType::Data
-                );
-            }
-            (BusStatus::IoWrite, TransferSize::Byte) => {
-                self.i8288.iowc = true;
-                self.bus.io_write_u8(
-                    (self.address_latch & 0xFFFF) as u16,
-                    (self.data_bus & 0x00FF) as u8,
-                    self.instr_elapsed,
-                    Some(&mut self.analyzer),
-                );
-                self.instr_elapsed = 0;
-
-                validate_write_u8!(self, self.address_latch, (self.data_bus & 0x00FF) as u8, BusType::Io);
-            }
-            (BusStatus::InterruptAck, TransferSize::Byte) => {
-                // The vector is read from the PIC directly before we even enter an INTA bus state, so there's
-                // nothing to do.
-
-                //log::debug!("in INTA transfer_n: {}", self.transfer_n);
-                // Deassert lock
-                if self.transfer_n == 2 {
-                    //log::debug!("deasserting lock! transfer_n: {}", self.transfer_n);
-                    self.lock = false;
-                    self.intr = false;
-                }
-                //self.transfer_n += 1;
-            }
-            _ => {
-                trace_print!(self, "Unhandled bus state!");
-                log::warn!("Unhandled bus status: {:?}!", self.bus_status_latch);
-            }
-        }
-
-        self.bus_status = BusStatus::Passive;
-        self.address_bus = (self.address_bus & !0xFF) | (self.data_bus as u32);
     }
 
     #[inline]
@@ -613,12 +485,12 @@ impl Intel808x {
     #[inline]
     pub fn cycles_i(&mut self, ct: u32, instrs: &[u16]) {
         assert!(ct as usize <= instrs.len());
-        for i in 0..ct as usize {
-            self.cycle_i(instrs[i]);
+        for mc_i in instrs.iter().take(ct as usize) {
+            self.cycle_i(*mc_i);
         }
     }
 
-    #[cfg(feature = "cpu_validator")]
+    #[cfg(any(feature = "cpu_validator", feature = "cpu_collect_cycle_states"))]
     pub fn get_cycle_states_internal(&self) -> &Vec<CycleState> {
         &self.cycle_states
     }

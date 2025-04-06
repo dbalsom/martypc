@@ -143,6 +143,7 @@ pub struct PixelCanvas {
     current_palette: PixelCanvasPalette,
 
     palettes: Vec<Vec<PixelCanvasPalette>>,
+    old_texture: Option<TextureHandle>,
     texture: Option<TextureHandle>,
     image_data: ImageData,
     texture_opts: TextureOptions,
@@ -171,6 +172,7 @@ impl Default for PixelCanvas {
                 colors: vec![Color32::from_rgb(0, 0, 0), Color32::from_rgb(255, 255, 255)],
             },
             palettes: Vec::new(),
+            old_texture: None,
             texture: None,
             image_data: PixelCanvas::create_default_imagedata((DEFAULT_WIDTH, DEFAULT_HEIGHT)),
             texture_opts: TextureOptions {
@@ -257,7 +259,12 @@ impl PixelCanvas {
             self.texture = Some(self.create_texture());
         }
 
-        if let Some(texture) = &self.texture {
+        let texture_opt_ref = match self.data_unpacked {
+            true => self.texture.as_ref(),
+            false => self.old_texture.as_ref(),
+        };
+
+        if let Some(texture) = texture_opt_ref {
             ui.vertical(|ui| {
                 // Draw background rect
                 //ui.painter().rect_filled(ui.max_rect(), egui::Rounding::default(), egui::Color32::BLACK);
@@ -364,6 +371,7 @@ impl PixelCanvas {
         self.data_buf = vec![0; PixelCanvas::calc_slice_size(dims, self.bpp, font)];
         self.backing_buf = vec![Color32::BLACK; (dims.0 * dims.1) as usize];
 
+        self.old_texture = self.texture.take();
         self.texture = Some(self.create_texture());
         self.data_unpacked = false;
     }

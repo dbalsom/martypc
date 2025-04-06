@@ -191,7 +191,7 @@ impl VideoCard for MDACard {
 
     /// Return the 16-bit value computed from the CRTC's pair of Page Address registers.
     fn get_start_address(&self) -> u16 {
-        return self.crtc.start_address();
+        self.crtc.start_address()
     }
 
     fn get_cursor_info(&self) -> CursorInfo {
@@ -337,7 +337,7 @@ impl VideoCard for MDACard {
         map
     }
 
-    fn run(&mut self, time: DeviceRunTimeUnit, _pic: &mut Option<Pic>, _cpumem: Option<&[u8]>) {
+    fn run(&mut self, time: DeviceRunTimeUnit, _pic: &mut Option<Box<Pic>>, _cpumem: Option<&[u8]>) {
         /*
         if self.scanline > 1000 {
             log::error!("run(): scanlines way too high: {}", self.scanline);
@@ -478,7 +478,7 @@ impl VideoCard for MDACard {
         let mut filename = path.to_path_buf();
         filename.push("mda_mem.bin");
 
-        match std::fs::write(filename.clone(), &*self.mem) {
+        match std::fs::write(filename.clone(), *self.mem) {
             Ok(_) => {
                 log::debug!("Wrote memory dump: {}", filename.display())
             }
@@ -506,7 +506,7 @@ impl VideoCard for MDACard {
         for _ in 0..rows {
             let mut line = String::new();
             line.extend(
-                self.mem[row_addr..(row_addr + (columns * 2) & 0x1fff)]
+                self.mem[row_addr..((row_addr + (columns * 2)) & 0x1fff)]
                     .iter()
                     .step_by(2)
                     .filter_map(|&byte| {
@@ -515,7 +515,7 @@ impl VideoCard for MDACard {
                             0x80..=0xFF => 0x20,
                             _ => byte,
                         };
-                        Some(ascii_byte as u8 as char)
+                        Some(ascii_byte as char)
                     }),
             );
             row_addr += columns * 2;

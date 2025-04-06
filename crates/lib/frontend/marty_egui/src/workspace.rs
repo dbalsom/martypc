@@ -215,6 +215,9 @@ impl GuiState {
                 GuiWindow::FloppyViewer => {
                     self.floppy_viewer.draw(ui, &mut self.event_queue);
                 }
+                GuiWindow::SnViewer => {
+                    self.sn_viewer.show(ui, &mut self.event_queue);
+                }
             });
 
             match inner_response_opt {

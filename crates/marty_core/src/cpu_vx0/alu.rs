@@ -36,40 +36,6 @@ use crate::{
     cpu_vx0::*,
 };
 
-/// The ALU operation specifier 'Xi' determines the ALU operation by decoding 5 bits from the group
-/// decode rom, opcode, and optionally modrm. We don't bother decoding Xi. Instead, Xi is stored
-/// in the precalculated decode table.
-#[derive(Copy, Clone, Debug)]
-pub enum Xi {
-    ADD,
-    ADC,
-    OR,
-    SBB,
-    SUB,
-    CMP,
-    AND,
-    XOR,
-    ROL,
-    ROR,
-    RCL,
-    RCR,
-    SHL,
-    SHR,
-    SETMO,
-    SAR,
-    PASS,
-    DAA,
-    DAS,
-    AAA,
-    AAS,
-    INC,
-    DEC,
-    NOT,
-    NEG,
-    INC2,
-    DEC2,
-}
-
 //use num_traits::PrimInt;
 
 impl NecVx0 {

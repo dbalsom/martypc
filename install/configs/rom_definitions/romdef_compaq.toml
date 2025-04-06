@@ -1,0 +1,35 @@
+# romdef_compaq.toml
+# ROM definition file for MartyPC.
+
+# ----------------------------------------------------------------------------
+# ROM definitions for Compaq
+# ----------------------------------------------------------------------------
+[[romset]]
+alias = "compaq_portable_revb"
+desc = "Compaq Portable Rev B"
+priority = 0
+provides = ["bios", "compaq_portable"]
+oem_for = ["compaq_portable"]
+rom = [
+    { md5 = "f92174c12a0ed95c1e29cd0a488a6080", addr = 0xFE000, size = 8192, chip = "100298" },
+]
+
+[[romset]]
+alias = "compaq_portable_revf"
+desc = "Compaq Portable Rev F"
+priority = 1
+provides = ["bios", "compaq_portable", "expansion"]
+oem_for = ["compaq_portable"]
+rom = [
+    { md5 = "a830e37bb3df05687dd0884724110b99", addr = 0xFE000, size = 8192, chip = "100298" },
+]
+
+[[romset]]
+alias = "compaq_deskpro"
+desc = "Compaq Deskpro"
+priority = 0
+provides = ["bios", "compaq_deskpro", "expansion"]
+oem_for = ["compaq_deskpro"]
+rom = [
+    { md5 = "44d797c85e69bc2704d21bda4a665a33", addr = 0xFE000, size = 8192, chip = "106265" },
+]

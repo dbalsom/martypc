@@ -23,40 +23,56 @@
     DEALINGS IN THE SOFTWARE.
 
     ---------------------------------------------------------------------------
-
-    cpu_808x::stack.rs
-
-    Implements stack-oriented routines such as push and pop.
-
 */
 
-use crate::{
-    cpu_808x::{biu::*, *},
-    cpu_common::Segment,
-};
+//! This module implements stack-oriented routines such as push and pop.
+
+use crate::{cpu_808x::*, cpu_common::Segment};
 
 impl Intel808x {
-    pub fn push_u8(&mut self, data: u8, flag: ReadWriteFlag) {
+    /// This is a width-agnostic version of push.
+    /// Normally, it will push a 16-bit value onto the stack.
+    /// However, if the operand size is 8-bit, it will push an 8-bit value onto the stack.
+    /// (The stack pointer is still decremented by 2)
+    /// This only happens during invalid FE opcode forms. Otherwise, you should use push_u16.
+    pub fn push_sized(&mut self, data: u16) {
         // Stack pointer grows downwards
         self.sp = self.sp.wrapping_sub(2);
-        self.biu_write_u8(Segment::SS, self.sp, data, flag);
+        match self.i.width {
+            InstructionWidth::Word => {
+                self.biu_write_u16(Segment::SS, self.sp, data);
+            }
+            InstructionWidth::Byte => {
+                // Weird stuff happens here!
+                self.biu_write_u8(Segment::SS, self.sp, data as u8);
+            }
+        }
     }
 
-    pub fn push_u16(&mut self, data: u16, flag: ReadWriteFlag) {
+    // Delete me
+    pub fn push_u8(&mut self, data: u8) {
         // Stack pointer grows downwards
         self.sp = self.sp.wrapping_sub(2);
-        self.biu_write_u16(Segment::SS, self.sp, data, flag);
+        self.biu_write_u8(Segment::SS, self.sp, data);
     }
 
+    #[inline]
+    pub fn push_u16(&mut self, data: u16) {
+        // Stack pointer grows downwards
+        self.sp = self.sp.wrapping_sub(2);
+        self.biu_write_u16(Segment::SS, self.sp, data);
+    }
+
+    #[inline]
     pub fn pop_u16(&mut self) -> u16 {
-        let result = self.biu_read_u16(Segment::SS, self.sp, ReadWriteFlag::Normal);
+        let result = self.biu_read_u16(Segment::SS, self.sp);
 
         // Stack pointer shrinks upwards
         self.sp = self.sp.wrapping_add(2);
         result
     }
 
-    pub fn push_register16(&mut self, reg: Register16, flag: ReadWriteFlag) {
+    pub fn push_register16(&mut self, reg: Register16) {
         // Stack pointer grows downwards
         self.sp = self.sp.wrapping_sub(2);
 
@@ -97,11 +113,11 @@ impl Intel808x {
             _ => panic!("Invalid register"),
         };
 
-        self.biu_write_u16(Segment::SS, self.sp, data, flag);
+        self.biu_write_u16(Segment::SS, self.sp, data);
     }
 
-    pub fn pop_register16(&mut self, reg: Register16, flag: ReadWriteFlag) {
-        let data = self.biu_read_u16(Segment::SS, self.sp, flag);
+    pub fn pop_register16(&mut self, reg: Register16) {
+        let data = self.biu_read_u16(Segment::SS, self.sp);
 
         let mut update_sp = true;
         match reg {
@@ -147,14 +163,15 @@ impl Intel808x {
         }
     }
 
-    pub fn push_flags(&mut self, wflag: ReadWriteFlag) {
+    #[inline]
+    pub fn push_flags(&mut self) {
         // Stack pointer grows downwards
         self.sp = self.sp.wrapping_sub(2);
-        self.biu_write_u16(Segment::SS, self.sp, self.flags, wflag);
+        self.biu_write_u16(Segment::SS, self.sp, self.flags);
     }
 
     pub fn pop_flags(&mut self) {
-        let result = self.biu_read_u16(Segment::SS, self.sp, ReadWriteFlag::Normal);
+        let result = self.biu_read_u16(Segment::SS, self.sp);
 
         let trap_was_set = self.get_flag(Flag::Trap);
         let int_was_set = self.get_flag(Flag::Interrupt);
@@ -184,6 +201,7 @@ impl Intel808x {
         self.sp = self.sp.wrapping_add(2);
     }
 
+    #[inline]
     pub fn release(&mut self, disp: u16) {
         self.sp = self.sp.wrapping_add(disp);
     }

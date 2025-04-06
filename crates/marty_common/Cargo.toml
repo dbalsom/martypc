@@ -17,3 +17,5 @@ crate-type = ["lib"]
 fxhash.workspace = true
 serde.workspace = true
 web-time.workspace = true
+strum.workspace = true
+strum_macros.workspace = true

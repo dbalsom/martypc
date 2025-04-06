@@ -36,14 +36,18 @@ use serde::{self, Deserializer};
 use serde_derive::Deserialize;
 use std::{fmt::Display, str::FromStr};
 
-#[derive(Copy, Clone, Debug, Deserialize, Hash, Eq, PartialEq)]
+#[derive(Copy, Clone, Debug, Default, Deserialize, Hash, Eq, PartialEq)]
 pub enum MachineType {
     Default,
     Ibm5150v64K,
+    #[default]
     Ibm5150v256K,
     Ibm5160,
     IbmPCJr,
     Tandy1000,
+    Tandy1000SL,
+    CompaqPortable,
+    CompaqDeskpro,
 }
 
 impl FromStr for MachineType {
@@ -59,7 +63,25 @@ impl FromStr for MachineType {
             "ibm5160" => Ok(MachineType::Ibm5160),
             "ibm_pcjr" => Ok(MachineType::IbmPCJr),
             "tandy1000" => Ok(MachineType::Tandy1000),
+            "tandy1000sl" => Ok(MachineType::Tandy1000SL),
+            "compaq_deskpro" => Ok(MachineType::CompaqDeskpro),
             _ => Err("Bad value for model".to_string()),
+        }
+    }
+}
+
+impl MachineType {
+    pub fn has_ppi_turbo_bit(&self) -> bool {
+        match self {
+            MachineType::Ibm5150v64K => false,
+            MachineType::Ibm5150v256K => false,
+            MachineType::Ibm5160 => true,
+            MachineType::IbmPCJr => false,
+            MachineType::Tandy1000 => false,
+            MachineType::Tandy1000SL => false,
+            MachineType::CompaqPortable => false,
+            MachineType::CompaqDeskpro => false,
+            _ => false,
         }
     }
 }
@@ -137,9 +159,9 @@ impl FloppyDriveType {
 }
 
 /// Convert MartyPC's FloppyDriveType to fluxfox's StandardFormat
-impl Into<StandardFormat> for FloppyDriveType {
-    fn into(self) -> StandardFormat {
-        match self {
+impl From<FloppyDriveType> for StandardFormat {
+    fn from(val: FloppyDriveType) -> Self {
+        match val {
             FloppyDriveType::Floppy360K => StandardFormat::PcFloppy360,
             FloppyDriveType::Floppy720K => StandardFormat::PcFloppy720,
             FloppyDriveType::Floppy12M => StandardFormat::PcFloppy1200,
@@ -183,7 +205,7 @@ impl<'de> serde::Deserialize<'de> for FloppyDriveType {
     {
         struct FloppyTypeVisitor;
 
-        impl<'de> serde::de::Visitor<'de> for FloppyTypeVisitor {
+        impl serde::de::Visitor<'_> for FloppyTypeVisitor {
             type Value = FloppyDriveType;
 
             fn expecting(&self, formatter: &mut fmt::Formatter) -> fmt::Result {
@@ -218,6 +240,7 @@ pub enum FdcType {
 pub enum HardDiskControllerType {
     IbmXebec,
     XtIde,
+    JrIde,
 }
 
 impl FromStr for HardDiskControllerType {
@@ -228,6 +251,8 @@ impl FromStr for HardDiskControllerType {
     {
         match s.to_lowercase().as_str() {
             "ibmxebec" => Ok(HardDiskControllerType::IbmXebec),
+            "xtide" => Ok(HardDiskControllerType::XtIde),
+            "jride" => Ok(HardDiskControllerType::JrIde),
             _ => Err("Bad value for HardDiskControllerType".to_string()),
         }
     }
@@ -247,6 +272,11 @@ pub enum SerialControllerType {
 #[derive(Copy, Clone, Debug, Deserialize, Eq, PartialEq)]
 pub enum SerialMouseType {
     Microsoft,
+}
+
+#[derive(Copy, Clone, Debug, Deserialize, Eq, PartialEq)]
+pub enum ParallelControllerType {
+    Standard,
 }
 
 #[derive(Copy, Clone, Debug, Deserialize, Eq, PartialEq)]

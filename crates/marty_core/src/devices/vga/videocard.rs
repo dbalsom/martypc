@@ -92,7 +92,7 @@ impl VideoCard for VGACard {
 
     /// Return the 16-bit value computed from the CRTC's pair of Page Address registers.
     fn get_start_address(&self) -> u16 {
-        return self.crtc.start_address();
+        self.crtc.start_address()
     }
 
     /// Unimplemented for indirect rendering.
@@ -313,7 +313,7 @@ impl VideoCard for VGACard {
         map
     }
 
-    fn run(&mut self, time: DeviceRunTimeUnit, pic: &mut Option<Pic>, _cpumem: Option<&[u8]>) {
+    fn run(&mut self, time: DeviceRunTimeUnit, pic: &mut Option<Box<Pic>>, _cpumem: Option<&[u8]>) {
         if let DeviceRunTimeUnit::Microseconds(us) = time {
             // Select the appropriate timings based on the current clocking mode
             let ticks = match self.misc_output_register.clock_select() {
@@ -440,7 +440,7 @@ impl VideoCard for VGACard {
             let mut filename = path.to_path_buf();
             filename.push(format!("vga_plane{}.bin", i));
 
-            match std::fs::write(filename.clone(), &self.get_plane_slice(i)) {
+            match std::fs::write(filename.clone(), self.get_plane_slice(i)) {
                 Ok(_) => {
                     log::debug!("Wrote memory dump: {}", &filename.display())
                 }
@@ -459,10 +459,10 @@ impl VideoCard for VGACard {
         let iter4 = self.get_plane_slice(3).chunks_exact(4);
 
         for ((a, b), (c, d)) in iter1.zip(iter2).zip(iter3.zip(iter4)) {
-            chain4_buf.push(a[0].clone());
-            chain4_buf.push(b[0].clone());
-            chain4_buf.push(c[0].clone());
-            chain4_buf.push(d[0].clone());
+            chain4_buf.push(a[0]);
+            chain4_buf.push(b[0]);
+            chain4_buf.push(c[0]);
+            chain4_buf.push(d[0]);
         }
 
         let mut filename = path.to_path_buf();

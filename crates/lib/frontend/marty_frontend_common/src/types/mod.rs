@@ -30,8 +30,6 @@
 
 */
 
-pub mod display_target_dimensions;
-pub mod display_target_margins;
 pub mod floppy;
 pub mod gui;
 pub mod hotkeys;

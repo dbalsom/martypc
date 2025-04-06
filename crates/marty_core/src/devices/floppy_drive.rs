@@ -228,7 +228,8 @@ impl FloppyDiskDrive {
         *self = Self {
             drive_type: self.drive_type,
             drive_n: self.drive_n,
-            ready: self.disk_present,
+            // IBM DOS wants to see ready in ST3 even if no disk in drive.
+            ready: true,
             disk_present: self.disk_present,
             write_protected: self.write_protected,
             media_geom: self.media_geom,
@@ -548,14 +549,18 @@ impl FloppyDiskDrive {
                     );
                     continue;
                 }
-                log::warn!("command_read_data(): sector id not found");
-                self.operation_status.sector_not_found = true;
-                return Ok(DriveReadResult {
-                    not_found: true,
-                    sectors_read: 0,
-                    new_chs: op_chs,
-                    deleted_mark: false,
-                });
+                else if mt && not_found_count > 0 {
+                    // If we are in multi-track mode, and this is the second sector not found, we
+                    // will stop reading and return the sectors read so far.
+                    log::warn!("command_read_data(): sector not found with multi-track enabled, stopping read");
+                    self.operation_status.sector_not_found = true;
+                    return Ok(DriveReadResult {
+                        not_found: true,
+                        sectors_read: sectors_read as u16,
+                        new_chs: op_chs,
+                        deleted_mark: false,
+                    });
+                }
             }
 
             log::debug!(
@@ -722,7 +727,7 @@ impl FloppyDiskDrive {
 
     pub fn read_operation_buf(&mut self) -> u8 {
         let byte_buf = &mut [0u8];
-        self.operation_buf.read(byte_buf).unwrap();
+        _ = self.operation_buf.read_exact(byte_buf);
 
         byte_buf[0]
     }
@@ -732,7 +737,7 @@ impl FloppyDiskDrive {
             .seek(std::io::SeekFrom::Start(offset as u64))
             .unwrap();
         let byte_buf = &mut [0u8];
-        self.operation_buf.read(byte_buf).unwrap();
+        _ = self.operation_buf.read_exact(byte_buf);
 
         byte_buf[0]
     }
@@ -755,10 +760,10 @@ impl FloppyDiskDrive {
         self.motor_on = false;
     }
 
-    /// Return whether the specified chs is valid for the disk in the drive.
-    /// Note this is different from checking if the id is valid for a seek, for which there is a
-    /// separate function. We can seek a bit beyond the end of a disk, as well as seek with no
-    /// disk in the drive.
+    // Return whether the specified chs is valid for the disk in the drive.
+    // Note this is different from checking if the id is valid for a seek, for which there is a
+    // separate function. We can seek a bit beyond the end of a disk, as well as seek with no
+    // disk in the drive.
     // pub fn is_id_valid(&self, chs: DiskChs) -> bool {
     //     if let Some(image) = &self.disk_image {
     //         image.is_id_valid(chs)

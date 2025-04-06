@@ -134,6 +134,7 @@ impl GuiState {
                 GuiState::draw_register_file(ui, videocard_state, false, "CRTC Counters", "CRTC Counters".to_string());
                 GuiState::draw_register_file(ui, videocard_state, false,"Internal", "Internal Registers".to_string());
                 GuiState::draw_register_file(ui, videocard_state, false,"External", "External Registers".to_string());
+                GuiState::draw_register_file(ui, videocard_state, false,"Light Pen", "Light Pen".to_string());
                 GuiState::draw_register_file(ui, videocard_state, false,"Sequencer", "Sequencer Registers".to_string());
                 GuiState::draw_register_file(ui, videocard_state, false,"Graphics", "Graphics Controller Registers".to_string());
                 GuiState::draw_register_file(ui, videocard_state, false,"Graphics Stats", "Graphics Controller Statistics".to_string());

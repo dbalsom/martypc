@@ -1,0 +1,43 @@
+# compaq_deskpro.toml
+# Machine Configurations for the Compaq Deskpro
+
+[[machine]]
+name = "compaq_deskpro"
+type = "CompaqDeskpro"
+rom_set = "compaq_deskpro"
+speaker = true
+overlays = [
+    "us_modelf_keyboard",
+    "pcxt_2_360k_floppies",
+    "pcxt_2_serial_ports",
+    "lotech_ems",
+]
+
+    [machine.memory]
+    conventional.size = 0xA0000
+    conventional.wait_states = 0
+
+    # Video cards
+    [[machine.video]]
+    bus_type = "ISA"
+    type = "CGA"
+    clock_mode = "Dynamic"
+
+    # Hard disk controller
+    [machine.hdc]
+    bus_type = "ISA"
+    type = "IbmXebec"
+    
+        # Drives connected to controller. Maximum of 2.
+        # Drive #0 - (Typically C:)
+        [[machine.hdc.drive]]
+        format = "Mfm"
+        vhd = "xebec20MB.vhd"
+
+    # Parallel port card
+    [[machine.parallel]]
+    bus_type = "ISA"
+    type = "Standard"
+        [[machine.parallel.port]]
+        # Compaq BIOS requires port at 0x3BC or issues Error 401
+        io_base = 0x3BC

@@ -98,8 +98,6 @@ use crate::cpu_validator::{
     BusCycle,
     BusState,
     CpuValidator,
-    CycleState,
-    VRegisters,
     ValidatorMode,
     ValidatorResult,
     VAL_ALLOW_ONE,
@@ -107,6 +105,9 @@ use crate::cpu_validator::{
     VAL_NO_FLAGS,
     VAL_NO_WRITES,
 };
+
+#[cfg(any(feature = "cpu_validator", feature = "cpu_collect_cycle_states"))]
+use crate::cpu_validator::{CycleState, VRegisters};
 
 #[cfg(feature = "arduino_validator")]
 use crate::arduino8088_validator::ArduinoValidator;
@@ -272,14 +273,11 @@ pub const REGISTER16_LUT: [Register16; 8] = [
 pub const SEGMENT_REGISTER16_LUT: [Register16; 4] = [Register16::ES, Register16::CS, Register16::SS, Register16::DS];
 
 #[derive(Debug, Copy, Clone, PartialEq)]
+#[derive(Default)]
 pub enum CpuState {
+    #[default]
     Normal,
     BreakpointHit,
-}
-impl Default for CpuState {
-    fn default() -> Self {
-        CpuState::Normal
-    }
 }
 
 #[derive(Copy, Clone, Debug)]
@@ -438,16 +436,13 @@ impl Default for InterruptDescriptor {
 }
 
 #[derive(Copy, Clone, Debug)]
+#[derive(Default)]
 pub enum TransferSize {
+    #[default]
     Byte,
     Word,
 }
 
-impl Default for TransferSize {
-    fn default() -> TransferSize {
-        TransferSize::Byte
-    }
-}
 
 #[derive(Default)]
 pub struct I8288 {
@@ -606,9 +601,9 @@ pub struct NecVx0 {
 
     #[cfg(feature = "cpu_validator")]
     validator: Option<Box<dyn CpuValidator>>,
-    #[cfg(feature = "cpu_validator")]
+    #[cfg(any(feature = "cpu_validator", feature = "cpu_collect_cycle_states"))]
     vregs: VRegisters,
-    #[cfg(feature = "cpu_validator")]
+    #[cfg(any(feature = "cpu_validator", feature = "cpu_collect_cycle_states"))]
     cycle_states: Vec<CycleState>,
     #[cfg(feature = "cpu_validator")]
     validator_state: CpuValidatorState,
@@ -912,12 +907,7 @@ impl NecVx0 {
     pub fn is_last_wait(&self) -> bool {
         match self.t_cycle {
             TCycle::T3 | TCycle::Tw => {
-                if self.wait_states == 0 && self.dma_wait_states == 0 {
-                    true
-                }
-                else {
-                    false
-                }
+                self.wait_states == 0 && self.dma_wait_states == 0
             }
             _ => false,
         }
@@ -928,12 +918,7 @@ impl NecVx0 {
         match self.t_cycle {
             TCycle::T1 | TCycle::T2 => true,
             TCycle::T3 | TCycle::Tw => {
-                if self.wait_states > 0 || self.dma_wait_states > 0 {
-                    true
-                }
-                else {
-                    false
-                }
+                self.wait_states > 0 || self.dma_wait_states > 0
             }
             _ => false,
         }
@@ -1005,7 +990,7 @@ impl NecVx0 {
     }
 
     pub fn set_nmi(&mut self, nmi_state: bool) {
-        if nmi_state == false {
+        if !nmi_state {
             self.nmi_triggered = false;
         }
         self.nmi = nmi_state;
@@ -1097,8 +1082,8 @@ impl NecVx0 {
             != 0
     }
 
-    #[cfg(feature = "cpu_validator")]
-    pub fn get_vregisters(&self) -> VRegisters {
+    #[cfg(any(feature = "cpu_validator", feature = "cpu_collect_cycle_states"))]
+    pub fn get_vregisters_internal(&self) -> VRegisters {
         VRegisters {
             ax:    self.a.x(),
             bx:    self.b.x(),
@@ -1379,8 +1364,8 @@ impl NecVx0 {
 
             piq: self.queue.to_string(),
             flags: format!("{:04}", self.flags),
-            instruction_count: format!("{}", self.instruction_count),
-            cycle_count: format!("{}", self.cycle_num),
+            instruction_count: self.instruction_count,
+            cycle_count: self.cycle_num,
             dma_state: format!("{:?}", self.dma_state),
             dram_refresh_cycle_period: format!("{}", self.dram_refresh_cycle_period),
             dram_refresh_cycle_num: format!("{}", self.dram_refresh_cycle_num),
@@ -1646,7 +1631,6 @@ impl NecVx0 {
             }
             _ => {
                 // Unsupported breakpoint type - ignore for now
-                return;
             }
         }
     }
@@ -1688,10 +1672,7 @@ impl NecVx0 {
     }
 
     pub fn get_step_over_breakpoint(&self) -> Option<CpuAddress> {
-        match self.step_over_breakpoint {
-            Some(addr) => Some(CpuAddress::Flat(addr)),
-            None => None,
-        }
+        self.step_over_breakpoint.map(CpuAddress::Flat)
     }
 
     pub fn get_breakpoint_flag(&self) -> bool {
@@ -1710,26 +1691,23 @@ impl NecVx0 {
         let mut disassembly_string = String::new();
 
         for i in &self.instruction_history {
-            match i {
-                HistoryEntry::InstructionEntry {
+            if let HistoryEntry::InstructionEntry {
                     cs,
                     ip,
                     cycles: _,
                     interrupt,
                     jump: _,
                     i,
-                } => {
-                    let i_string = format!(
-                        "{:05X}{} [{:04X}:{:04X}] {}\n",
-                        i.address,
-                        if *interrupt { '*' } else { ' ' },
-                        *cs,
-                        *ip,
-                        i
-                    );
-                    disassembly_string.push_str(&i_string);
-                }
-                _ => {}
+                } = i {
+                let i_string = format!(
+                    "{:05X}{} [{:04X}:{:04X}] {}\n",
+                    i.address,
+                    if *interrupt { '*' } else { ' ' },
+                    *cs,
+                    *ip,
+                    i
+                );
+                disassembly_string.push_str(&i_string);
             }
         }
         disassembly_string
@@ -1888,7 +1866,7 @@ impl NecVx0 {
         log::debug!("Dumping {} bytes at address {:05X}", len, address);
         let cs_slice = self.bus.get_slice_at(address, len);
 
-        match std::fs::write(filename.clone(), &cs_slice) {
+        match std::fs::write(filename.clone(), cs_slice) {
             Ok(_) => {
                 log::debug!("Wrote memory dump: {}", filename.display())
             }

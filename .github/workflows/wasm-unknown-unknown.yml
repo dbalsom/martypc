@@ -1,0 +1,80 @@
+name: wasm-unknown-unknown
+
+on:
+  push:
+    branches:
+      - pages_deploy
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Install Rust toolchain
+        uses: dtolnay/rust-toolchain@nightly
+
+      - name: Cache Cargo binaries
+        uses: actions/cache@v4
+        with:
+          path: ~/.cargo/bin
+          key: ${{ runner.os }}-cargo-bin-trunk-0.21.4
+          restore-keys: |
+            ${{ runner.os }}-cargo-bin
+
+      - name: Cache Rust dependencies
+        uses: actions/cache@v4
+        with:
+          path: ~/.cargo/registry
+          key: ${{ runner.os }}-cargo-registry-0001-${{ hashFiles('**/Cargo.lock') }}
+          restore-keys: |
+            ${{ runner.os }}-cargo-registry-0001-
+
+      - name: Install Trunk
+        run: |
+          if ! command -v trunk &> /dev/null; then
+            cargo install trunk
+          else
+            echo "Trunk is cached and already installed."
+          fi
+
+      - name: Install wasm-bindgen-cli
+        run: |
+          if ! command -v wasm-bindgen &> /dev/null; then
+            cargo install wasm-bindgen-cli
+          else
+            echo "wasm-bindgen-cli is cached and already installed."
+          fi
+
+      - name: Install wasm-opt
+        run: |
+          if ! command -v wasm-opt &> /dev/null; then
+            cargo install wasm-opt
+          else
+            echo "wasm-opt is cached and already installed."
+          fi
+
+      - name: Build martypc_eframe with Trunk
+        working-directory: crates/binaries/martypc_eframe
+        run: trunk build --release=true --no-default-features --features=all_video_cards,sound,use_glow --config Trunk.toml
+
+      - name: Optimize WASM with wasm-opt
+        working-directory: crates/binaries/martypc_eframe
+        run: wasm-opt -Oz -o dist/martypc_eframe_bg.wasm dist/martypc_eframe_bg.wasm
+
+      - name: Verify dist directory contents
+        working-directory: crates/binaries/martypc_eframe
+        run: |
+          echo "Verifying dist directory:"
+          ls -R dist
+          echo "Checking specific expected files:"
+          [ -f dist/index.html ] && echo "Found index.html" || echo "index.html missing"
+          [ -f dist/martypc_eframe_bg.wasm ] && echo "Found martypc_eframe_bg.wasm" || echo "martypc_eframe_bg.wasm missing"
+
+      - name: Upload static files as artifact
+        id: deployment
+        uses: actions/upload-pages-artifact@v3
+        with:
+          path: crates/ff_egui_app/dist/

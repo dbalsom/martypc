@@ -42,19 +42,19 @@ pub mod mnemonic;
 pub mod operands;
 pub mod services;
 
-use enum_dispatch::enum_dispatch;
-use serde::Deserialize;
 use std::str::FromStr;
 
 pub use addressing::{AddressingMode, CpuAddress, Displacement};
 pub use analyzer::{AnalyzerEntry, LogicAnalyzer};
 pub use error::CpuError;
-pub use instruction::Instruction;
+pub use instruction::{Instruction, InstructionWidth};
 pub use mnemonic::Mnemonic;
 pub use operands::OperandType;
 
 #[cfg(feature = "cpu_validator")]
-use crate::cpu_validator::{CpuValidator, CycleState, VRegisters};
+use crate::cpu_validator::CpuValidator;
+#[cfg(any(feature = "cpu_validator", feature = "cpu_collect_cycle_states"))]
+use crate::cpu_validator::{CycleState, VRegisters};
 
 use crate::{
     breakpoints::{BreakPointType, StopWatchData},
@@ -64,6 +64,9 @@ use crate::{
     cpu_vx0::NecVx0,
     syntax_token::{SyntaxToken, SyntaxTokenize},
 };
+
+use enum_dispatch::enum_dispatch;
+use serde::Deserialize;
 
 // Instruction prefixes
 pub const OPCODE_PREFIX_0F: u32 = 0b_1000_0000_0000_0000;
@@ -94,8 +97,9 @@ pub enum ExecutionResult {
     Halt,
 }
 
-#[derive(Debug, Copy, Clone, PartialEq)]
+#[derive(Debug, Copy, Clone, Default, PartialEq)]
 pub enum CpuException {
+    #[default]
     NoException,
     DivideError,
     BoundsException,
@@ -176,15 +180,17 @@ pub struct CpuStringState {
     pub d_fl: String,
     pub o_fl: String,
     pub piq: String,
-    pub instruction_count: String,
-    pub cycle_count: String,
+    pub instruction_count: u64,
+    pub cycle_count: u64,
     pub dma_state: String,
     pub dram_refresh_cycle_period: String,
     pub dram_refresh_cycle_num: String,
 }
 
 #[derive(Copy, Clone, Debug, Deserialize, Eq, PartialEq, Hash)]
+#[derive(Default)]
 pub enum CpuType {
+    #[default]
     Intel8088,
     Intel8086,
     NecV20,
@@ -238,7 +244,9 @@ pub enum CycleTraceMode {
 }
 
 #[derive(Copy, Clone, Debug, Deserialize, PartialEq)]
+#[derive(Default)]
 pub enum TraceMode {
+    #[default]
     None,
     CycleText,
     CycleCsv,
@@ -262,17 +270,7 @@ impl FromStr for TraceMode {
         }
     }
 }
-impl Default for TraceMode {
-    fn default() -> Self {
-        TraceMode::None
-    }
-}
 
-impl Default for CpuType {
-    fn default() -> Self {
-        CpuType::Intel8088
-    }
-}
 
 #[derive(Debug)]
 pub enum CpuOption {
@@ -335,6 +333,7 @@ pub fn format_instruction_bytes(bytes: &[u8]) -> String {
 #[enum_dispatch]
 pub enum CpuDispatch {
     Intel808x,
+
     NecVx0,
 }
 
@@ -420,7 +419,7 @@ pub trait Cpu {
     fn dump_instruction_history_tokens(&self) -> Vec<Vec<SyntaxToken>>;
     fn dump_call_stack(&self) -> String;
     fn get_service_event(&mut self) -> Option<ServiceEvent>;
-    #[cfg(feature = "cpu_validator")]
+    #[cfg(any(feature = "cpu_validator", feature = "cpu_collect_cycle_states"))]
     fn get_cycle_states(&self) -> &Vec<CycleState>;
     fn get_cycle_trace(&self) -> &Vec<String>;
     fn get_cycle_trace_tokens(&self) -> &Vec<Vec<SyntaxToken>>;
@@ -452,7 +451,7 @@ pub trait Cpu {
     fn trace_flush(&mut self);
 
     // Validation methods
-    #[cfg(feature = "cpu_validator")]
+    #[cfg(any(feature = "cpu_validator", feature = "cpu_collect_cycle_states"))]
     fn get_vregisters(&self) -> VRegisters;
     #[cfg(feature = "cpu_validator")]
     fn get_validator(&self) -> &Option<Box<dyn CpuValidator>>;

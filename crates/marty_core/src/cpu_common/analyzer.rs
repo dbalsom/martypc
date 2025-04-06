@@ -141,7 +141,7 @@ impl LogicAnalyzer {
     }
     pub fn pop_complete(&mut self) -> Option<AnalyzerEntry> {
         if let Some(front) = self.entries.front() {
-            if front.io_visits >= self.devices as u8 {
+            if front.io_visits >= self.devices {
                 return self.entries.pop_front();
             }
         }

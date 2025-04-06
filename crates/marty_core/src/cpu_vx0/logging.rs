@@ -121,10 +121,7 @@ impl NecVx0 {
     }
 
     pub fn emit_header(&mut self) {
-        match self.trace_mode {
-            TraceMode::CycleSigrok => self.trace_print("Time(s),addr,clk,ready,qs,s,clk0,intr,dr0,holda,vs,hs,den,brd"),
-            _ => {}
-        }
+        if self.trace_mode == TraceMode::CycleSigrok { self.trace_print("Time(s),addr,clk,ready,qs,s,clk0,intr,dr0,holda,vs,hs,den,brd") }
     }
 
     pub fn trace_csv_line(&mut self) {

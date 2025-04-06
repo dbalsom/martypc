@@ -65,6 +65,18 @@ name = "us_modelf_keyboard"
     typematic_rate= 50.0
     
 [[overlay]]
+name = "parallel_port"
+    # Parallel port card
+    [[overlay.parallel]]
+    bus_type = "ISA"
+    type = "Standard"
+        [[overlay.parallel.port]]
+        # 3BC is typically used by the parallel port on the MDA card.
+        # 378 is typically used by add-on parallel port adapters.
+        # 278 maybe be used by a second parallel port adapter.
+        io_base = 0x378
+    
+[[overlay]]
 name = "pcxt_2_serial_ports"
     # Serial card
     [[overlay.serial]]
@@ -226,6 +238,14 @@ name = "microsoft_serial_mouse"
     # Port 0 - COM1
     # Port 1 - COM2
     port = 1
+
+[[overlay]]
+name = "microsoft_serial_mouse_com1"
+    [overlay.serial_mouse]
+    type = "Microsoft"
+    # Port 0 - COM1
+    # Port 1 - COM2
+    port = 0
     
 [[overlay]]
 name = "game_port"
@@ -233,5 +253,36 @@ name = "game_port"
     # Don't change this unless you know what you are doing.
     # Everything expects the game port to be at 0x201.
     io_base = 0x201
-    
-    
+
+# The IBM PCjr was expanded via 'sidecars' which were essentially a custom slot for the ISA bus, where you would
+# daisy-chain peripherals that matched the profile of the PCjr's case. Chain a bunch of these together, and you
+# would start to have a quite ridiculous contraption on your desk.
+# The most common expansion is a memory sidecar, which upgrades the PCjr's RAM. This sidecar here is a 512K
+# memory sidecar which will upgrade a PCjr to a full 640K of RAM. This expansion memory could operate at 0 wait states
+# which made it much faster than the built-in RAM.
+[[overlay]]
+name = "pcjr_memory_sidecar"
+    [[overlay.conventional_expansion]]
+    type = "PCjr"
+    address = 0x20000
+    size = 0x80000
+    wait_states = 0
+
+[[overlay]]
+name = "jride"
+    # Hard disk controller
+    [overlay.hdc]
+    bus_type = "PCjr"
+    type = "JrIde"
+
+        [[overlay.hdc.drive]]
+        format = "Mfm"
+        vhd = "pcjr_ide.vhd"
+
+    [[overlay.conventional_expansion]]
+    type = "PCjr"
+    address = 0x20000
+    # This will provide the PCjr with 736K of available RAM.
+    # The PCjr BIOS will only count up to 640K during POST.
+    size = 0x98000
+    wait_states = 0

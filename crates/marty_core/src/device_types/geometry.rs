@@ -33,6 +33,7 @@
 use crate::{
     device_types::chs::{DiskChs, DiskChsIterator},
     devices::hdc::DEFAULT_SECTOR_SIZE,
+    vhd::{VHDGeometry, VirtualHardDisk},
 };
 use std::fmt::Display;
 
@@ -73,6 +74,30 @@ impl TryFrom<usize> for DriveGeometry {
         let s = 10;
         let s_off = 1;
         Ok(Self { c, h, s, s_off, size })
+    }
+}
+
+impl From<VHDGeometry> for DriveGeometry {
+    fn from(vhd_geometry: VHDGeometry) -> Self {
+        Self {
+            c: vhd_geometry.c,
+            h: vhd_geometry.h,
+            s: vhd_geometry.s,
+            s_off: 1,
+            size: 512,
+        }
+    }
+}
+
+impl From<VirtualHardDisk> for DriveGeometry {
+    fn from(vhd: VirtualHardDisk) -> Self {
+        Self {
+            c: vhd.max_cylinders as u16,
+            h: vhd.max_heads as u8,
+            s: vhd.max_sectors as u8,
+            s_off: 1,
+            size: 512,
+        }
     }
 }
 

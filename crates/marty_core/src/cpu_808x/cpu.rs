@@ -43,7 +43,9 @@ use crate::cpu_common::{Disassembly, LogicAnalyzer, Register8, TraceMode};
 #[cfg(feature = "cpu_validator")]
 use crate::cpu_808x::CpuValidatorState;
 #[cfg(feature = "cpu_validator")]
-use crate::cpu_validator::{CpuValidator, CycleState, VRegisters};
+use crate::cpu_validator::CpuValidator;
+#[cfg(any(feature = "cpu_validator", feature = "cpu_collect_cycle_states"))]
+use crate::cpu_validator::{CycleState, VRegisters};
 
 impl Cpu for Intel808x {
     fn reset(&mut self) {
@@ -62,18 +64,13 @@ impl Cpu for Intel808x {
 
     #[inline]
     fn set_end_address(&mut self, address: CpuAddress) {
-        let end_addr;
-        match address {
-            CpuAddress::Segmented(segment, offset) => {
-                end_addr = Intel808x::calc_linear_address(segment, offset);
-            }
-            CpuAddress::Flat(addr) => {
-                end_addr = addr;
-            }
+        let end_addr = match address {
+            CpuAddress::Segmented(segment, offset) => Intel808x::calc_linear_address(segment, offset),
+            CpuAddress::Flat(addr) => addr,
             _ => {
                 panic!("Invalid CpuAddress for end address.");
             }
-        }
+        };
         self.set_end_address(end_addr as usize);
     }
 
@@ -144,7 +141,7 @@ impl Cpu for Intel808x {
 
     #[inline]
     fn set_flags(&mut self, flags: u16) {
-        self.set_flags(flags);
+        self.set_flags_safe(flags);
     }
 
     #[inline]
@@ -194,7 +191,7 @@ impl Cpu for Intel808x {
     }
 
     #[inline]
-    #[cfg(feature = "cpu_validator")]
+    #[cfg(any(feature = "cpu_validator", feature = "cpu_collect_cycle_states"))]
     fn get_cycle_states(&self) -> &Vec<CycleState> {
         self.get_cycle_states_internal()
     }
@@ -295,7 +292,7 @@ impl Cpu for Intel808x {
 
                 // Flush the trace log file on stopping trace so that we can immediately
                 // see results otherwise buffered
-                if state == false {
+                if !state {
                     self.trace_flush();
                 }
             }
@@ -344,7 +341,7 @@ impl Cpu for Intel808x {
     }
 
     #[inline]
-    #[cfg(feature = "cpu_validator")]
+    #[cfg(any(feature = "cpu_validator", feature = "cpu_collect_cycle_states"))]
     fn get_vregisters(&self) -> VRegisters {
         self.get_vregisters()
     }

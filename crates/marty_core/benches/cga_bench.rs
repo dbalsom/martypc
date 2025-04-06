@@ -33,7 +33,7 @@
 use marty_core::{devices::cga::CGACard, tracelogger::TraceLogger};
 
 use criterion::{black_box, criterion_group, criterion_main, Criterion};
-use marty_core::videocard::ClockingMode;
+use marty_core::device_traits::videocard::ClockingMode;
 
 pub fn cga_tick_bench(c: &mut Criterion) {
     // One-time setup code goes here

@@ -1,0 +1,49 @@
+[package]
+name = "martypc_headless"
+description = "A headless frontend for MartyPC, primarily used for running/generating tests and benchmarking"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+authors.workspace = true
+
+[lib]
+name = "martypc_headless"
+path = "src/lib.rs"
+crate-type = ["lib"]
+
+[dependencies]
+marty_core = { path = "../../marty_core" }
+marty_frontend_common =  { path = "../../lib/frontend/marty_frontend_common", default-features = false }
+marty_display_common = { path = "../../lib/frontend/marty_display_common", default-features = false }
+marty_config = { path = "../../lib/frontend/marty_config" }
+
+colored = "3.0"
+log.workspace = true
+env_logger = "0.11"
+
+rand.workspace = true
+getrandom.workspace = true
+regex.workspace = true
+rgb = "0.8.33"
+serde = { workspace = true, features = ["derive"] }
+serde_derive = "1.0"
+serde_json = "1.0"
+serialport.workspace = true
+anyhow.workspace = true
+indexmap.workspace = true
+crossbeam-channel.workspace = true
+strum.workspace = true
+strum_macros.workspace = true
+flate2 = "1.0"
+pollster = "0.4"
+
+[dev-dependencies]
+criterion = "0.5.1"
+
+[features]
+default = ["use_serialport"]
+use_serialport = ["marty_core/serialport"]
+devtools = []
+cpu_validator = ["cpu_tests", "marty_core/cpu_validator"]
+cpu_tests = ["marty_core/cpu_collect_cycle_states"]
+arduino_validator = []

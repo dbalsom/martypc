@@ -30,11 +30,18 @@ use std::path::PathBuf;
 use crate::{DefaultResolver, EFrameDisplayManager};
 
 use marty_core::device_traits::videocard::VideoCardId;
-use marty_frontend_common::{
-    display_manager::{DisplayManager, DisplayTargetMargins, DisplayTargetType, DmGuiOptions, DmViewportOptions},
+use marty_display_common::{
+    display_manager::{
+        DisplayManager,
+        DisplayTargetFlags,
+        DisplayTargetMargins,
+        DisplayTargetType,
+        DmGuiOptions,
+        DmViewportOptions,
+    },
     display_scaler::ScalerPreset,
-    types::window::WindowDefinition,
 };
+use marty_frontend_common::types::window::WindowDefinition;
 
 // lib.rs should conditionally re-export the correct EFrameBackend for active features.
 use super::EFrameBackend;
@@ -42,7 +49,7 @@ use super::EFrameBackend;
 use anyhow::{anyhow, Error};
 
 use egui::{Context, ViewportId};
-use marty_frontend_common::display_manager::DisplayTargetFlags;
+
 use winit::window::Icon;
 
 #[derive(Default)]

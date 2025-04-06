@@ -66,6 +66,7 @@ use crate::{
         ppi_viewer::PpiViewerControl,
         scaler_adjust::ScalerAdjustControl,
         serial_viewer::SerialViewerControl,
+        sn_viewer::SnViewerControl,
         text_mode_viewer::TextModeViewer,
         vhd_creator::VhdCreator,
     },
@@ -92,9 +93,11 @@ use marty_core::{
     machine::{ExecutionControl, MachineState},
     machine_types::FloppyDriveType,
 };
-use marty_frontend_common::{
+use marty_display_common::{
     display_manager::{DisplayTargetInfo, DtHandle},
     display_scaler::{ScalerMode, ScalerPreset},
+};
+use marty_frontend_common::{
     resource_manager::PathTreeNode,
     thread_events::FrontendThreadEvent,
     types::sound::SoundSourceInfo,
@@ -104,6 +107,7 @@ use marty_frontend_common::{
 use egui::ColorImage;
 use egui_notify::{Anchor, Toasts};
 use fluxfox::{DiskImage, DiskImageFileFormat, StandardFormat};
+use marty_common::types::ui::MouseCaptureMode;
 use serde::{Deserialize, Serialize};
 #[cfg(feature = "use_serialport")]
 use serialport::SerialPortInfo;
@@ -328,6 +332,7 @@ pub struct GuiState {
     pub call_stack_viewer: CallStackViewer,
     #[cfg(feature = "markdown")]
     pub info_viewer: InfoViewer,
+    pub sn_viewer: SnViewerControl,
 
     pub floppy_tree_menu: FileTreeMenu,
     pub hdd_tree_menu:    FileTreeMenu,
@@ -371,7 +376,13 @@ impl GuiState {
         let option_floats: HashMap<GuiFloat, f32> =
             [(GuiFloat::EmulationSpeed, 1.0f32), (GuiFloat::MouseSpeed, 0.5f32)].into();
 
-        let option_enums = HashMap::new();
+        let mut option_enums = HashMap::new();
+
+        let capture_option = GuiEnum::MouseCaptureMode(MouseCaptureMode::Mouse);
+        option_enums.insert(
+            (GuiVariableContext::default(), discriminant(&capture_option)),
+            capture_option,
+        );
 
         Self {
             event_queue: GuiEventQueue::new(),
@@ -449,6 +460,7 @@ impl GuiState {
             call_stack_viewer: CallStackViewer::new(),
             #[cfg(feature = "markdown")]
             info_viewer: InfoViewer::new(),
+            sn_viewer: SnViewerControl::new(),
 
             floppy_tree_menu: FileTreeMenu::new().with_file_icon("💾"),
             hdd_tree_menu: FileTreeMenu::new().with_file_icon("🖴"),
@@ -762,6 +774,10 @@ impl GuiState {
         for enum_item in enum_vec.iter() {
             self.set_option_enum(enum_item.0.clone(), enum_item.1);
         }
+    }
+
+    pub fn has_sn76489(&self) -> bool {
+        self.sound_sources.iter().any(|source| source.name.contains("SN76489"))
     }
 
     /// Initialize GUI Display enum state given a vector of DisplayInfo fields.  

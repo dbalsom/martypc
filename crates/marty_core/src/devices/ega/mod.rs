@@ -106,7 +106,7 @@ pub const DEFAULT_DIP_SWITCH: u8 = EGA_DIP_SWITCH_EGA;
 // Maximum height of an EGA character.
 const EGA_CHARACTER_HEIGHT: usize = 32;
 // Maximum height of cursor. Equal to maximum height of a character.
-const EGA_CURSOR_MAX: usize = EGA_CHARACTER_HEIGHT as usize;
+const EGA_CURSOR_MAX: usize = EGA_CHARACTER_HEIGHT;
 
 // Toggle cursor blink state after this many frames
 const EGA_CURSOR_BLINK_RATE: u32 = 8;
@@ -1021,7 +1021,7 @@ impl EGACard {
 
     /// Tick the EGA device. This is much simpler than the implementation in the CGA device as
     /// we only support ticking by character clock.
-    fn tick(&mut self, ticks: f64, pic: &mut Option<Pic>) {
+    fn tick(&mut self, ticks: f64, pic: &mut Option<Box<Pic>>) {
         self.ticks_accum += ticks;
 
         // Drain the accumulator while emitting characters.
@@ -1065,7 +1065,7 @@ impl EGACard {
             let out_span = self.ac.shift_out64();
             self.draw_from_ac(out_span);
 
-            if self.crtc.status.den | self.crtc.status.den_skew | self.crtc.status.hborder {}
+            //if self.crtc.status.den | self.crtc.status.den_skew | self.crtc.status.hborder {}
 
             // Load attribute controller unless we are in blanking period
             //if self.crtc.status.den | self.crtc.in_skew() | self.crtc.status.hborder {
@@ -1138,21 +1138,19 @@ impl EGACard {
                     self.draw_solid_hchar_6bpp(EgaDefaultColor6Bpp::Blue as u8);
                 }
             }
-            else if self.crtc.status.vblank {
-                if self.debug_draw {
-                    // Draw vblank in debug color
-                    /*
-                    self.ac.shift_in(
-                        AttributeInput::SolidColor(EgaDefaultColor6Bpp::Magenta as u8),
-                        clock_select,
-                    );*/
-                    self.draw_solid_hchar_6bpp(EgaDefaultColor6Bpp::Magenta as u8);
-                }
+            else if self.crtc.status.vblank && self.debug_draw {
+                // Draw vblank in debug color
+                /*
+                self.ac.shift_in(
+                    AttributeInput::SolidColor(EgaDefaultColor6Bpp::Magenta as u8),
+                    clock_select,
+                );*/
+                self.draw_solid_hchar_6bpp(EgaDefaultColor6Bpp::Magenta as u8);
             }
         }
 
         // Update position to next pixel and character column.
-        self.raster_x += 8 * self.sequencer.clock_divisor as u32;
+        self.raster_x += 8 * self.sequencer.clock_divisor;
         self.rba += 8 * self.sequencer.clock_divisor as usize;
 
         // If we have reached the right edge of the 'monitor', return the raster position
@@ -1183,7 +1181,7 @@ impl EGACard {
             let (out_span1, outspan2) = self.ac.shift_out64_halfclock();
             self.draw_from_ac_halfclock(out_span1, outspan2);
 
-            if self.crtc.status.den | self.crtc.status.den_skew {}
+            //if self.crtc.status.den | self.crtc.status.den_skew {}
 
             // Load attribute controller unless we are in blanking period
             if !self.crtc.in_blanking() {
@@ -1235,7 +1233,7 @@ impl EGACard {
         }
 
         // Update position to next pixel and character column.
-        self.raster_x += 8 * self.sequencer.clock_divisor as u32;
+        self.raster_x += 8 * self.sequencer.clock_divisor;
         self.rba += 8 * self.sequencer.clock_divisor as usize;
 
         if self.update_char_tick() && self.crtc.int_enabled() {
@@ -1348,11 +1346,7 @@ impl EGACard {
 
     /// Swaps the front and back buffers by exchanging indices.
     fn swap(&mut self) {
-        //std::mem::swap(&mut self.back_buf, &mut self.front_buf);
-
-        let tmp = self.back_buf;
-        self.back_buf = self.front_buf;
-        self.front_buf = tmp;
+        std::mem::swap(&mut self.back_buf, &mut self.front_buf);
         self.buf[self.back_buf].fill(0);
     }
 

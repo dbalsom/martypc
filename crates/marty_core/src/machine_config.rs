@@ -30,28 +30,28 @@
 
 */
 
-use crate::machine_types::{
-    EmsType,
-    FdcType,
-    FloppyDriveType,
-    HardDiskControllerType,
-    HardDriveFormat,
-    MachineType,
-    SerialControllerType,
-    SerialMouseType,
-    SoundType,
-};
-use anyhow::{anyhow, Error};
-use lazy_static::lazy_static;
-use std::collections::HashMap;
-
 use crate::{
     bus::ClockFactor,
     cpu_common::CpuType,
     device_traits::videocard::VideoType,
     devices::{keyboard::KeyboardType, pit::PitType},
+    machine_types::{
+        EmsType,
+        FdcType,
+        FloppyDriveType,
+        HardDiskControllerType,
+        HardDriveFormat,
+        MachineType,
+        ParallelControllerType,
+        SerialControllerType,
+        SerialMouseType,
+        SoundType,
+    },
     tracelogger::TraceLogger,
 };
+use anyhow::{anyhow, Error};
+use lazy_static::lazy_static;
+use std::collections::HashMap;
 
 use crate::{device_traits::videocard::VideoCardSubType, devices::a0::A0Type};
 use serde_derive::Deserialize;
@@ -99,6 +99,12 @@ pub enum KbControllerType {
 }
 
 #[derive(Copy, Clone, Debug)]
+pub enum SoundChipType {
+    Sn76489,
+    Ncr8496,
+}
+
+#[derive(Copy, Clone, Debug)]
 pub enum PicType {
     Single,
     Chained,
@@ -110,10 +116,11 @@ pub enum DmaType {
     Chained,
 }
 
-#[derive(Copy, Clone, Debug)]
+#[derive(Copy, Clone, Debug, Deserialize)]
 pub enum BusType {
     Isa8,
     Isa16,
+    PCjr,
 }
 
 // Machine Configuration file types
@@ -123,7 +130,7 @@ pub struct CpuConfig {
     pub upgrade_type: Option<CpuType>,
 }
 
-#[derive(Clone, Debug, Deserialize)]
+#[derive(Clone, Debug, Default, Deserialize)]
 pub struct MemoryConfig {
     pub conventional: ConventionalMemoryConfig,
 }
@@ -140,6 +147,15 @@ pub struct EmsMemoryConfig {
 pub struct ConventionalMemoryConfig {
     pub size: u32,
     pub wait_states: u32,
+}
+
+impl Default for ConventionalMemoryConfig {
+    fn default() -> Self {
+        ConventionalMemoryConfig {
+            size: 0xA0000,
+            wait_states: 0,
+        }
+    }
 }
 
 #[derive(Clone, Debug, Deserialize)]
@@ -197,6 +213,18 @@ pub struct SerialControllerConfig {
 }
 
 #[derive(Clone, Debug, Deserialize)]
+pub struct ParallelControllerConfig {
+    #[serde(rename = "type")]
+    pub lpt_type: ParallelControllerType,
+    pub port: Vec<ParallelPortConfig>,
+}
+
+#[derive(Clone, Debug, Deserialize)]
+pub struct ParallelPortConfig {
+    pub io_base: u32,
+}
+
+#[derive(Clone, Debug, Deserialize)]
 pub struct FloppyControllerConfig {
     #[serde(rename = "type")]
     pub fdc_type: FdcType,
@@ -241,7 +269,16 @@ pub struct MediaConfig {
     pub hdd:    Option<Vec<HardDriveImage>>,
 }
 
-#[derive(Clone, Debug)]
+#[derive(Clone, Debug, Deserialize)]
+pub struct ConventionalExpansionConfig {
+    #[serde(rename = "type")]
+    pub bus_type: BusType,
+    pub address: u32,
+    pub size: u32,
+    pub wait_states: u32,
+}
+
+#[derive(Clone, Debug, Default)]
 pub struct MachineConfiguration {
     pub speaker: bool,
     pub ppi_turbo: Option<bool>,
@@ -254,9 +291,11 @@ pub struct MachineConfiguration {
     pub video: Vec<VideoCardConfig>,
     pub sound: Vec<SoundDeviceConfig>,
     pub serial: Vec<SerialControllerConfig>,
+    pub parallel: Vec<ParallelControllerConfig>,
     pub game_port: Option<GamePortConfig>,
     pub fdc: Option<FloppyControllerConfig>,
     pub hdc: Option<HardDriveControllerConfig>,
+    pub conventional_expansion: Vec<ConventionalExpansionConfig>,
     pub media: Option<MediaConfig>,
 }
 
@@ -271,6 +310,9 @@ lazy_static! {
         m.insert(MachineType::Ibm5160, vec!["ibm5160"]);
         m.insert(MachineType::IbmPCJr, vec!["ibm_pcjr"]);
         m.insert(MachineType::Tandy1000, vec!["tandy1000"]);
+        m.insert(MachineType::Tandy1000SL, vec!["tandy1000sl"]);
+        m.insert(MachineType::CompaqPortable, vec!["compaq_portable"]);
+        m.insert(MachineType::CompaqDeskpro, vec!["compaq_deskpro"]);
         m
     };
 
@@ -284,6 +326,9 @@ lazy_static! {
         m.insert(MachineType::Ibm5160, vec!["ibm_basic"]);
         m.insert(MachineType::IbmPCJr, vec!["pcjr_cartridge"]);
         m.insert(MachineType::Tandy1000, vec![]);
+        m.insert(MachineType::Tandy1000SL, vec![]);
+        m.insert(MachineType::CompaqPortable, vec!["ibm_basic"]);
+        m.insert(MachineType::CompaqDeskpro, vec![]);
         m
     };
 
@@ -325,12 +370,13 @@ pub struct MachineDescriptor {
     pub kb_controller: KbControllerType,
     pub pit_type: PitType,
     pub pic_type: PicType,
-    pub dma_type: Option<DmaType>,     // Not all machines have DMA (PCJr)
-    pub onboard_serial: Option<u16>,   // Whether the machine has an onboard serial port - and if so, the port base.
+    pub dma_type: Option<DmaType>, // Not all machines have DMA (PCJr)
+    pub onboard_sound: Option<(SoundChipType, u16, ClockFactor)>,
+    pub onboard_serial: Option<u16>, // Whether the machine has an onboard serial port - and if so, the port base.
     pub onboard_parallel: Option<u16>, // Whether the machine has an onboard parallel port - and if so, the port base.
-    pub allow_expansion_video: bool,   // Whether the machine allows for expansion video cards.
-    pub pcjr_cart_slot: bool,          // Does the system have PCJr cartridge slots?
-    pub game_port: Option<u16>,        // Does the system have an onboard game port, and if so, at what address?
+    pub allow_expansion_video: bool, // Whether the machine allows for expansion video cards.
+    pub pcjr_cart_slot: bool,        // Does the system have PCJr cartridge slots?
+    pub game_port: Option<u16>,      // Does the system have an onboard game port, and if so, at what address?
 }
 
 impl Default for MachineDescriptor {
@@ -344,7 +390,7 @@ impl Default for MachineDescriptor {
             open_bus_byte: 0xFF,
             cpu_type: CpuType::Intel8088,
             cpu_factor: ClockFactor::Divisor(3),
-            cpu_turbo_factor: ClockFactor::Divisor(2),
+            cpu_turbo_factor: ClockFactor::Divisor(1),
             bus_type: BusType::Isa8,
             bus_factor: ClockFactor::Divisor(1),
             timer_divisor: PIT_DIVISOR,
@@ -354,6 +400,7 @@ impl Default for MachineDescriptor {
             pit_type: PitType::Model8253,
             pic_type: PicType::Single,
             dma_type: Some(DmaType::Single),
+            onboard_sound: None,
             onboard_serial: None,
             onboard_parallel: None,
             allow_expansion_video: true,
@@ -388,7 +435,8 @@ lazy_static! {
     /// Eventually we will want to move these machine definitions into a config file
     /// so that people can define custom architectures.
     pub static ref MACHINE_DESCS: HashMap<MachineType, MachineDescriptor> = {
-        let map = HashMap::from([
+        
+        HashMap::from([
             (
                 MachineType::Ibm5150v64K,
                 MachineDescriptor {
@@ -407,6 +455,21 @@ lazy_static! {
                 MachineType::Ibm5160,
                 MachineDescriptor {
                     machine_type: MachineType::Ibm5160,
+                    ..Default::default()
+                },
+            ),
+            (
+                MachineType::CompaqPortable,
+                MachineDescriptor {
+                    machine_type: MachineType::CompaqPortable,
+                    ..Default::default()
+                },
+            ),
+            (
+                MachineType::CompaqDeskpro,
+                MachineDescriptor {
+                    machine_type: MachineType::CompaqDeskpro,
+                    cpu_type: CpuType::Intel8086,
                     ..Default::default()
                 },
             ),
@@ -431,6 +494,7 @@ lazy_static! {
                     dma_type: None,
                     pcjr_cart_slot: true, // PCJr has cartridge slots!
                     game_port: Some(GAME_PORT_DEFAULT_IO),
+                    onboard_sound: Some((SoundChipType::Sn76489, 0xC0, ClockFactor::Divisor(4))),
                     ..Default::default()
                 },
             ),
@@ -459,11 +523,40 @@ lazy_static! {
                     allow_expansion_video: false,
                     pcjr_cart_slot: false,
                     game_port: Some(GAME_PORT_DEFAULT_IO),
+                    onboard_sound: Some((SoundChipType::Sn76489, 0xC0, ClockFactor::Divisor(4))),
                     ..Default::default()
                 },
-            )
-        ]);
-        map
+            ),
+            (
+                MachineType::Tandy1000SL,
+                MachineDescriptor {
+                    machine_type: MachineType::Tandy1000SL,
+                    system_crystal: IBM_PC_SYSTEM_CLOCK,
+                    timer_crystal: None,
+                    bus_crystal: IBM_PC_SYSTEM_CLOCK,
+                    open_bus_byte: 0xE8,
+                    cpu_type: CpuType::Intel8086, // SL upgraded to the 8086.
+                    cpu_factor: ClockFactor::Divisor(2),
+                    cpu_turbo_factor: ClockFactor::Divisor(3), // Reverse turbo - alternate clock slows down.
+                    bus_type: BusType::Isa8,
+                    bus_factor: ClockFactor::Divisor(1),
+                    timer_divisor: PIT_DIVISOR,
+                    have_ppi: true,
+                    a0: Some(A0Type::Tandy1000),
+                    kb_controller: KbControllerType::Ppi,
+                    pit_type: PitType::Model8253,
+                    pic_type: PicType::Single,
+                    dma_type: Some(DmaType::Single),
+                    onboard_serial: None,
+                    onboard_parallel: Some(0x378),
+                    allow_expansion_video: false,
+                    pcjr_cart_slot: false,
+                    game_port: Some(GAME_PORT_DEFAULT_IO),
+                    onboard_sound: Some((SoundChipType::Sn76489, 0xC0, ClockFactor::Divisor(4))),
+                    ..Default::default()
+                },
+            ),
+        ])
     };
 }
 
@@ -473,7 +566,7 @@ pub fn get_machine_descriptor(machine_type: MachineType) -> Option<&'static Mach
 
 pub fn normalize_conventional_memory(config: &MachineConfiguration) -> Result<u32, Error> {
     let mut conventional_memory = config.memory.conventional.size;
-    conventional_memory = conventional_memory & 0xfffff000; // Normalize to 4K boundary
+    conventional_memory &= 0xfffff000; // Normalize to 4K boundary
 
     // For 5150 machines we set conventional memory to the next largest valid DIP value
     let new_conventional_memory = match config.machine_type {

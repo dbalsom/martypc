@@ -33,8 +33,10 @@
 pub mod a0;
 #[cfg(feature = "opl")]
 pub mod adlib;
+mod ata;
 pub mod cartridge_slots;
 pub mod cga;
+pub mod conventional_memory;
 pub mod dipswitch;
 pub mod dma;
 #[cfg(feature = "ega")]
@@ -55,6 +57,8 @@ pub mod pic;
 pub mod pit;
 pub mod ppi;
 pub mod serial;
+pub mod sn76489;
+pub mod sound_source;
 pub mod tga;
 #[cfg(feature = "vga")]
 pub mod vga;

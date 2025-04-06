@@ -315,7 +315,7 @@ impl CpuClient {
         let cmd: [u8; 1] = [cmd as u8];
 
         self.port.borrow_mut().clear(ClearBuffer::Input).unwrap();
-        match self.port.borrow_mut().write(&cmd) {
+        match self.port.borrow_mut().write_all(&cmd) {
             Ok(_) => Ok(()),
             Err(_) => Err(CpuClientError::WriteFailure),
         }

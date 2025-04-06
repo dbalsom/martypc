@@ -34,7 +34,9 @@ use std::fmt;
 
 #[allow(dead_code)]
 #[derive(PartialEq, Copy, Clone, Debug)]
+#[derive(Default)]
 pub enum Mnemonic {
+    #[default]
     Invalid,
     NoOpcode,
     Group,
@@ -171,11 +173,6 @@ pub enum Mnemonic {
     BRKEM,
 }
 
-impl Default for Mnemonic {
-    fn default() -> Self {
-        Mnemonic::Invalid
-    }
-}
 
 // TODO: Is this any faster than just using derive Debug?
 pub(crate) fn mnemonic_to_str(op: Mnemonic) -> &'static str {

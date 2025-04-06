@@ -41,8 +41,8 @@ use crate::cpu_vx0::{modrm::ModRmByte, *};
 
 use crate::{
     bytequeue::*,
-    cpu_vx0::{alu::Xi, gdr::GdrEntry},
-    cpu_common::{AddressingMode, Instruction},
+    cpu_vx0::{gdr::GdrEntry},
+    cpu_common::{AddressingMode, Instruction, alu::Xi},
 };
 use crate::cpu_common::{Mnemonic, Segment, OperandType, OPCODE_PREFIX_ES_OVERRIDE, OPCODE_PREFIX_CS_OVERRIDE, OPCODE_PREFIX_SS_OVERRIDE, OPCODE_PREFIX_DS_OVERRIDE, OPCODE_PREFIX_LOCK, OPCODE_PREFIX_REP1, OPCODE_PREFIX_REP2, OPCODE_PREFIX_REP3, OPCODE_PREFIX_REP4, OPCODE_PREFIX_0F};
 use crate::cpu_common::operands::OperandSize;
@@ -612,11 +612,8 @@ pub static DECODE: [InstTemplate; TOTAL_OPS_LEN] = {
 impl NecVx0 {
     #[rustfmt::skip]
     pub fn decode(bytes: &mut impl ByteQueue, peek: bool) -> Result<Instruction, Box<dyn std::error::Error>> {
-
         let mut operand1_type: OperandType = OperandType::NoOperand;
         let mut operand2_type: OperandType = OperandType::NoOperand;
-        let mut operand1_size: OperandSize = OperandSize::NoOperand;
-        let mut operand2_size: OperandSize = OperandSize::NoOperand;
         
         let mut opcode = bytes.q_read_u8(QueueType::First, QueueReader::Biu);
         let mut size: u32 = 1;
@@ -735,7 +732,7 @@ impl NecVx0 {
                     let addr_mode = modrm.get_addressing_mode();
                     let operand_type = match addr_mode {
                         AddressingMode::RegisterMode => OperandType::Register8(modrm.get_op1_reg8()),
-                        _=> OperandType::AddressingMode(addr_mode),
+                        _=> OperandType::AddressingMode(addr_mode, OperandSize::Operand8),
                     };
                     (operand_type, OperandSize::Operand8)
                 }
@@ -743,7 +740,7 @@ impl NecVx0 {
                     let addr_mode = modrm.get_addressing_mode();
                     let operand_type = match addr_mode {
                         AddressingMode::RegisterMode => OperandType::Register16(modrm.get_op1_reg16()),
-                        _=> OperandType::AddressingMode(addr_mode)
+                        _=> OperandType::AddressingMode(addr_mode, OperandSize::Operand16)
                     };
                     (operand_type, OperandSize::Operand16)
                 }
@@ -886,10 +883,10 @@ impl NecVx0 {
         };
 
         if !matches!(op_lu.operand1, OperandTemplate::NoTemplate) {
-            (operand1_type, operand1_size) = match_op(op_lu.operand1);
+            (operand1_type, _) = match_op(op_lu.operand1);
         }
         if !matches!(op_lu.operand2, OperandTemplate::NoTemplate) {
-            (operand2_type, operand2_size) = match_op(op_lu.operand2);
+            (operand2_type, _) = match_op(op_lu.operand2);
         }
 
         // Hacks for irregular-operand instructions
@@ -924,12 +921,12 @@ impl NecVx0 {
             prefixes: op_prefixes,
             address: 0,
             size,
+            width: op_lu.gdr.width(opcode),
             mnemonic: op_lu.mnemonic,
+            xi: op_lu.xi,
             segment_override: op_segment_override,
             operand1_type,
-            operand1_size,
             operand2_type,
-            operand2_size
         })
     }
 }

@@ -10,6 +10,7 @@ path = "src/lib.rs"
 crate-type = ["lib"]
 
 [dependencies]
+marty_display_common = { path = "../../frontend/marty_display_common" }
 display_backend_trait = { path = "../display_backend_trait", features = ["use_wgpu"]}
 egui.workspace = true
 egui-wgpu.workspace = true

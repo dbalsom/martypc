@@ -32,16 +32,23 @@
 
 use crate::{
     bus::{BusInterface, DeviceRunTimeUnit, IoDevice, NO_IO_BYTE},
+    channel::BidirectionalChannel,
     cpu_common::LogicAnalyzer,
-    devices::lpt_port::ParallelPort,
+    devices::{
+        lpt_port::{ParallelMessage, ParallelPort},
+        pic::Pic,
+    },
 };
 
 pub const LPT_DEFAULT_IO_BASE: u16 = 0x3BC;
 pub const LPT_PORT_MASK: u16 = !0x003;
+pub const LPT_DEFAULT_IRQ: u8 = 7;
 
 pub struct ParallelController {
     lpt_port_base: u16,
     lpt: ParallelPort,
+    intr: bool,
+    lower_interrupt: bool,
 }
 
 impl Default for ParallelController {
@@ -49,6 +56,8 @@ impl Default for ParallelController {
         ParallelController {
             lpt_port_base: LPT_DEFAULT_IO_BASE,
             lpt: ParallelPort::default(),
+            intr: false,
+            lower_interrupt: false,
         }
     }
 }
@@ -58,6 +67,23 @@ impl ParallelController {
         ParallelController {
             lpt_port_base: port_base.unwrap_or(LPT_DEFAULT_IO_BASE),
             ..Default::default()
+        }
+    }
+
+    pub fn device_channel(&self) -> BidirectionalChannel<ParallelMessage> {
+        self.lpt.device_channel()
+    }
+
+    pub fn run(&mut self, pic: &mut Pic, usec: f64) {
+        let intr = self.lpt.run(usec);
+
+        if intr && !self.intr && self.lpt.intr_enabled() {
+            self.intr = true;
+            log::debug!("LPT: Raising IRQ {}", LPT_DEFAULT_IRQ);
+            pic.request_interrupt(LPT_DEFAULT_IRQ);
+        }
+        else if !intr && self.intr {
+            pic.clear_interrupt(LPT_DEFAULT_IRQ);
         }
     }
 }

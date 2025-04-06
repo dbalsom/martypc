@@ -106,26 +106,29 @@ impl PpiViewerControl {
     }*/
 
     pub fn draw(&mut self, ui: &mut egui::Ui, _events: &mut GuiEventQueue) {
-        for (i, (group_name, group)) in self.ppi_state.iter().enumerate() {
+        for (_i, (group_name, group)) in self.ppi_state.iter().enumerate() {
             egui::CollapsingHeader::new(group_name)
                 .default_open(true)
                 .show(ui, |ui| {
-                    for map in group.iter() {
-                        MartyLayout::new(layouts::Layout::KeyValue, &format!("ppi-viewer-grid{}", i))
-                            .min_col_width(200.0)
-                            .show(ui, |ui| {
-                                for (key, value) in map {
-                                    if let SyntaxToken::StateString(text, _, age) = value {
-                                        MartyLayout::kv_row(ui, *key, None, |ui| {
-                                            ui.label(
-                                                egui::RichText::new(text)
-                                                    .text_style(egui::TextStyle::Monospace)
-                                                    .color(fade_c32(Color32::GRAY, STATUS_UPDATE_COLOR, 255 - *age)),
-                                            );
-                                        });
-                                    }
+                    for (k, map) in group.iter().enumerate() {
+                        MartyLayout::new(
+                            layouts::Layout::KeyValue,
+                            &format!("ppi-viewer-grid{}{}", group_name, k),
+                        )
+                        .min_col_width(200.0)
+                        .show(ui, |ui| {
+                            for (key, value) in map {
+                                if let SyntaxToken::StateString(text, _, age) = value {
+                                    MartyLayout::kv_row(ui, *key, None, |ui| {
+                                        ui.label(
+                                            egui::RichText::new(text)
+                                                .text_style(egui::TextStyle::Monospace)
+                                                .color(fade_c32(Color32::GRAY, STATUS_UPDATE_COLOR, 255 - *age)),
+                                        );
+                                    });
                                 }
-                            });
+                            }
+                        });
                     }
                 });
         }

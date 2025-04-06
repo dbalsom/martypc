@@ -38,6 +38,7 @@ use std::{
 use super::{addressing::WithPlusSign, mnemonic::mnemonic_to_str};
 use crate::{
     cpu_common::{
+        alu::Xi,
         operands::OperandSize,
         AddressingMode,
         Mnemonic,
@@ -61,6 +62,39 @@ pub enum OperandSelect {
     SecondOperand,
 }
 
+#[derive(Clone, Debug, PartialEq)]
+pub enum InstructionWidth {
+    Byte,
+    Word,
+}
+
+impl InstructionWidth {
+    #[inline(always)]
+    pub fn sign_mask(&self) -> u16 {
+        match self {
+            InstructionWidth::Byte => 0x80,
+            InstructionWidth::Word => 0x8000,
+        }
+    }
+}
+
+impl From<InstructionWidth> for OperandSize {
+    fn from(iw: InstructionWidth) -> Self {
+        match iw {
+            InstructionWidth::Byte => OperandSize::Operand8,
+            InstructionWidth::Word => OperandSize::Operand16,
+        }
+    }
+}
+impl From<&InstructionWidth> for OperandSize {
+    fn from(iw: &InstructionWidth) -> Self {
+        match iw {
+            InstructionWidth::Byte => OperandSize::Operand8,
+            InstructionWidth::Word => OperandSize::Operand16,
+        }
+    }
+}
+
 #[derive(Clone)]
 pub struct Instruction {
     pub decode_idx: usize,
@@ -68,12 +102,12 @@ pub struct Instruction {
     pub prefixes: u32,
     pub address: u32,
     pub size: u32,
+    pub width: InstructionWidth,
     pub mnemonic: Mnemonic,
+    pub xi: Option<Xi>,
     pub segment_override: Option<Segment>,
     pub operand1_type: OperandType,
-    pub operand1_size: OperandSize,
     pub operand2_type: OperandType,
-    pub operand2_size: OperandSize,
 }
 
 impl Default for Instruction {
@@ -84,12 +118,12 @@ impl Default for Instruction {
             prefixes: 0,
             address: 0,
             size: 1,
+            width: InstructionWidth::Byte,
             mnemonic: Mnemonic::NOP,
+            xi: None,
             segment_override: None,
             operand1_type: OperandType::NoOperand,
-            operand1_size: OperandSize::NoOperand,
             operand2_type: OperandType::NoOperand,
-            operand2_size: OperandSize::NoOperand,
         }
     }
 }
@@ -102,7 +136,7 @@ impl Display for Instruction {
         let sego_prefix = override_prefix_to_string(self);
         if let Some(so) = sego_prefix {
             instruction_string.push_str(&so);
-            instruction_string.push_str(" ");
+            instruction_string.push(' ');
         }
 
         // Add other prefixes (rep(x), lock, etc)
@@ -111,25 +145,26 @@ impl Display for Instruction {
 
         if let Some(p) = prefix {
             instruction_string.push_str(&p);
-            instruction_string.push_str(" ");
+            instruction_string.push(' ');
         }
         instruction_string.push_str(&mnemonic);
 
-        // Dont sign-extend 8-bit port addresses or ENTER's stack frame count
+        // Size overrides. Certain instructions have byte operands with no apparent indication
+        // in the GDR. We override the operand size here to avoid unwanted sign-extension.
+        use Mnemonic::*;
         let op_size = match self.mnemonic {
-            Mnemonic::IN | Mnemonic::OUT => OperandSize::Operand8,
-            Mnemonic::ENTER => OperandSize::Operand8,
-            _ => self.operand1_size,
+            IN | OUT | ENTER | INT | AAD => OperandSize::Operand8,
+            _ => OperandSize::from(&self.width),
         };
 
         let op1 = operand_to_string(self, OperandSelect::FirstOperand, op_size);
-        if op1.len() > 0 {
-            instruction_string.push_str(" ");
+        if !op1.is_empty() {
+            instruction_string.push(' ');
             instruction_string.push_str(&op1);
         }
 
         let op2: String = operand_to_string(self, OperandSelect::SecondOperand, op_size);
-        if op2.len() > 0 {
+        if !op2.is_empty() {
             instruction_string.push_str(", ");
             instruction_string.push_str(&op2);
         }
@@ -140,10 +175,12 @@ impl Display for Instruction {
 
 impl SyntaxTokenize for Instruction {
     fn tokenize(&self) -> Vec<SyntaxToken> {
-        // Dont sign-extend 8-bit port addresses.
+        // Size overrides. Certain instructions have byte operands with no apparent indication
+        // in the GDR. We override the operand size here to avoid unwanted sign-extension.
+        use Mnemonic::*;
         let op_size = match self.mnemonic {
-            Mnemonic::IN | Mnemonic::OUT => OperandSize::Operand8,
-            _ => self.operand1_size,
+            IN | OUT | ENTER | INT | AAD => OperandSize::Operand8,
+            _ => OperandSize::from(&self.width),
         };
 
         let mut i_vec = SyntaxTokenVec(Vec::new());
@@ -234,9 +271,9 @@ impl fmt::UpperHex for Rel8Extend {
 }
 
 fn operand_to_string(i: &Instruction, op: OperandSelect, lvalue: OperandSize) -> String {
-    let (op_type, op_size) = match op {
-        OperandSelect::FirstOperand => (i.operand1_type, i.operand1_size),
-        OperandSelect::SecondOperand => (i.operand2_type, i.operand2_size),
+    let op_type = match op {
+        OperandSelect::FirstOperand => i.operand1_type,
+        OperandSelect::SecondOperand => i.operand2_type,
     };
 
     let instruction_string: String = match op_type {
@@ -306,8 +343,8 @@ fn operand_to_string(i: &Instruction, op: OperandSelect, lvalue: OperandSize) ->
             Register16::DS => "ds".to_string(),
             _ => "".to_string(),
         },
-        OperandType::AddressingMode(addr_mode) => {
-            let mut ptr_prefix: String = match op_size {
+        OperandType::AddressingMode(addr_mode, size) => {
+            let mut ptr_prefix: String = match size {
                 OperandSize::Operand8 => "byte ".to_string(),
                 OperandSize::Operand16 => "word ".to_string(),
                 OperandSize::NoOperand => "*invalid ptr* ".to_string(),
@@ -422,9 +459,9 @@ fn operand_to_string(i: &Instruction, op: OperandSelect, lvalue: OperandSize) ->
 }
 
 fn tokenize_operand(i: &Instruction, op: OperandSelect, lvalue: OperandSize) -> Vec<SyntaxToken> {
-    let (op_type, op_size) = match op {
-        OperandSelect::FirstOperand => (i.operand1_type, i.operand1_size),
-        OperandSelect::SecondOperand => (i.operand2_type, i.operand2_size),
+    let op_type = match op {
+        OperandSelect::FirstOperand => i.operand1_type,
+        OperandSelect::SecondOperand => i.operand2_type,
     };
 
     let mut op_vec = Vec::new();
@@ -515,8 +552,8 @@ fn tokenize_operand(i: &Instruction, op: OperandSelect, lvalue: OperandSize) -> 
             };
             op_vec.push(SyntaxToken::Register(reg));
         }
-        OperandType::AddressingMode(addr_mode) => {
-            let mut ptr_prefix: Option<String> = match op_size {
+        OperandType::AddressingMode(addr_mode, size) => {
+            let mut ptr_prefix: Option<String> = match size {
                 OperandSize::Operand8 => Some("byte".to_string()),
                 OperandSize::Operand16 => Some("word".to_string()),
                 OperandSize::NoOperand => Some("*invalid*".to_string()),
@@ -602,7 +639,7 @@ fn tokenize_operand(i: &Instruction, op: OperandSelect, lvalue: OperandSize) -> 
                 op_vec.push(seg_token);
                 op_vec.push(SyntaxToken::Colon);
 
-                if ea_vec[0].len() > 0 {
+                if !ea_vec[0].is_empty() {
                     // Have first component of ea
                     op_vec.push(SyntaxToken::Register(ea_vec[0].to_string()));
                 }
@@ -611,13 +648,13 @@ fn tokenize_operand(i: &Instruction, op: OperandSelect, lvalue: OperandSize) -> 
                     op_vec.push(SyntaxToken::Displacement(format!("{}", disp)));
                 }
 
-                if ea_vec[1].len() > 0 {
+                if !ea_vec[1].is_empty() {
                     // Have second component of ea
                     op_vec.push(SyntaxToken::PlusSign);
                     op_vec.push(SyntaxToken::Register(ea_vec[1].to_string()));
                 }
 
-                if ea_vec[0].len() > 0 {
+                if !ea_vec[0].is_empty() {
                     // Have at least one ea component. Add +displacement if present.
                     if let Some(disp) = disp_opt {
                         // TODO: Generate +/- as tokens for displacement?
@@ -649,7 +686,7 @@ fn tokenize_operand(i: &Instruction, op: OperandSelect, lvalue: OperandSize) -> 
 
 fn override_prefix_to_string(i: &Instruction) -> Option<String> {
     if let Some(seg_override) = i.segment_override {
-        match ((i.prefixes & OPCODE_PREFIX_0F != 0), i.opcode) {
+        match (i.prefixes & OPCODE_PREFIX_0F != 0, i.opcode) {
             (false, 0xA4 | 0xA5 | 0xAA | 0xAB | 0xAC | 0xAD | 0xA6 | 0xA7 | 0xAE | 0xAF) => {
                 let segment = match seg_override {
                     Segment::ES => "es",

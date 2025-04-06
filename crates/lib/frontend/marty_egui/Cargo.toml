@@ -12,6 +12,7 @@ crate-type = ["lib"]
 
 [dependencies]
 marty_frontend_common = { path = "../marty_frontend_common" }
+marty_display_common = { path = "../marty_display_common", features = ["use_display"] }
 marty_common = { path = "../../../marty_common" }
 marty_core = { path = "../../../marty_core", default-features = false }
 marty_videocard_renderer = { path = "../marty_videocard_renderer" }

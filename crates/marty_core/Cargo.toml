@@ -57,6 +57,13 @@ fluxfox = { workspace = true, default-features=false, features = ["core", "wasm"
 [dev-dependencies]
 criterion = "0.5"
 
+[lints.clippy]
+new_without_default = "allow"
+identity_op = "allow"
+wildcard_in_or_patterns = "allow"
+needless_update = "allow"
+comparison_chain = "allow"
+
 [[bench]]
 name = "cga_bench"
 harness = false
@@ -67,11 +74,15 @@ harness = false
 
 [features]
 default = ["ega", "vga"]
+devmode = ["cpu_cycle_trace", "cpu_trace_comments"]
 sound = []
 serial = ["serialport"]
 opl = ["dep:opl3-rs"]
 wasm = []
 arduino_validator = []
-cpu_validator = []
+cpu_validator = ["cpu_collect_cycle_states"]
+cpu_collect_cycle_states = []
+cpu_cycle_trace = []
+cpu_trace_comments = []
 ega = []
 vga = []

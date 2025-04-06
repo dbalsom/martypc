@@ -23,26 +23,22 @@
     DEALINGS IN THE SOFTWARE.
 
     ---------------------------------------------------------------------------
-
-    display_backend_common::lib.rs
-
-    Defines a DisplayBackend trait that can be implemented to abstract various
-    display backends such as Pixels or (eventually) SDL.
-
-    DisplayBackend has the concept of a 'buffer' which is the raw u8 pixel
-    data to be displayed during rendering, and a 'surface' which is the
-    destination target for rendering. These may not be the same size, ie, when
-    hardware scaling is in effect. In general, the surface should be resized
-    when the attached window is resized.
-
-    The render method takes a VideoRenderer trait object, defined by a specific
-    frontend. This allows a lot of flexibility in how the image is ultimately
-    presented - for example the Pixels VideoRenderer supports multiple scaling
-    options and CRT shader effects.
-
-    A DisplayBackend should be able to be instantiated multiple times, to
-    support multiple windows/displays.
 */
+
+//! Defines a [DisplayBackend] trait that can be implemented to abstract various
+//! display backends such as Pixels or (eventually) SDL.
+//!
+//! [DisplayBackend] has the concept of a `buffer` which is the raw u8 pixel
+//! data to be displayed during rendering, and a `surface` which is the
+//! destination target for rendering. These may not be the same size, ie, when
+//! hardware scaling is in effect. In general, the surface should be resized
+//! when the attached window is resized.
+//!
+//! The render method takes a [VideoRenderer] trait object, defined by a specific
+//! frontend. The job of a [VideoRenderer] is to post-process the raw framebuffer
+//! output of the emulation core's video devices. Typically, this involves converting
+//! indexed color data to RGBA.
+
 #![feature(trait_alias)]
 #[cfg(not(any(feature = "use_wgpu", feature = "use_egui_backend")))]
 compile_error!("Either the 'use_wgpu' or 'use_egui_backend' feature must be enabled.");
@@ -64,8 +60,6 @@ pub type DynDisplayTargetSurface = Arc<
     >,
 >;
 
-#[cfg(feature = "use_egui_backend")]
-use egui;
 #[cfg(not(feature = "use_wgpu"))]
 pub type DynDisplayTargetSurface = Arc<
     RwLock<

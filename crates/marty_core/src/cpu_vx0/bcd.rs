@@ -66,10 +66,10 @@ impl NecVx0 {
         if new_al == 0 {
             self.set_flag(Flag::Zero);
         }
-        if old_al >= 0x7A && old_al <= 0x7F {
+        if (0x7A..=0x7F).contains(&old_al) {
             self.set_flag(Flag::Overflow);
         }
-        if old_al >= 0x7A && old_al <= 0xF9 {
+        if (0x7A..=0xF9).contains(&old_al) {
             self.set_flag(Flag::Sign);
         }
 
@@ -109,7 +109,7 @@ impl NecVx0 {
         if new_al == 0 {
             self.set_flag(Flag::Zero);
         }
-        if old_af && old_al >= 0x80 && old_al <= 0x85 {
+        if old_af && (0x80..=0x85).contains(&old_al) {
             self.set_flag(Flag::Overflow);
         }
         if !old_af && old_al >= 0x80 {
@@ -211,11 +211,11 @@ impl NecVx0 {
         //log::debug!(" >>>> daa: af: {} cf: {} of: {}", old_af, old_cf, self.get_flag(Flag::Overflow));
 
         if old_cf {
-            if result >= 0x1a && result <= 0x7F {
+            if (0x1a..=0x7F).contains(&result) {
                 overflow = true;
             }
         }
-        else if result >= 0x7a && result <= 0x7F {
+        else if (0x7a..=0x7F).contains(&result) {
             overflow = true;
         }
 
@@ -258,22 +258,13 @@ impl NecVx0 {
         };
 
         match (old_af, old_cf) {
-            (false, false) => match result {
-                0x9A..=0xDF => overflow = true,
-                _ => {}
-            },
+            (false, false) => if let 0x9A..=0xDF = result { overflow = true },
             (true, false) => match result {
                 0x80..=0x85 | 0xA0..=0xE5 => overflow = true,
                 _ => {}
             },
-            (false, true) => match result {
-                0x80..=0xDF => overflow = true,
-                _ => {}
-            },
-            (true, true) => match result {
-                0x80..=0xE5 => overflow = true,
-                _ => {}
-            },
+            (false, true) => if let 0x80..=0xDF = result { overflow = true },
+            (true, true) => if let 0x80..=0xE5 = result { overflow = true },
         }
 
         if (result & 0x0F) > 9 || aux_carry {
@@ -311,22 +302,13 @@ impl NecVx0 {
         self.clear_flag(Flag::Overflow);
 
         match (old_af, old_cf) {
-            (false, false) => match self.a.l() {
-                0x9A..=0xDF => self.set_flag(Flag::Overflow),
-                _ => {}
-            },
+            (false, false) => if let 0x9A..=0xDF = self.a.l() { self.set_flag(Flag::Overflow) },
             (true, false) => match self.a.l() {
                 0x80..=0x85 | 0xA0..=0xE5 => self.set_flag(Flag::Overflow),
                 _ => {}
             },
-            (false, true) => match self.a.l() {
-                0x80..=0xDF => self.set_flag(Flag::Overflow),
-                _ => {}
-            },
-            (true, true) => match self.a.l() {
-                0x80..=0xE5 => self.set_flag(Flag::Overflow),
-                _ => {}
-            },
+            (false, true) => if let 0x80..=0xDF = self.a.l() { self.set_flag(Flag::Overflow) },
+            (true, true) => if let 0x80..=0xE5 = self.a.l() { self.set_flag(Flag::Overflow) },
         }
 
         self.clear_flag(Flag::Carry);

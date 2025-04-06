@@ -367,14 +367,12 @@ impl Pic {
                 // We aren't expecting any ICWs, so treat this write as a set of the IMR
                 log::trace!("PIC: Set IMR to: {:02X}", byte);
                 self.set_imr(byte);
-                return;
             }
             InitializationState::ExpectingICW2 => {
                 // This value should be an ICW2 based on just receiving an ICW1 on control port
                 log::debug!("PIC: Read ICW2: {:02X}", byte);
                 self.int_offset = byte & ICW2_MASK;
                 self.init_state = InitializationState::ExpectingICW4;
-                return;
             }
             InitializationState::ExpectingICW4 => {
                 // This value should be an ICW4 based on receiving an ICW2 (ICW3 skipped in Single mode)
@@ -391,7 +389,6 @@ impl Pic {
                     log::error!("PIC: Error: MCS-80/85 mode unsupported");
                     self.error = true;
                 }
-                return;
             }
         }
     }

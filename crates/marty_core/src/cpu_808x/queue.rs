@@ -35,12 +35,15 @@ use crate::cpu_808x::*;
 pub struct InstructionQueue {
     size: usize,
     fetch_size: usize,
-    policy_size: usize,
+    policy_len0: usize,
+    policy_len1: usize,
     len: usize,
     back: usize,
     front: usize,
     q: [u8; QUEUE_MAX],
     preload: Option<u8>,
+    // Whether to discard the low order byte of the next fetch
+    discard: bool,
 }
 
 impl Default for InstructionQueue {
@@ -48,12 +51,14 @@ impl Default for InstructionQueue {
         Self {
             size: QUEUE_MAX,
             fetch_size: 2,
-            policy_size: QUEUE_MAX - 2,
+            policy_len0: QUEUE_MAX - 1,
+            policy_len1: QUEUE_MAX - 2,
             len: 0,
             back: 0,
             front: 0,
             q: [0; QUEUE_MAX],
             preload: None,
+            discard: false,
         }
     }
 }
@@ -63,7 +68,8 @@ impl InstructionQueue {
         Self {
             size,
             fetch_size,
-            policy_size: size - fetch_size,
+            policy_len0: if fetch_size == 1 { size - 1 } else { size - 2 },
+            policy_len1: if fetch_size == 1 { size - 1 } else { size - 3 },
             ..Self::default()
         }
     }
@@ -72,21 +78,27 @@ impl InstructionQueue {
         assert!(size <= QUEUE_MAX);
         self.size = size;
         self.fetch_size = fetch_size;
-        self.policy_size = size - fetch_size;
+        self.policy_len0 = if fetch_size == 1 { size - 1 } else { size - 2 };
+        self.policy_len1 = if fetch_size == 1 { size - 1 } else { size - 3 };
     }
 
-    pub fn get_size(&mut self) -> usize {
+    pub fn size(&self) -> usize {
         self.size
     }
 
     #[inline]
     pub fn at_policy_len(&self) -> bool {
-        self.len == self.policy_size
+        self.len == self.policy_len0 || self.len == self.policy_len1
+    }
+
+    #[inline]
+    pub fn at_policy_threshold(&self) -> bool {
+        self.len == self.policy_len1
     }
 
     #[inline]
     pub fn has_room_for_fetch(&self) -> bool {
-        self.len <= self.policy_size
+        self.len <= (self.size - self.fetch_size)
     }
 
     #[inline]
@@ -129,11 +141,17 @@ impl InstructionQueue {
     }
 
     #[inline]
-    pub fn push8(&mut self, byte: u8) {
+    pub fn set_discard(&mut self) {
+        self.discard = true;
+    }
+
+    #[inline]
+    pub fn push8(&mut self, byte: u8) -> u16 {
         if self.len < self.size {
             self.q[self.front] = byte;
             self.front = (self.front + 1) % self.size;
             self.len += 1;
+            1
         }
         else {
             panic!("Queue overrun!");
@@ -141,10 +159,19 @@ impl InstructionQueue {
     }
 
     #[inline]
-    pub fn push16(&mut self, word: u16) {
+    pub fn push16(&mut self, word: u16) -> u16 {
         assert_eq!(self.fetch_size, 2);
-        self.push8((word & 0xFF) as u8);
-        self.push8(((word >> 8) & 0xFF) as u8);
+
+        if self.discard {
+            self.push8(((word >> 8) & 0xFF) as u8);
+            self.discard = false;
+            1
+        }
+        else {
+            self.push8((word & 0xFF) as u8);
+            self.push8(((word >> 8) & 0xFF) as u8);
+            2
+        }
     }
 
     #[inline]

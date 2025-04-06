@@ -39,20 +39,10 @@ impl MemoryMappedDevice for CGACard {
     fn get_read_wait(&mut self, _address: usize, cycles: u32) -> u32 {
         // Look up wait states given the last ticked clock cycle + elapsed cycles
         // passed in.
-        let phase = (self.cycles + cycles as u64 + 1) as usize & (0x0F as usize);
+        let phase = (self.cycles + cycles as u64 + 1) as usize & 0x0F_usize;
         let waits = WAIT_TABLE[phase];
 
         trace!(self, "READ_U8 (T2): PHASE: {:02X}, WAITS: {}", phase, waits);
-        waits
-    }
-
-    fn get_write_wait(&mut self, _address: usize, cycles: u32) -> u32 {
-        // Look up wait states given the last ticked clock cycle + elapsed cycles
-        // passed in.
-        let phase = (self.cycles + cycles as u64 + 1) as usize & (0x0F as usize);
-        let waits = WAIT_TABLE[phase];
-
-        trace!(self, "WRITE_U8 (T2): PHASE: {:02X}, WAITS: {}", phase, waits);
         waits
     }
 
@@ -75,9 +65,7 @@ impl MemoryMappedDevice for CGACard {
                 self.dirty_snow = true;
                 self.snow_char = self.mem[a_offset]; // 0xDD; // this becomes the character glyph
 
-            //log::debug!("snow attr: {:08b}", self.mem[a_offset]);
-            }
-            else {
+                //log::debug!("snow attr: {:08b}", self.mem[a_offset]);
             }
 
             trace!(self, "READ_U8: {:04X}:{:02X}", a_offset, self.mem[a_offset],);
@@ -87,6 +75,14 @@ impl MemoryMappedDevice for CGACard {
             // Read out of range, shouldn't happen...
             (0xFF, 0)
         }
+    }
+
+    fn mmio_read_u16(&mut self, address: usize, _cycles: u32, cpumem: Option<&[u8]>) -> (u16, u32) {
+        let (lo_byte, wait1) = MemoryMappedDevice::mmio_read_u8(self, address, 0, cpumem);
+        let (ho_byte, wait2) = MemoryMappedDevice::mmio_read_u8(self, address + 1, 0, cpumem);
+
+        log::warn!("Unsupported 16 bit read from VRAM");
+        ((ho_byte as u16) << 8 | lo_byte as u16, wait1 + wait2)
     }
 
     fn mmio_peek_u8(&self, address: usize, _cpumem: Option<&[u8]>) -> u8 {
@@ -99,6 +95,16 @@ impl MemoryMappedDevice for CGACard {
         let a_offset = (address & CGA_MEM_MASK) - CGA_MEM_ADDRESS;
 
         (self.mem[a_offset] as u16) << 8 | self.mem[a_offset + 1] as u16
+    }
+
+    fn get_write_wait(&mut self, _address: usize, cycles: u32) -> u32 {
+        // Look up wait states given the last ticked clock cycle + elapsed cycles
+        // passed in.
+        let phase = (self.cycles + cycles as u64 + 1) as usize & 0x0F_usize;
+        let waits = WAIT_TABLE[phase];
+
+        trace!(self, "WRITE_U8 (T2): PHASE: {:02X}, WAITS: {}", phase, waits);
+        waits
     }
 
     fn mmio_write_u8(&mut self, address: usize, byte: u8, _cycles: u32, _cpumem: Option<&mut [u8]>) -> u32 {
@@ -121,14 +127,6 @@ impl MemoryMappedDevice for CGACard {
         }
     }
 
-    fn mmio_read_u16(&mut self, address: usize, _cycles: u32, cpumem: Option<&[u8]>) -> (u16, u32) {
-        let (lo_byte, wait1) = MemoryMappedDevice::mmio_read_u8(self, address, 0, cpumem);
-        let (ho_byte, wait2) = MemoryMappedDevice::mmio_read_u8(self, address + 1, 0, cpumem);
-
-        log::warn!("Unsupported 16 bit read from VRAM");
-        return ((ho_byte as u16) << 8 | lo_byte as u16, wait1 + wait2);
-    }
-
     fn mmio_write_u16(&mut self, _address: usize, _data: u16, _cycles: u32, _cpumem: Option<&mut [u8]>) -> u32 {
         //trace!(self, "16 byte write to VRAM, {:04X} -> {:05X} ", data, address);
         log::warn!("Unsupported 16 bit write to VRAM");
@@ -136,16 +134,12 @@ impl MemoryMappedDevice for CGACard {
     }
 
     fn get_mapping(&self) -> Vec<MemRangeDescriptor> {
-        let mut mapping = Vec::new();
-
-        mapping.push(MemRangeDescriptor {
+        vec![MemRangeDescriptor {
             address: 0xB8000,
             size: CGA_MEM_APERTURE,
             cycle_cost: 0,
             read_only: false,
             priority: 0,
-        });
-
-        mapping
+        }]
     }
 }

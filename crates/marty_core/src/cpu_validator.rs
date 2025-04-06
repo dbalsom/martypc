@@ -56,17 +56,14 @@ pub const VAL_ALLOW_ONE: u8 = 0b0001_0000; // Allow a one-cycle variance in cycl
 pub const VAL_NO_CYCLES: u8 = 0b0010_0000; // Don't validate cycle states.
 
 #[derive(Copy, Clone, Debug, Deserialize, PartialEq)]
+#[derive(Default)]
 pub enum ValidatorType {
+    #[default]
     None,
     Pi8088,
     Arduino8088,
 }
 
-impl Default for ValidatorType {
-    fn default() -> Self {
-        ValidatorType::None
-    }
-}
 impl FromStr for ValidatorType {
     type Err = String;
     fn from_str(s: &str) -> Result<Self, String>
@@ -483,7 +480,7 @@ impl Serialize for CycleState {
         let q_byte;
 
         let fields_as_strings = [
-            format!("{}", if self.ale == true { 1 } else { 0 }),
+            format!("{}", if self.ale { 1 } else { 0 }),
             format!("{:05X}", self.addr),
             format!(
                 "{:02}",
@@ -519,25 +516,19 @@ impl Serialize for CycleState {
             format!("{:?}", self.data_bus),
             format!("{:?}", self.b_state),
             format!("{:?}", self.t_state),
-            format!(
-                "{}",
-                match self.q_op {
+            (match self.q_op {
                     QueueOp::First => "F",
                     QueueOp::Subsequent => "S",
                     QueueOp::Flush => "E",
                     _ => "-",
-                }
-            ),
-            format!(
-                "{}",
-                if matches!(self.q_op, QueueOp::Idle) {
+                }).to_string(),
+            (if matches!(self.q_op, QueueOp::Idle) {
                     "--"
                 }
                 else {
                     q_byte = format!("{:02X}", self.q_byte);
                     &q_byte
-                }
-            ),
+                }).to_string(),
         ];
 
         let mut seq = serializer.serialize_seq(Some(fields_as_strings.len()))?;

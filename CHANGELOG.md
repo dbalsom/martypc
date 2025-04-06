@@ -1,5 +1,5 @@
 
-## [0.4.0](https://github.com/dbalsom/martypc/releases/tag/0.4.0) (2025-03-XX)
+## [0.4.0](https://github.com/dbalsom/martypc/releases/tag/0.4.0) (2025-04-XX)
 
 ## New `eframe` Frontend
 
@@ -33,23 +33,56 @@ This provides a few nice things:
  - The VHD creator has been updated to support the wide selection of common hard drive geometries that the XTIDE can 
    support. You'll need to be running a machine with the XTIDE configured to see them.
  - It is now possible to take a VHD file from 86Box (assuming you created it as a 'fixed' VHD) and use it in MartyPC
-   (and vice-versa!).
+   (and vice versa!).
+
+## New Machine Types
+ - CompaqPortable: The original Compaq Portable, the classic luggable 
+ - CompaqDeskpro: The original Compaq Deskpro, with an 8086 CPU
+
+## SN76489
+ - The 3-voice sound chip found in the IBM PCjr and Tandy 1000 is now emulated! These machines will automatically 
+   get this new audio device installed by default with no configuration changes necessary.
+
+## Disney Sound Source
+ - If you have a parallel adapter specified, you can attach a Disney Sound Source, and enjoy various squawky digitized
+   sounds in games that support it (Mostly Disney titles, Wolf 3d, Prince of Persia, and a few others. See Mobygames
+   for a list of supported titles).
+
+## Memory Expansion Cards
+ - Conventional memory expansion cards can now be specified, at any address and with any capacity. It is possible 
+   to have non-contiguous memory regions if you decide to do so, but caveat emptor.
+ - An overlay for the IBM PCjr called 'pcjr_memory_sidecar' will provide an extra 512k to bring your PCjr up to 640k.
 
 ## New Debugger Features
-- You can now edit memory, at last! Double clicking on byte in the hex view will enter edit mode. Hit enter to accept
-  the current value and go to the next byte. Click outside of the edit box to cancel.
+- The FDC debug window was expanded with much more information about operational state besides log messages.
+- A debug status viewer for the SN76489 was added, with nifty VU meters and oscilloscope displays for each channel.
+- You can now edit memory, at last! Double-clicking on byte in the hex view will enter edit mode. Hit enter to accept
+  the current value and go to the next byte. Click outside the edit box to cancel.
 - You can now edit the CPU registers and flags when the machine is paused from the CPU State debug window.
     - You can also flush the CPU's instructon queue by clicking the 'flush' button.
     - To take a manual jump, first, flush the queue, then edit PC to the value of IP you'd like to jump to.
 
 ### Frontend Bug Fixes / Improvements
+ - Mouse capture is even easier, with double-click to capture and middle-click to release implemented by default.
+ - The new Sound menu has been improved with the ability to mute and adjust the volume of sound sources.
  - You can now toggle the display between the window background and a GUI widget window. Shaders are also available
    in windowed mode (With the wgpu backend)!
  - When in windowed mode, you can apply a bezel overlay. This works best with a shader preset that applies curvature,
-   and the 'accurate' aperture selected. This isn't really a shader effect, just a GUI trick. But it's kinda cool.
+   and the 'accurate' aperture selected. This isn't really a shader effect, just a GUI trick.
  - Fixed an issue where MartyPC would receive keyboard events even though it didn't have keyboard focus (weird)
+ - Stopped the emulated machine from receiving keyboard events when paused (I may make this optional, but it can be 
+   frustrating when stepping if you accidentally generate a keyboard interrupt).
+ - The keyboard will be reset on loss of window focus, to avoid stuck keys.
+ - The data visualizer now keeps the current view offset when resizing the bitmap, making it easier to resolve bitmap
+   resources of different sizes.
+ - A revamped Input/Output menu allows control of peripherals:
+   - Mouse sensitivity/speed is now adjustable via the Mouse menu.
+   - The Keyboard menu allows for resetting the keyboard (clearing any stuck keys). 
 
 ### Core Bug Fixes / Improvements
+ - Emulation speed improved overall by approximately 10%.
+ - Added a parallel port card overlay.
+ - Added a keyboard reset function to clear stuck keys. 
  - Improved accuracy of the Programmable Interrupt Timer (PIT)
  - Fixed a bug the CPU's DRAM refresh DMA scheduler. Many tests in Acid88 now pass.
  - Reworked wait state calculations

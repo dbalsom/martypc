@@ -38,12 +38,17 @@
 use bytemuck::{Pod, Zeroable};
 
 // Reexport trait items
-pub use marty_frontend_common::{
-    color::MartyColor,
-    display_scaler::{DisplayScaler, ScalerEffect, ScalerFilter, ScalerMode, ScalerOption},
+pub use marty_frontend_common::color::MartyColor;
+
+use marty_display_common::display_scaler::{
+    DisplayScaler,
+    ScalerEffect,
+    ScalerFilter,
+    ScalerGeometry,
+    ScalerMode,
+    ScalerOption,
 };
 
-use marty_frontend_common::display_scaler::ScalerGeometry;
 use ultraviolet::Mat4;
 use wgpu::{util::DeviceExt, TextureDescriptor};
 

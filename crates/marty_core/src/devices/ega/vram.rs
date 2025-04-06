@@ -107,12 +107,12 @@ impl Vram {
     pub fn deplane(&mut self, offset: usize) {
         for i in 0..8 {
             let mask = 0x80 >> i;
-            let bit0 = (self.planes[0][offset] & mask) >> (7 - i) << 0;
+            let bit0 = (self.planes[0][offset] & mask) >> (7 - i);
             let bit1 = ((self.planes[1][offset] & mask) >> (7 - i)) << 1;
             let bit2 = ((self.planes[2][offset] & mask) >> (7 - i)) << 2;
             let bit3 = ((self.planes[3][offset] & mask) >> (7 - i)) << 3;
             let fourbpp = bit0 | bit1 | bit2 | bit3;
-            self.linear_buf[offset * 8 + i] = fourbpp as u8;
+            self.linear_buf[offset * 8 + i] = fourbpp;
         }
     }
 

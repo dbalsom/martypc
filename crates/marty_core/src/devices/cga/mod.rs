@@ -55,16 +55,11 @@ use crate::{
     tracelogger::TraceLogger,
 };
 
-#[derive(Copy, Clone)]
+#[derive(Copy, Clone, Default)]
 enum RwSlotType {
+    #[default]
     Mem,
     Io,
-}
-
-impl Default for RwSlotType {
-    fn default() -> Self {
-        RwSlotType::Mem
-    }
 }
 
 // A device can have a maximum of 4 operations to handle between calls to run().
@@ -202,7 +197,7 @@ const STATUS_VERTICAL_RETRACE: u8 = 0b0000_1000;
 // Include the standard 8x8 CGA font.
 // TODO: Support alternate font with thinner glyphs? It was normally not accessible except
 //       by soldering a jumper
-const CGA_FONT: &'static [u8] = include_bytes!("../../../assets/cga_8by8.bin");
+const CGA_FONT: &[u8] = include_bytes!("../../../assets/cga_8by8.bin");
 const CGA_FONT_SPAN: usize = 256; // Font bitmap is 2048 bits wide (256 * 8 characters)
 
 const CGA_HCHAR_CLOCK: u8 = 8;
@@ -252,7 +247,7 @@ const CGA_HBLANK_DEBUG_COLOR: u8 = CgaColor::Blue as u8;
 const CGA_VBLANK_DEBUG_COLOR: u8 = CgaColor::Yellow as u8;
 const CGA_DISABLE_DEBUG_COLOR: u8 = CgaColor::Green as u8;
 const CGA_OVERSCAN_DEBUG_COLOR: u8 = CgaColor::Green as u8;
-
+const CGA_LIGHTPEN_DEBUG_COLOR: u8 = CgaColor::Cyan as u8;
 /*
 const CGA_FILL_COLOR: u8 = 4;
 const CGA_SCANLINE_COLOR: u8 = 13;
@@ -365,10 +360,10 @@ const CGA_APERTURES: [DisplayAperture; 4] = [
     },
 ];
 
-const CROPPED_STRING: &str = &formatcp!("Cropped: {}x{}", CGA_APERTURE_CROPPED_W, CGA_APERTURE_CROPPED_H);
-const ACCURATE_STRING: &str = &formatcp!("Accurate: {}x{}", CGA_APERTURE_NORMAL_W, CGA_APERTURE_NORMAL_H);
-const FULL_STRING: &str = &formatcp!("Full: {}x{}", CGA_APERTURE_FULL_W, CGA_APERTURE_FULL_H);
-const DEBUG_STRING: &str = &formatcp!("Debug: {}x{}", CGA_APERTURE_DEBUG_W, CGA_APERTURE_DEBUG_H);
+const CROPPED_STRING: &str = formatcp!("Cropped: {}x{}", CGA_APERTURE_CROPPED_W, CGA_APERTURE_CROPPED_H);
+const ACCURATE_STRING: &str = formatcp!("Accurate: {}x{}", CGA_APERTURE_NORMAL_W, CGA_APERTURE_NORMAL_H);
+const FULL_STRING: &str = formatcp!("Full: {}x{}", CGA_APERTURE_FULL_W, CGA_APERTURE_FULL_H);
+const DEBUG_STRING: &str = formatcp!("Debug: {}x{}", CGA_APERTURE_DEBUG_W, CGA_APERTURE_DEBUG_H);
 
 const CGA_APERTURE_DESCS: [DisplayApertureDesc; 4] = [
     DisplayApertureDesc {
@@ -481,10 +476,14 @@ pub struct CGACard {
     crtc_start_address: usize,
     crtc_start_address_ho: u8,
     crtc_start_address_lo: u8,
-    crtc_cursor_address_lo: u8,
     crtc_cursor_address_ho: u8,
+    crtc_cursor_address_lo: u8,
+    crtc_lightpen_latch_ho: u8,
+    crtc_lightpen_latch_lo: u8,
+
     crtc_cursor_address: usize,
     crtc_frame_address: usize,
+    crtc_ticks_since_vsync: u32,
     in_crtc_hblank: bool,
     in_crtc_vblank: bool,
     in_crtc_vsync: bool,
@@ -556,8 +555,12 @@ pub struct CGACard {
     trace_logger:  TraceLogger,
     debug_counter: u64,
 
+    lightpen_pos: (u32, u32),
+    lightpen_tick: u32,
+    lightpen_trigger_tick: Option<u32>,
     lightpen_latch: bool,
-    lightpen_addr:  usize,
+    lightpen_addr: usize,
+    lightpen_switch: bool,
 
     out_of_sync: bool,
 }
@@ -630,12 +633,12 @@ impl Default for CGACard {
             mode_pending: false,
             clock_pending: false,
             display_mode: DisplayMode::Mode0TextBw40,
-            mode_enable: true,
+            mode_enable: false,
             mode_graphics: false,
             mode_bw: false,
             mode_hires_gfx: false,
-            mode_hires_txt: true,
-            mode_blinking: true,
+            mode_hires_txt: false,
+            mode_blinking: false,
             cc_palette: 0,
             cc_altcolor: 0,
             cc_overscan_color: 0,
@@ -673,8 +676,11 @@ impl Default for CGACard {
             crtc_start_address_lo: 0,
             crtc_cursor_address_lo: 0,
             crtc_cursor_address_ho: 0,
+            crtc_lightpen_latch_ho: 0,
+            crtc_lightpen_latch_lo: 0,
             crtc_cursor_address: 0,
             crtc_frame_address: 0,
+            crtc_ticks_since_vsync: 0,
 
             in_crtc_hblank: false,
             in_crtc_vblank: false,
@@ -754,8 +760,12 @@ impl Default for CGACard {
             trace_logger:  TraceLogger::None,
             debug_counter: 0,
 
+            lightpen_pos: (0, 0),
+            lightpen_tick: 0,
+            lightpen_trigger_tick: None,
             lightpen_latch: false,
-            lightpen_addr:  0,
+            lightpen_addr: 0,
+            lightpen_switch: false,
 
             out_of_sync: false,
         }
@@ -764,19 +774,16 @@ impl Default for CGACard {
 
 impl CGACard {
     pub fn new(trace_logger: TraceLogger, clock_mode: ClockingMode, _video_frame_debug: bool) -> Self {
-        let mut cga = Self::default();
-
-        cga.trace_logger = trace_logger;
-        //cga.debug = video_frame_debug;
-
-        if let ClockingMode::Default = clock_mode {
-            cga.clock_mode = ClockingMode::Dynamic;
+        CGACard {
+            clock_mode: if let ClockingMode::Default = clock_mode {
+                ClockingMode::Dynamic
+            }
+            else {
+                clock_mode
+            },
+            trace_logger,
+            ..Self::default()
         }
-        else {
-            cga.clock_mode = clock_mode;
-        }
-
-        cga
     }
 
     /// Reset CGA state (on reboot, for example)
@@ -843,7 +850,7 @@ impl CGACard {
                 self.tick_char();
 
                 // Tick any remaining cycles
-                for _ in 0..(ticks - phase_offset - self.char_clock as u32) {
+                for _ in 0..(ticks - phase_offset - self.char_clock) {
                     self.tick();
                 }
             }
@@ -891,10 +898,9 @@ impl CGACard {
     }
 
     fn set_lp_latch(&mut self) {
-        if self.lightpen_latch == false {
+        if !self.lightpen_latch {
             // Low to high transition of light pen latch, set latch addr.
-            log::debug!("Updating lightpen latch address");
-            self.lightpen_addr = self.vma;
+            self.latch_lightpen();
         }
 
         self.lightpen_latch = true;
@@ -1136,16 +1142,8 @@ impl CGACard {
                 //log::debug!("CGA: Read from CRTC register: {:?}: {:02}", self.crtc_register_selected, self.crtc_cursor_address_lo );
                 self.crtc_cursor_address_lo
             }
-            CRTCRegister::LightPenPositionL => {
-                let byte = (self.lightpen_addr & 0xFF) as u8;
-                log::debug!("read LpL: {:02X}", byte);
-                byte
-            }
-            CRTCRegister::LightPenPositionH => {
-                let byte = ((self.lightpen_addr >> 8) & 0x3F) as u8;
-                log::debug!("read LpH: {:02X}", byte);
-                byte
-            }
+            CRTCRegister::LightPenPositionL => self.crtc_lightpen_latch_lo,
+            CRTCRegister::LightPenPositionH => self.crtc_lightpen_latch_ho,
             _ => {
                 log::debug!(
                     "CGA: Read from unsupported CRTC register: {:?}",
@@ -1157,7 +1155,7 @@ impl CGACard {
     }
 
     /// Return true if the pending mode change defined by mode_byte would change from text mode to
-    /// graphics mode, or vice-versa
+    /// graphics mode, or vice versa
     fn is_deferred_mode_change(&self, new_mode_byte: u8) -> bool {
         // In general, we can determine whether we are in graphics mode or text mode by
         // checking the graphics bit, however, the graphics bit is allowed to coexist with the
@@ -1194,6 +1192,7 @@ impl CGACard {
         if clock_changed {
             // Flag the clock for pending change.  The clock can only be changed in phase with
             // LCHAR due to our dynamic clocking logic.
+            log::debug!("CGA: Clock change pending");
             self.clock_pending = true;
         }
 
@@ -1204,7 +1203,7 @@ impl CGACard {
         self.mode_hires_gfx = self.mode_byte & MODE_HIRES_GRAPHICS != 0;
         self.mode_blinking = self.mode_byte & MODE_BLINKING != 0;
 
-        // Use color control register value for overscan unless high res graphics mode,
+        // Use color control register value for overscan unless high-res graphics mode,
         // in which case overscan must be black (0).
         self.cc_overscan_color = if self.mode_hires_gfx { 0 } else { self.cc_altcolor };
 
@@ -1300,16 +1299,17 @@ impl CGACard {
     /// Handle a write to the CGA mode register. Defer the mode change if it would change
     /// from graphics mode to text mode or back (Need to measure this on real hardware)
     fn handle_mode_register(&mut self, mode_byte: u8) {
-        //log::debug!("Write to CGA mode register: {:08b}", mode_byte);
+        log::trace!("Write to CGA mode register: {:08b}", mode_byte);
         if self.is_deferred_mode_change(mode_byte) {
             // Latch the mode change and mark it pending. We will change the mode on next hsync.
-            log::trace!("deferring mode change.");
+            log::trace!("handle_mode_register(): deferring mode change.");
             self.mode_pending = true;
             self.mode_byte = mode_byte;
         }
         else {
             // We're not changing from text to graphics or vice versa, so we do not have to
             // defer the update.
+            log::trace!("handle_mode_register(): updating mode immediately");
             self.mode_byte = mode_byte;
             self.update_mode();
         }
@@ -1353,7 +1353,9 @@ impl CGACard {
         }
 
         // This bit is logically reversed, i.e., 0 is switch on
-        //byte |= STATUS_LIGHTPEN_SWITCH_STATUS;
+        if !self.lightpen_switch {
+            byte |= STATUS_LIGHTPEN_SWITCH_STATUS;
+        }
 
         trace_regs!(self);
         trace!(
@@ -1380,13 +1382,11 @@ impl CGACard {
         if self.mode_bw && self.mode_graphics && !self.mode_hires_gfx {
             self.cc_palette = 4; // Select Red, Cyan and White palette (undocumented)
         }
+        else if self.cc_register & CC_PALETTE_BIT != 0 {
+            self.cc_palette = 2; // Select Magenta, Cyan, White palette
+        }
         else {
-            if self.cc_register & CC_PALETTE_BIT != 0 {
-                self.cc_palette = 2; // Select Magenta, Cyan, White palette
-            }
-            else {
-                self.cc_palette = 0; // Select Red, Green, 'Yellow' palette
-            }
+            self.cc_palette = 0; // Select Red, Green, 'Yellow' palette
         }
 
         if self.cc_register & CC_BRIGHT_BIT != 0 {
@@ -1565,8 +1565,8 @@ impl CGACard {
     pub fn get_lowres_gfx_lchar(&self, row: u8) -> (&(u64, u64), &(u64, u64)) {
         let base_addr = self.get_gfx_addr(row);
         (
-            &CGA_LOWRES_GFX_TABLE[self.cc_palette as usize][self.mem[base_addr] as usize],
-            &CGA_LOWRES_GFX_TABLE[self.cc_palette as usize][self.mem[base_addr + 1] as usize],
+            &CGA_LOWRES_GFX_TABLE[self.cc_palette][self.mem[base_addr] as usize],
+            &CGA_LOWRES_GFX_TABLE[self.cc_palette][self.mem[base_addr + 1] as usize],
         )
     }
 
@@ -1577,8 +1577,8 @@ impl CGACard {
     #[inline]
     pub fn get_gfx_addr(&self, row: u8) -> usize {
         let row_offset = (row as usize & 0x01) << 12;
-        let addr = (self.vma & 0x0FFF | row_offset) << 1;
-        addr
+
+        (self.vma & 0x0FFF | row_offset) << 1
     }
 
     pub fn get_screen_ticks(&self) -> u64 {
@@ -1696,7 +1696,12 @@ impl CGACard {
             if self.in_display_area {
                 // Draw current character row
                 if !self.mode_graphics {
-                    self.draw_text_mode_hchar();
+                    if self.lightpen_tick == self.crtc_ticks_since_vsync {
+                        self.draw_solid_hchar(CGA_LIGHTPEN_DEBUG_COLOR);
+                    }
+                    else {
+                        self.draw_text_mode_hchar();
+                    }
                 }
                 else if self.mode_hires_gfx {
                     self.draw_hires_gfx_mode_char();
@@ -2232,23 +2237,42 @@ impl CGACard {
                 }
             }
         }
+
+        self.crtc_ticks_since_vsync = self.crtc_ticks_since_vsync.wrapping_add(1);
+        if let Some(trigger_tick) = self.lightpen_trigger_tick {
+            if self.crtc_ticks_since_vsync == trigger_tick {
+                // Trigger lightpen
+                self.latch_lightpen();
+                self.lightpen_trigger_tick = None;
+            }
+        }
+    }
+
+    fn latch_lightpen(&mut self) {
+        log::debug!("latch_lightpen(): updating lightpen registers");
+        // Latch lightpen address
+        self.lightpen_latch = true;
+        self.lightpen_addr = self.vma;
+        self.crtc_lightpen_latch_lo = (self.lightpen_addr & 0xFF) as u8;
+        self.crtc_lightpen_latch_ho = ((self.lightpen_addr >> 8) & 0xFF) as u8;
     }
 
     pub fn do_vsync(&mut self) {
+        self.crtc_ticks_since_vsync = 0;
         self.in_crtc_vsync = false;
 
         self.cycles_per_vsync = self.cur_screen_cycles;
         self.cur_screen_cycles = 0;
         self.last_vsync_cycles = self.cycles;
 
-        if self.cycles_per_vsync > 300000 {
-            log::trace!(
-                "do_vsync(): Excessively long frame. char_clock: {} cycles: {} beam_y: {}",
-                self.char_clock,
-                self.cycles_per_vsync,
-                self.beam_y
-            );
-        }
+        // if self.cycles_per_vsync > 300000 {
+        //     log::trace!(
+        //         "do_vsync(): Excessively long frame. char_clock: {} cycles: {} beam_y: {}",
+        //         self.char_clock,
+        //         self.cycles_per_vsync,
+        //         self.beam_y
+        //     );
+        // }
 
         // Only do a vsync if we are past the minimum scanline #.
         // A monitor will refuse to vsync too quickly.

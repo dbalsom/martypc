@@ -58,6 +58,7 @@ pub struct StopWatchData {
 }
 
 #[derive(Clone)]
+#[derive(Default)]
 pub struct CycleStopWatch {
     pub start: u32,
     pub stop: u32,
@@ -69,22 +70,6 @@ pub struct CycleStopWatch {
     pub last_total_cycles: u64,
     pub last_duration: u64,
     pub total_duration: u64,
-}
-impl Default for CycleStopWatch {
-    fn default() -> Self {
-        Self {
-            start: 0,
-            stop: 0,
-            running: false,
-            measurements: 0,
-            run_cycles: 0,
-            last_cycles: 0,
-            total_cycles: 0,
-            last_total_cycles: 0,
-            last_duration: 0,
-            total_duration: 0,
-        }
-    }
 }
 
 impl CycleStopWatch {

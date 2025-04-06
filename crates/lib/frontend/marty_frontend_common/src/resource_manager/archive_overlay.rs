@@ -107,7 +107,7 @@ impl<R: Read + Seek> ArchiveOverlay<R> {
 
                 if file.is_dir() || file.name().ends_with('/') || size == Some(0) {
                     // Explicitly mark as a directory
-                    log::debug!("Enumerating overlay directory: {:?}", path);
+                    log::trace!("Enumerating overlay directory: {:?}", path);
                     resources.push(ResourceItem {
                         rtype: ResourceItemType::Directory(ResourceFsType::Overlay(self.index)),
                         location: path.clone(),
@@ -122,7 +122,7 @@ impl<R: Read + Seek> ArchiveOverlay<R> {
                     // Ensure parent directories exist
                     if let Some(parent) = path.parent() {
                         if !seen_dirs.contains(parent) {
-                            log::debug!("Enumerating overlay directory: {:?}", parent);
+                            log::trace!("Enumerating overlay directory: {:?}", parent);
                             resources.push(ResourceItem {
                                 rtype: ResourceItemType::Directory(ResourceFsType::Overlay(self.index)),
                                 location: parent.to_path_buf(),
@@ -136,7 +136,7 @@ impl<R: Read + Seek> ArchiveOverlay<R> {
                     }
 
                     // Insert the file
-                    log::debug!("Enumerating overlay file: {:?}", &path);
+                    log::trace!("Enumerating overlay file: {:?}", &path);
                     resources.push(ResourceItem {
                         rtype: ResourceItemType::File(ResourceFsType::Overlay(self.index)), // Assume single overlay for now
                         location: path.clone(),

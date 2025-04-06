@@ -37,14 +37,6 @@ use crate::{
 };
 
 impl Intel808x {
-    /// Execute the IRET microcode routine.
-    pub fn iret_routine(&mut self) {
-        self.cycle_i(0x0c8);
-        self.farret(true);
-        self.pop_flags();
-        self.cycle_i(0x0ca);
-    }
-
     /// Perform a software interrupt
     pub fn sw_interrupt(&mut self, interrupt: u8) {
         // Interrupt FC, emulator internal services.
@@ -86,38 +78,7 @@ impl Intel808x {
             return;
         }
 
-        cycles_mc!(self, 0x19d, 0x19e, 0x19f);
-
-        // Read the IVT
-        let vec_addr = (interrupt as usize * INTERRUPT_VEC_LEN) as u16;
-
-        let new_ip = self.biu_read_u16(Segment::None, vec_addr, ReadWriteFlag::Normal);
-        self.cycle_i(0x1a1);
-        let new_cs = self.biu_read_u16(Segment::None, vec_addr.wrapping_add(2), ReadWriteFlag::Normal);
-
-        // Add interrupt to call stack
-        self.push_call_stack(
-            CallStackEntry::Interrupt {
-                ret_cs: self.cs,
-                ret_ip: self.ip(),
-                call_cs: new_cs,
-                call_ip: new_ip,
-                itype: InterruptType::Software,
-                number: interrupt,
-                ah: self.a.h(),
-            },
-            self.cs,
-            self.ip(),
-        );
-
-        self.biu_fetch_suspend(); // 1a3 SUSP
-        cycles_mc!(self, 0x1a3, 0x1a4);
-        self.push_flags(ReadWriteFlag::Normal);
-        self.clear_flag(Flag::Interrupt);
-        self.clear_flag(Flag::Trap);
-        self.cycle_i(0x1a6);
-        self.farcall2(new_cs, new_ip);
-        self.int_count += 1;
+        self.intr_routine(interrupt, InterruptType::Software, false);
     }
 
     /*
@@ -169,49 +130,46 @@ impl Intel808x {
     */
     #[allow(dead_code)]
     pub fn log_interrupt(&self, interrupt: u8) {
-        match interrupt {
-            0x10 => {
-                // Video Services
-                match self.a.h() {
-                    0x00 => {
-                        log::trace!(
-                            "CPU: Video Interrupt: {:02X} (AH:{:02X} Set video mode) Video Mode: {:02X}",
-                            interrupt,
-                            self.a.h(),
-                            self.a.l()
-                        );
-                    }
-                    0x01 => {
-                        log::trace!(
-                            "CPU: Video Interrupt: {:02X} (AH:{:02X} Set text-mode cursor shape: CH:{:02X}, CL:{:02X})",
-                            interrupt,
-                            self.a.h(),
-                            self.c.h(),
-                            self.c.l()
-                        );
-                    }
-                    0x02 => {
-                        log::trace!("CPU: Video Interrupt: {:02X} (AH:{:02X} Set cursor position): Page:{:02X} Row:{:02X} Col:{:02X}",
-                            interrupt, self.a.h(), self.b.h(), self.d.h(), self.d.l());
-                    }
-                    0x09 => {
-                        log::trace!("CPU: Video Interrupt: {:02X} (AH:{:02X} Write character and attribute): Char:'{}' Page:{:02X} Color:{:02x} Ct:{:02}", 
-                            interrupt, self.a.h(), self.a.l() as char, self.b.h(), self.b.l(), self.c.x());
-                    }
-                    0x10 => {
-                        log::trace!(
-                            "CPU: Video Interrupt: {:02X} (AH:{:02X} Write character): Char:'{}' Page:{:02X} Ct:{:02}",
-                            interrupt,
-                            self.a.h(),
-                            self.a.l() as char,
-                            self.b.h(),
-                            self.c.x()
-                        );
-                    }
-                    _ => {}
+        if interrupt == 0x10 {
+            // Video Services
+            match self.a.h() {
+                0x00 => {
+                    log::trace!(
+                        "CPU: Video Interrupt: {:02X} (AH:{:02X} Set video mode) Video Mode: {:02X}",
+                        interrupt,
+                        self.a.h(),
+                        self.a.l()
+                    );
                 }
+                0x01 => {
+                    log::trace!(
+                        "CPU: Video Interrupt: {:02X} (AH:{:02X} Set text-mode cursor shape: CH:{:02X}, CL:{:02X})",
+                        interrupt,
+                        self.a.h(),
+                        self.c.h(),
+                        self.c.l()
+                    );
+                }
+                0x02 => {
+                    log::trace!("CPU: Video Interrupt: {:02X} (AH:{:02X} Set cursor position): Page:{:02X} Row:{:02X} Col:{:02X}",
+                        interrupt, self.a.h(), self.b.h(), self.d.h(), self.d.l());
+                }
+                0x09 => {
+                    log::trace!("CPU: Video Interrupt: {:02X} (AH:{:02X} Write character and attribute): Char:'{}' Page:{:02X} Color:{:02x} Ct:{:02}", 
+                        interrupt, self.a.h(), self.a.l() as char, self.b.h(), self.b.l(), self.c.x());
+                }
+                0x10 => {
+                    log::trace!(
+                        "CPU: Video Interrupt: {:02X} (AH:{:02X} Write character): Char:'{}' Page:{:02X} Ct:{:02}",
+                        interrupt,
+                        self.a.h(),
+                        self.a.l() as char,
+                        self.b.h(),
+                        self.c.x()
+                    );
+                }
+                _ => {}
             }
-            _ => {}
         };
     }
 
@@ -232,9 +190,9 @@ impl Intel808x {
         // Read the IVT
         let vec_addr = (vector as usize * INTERRUPT_VEC_LEN) as u16;
 
-        let new_ip = self.biu_read_u16(Segment::None, vec_addr, ReadWriteFlag::Normal);
+        let new_ip = self.biu_read_u16(Segment::None, vec_addr);
         self.cycle_i(0x1a1);
-        let new_cs = self.biu_read_u16(Segment::None, vec_addr.wrapping_add(2), ReadWriteFlag::Normal);
+        let new_cs = self.biu_read_u16(Segment::None, vec_addr.wrapping_add(2));
 
         // Add interrupt to call stack
         self.push_call_stack(
@@ -250,10 +208,11 @@ impl Intel808x {
             self.cs,
             self.ip(),
         );
+        self.int_count += 1;
 
         self.biu_fetch_suspend(); // 1a3 SUSP
-        cycles_mc!(self, 0x1a3, 0x1a4);
-        self.push_flags(ReadWriteFlag::Normal);
+        cycles_mc!(self, 0x1a3, 0x1a4, 0x1a5);
+        self.push_flags();
         self.clear_flag(Flag::Interrupt);
         self.clear_flag(Flag::Trap);
         self.cycle_i(0x1a6);
@@ -272,7 +231,6 @@ impl Intel808x {
 
         // Begin INTR routine
         self.intr_routine(vector, InterruptType::Hardware, false);
-        self.int_count += 1;
         self.in_int = false;
     }
 
@@ -280,21 +238,18 @@ impl Intel808x {
     pub fn int0(&mut self) {
         cycles_mc!(self, 0x1a7, MC_JUMP);
         self.intr_routine(0, InterruptType::Exception, true);
-        self.int_count += 1;
     }
 
     /// Perform INT1 (Trap)
     pub fn int1(&mut self) {
         cycles_mc!(self, 0x198, MC_JUMP);
         self.intr_routine(1, InterruptType::Exception, true);
-        self.int_count += 1;
     }
 
     /// Perform INT2 (NMI)
     pub fn int2(&mut self) {
         cycles_mc!(self, 0x199, MC_JUMP);
         self.intr_routine(2, InterruptType::Exception, true);
-        self.int_count += 1;
     }
 
     /// Perform INT3
@@ -304,7 +259,6 @@ impl Intel808x {
         //cycles_mc!(self, 0x1b0, MC_JUMP, 0x1b2, MC_JUMP);
         cycles_mc!(self, 0x1b1, 0x1b2, MC_JUMP);
         self.intr_routine(3, InterruptType::Software, false);
-        self.int_count += 1;
     }
 
     /// Perform INTO
@@ -314,7 +268,6 @@ impl Intel808x {
         if self.get_flag(Flag::Overflow) {
             cycles_mc!(self, 0x1af, MC_JUMP);
             self.intr_routine(4, InterruptType::Hardware, false);
-            self.int_count += 1;
         }
     }
 

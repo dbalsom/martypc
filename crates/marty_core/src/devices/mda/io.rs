@@ -103,7 +103,7 @@ impl IoDevice for MDACard {
         _delta: DeviceRunTimeUnit,
         _analyzer: Option<&mut LogicAnalyzer>,
     ) {
-        let _debug_port = (if port == 0x3D5 { true } else { false }) && self.debug;
+        let _debug_port = port == 0x3D5 && self.debug;
 
         // Catch up to CPU state.
         //let _ticks = self.catch_up(delta, debug_port);
@@ -127,11 +127,8 @@ impl IoDevice for MDACard {
         }
         else {
             // Must be some other MDA register
-            match port {
-                MDA_MODE_CONTROL_REGISTER => {
-                    self.handle_mode_register(data);
-                }
-                _ => {}
+            if port == MDA_MODE_CONTROL_REGISTER {
+                self.handle_mode_register(data);
             }
         }
     }
@@ -157,8 +154,7 @@ impl IoDevice for MDACard {
                     (String::from("MDA LPT Data"), self.lpt_port_base),
                     (String::from("MDA LPT Status"), self.lpt_port_base + 1),
                     (String::from("MDA LPT Control"), self.lpt_port_base + 2),
-                ]
-                .into_iter(),
+                ],
             );
         }
 

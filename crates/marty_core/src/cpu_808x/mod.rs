@@ -36,9 +36,11 @@ pub use crate::cpu_common::Cpu;
 use crate::cpu_common::{
     instruction::Instruction,
     CpuAddress,
+    CpuException,
     CpuStringState,
     CpuSubType,
     ExecutionResult,
+    InstructionWidth,
     LogicAnalyzer,
     Mnemonic,
     QueueOp,
@@ -54,13 +56,13 @@ use std::{collections::VecDeque, fmt, path::Path};
 mod addressing;
 mod alu;
 mod bcd;
-mod bitwise;
 mod biu;
 mod cpu;
 mod cycle;
 mod decode;
 mod display;
 mod execute;
+mod execute_fn;
 mod fuzzer;
 mod gdr;
 mod instruction;
@@ -87,20 +89,12 @@ use crate::{
     tracelogger::TraceLogger,
 };
 
-// Make ReadWriteFlag available to benchmarks
-pub use crate::cpu_808x::biu::ReadWriteFlag;
-
 #[cfg(feature = "cpu_validator")]
 use crate::cpu_validator::ValidatorType;
 
 #[cfg(feature = "cpu_validator")]
 use crate::cpu_validator::{
-    AccessType,
-    BusCycle,
-    BusState,
     CpuValidator,
-    CycleState,
-    VRegisters,
     ValidatorMode,
     ValidatorResult,
     VAL_ALLOW_ONE,
@@ -108,6 +102,9 @@ use crate::cpu_validator::{
     VAL_NO_FLAGS,
     VAL_NO_WRITES,
 };
+
+#[cfg(any(feature = "cpu_validator", feature = "cpu_collect_cycle_states"))]
+use crate::cpu_validator::{AccessType, BusCycle, BusState, CycleState, VRegisters};
 
 #[cfg(feature = "arduino_validator")]
 use crate::arduino8088_validator::ArduinoValidator;
@@ -131,6 +128,7 @@ macro_rules! gdr {
 
 use crate::{
     bus::ClockFactor,
+    cpu_808x::biu::BusWidth,
     cpu_common::{operands::OperandSize, services::CPUDebugServices, Register16, Register8},
 };
 use trace_print;
@@ -265,6 +263,17 @@ impl GeneralRegister {
     }
 }
 
+pub const REGISTER8_LUT: [Register8; 8] = [
+    Register8::AL,
+    Register8::CL,
+    Register8::DL,
+    Register8::BL,
+    Register8::AH,
+    Register8::CH,
+    Register8::DH,
+    Register8::BH,
+];
+
 pub const REGISTER16_LUT: [Register16; 8] = [
     Register16::AX,
     Register16::CX,
@@ -276,17 +285,23 @@ pub const REGISTER16_LUT: [Register16; 8] = [
     Register16::DI,
 ];
 
-pub const SEGMENT_REGISTER16_LUT: [Register16; 4] = [Register16::ES, Register16::CS, Register16::SS, Register16::DS];
+pub const SREGISTER_LUT: [Register16; 8] = [
+    Register16::ES,
+    Register16::CS,
+    Register16::SS,
+    Register16::DS,
+    Register16::ES,
+    Register16::CS,
+    Register16::SS,
+    Register16::DS,
+];
 
 #[derive(Debug, Copy, Clone, PartialEq)]
+#[derive(Default)]
 pub enum CpuState {
+    #[default]
     Normal,
     BreakpointHit,
-}
-impl Default for CpuState {
-    fn default() -> Self {
-        CpuState::Normal
-    }
 }
 
 #[derive(Copy, Clone, Debug)]
@@ -482,16 +497,8 @@ pub struct Intel808x {
     iret_count: u64,
     interrupt_inhibit: bool,
 
-    // Operand and result state
-    /*
-    op1_8: u8,
-    op1_16: u16,
-    op2_8: u8,
-    op2_16: u16,
-    result_8: u8,
-    result_16: u16,
-    */
     // BIU stuff
+    bus_width: BusWidth,
     ready: bool, // READY line from 8284
     queue: InstructionQueue,
     fetch_size: TransferSize,
@@ -549,6 +556,7 @@ pub struct Intel808x {
     last_ip: u16,
     last_intr: bool,
     jumped: bool,
+    exception: CpuException,
     instruction_address: u32,
     instruction_history_on: bool,
     instruction_history: VecDeque<HistoryEntry>,
@@ -584,9 +592,9 @@ pub struct Intel808x {
 
     #[cfg(feature = "cpu_validator")]
     validator: Option<Box<dyn CpuValidator>>,
-    #[cfg(feature = "cpu_validator")]
+    #[cfg(any(feature = "cpu_validator", feature = "cpu_collect_cycle_states"))]
     vregs: VRegisters,
-    #[cfg(feature = "cpu_validator")]
+    #[cfg(any(feature = "cpu_validator", feature = "cpu_collect_cycle_states"))]
     cycle_states: Vec<CycleState>,
     #[cfg(feature = "cpu_validator")]
     validator_state: CpuValidatorState,
@@ -808,10 +816,12 @@ impl Intel808x {
             CpuSubType::Harris80C88 | CpuSubType::Intel8088 => {
                 cpu.queue.set_size(4, 1);
                 cpu.fetch_size = TransferSize::Byte;
+                cpu.bus_width = BusWidth::Byte;
             }
             CpuSubType::Intel8086 => {
                 cpu.queue.set_size(6, 2);
                 cpu.fetch_size = TransferSize::Word;
+                cpu.bus_width = BusWidth::Word;
             }
             _ => {
                 panic!("Invalid CPU subtype.")
@@ -960,6 +970,7 @@ impl Intel808x {
         self.last_cs = 0;
         self.last_intr = false;
         self.jumped = false;
+        self.exception = CpuException::NoException;
 
         self.queue_op = QueueOp::Idle;
         self.last_queue_op = QueueOp::Idle;
@@ -1008,6 +1019,9 @@ impl Intel808x {
         #[cfg(feature = "cpu_validator")]
         {
             self.validator_state = CpuValidatorState::Uninitialized;
+        }
+        #[cfg(any(feature = "cpu_validator", feature = "cpu_collect_cycle_states"))]
+        {
             self.cycle_states.clear();
         }
 
@@ -1055,7 +1069,7 @@ impl Intel808x {
     /// Execute the CORR (Correct PC) microcode routine.
     /// This is used to correct the PC in anticipation of a jump or call, where the queue will
     /// be flushed. Unlike most microcode instructions, CORR takes two cycles to execute.
-    #[inline]
+    #[inline(always)]
     pub fn corr(&mut self) {
         self.pc = self.pc.wrapping_sub(self.queue.len() as u16);
         self.cycle_i(MC_CORR);
@@ -1105,7 +1119,7 @@ impl Intel808x {
         }
     }
 
-    #[cfg(feature = "cpu_validator")]
+    #[cfg(any(feature = "cpu_validator", feature = "cpu_collect_cycle_states"))]
     pub fn get_cycle_state(&mut self) -> CycleState {
         let mut q = [0; 4];
         self.queue.to_slice(&mut q);
@@ -1163,7 +1177,7 @@ impl Intel808x {
     }
 
     pub fn set_nmi(&mut self, nmi_state: bool) {
-        if nmi_state == false {
+        if !nmi_state {
             self.nmi_triggered = false;
         }
         self.nmi = nmi_state;
@@ -1205,7 +1219,20 @@ impl Intel808x {
         };
     }
 
-    pub fn set_flags(&mut self, mut flags: u16) {
+    /// Set the specified bitmask of flags, unchecked.
+    #[inline(always)]
+    fn set_flags(&mut self, flags: u16) {
+        self.flags |= flags;
+    }
+
+    /// Clear the specified bitmask of flags, unchecked.
+    #[inline(always)]
+    fn clear_flags(&mut self, flags: u16) {
+        self.flags &= !flags;
+    }
+
+    #[inline]
+    pub fn set_flags_safe(&mut self, mut flags: u16) {
         // Clear reserved 0 flags
         flags &= CPU_FLAGS_RESERVED_OFF;
         // Set reserved 1 flags
@@ -1255,7 +1282,7 @@ impl Intel808x {
             != 0
     }
 
-    #[cfg(feature = "cpu_validator")]
+    #[cfg(any(feature = "cpu_validator", feature = "cpu_collect_cycle_states"))]
     pub fn get_vregisters(&self) -> VRegisters {
         VRegisters {
             ax:    self.a.x(),
@@ -1312,6 +1339,13 @@ impl Intel808x {
     #[inline]
     pub fn get_flags(&self) -> u16 {
         self.flags
+    }
+
+    pub fn set_register_a(&mut self, value: u16) {
+        match self.i.width {
+            InstructionWidth::Byte => self.a.set_l(value as u8),
+            InstructionWidth::Word => self.a.set_x(value),
+        }
     }
 
     // Set one of the 8 bit registers.
@@ -1514,8 +1548,8 @@ impl Intel808x {
 
             piq: self.queue.to_string(),
             flags: format!("{:04}", self.flags),
-            instruction_count: format!("{}", self.instruction_count),
-            cycle_count: format!("{}", self.cycle_num),
+            instruction_count: self.instruction_count,
+            cycle_count: self.cycle_num,
             dma_state: format!("{:?}", self.dma_state),
 
             dram_refresh_cycle_period: format!("{}", self.dram_refresh_cycle_period),
@@ -1706,7 +1740,7 @@ impl Intel808x {
     }
 
     /// Removes any cycle states at address 0
-    #[cfg(feature = "cpu_validator")]
+    #[cfg(any(feature = "cpu_validator", feature = "cpu_collect_cycle_states"))]
     fn clear_reset_cycle_states(&mut self) {
         self.cycle_states.retain(|&x| x.addr != 0);
     }
@@ -1789,7 +1823,6 @@ impl Intel808x {
             }
             _ => {
                 // Unsupported breakpoint type - ignore for now
-                return;
             }
         }
     }
@@ -1831,10 +1864,7 @@ impl Intel808x {
     }
 
     pub fn get_step_over_breakpoint(&self) -> Option<CpuAddress> {
-        match self.step_over_breakpoint {
-            Some(addr) => Some(CpuAddress::Flat(addr)),
-            None => None,
-        }
+        self.step_over_breakpoint.map(CpuAddress::Flat)
     }
 
     pub fn get_breakpoint_flag(&self) -> bool {
@@ -1853,26 +1883,23 @@ impl Intel808x {
         let mut disassembly_string = String::new();
 
         for i in &self.instruction_history {
-            match i {
-                HistoryEntry::InstructionEntry {
+            if let HistoryEntry::InstructionEntry {
                     cs,
                     ip,
                     cycles: _,
                     interrupt,
                     jump: _,
                     i,
-                } => {
-                    let i_string = format!(
-                        "{:05X}{} [{:04X}:{:04X}] {}\n",
-                        i.address,
-                        if *interrupt { '*' } else { ' ' },
-                        *cs,
-                        *ip,
-                        i
-                    );
-                    disassembly_string.push_str(&i_string);
-                }
-                _ => {}
+                } = i {
+                let i_string = format!(
+                    "{:05X}{} [{:04X}:{:04X}] {}\n",
+                    i.address,
+                    if *interrupt { '*' } else { ' ' },
+                    *cs,
+                    *ip,
+                    i
+                );
+                disassembly_string.push_str(&i_string);
             }
         }
         disassembly_string
@@ -2011,10 +2038,11 @@ impl Intel808x {
         }
     }
 
-    #[inline]
-    pub fn trace_comment(&mut self, comment: &'static str) {
+    #[inline(always)]
+    pub fn trace_comment(&mut self, _comment: &'static str) {
+        #[cfg(feature = "cpu_trace_comments")]
         if self.trace_enabled && (self.trace_mode == TraceMode::CycleText) {
-            self.trace_comment.push(comment);
+            self.trace_comment.push(_comment);
         }
     }
 
@@ -2031,7 +2059,7 @@ impl Intel808x {
         log::debug!("Dumping {} bytes at address {:05X}", len, address);
         let cs_slice = self.bus.get_slice_at(address, len);
 
-        match std::fs::write(filename.clone(), &cs_slice) {
+        match std::fs::write(filename.clone(), cs_slice) {
             Ok(_) => {
                 log::debug!("Wrote memory dump: {}", filename.display())
             }
@@ -2080,7 +2108,7 @@ impl Intel808x {
         self.pc = self.pc.wrapping_sub(old_len as u16);
         self.queue.flush();
         for (i, byte) in contents.iter().enumerate() {
-            if i < self.queue.get_size() {
+            if i < self.queue.size() {
                 self.queue.push8(*byte);
                 self.pc = self.pc.wrapping_add(1);
             }

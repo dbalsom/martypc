@@ -32,7 +32,9 @@
 */
 
 #[derive(Copy, Clone)]
+#[derive(Default)]
 pub enum QueueType {
+    #[default]
     First,
     Subsequent,
 }
@@ -43,11 +45,6 @@ pub enum QueueReader {
     Eu,
 }
 
-impl Default for QueueType {
-    fn default() -> Self {
-        QueueType::First
-    }
-}
 
 pub trait ByteQueue {
     fn seek(&mut self, pos: usize);

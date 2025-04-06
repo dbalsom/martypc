@@ -99,19 +99,14 @@ impl TGACard {
         let frame_u64: &mut [u64] = bytemuck::cast_slice_mut(&mut *self.buf[self.back_buf]);
         frame_u64[self.rba >> 3] = CGA_COLORS_U64[(color & 0x0F) as usize];
         frame_u64[(self.rba >> 3) + 1] = CGA_COLORS_U64[(color & 0x0F) as usize];
-        //frame_u64[(self.rba >> 3) + 2] = CGA_COLORS_U64[(color & 0x0F) as usize];
-        //frame_u64[(self.rba >> 3) + 3] = CGA_COLORS_U64[(color & 0x0F) as usize];
     }
 
     /// Draw a character in medium res 4bpp mode using a single solid color.
     /// Since all pixels are the same we can draw 64 bits at a time.
     #[inline]
-    pub fn draw_solid_4bpp_mchar(&mut self, color: u8) {
+    pub fn draw_solid_4bpp_char(&mut self, color: u8) {
         let frame_u64: &mut [u64] = bytemuck::cast_slice_mut(&mut *self.buf[self.back_buf]);
         frame_u64[self.rba >> 3] = CGA_COLORS_U64[(color & 0x0F) as usize];
-        //frame_u64[(self.rba >> 3) + 1] = CGA_COLORS_U64[(color & 0x0F) as usize];
-        //frame_u64[(self.rba >> 3) + 2] = CGA_COLORS_U64[(color & 0x0F) as usize];
-        //frame_u64[(self.rba >> 3) + 3] = CGA_COLORS_U64[(color & 0x0F) as usize];
     }
 
     /// Draw a single character glyph column pixel in text mode, doubling the pixel if
@@ -165,9 +160,9 @@ impl TGACard {
             self.draw_solid_hchar(self.cur_fg);
         }
         else if self.mode_enable {
-            let glyph_row: u64;
+            
             // Get the u64 glyph row to draw for the current fg and bg colors and character row (vlc)
-            glyph_row = self.get_hchar_glyph_row(self.cur_char as usize, self.vlc_c9 as usize);
+            let glyph_row: u64 = self.get_hchar_glyph_row(self.cur_char as usize, self.vlc_c9 as usize);
 
             let frame_u64: &mut [u64] = bytemuck::cast_slice_mut(&mut *self.buf[self.back_buf]);
             frame_u64[self.rba >> 3] = glyph_row;
@@ -243,8 +238,6 @@ impl TGACard {
     }
 
     /// Draw 8 pixels in hi-res 2bpp graphics mode (640x200x4)
-    /// This routine uses precalculated lookups and masks to generate two u64
-    /// values to write to the index frame buffer directly.
     /// In this mode, one bit from each byte is combined to produce the 2bpp pixel value.
     /// Pixel colors are then looked up from the gate array's palette registers.
     pub fn draw_gfx_mode_2bpp_hchar(&mut self, cpumem: &[u8]) {
@@ -277,7 +270,7 @@ impl TGACard {
     }
 
     /// Draw 8 dots in medium res 4bpp graphics mode (320x200x16)
-    pub fn draw_gfx_mode_4bpp_mchar(&mut self, cpumem: &[u8]) {
+    pub fn draw_gfx_mode_4bpp_char(&mut self, cpumem: &[u8]) {
         if self.mode_enable {
             let base_addr = self.get_gfx_addr(self.vlc_c9);
             let pair0 = self.crt_mem(cpumem)[base_addr] as usize;
@@ -292,7 +285,7 @@ impl TGACard {
             self.buf[self.back_buf][self.rba + 7] = self.palette_registers[pair1 & 0x0F];
         }
         else {
-            self.draw_solid_4bpp_mchar(self.cc_altcolor);
+            self.draw_solid_4bpp_char(self.cc_altcolor);
         }
     }
 
@@ -320,7 +313,7 @@ impl TGACard {
             self.buf[self.back_buf][self.rba + 15] = self.palette_registers[pair1 & 0x0F];
         }
         else {
-            self.draw_solid_4bpp_mchar(self.cc_altcolor);
+            self.draw_solid_4bpp_char(self.cc_altcolor);
         }
     }
 
@@ -331,8 +324,8 @@ impl TGACard {
 
         let word = (self.crt_mem(cpumem)[base_addr] as u16) << 8 | self.crt_mem(cpumem)[base_addr + 1] as u16;
 
-        let bit1 = (word >> TGA_MCHAR_CLOCK - (self.char_col * 2 + 1)) & 0x01;
-        let bit2 = (word >> TGA_MCHAR_CLOCK - (self.char_col * 2 + 2)) & 0x01;
+        let bit1 = (word >> (TGA_MCHAR_CLOCK - (self.char_col * 2 + 1))) & 0x01;
+        let bit2 = (word >> (TGA_MCHAR_CLOCK - (self.char_col * 2 + 2))) & 0x01;
 
         if self.mode_enable {
             if bit1 == 0 {

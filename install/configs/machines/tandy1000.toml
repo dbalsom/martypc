@@ -1,25 +1,35 @@
 # tandy1000.toml
 # Machine Configurations for the Tandy 1000 series
 
+# Tandy machines will have a PSG chip (SN76489,NCR8496 or other) added automatically
+# Tandy machines currently all feature a DMA controller. This was typically added
+# on a memory expansion card, and there is BIOS support for DMA operation of the
+# Tandy's floppy drive.
+
+# Tandy machines can have an ibm_xebec hard disk controller added for hard disk support
+
 [[machine]]
+# The base "tandy1000" configuration repesents a Tandy 1000, 1000A or 1000HD, which
+# were basically identical other than the addition of an FPU socket in the 1000A and
+# a factory-installed hard disk option in the 1000HD.
+# The original Tandy 1000 line did not include DMA by default, although a DMA controller
+# was present on some RAM expansion cards (to enable PC-style DRAM refresh DMA).
+# The 1000 can use ROM revision 01.00.00 or 01.01.00, although 01.01.00 is highly
+# recommended as 01.00.00 had a flaw that could corrupt hard disks.
 name = "tandy1000"
 type = "Tandy1000"
 rom_set = "auto"
 speaker = true
 overlays = [
-    "pcxt_2_360k_floppies",
+    "pcxt_2_720k_floppies",
 ]
 
     [machine.memory]
-    #conventional.size = 0x20000 # 128KB max. Install additional RAM via expansion cards
+    #conventional.size = 0x20000 # 128KB standard.
     conventional.size = 0xA0000
     conventional.wait_states = 0
 
     [machine.keyboard]
-    # Valid options for keyboard_type are:
-    # ModelF - This was the original 83-key keyboard shipped with the PC/XT
-    #          (More keyboard types yet to be implemented)
-    #
     type = "Tandy1000"
     # Keyboard layout. Used to load the appropriate keyboard translation file.
     # MartyPC will look for the file keyboard_XX.toml in the ./keyboard/ directory
@@ -31,9 +41,11 @@ overlays = [
     # Enable typematic repeat for the emulated keyboard. Host repeat is ignored.
     typematic = true
     # Delay in milliseconds before typematic repeat begins.
-    typematic_delay = 500.0
+    # Tandy Service manual says "more than 1 second"
+    typematic_delay = 1000.0
     # Delay in milliseconds between each scancode during typematic repeat.
-    typematic_rate= 50.0
+    # Tandy Service manual gives range of 66-111ms(?)
+    typematic_rate= 75.0
 
     # Video card
     [[machine.video]]
@@ -52,26 +64,26 @@ overlays = [
         [[machine.hdc.drive]]
         format = "Mfm"
         vhd = "xebec20MB.vhd"
-            
+
 [[machine]]
-name = "tandy1000hx"
+# The Tandy SX was a refresh of the original 1000 series. It featured a DMA controller
+# standard, as well as adding a turbo mode switch to toggle between 7.16Mhz and 4.77Mhz
+# operation.
+# The Tandy SX BIOS revision bumped to 01.02.00 to add DMA-mode operation of floppy drives.
+name = "tandy1000sx"
 type = "Tandy1000"
-rom_set = "tandy1000hx"
+rom_set = "auto"
 speaker = true
 overlays = [
     "pcxt_2_720k_floppies",
 ]
 
     [machine.memory]
-    #conventional.size = 0x20000 # 128KB max. Install additional RAM via expansion cards
-    conventional.size = 0x40000 # Tandy 1000 HX came with 256kb RAM default
+    #conventional.size = 0x60000 # 384KB standard.
+    conventional.size = 0xA0000
     conventional.wait_states = 0
 
     [machine.keyboard]
-    # Valid options for keyboard_type are:
-    # ModelF - This was the original 83-key keyboard shipped with the PC/XT
-    #          (More keyboard types yet to be implemented)
-    #
     type = "Tandy1000"
     # Keyboard layout. Used to load the appropriate keyboard translation file.
     # MartyPC will look for the file keyboard_XX.toml in the ./keyboard/ directory
@@ -83,9 +95,11 @@ overlays = [
     # Enable typematic repeat for the emulated keyboard. Host repeat is ignored.
     typematic = true
     # Delay in milliseconds before typematic repeat begins.
-    typematic_delay = 500.0
+    # Tandy Service manual says "more than 1 second"
+    typematic_delay = 1000.0
     # Delay in milliseconds between each scancode during typematic repeat.
-    typematic_rate= 50.0
+    # Tandy Service manual gives range of 66-111ms(?)
+    typematic_rate= 75.0
 
     # Video card
     [[machine.video]]
@@ -93,4 +107,118 @@ overlays = [
     type = "TGA"
     subtype = "Tandy1000"
     clock_mode = "Default"
-    
+
+    # Hard disk controller
+    [machine.hdc]
+    bus_type = "ISA"
+    type = "IbmXebec"
+
+    # Drives connected to controller. Maximum of 2.
+    # Drive #0 - (Typically C:)
+    [[machine.hdc.drive]]
+    format = "Mfm"
+    vhd = "xebec20MB.vhd"
+
+
+[[machine]]
+# The Tandy SL was a refresh of the Tandy 1000SX. It features a 8086 CPU (upgraded from the 8088)
+# that runs at either 4.77 or 8Mhz.
+# The Tandy SL BIOS revision bumped to 02.01.00 over the HX.
+name = "tandy1000sl"
+type = "Tandy1000SL"
+rom_set = "auto"
+speaker = true
+overlays = [
+    "pcxt_2_720k_floppies",
+]
+
+    [machine.memory]
+    #conventional.size = 0x60000 # 384KB standard.
+    conventional.size = 0xA0000
+    conventional.wait_states = 0
+
+    [machine.keyboard]
+    type = "Tandy1000"
+    # Keyboard layout. Used to load the appropriate keyboard translation file.
+    # MartyPC will look for the file keyboard_XX.toml in the ./keyboard/ directory
+    # where XX is the string specified by keyboard_layout.
+    #
+    # Certain scancodes have changed their meaning since the 1980's. Your help
+    # would be appreciated in developing new translation files.
+    layout = "US"
+    # Enable typematic repeat for the emulated keyboard. Host repeat is ignored.
+    typematic = true
+    # Delay in milliseconds before typematic repeat begins.
+    # Tandy Service manual says "more than 1 second"
+    typematic_delay = 1000.0
+    # Delay in milliseconds between each scancode during typematic repeat.
+    # Tandy Service manual gives range of 66-111ms(?)
+    typematic_rate= 75.0
+
+    # Video card
+    [[machine.video]]
+    bus_type = "Onboard"
+    type = "TGA"
+    subtype = "Tandy1000"
+    clock_mode = "Default"
+
+    # Hard disk controller
+    [machine.hdc]
+    bus_type = "ISA"
+    type = "IbmXebec"
+
+        # Drives connected to controller. Maximum of 2.
+        # Drive #0 - (Typically C:)
+        [[machine.hdc.drive]]
+        format = "Mfm"
+        vhd = "xebec20MB.vhd"
+
+[[machine]]
+name = "tandy1000hx"
+type = "Tandy1000"
+rom_set = "tandy1000hx"
+speaker = true
+overlays = [
+    "pcxt_2_720k_floppies",
+]
+
+    [machine.memory]
+    conventional.size = 0x40000 # Tandy 1000 HX came with 256kb RAM default
+    #conventional.size = 0xA0000 # 640K (not functional with HX yet)
+    conventional.wait_states = 0
+
+    [machine.keyboard]
+    type = "Tandy1000"
+    # Keyboard layout. Used to load the appropriate keyboard translation file.
+    # MartyPC will look for the file keyboard_XX.toml in the ./keyboard/ directory
+    # where XX is the string specified by keyboard_layout.
+    #
+    # Certain scancodes have changed their meaning since the 1980's. Your help
+    # would be appreciated in developing new translation files.
+    layout = "US"
+    # Enable typematic repeat for the emulated keyboard. Host repeat is ignored.
+    typematic = true
+    # Delay in milliseconds before typematic repeat begins.
+    # Tandy Service manual says "more than 1 second"
+    typematic_delay = 1000.0
+    # Delay in milliseconds between each scancode during typematic repeat.
+    # Tandy Service manual gives range of 66-111ms(?)
+    typematic_rate= 75.0
+
+    # Video card
+    [[machine.video]]
+    bus_type = "Onboard"
+    type = "TGA"
+    subtype = "Tandy1000"
+    clock_mode = "Default"
+
+    # Hard disk controller
+    [machine.hdc]
+    bus_type = "ISA"
+    type = "IbmXebec"
+
+        # Drives connected to controller. Maximum of 2.
+        # Drive #0 - (Typically C:)
+        [[machine.hdc.drive]]
+        format = "Mfm"
+        vhd = "xebec20MB.vhd"

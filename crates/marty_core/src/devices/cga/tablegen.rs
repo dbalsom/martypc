@@ -52,7 +52,7 @@ pub const CGA_HIRES_GLYPH_TABLE: [[u64; 8]; 256] = {
             glyph_u64 = 0;
 
             loop {
-                let glyph_offset: usize = (row * CGA_FONT_SPAN) + glyph as usize;
+                let glyph_offset: usize = (row * CGA_FONT_SPAN) + glyph;
                 let bit_val = CGA_FONT[glyph_offset] & (0x01 << (7 - bit)) != 0;
 
                 if bit_val {
@@ -96,7 +96,7 @@ pub const CGA_HIRES_GLYPH_TABLE: [[u64; 8]; 256] = {
 /// This version of the table splits each row up into two
 /// columns of 8 pixels for drawing glyphs 8 pixels at a time
 /// in low-resolution mode.
-pub const CGA_LOWRES_GLYPH_TABLE: [[[u64; 8]; 2]; 256] = {
+pub static CGA_LOWRES_GLYPH_TABLE: [[[u64; 8]; 2]; 256] = {
     let mut table: [[[u64; 8]; 2]; 256] = [[[0; 8]; 2]; 256];
 
     let mut glyph: usize = 0;
@@ -111,7 +111,7 @@ pub const CGA_LOWRES_GLYPH_TABLE: [[[u64; 8]; 2]; 256] = {
             glyph_u64 = 0;
 
             loop {
-                let glyph_offset: usize = (row * CGA_FONT_SPAN) + glyph as usize;
+                let glyph_offset: usize = (row * CGA_FONT_SPAN) + glyph;
                 let bit_val = CGA_FONT[glyph_offset] & (0x01 << (7 - bit)) != 0;
 
                 if bit_val {
@@ -133,7 +133,7 @@ pub const CGA_LOWRES_GLYPH_TABLE: [[[u64; 8]; 2]; 256] = {
             glyph_u64 = 0;
 
             loop {
-                let glyph_offset: usize = (row * CGA_FONT_SPAN) + glyph as usize;
+                let glyph_offset: usize = (row * CGA_FONT_SPAN) + glyph;
                 let bit_val = CGA_FONT[glyph_offset] & (0x01 << (3 - bit)) != 0;
 
                 if bit_val {
@@ -206,7 +206,7 @@ pub const CGA_8BIT_TABLE: [u64; 256] = {
 
 /// Constant initializer to unpack all possible 8 bit patterns
 /// in all 16 possible colors into 64 bit values for fast drawing.
-pub const CGA_HIRES_GFX_TABLE: [[u64; 256]; 16] = {
+pub static CGA_HIRES_GFX_TABLE: [[u64; 256]; 16] = {
     let mut table: [[u64; 256]; 16] = [[0; 256]; 16];
     let mut glyph;
     let mut color: usize = 0;
@@ -243,7 +243,7 @@ pub const CGA_HIRES_GFX_TABLE: [[u64; 256]; 16] = {
 /// To use this mask, we perform the following operation:
 /// (glyph64, mask64) = table[pal][glyph]
 /// draw64 = glyph64 | ((glyph64 & mask64) & cc_altcolor))
-pub const CGA_LOWRES_GFX_TABLE: [[(u64, u64); 256]; 6] = {
+pub static CGA_LOWRES_GFX_TABLE: [[(u64, u64); 256]; 6] = {
     let mut table: [[(u64, u64); 256]; 6] = [[(0, 0); 256]; 6];
     let mut glyph;
     let mut palette_i: usize = 0;
@@ -259,10 +259,10 @@ pub const CGA_LOWRES_GFX_TABLE: [[(u64, u64); 256]; 6] = {
 
             // Look up 2-bit pixel indices into current 4-color palette to get
             // a 16-color palette index
-            let mut color0: u64 = CGA_PALETTES[palette_i][pix0 as usize] as u64;
-            let mut color1: u64 = CGA_PALETTES[palette_i][pix1 as usize] as u64;
-            let mut color2: u64 = CGA_PALETTES[palette_i][pix2 as usize] as u64;
-            let mut color3: u64 = CGA_PALETTES[palette_i][pix3 as usize] as u64;
+            let mut color0: u64 = CGA_PALETTES[palette_i][pix0] as u64;
+            let mut color1: u64 = CGA_PALETTES[palette_i][pix1] as u64;
+            let mut color2: u64 = CGA_PALETTES[palette_i][pix2] as u64;
+            let mut color3: u64 = CGA_PALETTES[palette_i][pix3] as u64;
 
             // Double pixels
             color0 |= color0 << 8;

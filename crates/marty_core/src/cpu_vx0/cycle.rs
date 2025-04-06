@@ -37,6 +37,9 @@ use crate::{cpu_common::QueueOp, cpu_vx0::*};
 #[cfg(feature = "cpu_validator")]
 use crate::cpu_validator::{BusType, ReadType};
 
+#[cfg(any(feature = "cpu_validator", feature = "cpu_collect_cycle_states"))]
+use crate::cpu_validator::CycleState;
+
 macro_rules! validate_read_u8 {
     ($myself: expr, $addr: expr, $data: expr, $btype: expr, $rtype: expr) => {{
         #[cfg(feature = "cpu_validator")]
@@ -428,7 +431,7 @@ impl NecVx0 {
             DmaState::Operating(cycles) => {
                 // the DMA controller has control of the bus now.
                 // Run DMA transfer cycles.
-                *cycles = *cycles + 1;
+                *cycles += 1;
                 match *cycles {
                     1 => {
                         // DMAWAIT asserted after S1
@@ -595,7 +598,7 @@ impl NecVx0 {
         }
     }
 
-    #[cfg(feature = "cpu_validator")]
+    #[cfg(any(feature = "cpu_validator", feature = "cpu_collect_cycle_states"))]
     pub fn get_cycle_states_internal(&self) -> &Vec<CycleState> {
         &self.cycle_states
     }

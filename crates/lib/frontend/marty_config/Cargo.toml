@@ -17,9 +17,10 @@ crate-type = ["lib"]
 marty_common = { path = "../../../marty_common" }
 marty_core = { path = "../../../marty_core" }
 marty_frontend_common =  { path = "../marty_frontend_common" }
+marty_display_common = { path = "../marty_display_common", default-features = false, optional = true }
 log.workspace = true
 anyhow.workspace = true
-bpaf = { version = "0.7.7", features = ["derive"], optional = true }
+bpaf = { version = "0.7", features = ["derive"], optional = true }
 
 toml.workspace = true
 serde = { workspace = true, features = ["derive"] }
@@ -39,3 +40,4 @@ url.workspace = true
 # use_bpaf: Control whether we use bpaf to read the command line. Disable this feature on web.
 default = ["use_bpaf"]
 use_bpaf = ["dep:bpaf"]
+use_display = ["dep:marty_display_common"]

@@ -226,6 +226,10 @@ pub struct VideoRenderer {
 
     last_render_time: Duration,
     event_queue: VecDeque<RendererEvent>,
+
+    osd_cursor: bool,
+    osd_cursor_pos: (u32, u32),
+    osd_cursor_latch: Option<(u32, u32)>,
 }
 
 impl VideoRenderer {
@@ -275,6 +279,10 @@ impl VideoRenderer {
 
             last_render_time: Duration::from_secs(0),
             event_queue: VecDeque::new(),
+
+            osd_cursor: false,
+            osd_cursor_pos: (100, 100),
+            osd_cursor_latch: None,
         }
     }
 
@@ -345,6 +353,65 @@ impl VideoRenderer {
 
     pub fn set_line_double(&mut self, state: bool) {
         self.params.line_double = state;
+    }
+
+    pub fn set_cursor_state(&mut self, state: bool) {
+        self.osd_cursor = state;
+    }
+
+    pub fn cursor_state(&self) -> bool {
+        self.osd_cursor
+    }
+
+    pub fn update_cursor(&mut self, delta_x: f32, delta_y: f32, latch: bool) {
+        let mut new_x = self.osd_cursor_pos.0 as f32 + delta_x;
+        let mut new_y = self.osd_cursor_pos.1 as f32 + delta_y;
+        if new_x < 0.0 {
+            new_x = 0.0;
+        }
+        if new_y < 0.0 {
+            new_y = 0.0;
+        }
+        self.osd_cursor_pos.0 = std::cmp::min(new_x as u32, self.params.backend.w);
+        self.osd_cursor_pos.1 = std::cmp::min(new_y as u32, self.params.backend.h);
+
+        if latch {
+            log::debug!("update_cursor(): Latching cursor position.");
+            self.osd_cursor_latch = Some(self.osd_cursor_pos);
+        }
+    }
+
+    pub fn cursor_pos(&self) -> (u32, u32) {
+        self.osd_cursor_pos
+    }
+
+    pub fn cursor_pos_absolute(&self, extents: &DisplayExtents) -> (u32, u32) {
+        let aperture = &extents.apertures[self.params.aperture as usize];
+
+        let y_offset = if extents.double_scan {
+            aperture.y * 2
+        }
+        else {
+            aperture.y
+        };
+        (self.osd_cursor_pos.0 + aperture.x, self.osd_cursor_pos.1 + y_offset)
+    }
+
+    pub fn cursor_latch_absolute(&mut self, extents: &DisplayExtents) -> Option<(u32, u32)> {
+        if let Some(latch_pos) = self.osd_cursor_latch {
+            let aperture = &extents.apertures[self.params.aperture as usize];
+            let y_offset = if extents.double_scan {
+                aperture.y * 2
+            }
+            else {
+                aperture.y
+            };
+            self.osd_cursor_latch = None;
+            Some((latch_pos.0 + aperture.x, latch_pos.1 + y_offset))
+        }
+        else {
+            None
+        }
     }
 
     /// Resizes the internal rendering buffer to the specified dimensions, before aspect correction.

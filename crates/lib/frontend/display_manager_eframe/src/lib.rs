@@ -84,28 +84,37 @@ pub use display_backend_eframe_wgpu::{
     TextureDimensions,
 };
 
-pub use marty_frontend_common::{
-    color::MartyColor,
-    display_manager::{
-        DisplayManager,
-        DisplayTargetDimensions,
-        DisplayTargetFlags,
-        DisplayTargetType,
-        DmGuiOptions,
-        DmViewportOptions,
-    },
+pub use marty_frontend_common::color::MartyColor;
+
+pub use marty_display_common::display_manager::{
+    DisplayManager,
+    DisplayTargetDimensions,
+    DisplayTargetFlags,
+    DisplayTargetType,
+    DmGuiOptions,
+    DmViewportOptions,
 };
-use marty_frontend_common::{
+
+use marty_frontend_common::types::window::WindowDefinition;
+
+use marty_display_common::{
     display_manager::{DisplayDimensions, DisplayTargetInfo, DtHandle},
-    display_scaler::{PhosphorType, ScalerFilter, ScalerGeometry, ScalerOption, ScalerParams, ScalerPreset},
-    types::window::WindowDefinition,
+    display_scaler::{
+        PhosphorType,
+        ScalerFilter,
+        ScalerGeometry,
+        ScalerMode,
+        ScalerOption,
+        ScalerParams,
+        ScalerPreset,
+    },
 };
 
 // Conditionally use the appropriate scaler per backend
 #[cfg(not(feature = "use_wgpu"))]
-use marty_scaler_null::{DisplayScaler, MartyScaler, ScalerMode};
+use marty_scaler_null::MartyScaler;
 #[cfg(feature = "use_wgpu")]
-use marty_scaler_wgpu::{MartyScaler, ScalerMode};
+use marty_scaler_wgpu::MartyScaler;
 
 use marty_egui_eframe::context::GuiRenderContext;
 use marty_videocard_renderer::{AspectCorrectionMode, AspectRatio, VideoRenderer};
@@ -116,7 +125,7 @@ use egui::{Context, ViewportId};
 use egui_wgpu::wgpu;
 
 use anyhow::{anyhow, Error};
-
+use marty_common::types::ui::MouseCaptureMode;
 // use winit::{
 //     dpi::{LogicalSize, PhysicalSize},
 //     event_loop::{ActiveEventLoop, ControlFlow, EventLoop},
@@ -490,8 +499,14 @@ impl DisplayTargetContext {
         self.mouse_grabbed
     }
 
-    pub fn set_grabbed(&mut self, grabbed: bool) {
+    pub fn set_grabbed(&mut self, grabbed: bool, capture_mode: MouseCaptureMode) {
         self.mouse_grabbed = grabbed;
+
+        if let MouseCaptureMode::LightPen = capture_mode {
+            if let Some(renderer) = &mut self.renderer {
+                renderer.set_cursor_state(grabbed)
+            }
+        }
     }
 
     pub fn set_on_top(&mut self, on_top: bool) {

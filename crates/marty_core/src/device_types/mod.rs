@@ -31,6 +31,7 @@
 */
 
 pub mod chs;
+pub mod disk;
 pub mod fdc;
 pub mod geometry;
 pub mod hdc;

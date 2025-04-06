@@ -143,9 +143,9 @@ impl CGACard {
             self.draw_solid_hchar(self.cur_fg);
         }
         else if self.mode_enable {
-            let glyph_row: u64;
+            
             // Get the u64 glyph row to draw for the current fg and bg colors and character row (vlc)
-            glyph_row = self.get_hchar_glyph_row(self.cur_char as usize, self.vlc_c9 as usize);
+            let glyph_row: u64 = self.get_hchar_glyph_row(self.cur_char as usize, self.vlc_c9 as usize);
 
             let frame_u64: &mut [u64] = bytemuck::cast_slice_mut(&mut *self.buf[self.back_buf]);
             frame_u64[self.rba >> 3] = glyph_row;
@@ -227,8 +227,8 @@ impl CGACard {
 
         let word = (self.mem[base_addr] as u16) << 8 | self.mem[base_addr + 1] as u16;
 
-        let bit1 = (word >> CGA_LCHAR_CLOCK - (self.char_col * 2 + 1)) & 0x01;
-        let bit2 = (word >> CGA_LCHAR_CLOCK - (self.char_col * 2 + 2)) & 0x01;
+        let bit1 = (word >> (CGA_LCHAR_CLOCK - (self.char_col * 2 + 1))) & 0x01;
+        let bit2 = (word >> (CGA_LCHAR_CLOCK - (self.char_col * 2 + 2))) & 0x01;
 
         if self.mode_enable {
             if bit1 == 0 {

@@ -1734,6 +1734,7 @@ dependencies = [
  "display_backend_trait",
  "egui 0.30.0",
  "egui-wgpu 0.30.0",
+ "marty_display_common",
  "marty_scaler_null",
 ]
 
@@ -1746,6 +1747,7 @@ dependencies = [
  "egui 0.30.0",
  "egui-wgpu 0.30.0",
  "log",
+ "marty_display_common",
  "marty_scaler_null",
 ]
 
@@ -1787,6 +1789,7 @@ dependencies = [
  "log",
  "marty_common",
  "marty_core",
+ "marty_display_common",
  "marty_egui",
  "marty_egui_eframe",
  "marty_frontend_common",
@@ -3609,6 +3612,8 @@ version = "0.4.0"
 dependencies = [
  "fxhash",
  "serde",
+ "strum",
+ "strum_macros",
  "web-time 1.1.0",
 ]
 
@@ -3622,6 +3627,7 @@ dependencies = [
  "log",
  "marty_common",
  "marty_core",
+ "marty_display_common",
  "marty_frontend_common",
  "serde",
  "serde_derive",
@@ -3671,6 +3677,37 @@ dependencies = [
 ]
 
 [[package]]
+name = "marty_display_common"
+version = "0.4.0"
+dependencies = [
+ "anyhow",
+ "cfg-if",
+ "crossbeam-channel",
+ "display_backend_trait",
+ "egui 0.30.0",
+ "fatfs 0.4.0 (git+https://github.com/dbalsom/fatfs_martypc.git?branch=master)",
+ "log",
+ "marty_common",
+ "marty_core",
+ "marty_frontend_common",
+ "marty_videocard_renderer",
+ "md5",
+ "pollster 0.4.0",
+ "regex",
+ "ringbuf 0.3.3",
+ "serde",
+ "serde_derive",
+ "strum",
+ "strum_macros",
+ "toml 0.8.19",
+ "url",
+ "wasm-bindgen-futures",
+ "web-time 1.1.0",
+ "wgpu 23.0.1",
+ "zip",
+]
+
+[[package]]
 name = "marty_egui"
 version = "0.4.0"
 dependencies = [
@@ -3689,6 +3726,7 @@ dependencies = [
  "log",
  "marty_common",
  "marty_core",
+ "marty_display_common",
  "marty_frontend_common",
  "marty_videocard_renderer",
  "regex",
@@ -3708,6 +3746,7 @@ dependencies = [
  "egui 0.30.0",
  "egui_extras 0.30.0 (git+https://github.com/dbalsom/egui_martypc.git?branch=0.30.0_raw_winit_hook)",
  "log",
+ "marty_display_common",
  "marty_egui",
  "marty_frontend_common",
  "serialport 4.3.1-alpha.0",
@@ -3740,7 +3779,6 @@ dependencies = [
  "anyhow",
  "cfg-if",
  "crossbeam-channel",
- "display_backend_trait",
  "egui 0.30.0",
  "fatfs 0.4.0 (git+https://github.com/dbalsom/fatfs_martypc.git?branch=master)",
  "fluxfox",
@@ -3752,7 +3790,6 @@ dependencies = [
  "md5",
  "pollster 0.4.0",
  "regex",
- "ringbuf 0.3.3",
  "serde",
  "serde_derive",
  "strum",
@@ -3806,6 +3843,7 @@ name = "marty_scaler_null"
 version = "0.4.0"
 dependencies = [
  "egui 0.30.0",
+ "marty_display_common",
  "marty_frontend_common",
 ]
 
@@ -3814,6 +3852,7 @@ name = "marty_scaler_wgpu"
 version = "0.4.0"
 dependencies = [
  "bytemuck",
+ "marty_display_common",
  "marty_frontend_common",
  "ultraviolet",
  "wgpu 23.0.1",
@@ -3923,6 +3962,7 @@ dependencies = [
  "log",
  "marty_config",
  "marty_core",
+ "marty_display_common",
  "marty_egui",
  "marty_egui_eframe",
  "marty_frontend_common",
@@ -3959,6 +3999,7 @@ dependencies = [
  "log",
  "marty_config",
  "marty_core",
+ "marty_display_common",
  "marty_frontend_common",
  "pollster 0.4.0",
  "rand 0.9.0",

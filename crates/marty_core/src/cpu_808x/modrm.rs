@@ -23,12 +23,13 @@
     DEALINGS IN THE SOFTWARE.
 
     ---------------------------------------------------------------------------
-
-    cpu_808x::modrm.rs
-
-    Routines to handle loading and parsing of modrm bytes.
-
 */
+
+//! Module for handling ModRM bytes in x86 instructions.
+//! [ModRmByte] is designed to be `'static`, so that reading a ModRM byte resolves to
+//! a static reference in a const table of [ModRmByte], plus a displacement which can
+//! later be passed to `ModRmByte::addressing_mode()` for resolution.
+
 use crate::{
     bytequeue::*,
     cpu_808x::*,
@@ -88,22 +89,6 @@ pub struct ModRmByte {
     disp_mc: u16,
     disp: Displacement,
     addressing_mode: AddressingMode,
-}
-
-impl Default for ModRmByte {
-    fn default() -> Self {
-        Self {
-            _byte: 0,
-            b_mod: 0,
-            b_reg: 0,
-            b_rm: 0,
-            pre_disp_cost: 0,
-            post_disp_cost: 0,
-            disp_mc: 0,
-            disp: Displacement::NoDisp,
-            addressing_mode: AddressingMode::BxSi,
-        }
-    }
 }
 
 // Microcode addresses for EA procedures, pre-displacement
@@ -294,15 +279,20 @@ const MODRM_TABLE: [ModRmByte; 256] = {
 };
 
 impl ModRmByte {
+    pub fn default_ref() -> &'static ModRmByte {
+        &MODRM_TABLE[0]
+    }
+
     /// Read the modrm byte and look up the appropriate value from the modrm table.
     /// Load any displacement, then return modrm struct and size of modrm + displacement.
-    pub fn read(bytes: &mut impl ByteQueue) -> (ModRmByte, u32) {
+    pub fn read(bytes: &mut impl ByteQueue) -> (&'static ModRmByte, Displacement, u32) {
         let byte = bytes.q_read_u8(QueueType::Subsequent, QueueReader::Biu);
-        let mut modrm = MODRM_TABLE[byte as usize];
-        let mut disp_size = 0;
+        let modrm = &MODRM_TABLE[byte as usize];
+        let disp_size;
 
         // If modrm is an addressing mode, spend cycles in EA calculation
         if modrm.b_mod != 0b11 {
+            let disp: Displacement;
             bytes.wait_i(1, &[MC_JUMP]);
             bytes.wait_i(
                 modrm.pre_disp_cost as u32,
@@ -310,21 +300,22 @@ impl ModRmByte {
             );
 
             // Load any displacement
-            disp_size = ModRmByte::load_displacement(&mut modrm, bytes);
+            (disp, disp_size) = ModRmByte::read_displacement(modrm, bytes);
 
             bytes.wait_i(
                 modrm.post_disp_cost as u32,
                 &EA_INSTR_TABLE_POST[(modrm.b_mod << 3 | modrm.b_rm) as usize],
             );
+            (modrm, disp, disp_size + 1)
         }
-
-        (modrm, disp_size + 1)
+        else {
+            (modrm, Displacement::NoDisp, 1)
+        }
     }
 
-    /// Load any displacement the modrm might have. The modrm table only has 'pending' displacement values,
-    /// which must be resolved to actual displacement values.
-    pub fn load_displacement(&mut self, bytes: &mut impl ByteQueue) -> u32 {
-        let (displacement, size) = match self.disp {
+    /// Read any displacement the modrm might have. Return the Displacement and size of displacement.
+    pub fn read_displacement(&self, bytes: &mut impl ByteQueue) -> (Displacement, u32) {
+        match self.disp {
             Displacement::Pending8 => {
                 bytes.set_pc(self.disp_mc);
                 let tdisp = bytes.q_read_i8(QueueType::Subsequent, QueueReader::Biu);
@@ -336,107 +327,66 @@ impl ModRmByte {
                 (Displacement::Disp16(tdisp), 2)
             }
             _ => (Displacement::NoDisp, 0),
-        };
-
-        match &mut self.addressing_mode {
-            AddressingMode::Disp16(d) => *d = displacement,
-            AddressingMode::BxSiDisp8(d) => *d = displacement,
-            AddressingMode::BxDiDisp8(d) => *d = displacement,
-            AddressingMode::BpSiDisp8(d) => *d = displacement,
-            AddressingMode::BpDiDisp8(d) => *d = displacement,
-            AddressingMode::SiDisp8(d) => *d = displacement,
-            AddressingMode::DiDisp8(d) => *d = displacement,
-            AddressingMode::BpDisp8(d) => *d = displacement,
-            AddressingMode::BxDisp8(d) => *d = displacement,
-            AddressingMode::BxSiDisp16(d) => *d = displacement,
-            AddressingMode::BxDiDisp16(d) => *d = displacement,
-            AddressingMode::BpSiDisp16(d) => *d = displacement,
-            AddressingMode::BpDiDisp16(d) => *d = displacement,
-            AddressingMode::SiDisp16(d) => *d = displacement,
-            AddressingMode::DiDisp16(d) => *d = displacement,
-            AddressingMode::BpDisp16(d) => *d = displacement,
-            AddressingMode::BxDisp16(d) => *d = displacement,
-            _ => {}
         }
-
-        size
     }
 
     // Interpret the 'R/M' field as an 8 bit register selector
-    pub fn get_op1_reg8(&self) -> Register8 {
-        match self.b_rm {
-            0x00 => Register8::AL,
-            0x01 => Register8::CL,
-            0x02 => Register8::DL,
-            0x03 => Register8::BL,
-            0x04 => Register8::AH,
-            0x05 => Register8::CH,
-            0x06 => Register8::DH,
-            0x07 => Register8::BH,
-            _ => unreachable!("impossible Register8"),
-        }
+    #[inline(always)]
+    pub fn op1_reg8(&self) -> Register8 {
+        REGISTER8_LUT[self.b_rm as usize]
     }
     // Interpret the 'R/M' field as a 16 bit register selector
-    pub fn get_op1_reg16(&self) -> Register16 {
-        match self.b_rm {
-            0x00 => Register16::AX,
-            0x01 => Register16::CX,
-            0x02 => Register16::DX,
-            0x03 => Register16::BX,
-            0x04 => Register16::SP,
-            0x05 => Register16::BP,
-            0x06 => Register16::SI,
-            0x07 => Register16::DI,
-            _ => unreachable!("impossible Register16"),
-        }
+    #[inline(always)]
+    pub fn op1_reg16(&self) -> Register16 {
+        REGISTER16_LUT[self.b_rm as usize]
     }
     // Interpret the 'REG' field as an 8 bit register selector
-    pub fn get_op2_reg8(&self) -> Register8 {
-        match self.b_reg {
-            0x00 => Register8::AL,
-            0x01 => Register8::CL,
-            0x02 => Register8::DL,
-            0x03 => Register8::BL,
-            0x04 => Register8::AH,
-            0x05 => Register8::CH,
-            0x06 => Register8::DH,
-            0x07 => Register8::BH,
-            _ => unreachable!("impossible Register8"),
-        }
+    #[inline(always)]
+    pub fn op2_reg8(&self) -> Register8 {
+        REGISTER8_LUT[self.b_reg as usize]
     }
     // Interpret the 'REG' field as a 16 bit register selector
-    pub fn get_op2_reg16(&self) -> Register16 {
-        match self.b_reg {
-            0x00 => Register16::AX,
-            0x01 => Register16::CX,
-            0x02 => Register16::DX,
-            0x03 => Register16::BX,
-            0x04 => Register16::SP,
-            0x05 => Register16::BP,
-            0x06 => Register16::SI,
-            0x07 => Register16::DI,
-            _ => unreachable!("impossible Register16"),
-        }
+    #[inline(always)]
+    pub fn op2_reg16(&self) -> Register16 {
+        REGISTER16_LUT[self.b_reg as usize]
     }
     // Interpret the 'REG' field as a 16 bit segment register selector
-    pub fn get_op2_segmentreg16(&self) -> Register16 {
-        match self.b_reg {
-            0x00 => Register16::ES,
-            0x01 => Register16::CS,
-            0x02 => Register16::SS,
-            0x03 => Register16::DS,
-            0x04 => Register16::ES,
-            0x05 => Register16::CS,
-            0x06 => Register16::SS,
-            0x07 => Register16::DS,
-            _ => Register16::InvalidRegister,
-        }
+    #[inline(always)]
+    pub fn op2_segmentreg16(&self) -> Register16 {
+        SREGISTER_LUT[self.b_reg as usize]
     }
     // Interpret the 'REG' field as a 3 bit opcode extension
-    pub fn get_op_extension(&self) -> u8 {
+    #[inline(always)]
+    pub fn op_extension(&self) -> u8 {
         self.b_reg
     }
-    pub fn get_addressing_mode(&self) -> AddressingMode {
-        self.addressing_mode
+    // Return whether the modrm byte specifies a memory addressing mode
+    #[inline(always)]
+    pub fn is_addressing_mode(&self) -> bool {
+        self.b_mod != 0b11
+    }
+    /// Produce an [AddressingMode] enum with the provided [Displacement] inserted.
+    #[inline(always)]
+    pub fn addressing_mode(&self, displacement: Displacement) -> AddressingMode {
+        match self.addressing_mode {
+            AddressingMode::Disp16(_) => AddressingMode::Disp16(displacement),
+            AddressingMode::BxSiDisp8(_) => AddressingMode::BxSiDisp8(displacement),
+            AddressingMode::BxDiDisp8(_) => AddressingMode::BxDiDisp8(displacement),
+            AddressingMode::BpSiDisp8(_) => AddressingMode::BpSiDisp8(displacement),
+            AddressingMode::BpDiDisp8(_) => AddressingMode::BpDiDisp8(displacement),
+            AddressingMode::SiDisp8(_) => AddressingMode::SiDisp8(displacement),
+            AddressingMode::DiDisp8(_) => AddressingMode::DiDisp8(displacement),
+            AddressingMode::BpDisp8(_) => AddressingMode::BpDisp8(displacement),
+            AddressingMode::BxDisp8(_) => AddressingMode::BxDisp8(displacement),
+            AddressingMode::BxSiDisp16(_) => AddressingMode::BxSiDisp16(displacement),
+            AddressingMode::BxDiDisp16(_) => AddressingMode::BxDiDisp16(displacement),
+            AddressingMode::BpSiDisp16(_) => AddressingMode::BpSiDisp16(displacement),
+            AddressingMode::BpDiDisp16(_) => AddressingMode::BpDiDisp16(displacement),
+            AddressingMode::SiDisp16(_) => AddressingMode::SiDisp16(displacement),
+            AddressingMode::DiDisp16(_) => AddressingMode::DiDisp16(displacement),
+            AddressingMode::BpDisp16(_) => AddressingMode::BpDisp16(displacement),
+            AddressingMode::BxDisp16(_) => AddressingMode::BxDisp16(displacement),
+            _ => self.addressing_mode,
+        }
     }
 }

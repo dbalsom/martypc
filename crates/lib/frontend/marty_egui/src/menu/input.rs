@@ -33,7 +33,9 @@ use crate::{
     GuiVariable,
     GuiVariableContext,
 };
+use marty_common::types::ui::MouseCaptureMode;
 use marty_core::devices::serial::SerialPortDescriptor;
+use strum::IntoEnumIterator;
 
 impl GuiState {
     pub fn show_input_menu(&mut self, ui: &mut egui::Ui) {
@@ -92,12 +94,30 @@ impl GuiState {
         });
 
         ui.menu_button("Mouse", |ui| {
-            ui.vertical(|ui| {
-                ui.horizontal(|ui| {
+            ui.menu_button("Capture Mode", |ui| {
+                for mode in MouseCaptureMode::iter() {
+                    let mode_mut = self
+                        .get_option_enum_mut(GuiEnum::MouseCaptureMode(MouseCaptureMode::default()), None)
+                        .unwrap();
+                    if let GuiEnum::MouseCaptureMode(mode_inner) = mode_mut {
+                        let mut checked = *mode_inner == mode;
+                        if ui.checkbox(&mut checked, &mode.to_string()).changed() {
+                            if checked {
+                                *mode_inner = mode;
+                                let capture_enum = GuiEnum::MouseCaptureMode(mode.clone());
+                                self.event_queue.send(GuiEvent::VariableChanged(
+                                    GuiVariableContext::Global,
+                                    GuiVariable::Enum(capture_enum),
+                                ));
+                            }
+                        }
+                    }
+                }
+            });
+            ui.menu_button("Speed", |ui| {
+                ui.vertical(|ui| {
                     ui.horizontal(|ui| {
                         let mut speed = self.option_floats.get_mut(&GuiFloat::MouseSpeed).unwrap();
-
-                        ui.label("Factor:");
                         if ui
                             .add(
                                 egui::Slider::new(speed, 0.1..=2.0)
@@ -116,6 +136,13 @@ impl GuiState {
                     });
                 });
             });
+        });
+
+        ui.menu_button("Keyboard", |ui| {
+            if ui.button("Reset keyboard").clicked() {
+                self.event_queue.send(GuiEvent::ClearKeyboard);
+                ui.close_menu();
+            }
         });
     }
 }

@@ -66,6 +66,7 @@ impl FromStr for KeyboardType {
     }
 }
 #[derive(Copy, Clone, Debug, PartialEq)]
+#[derive(Default)]
 pub struct KeyboardModifiers {
     pub control: bool,
     pub alt: bool,
@@ -73,16 +74,6 @@ pub struct KeyboardModifiers {
     pub meta: bool,
 }
 
-impl Default for KeyboardModifiers {
-    fn default() -> KeyboardModifiers {
-        KeyboardModifiers {
-            control: false,
-            alt: false,
-            shift: false,
-            meta: false,
-        }
-    }
-}
 
 impl KeyboardModifiers {
     pub fn have_any(&self) -> bool {
@@ -177,6 +168,7 @@ pub struct Keyboard {
     kb_buffer_size: usize,
     kb_buffer: Vec<u8>, // Keyboard buffer. Variable length depending on keyboard model.
     kb_buffer_overflow: bool,
+    reset_buffer: Vec<u8>, // Keyboard buffer to hold queued reset scancodes on keyboard reset.
     keycode_mappings: Vec<KeycodeMapping>,
 }
 
@@ -193,6 +185,7 @@ impl Default for Keyboard {
             kb_buffer_size: 1,
             kb_buffer: Vec::new(),
             kb_buffer_overflow: false,
+            reset_buffer: Vec::new(),
             keycode_mappings: Vec::new(),
         }
     }
@@ -580,7 +573,7 @@ impl Keyboard {
                 }
             }
             TranslationType::Scancode(svec) => {
-                if svec.len() > 0 {
+                if !svec.is_empty() {
                     if self.debug {
                         log::debug!(
                             "key_down(): Got scancode translation for key: {:?}: {:X?}",
@@ -645,15 +638,43 @@ impl Keyboard {
     }
 
     /// Reset key states for all keys to unpressed.
-    pub fn clear(&mut self) {
-        for key in self.kb_hash.keys().cloned().collect::<Vec<MartyKey>>() {
-            self.kb_hash.insert(key, KeyState::default());
+    /// # Arguments
+    /// - `send_break` - Send key up scancodes for all keys currently pressed.
+    pub fn clear(&mut self, send_break: bool) {
+        let mut up_keys: Vec<MartyKey> = Vec::new();
+        let mut translations: Vec<Vec<u8>> = Vec::new();
+
+        for (key, state) in self.kb_hash.iter_mut() {
+            if state.pressed {
+                if send_break {
+                    state.pressed = false;
+                    // If key was translated, get the corresponding key up codes
+                    if let Some(translation) = &mut state.translation {
+                        translations.push(translation.clone());
+                    }
+
+                    // Remove this key from keys_pressed.
+                    up_keys.push(*key);
+                }
+                *state = KeyState::default();
+            }
         }
+
+        for translation in translations.iter_mut() {
+            self.translate_keyup(self.kb_type, translation);
+            self.reset_buffer.extend(translation.clone());
+        }
+
+        for key in up_keys.iter() {
+            self.keys_pressed.retain(|&k| k != *key);
+        }
+
+        self.kb_buffer.clear();
     }
 
     /// Send the corresponding scancodes to the keyboard buffer.
     pub fn send_scancodes(&mut self, keys: &[u8]) {
-        if keys.len() > 0 {
+        if !keys.is_empty() {
             if self.kb_buffer_size > 1 {
                 // We have a keyboard buffer
                 if self.kb_buffer.len() + keys.len() >= self.kb_buffer_size {
@@ -674,6 +695,11 @@ impl Keyboard {
 
     /// Read out a scancode from the keyboard or None if no key in buffer.
     pub fn recv_scancode(&mut self) -> Option<u8> {
+        // Prioritize reset buffer over keyboard buffer.
+        if !self.reset_buffer.is_empty() {
+            return self.reset_buffer.pop();
+        }
+
         if self.kb_buffer_overflow {
             // Send the keyboard overflow scancode
             self.kb_buffer_overflow = false;
@@ -718,7 +744,7 @@ impl Keyboard {
                 // Load proper translation if we matched. If a macro definition is present,
                 // it overrides scancode translation.
                 if matched {
-                    if trans.key_macro.len() > 0 {
+                    if !trans.key_macro.is_empty() {
                         // We have a macro.
 
                         if let Ok(keycodes) = Keyboard::keycodes_from_strings(&trans.key_macro, trans.macro_translate) {
@@ -738,23 +764,21 @@ impl Keyboard {
             // No defined translation for this key, just use default keyboard translation.
             translation = TranslationType::Scancode(self.keycode_to_scancodes(key_code));
         }
-        else {
-            if self.debug {
-                match &translation {
-                    TranslationType::Scancode(sc) => {
-                        log::debug!(
-                            "translate_keydown(): got translation from key_code: {:?} to scancodes: {:X?}",
-                            key_code,
-                            sc
-                        );
-                    }
-                    TranslationType::Keycode(kc) => {
-                        log::debug!(
-                            "translate_keydown(): got translation from key_code: {:?} to macro: {:X?}",
-                            key_code,
-                            kc
-                        );
-                    }
+        else if self.debug {
+            match &translation {
+                TranslationType::Scancode(sc) => {
+                    log::debug!(
+                        "translate_keydown(): got translation from key_code: {:?} to scancodes: {:X?}",
+                        key_code,
+                        sc
+                    );
+                }
+                TranslationType::Keycode(kc) => {
+                    log::debug!(
+                        "translate_keydown(): got translation from key_code: {:?} to macro: {:X?}",
+                        key_code,
+                        kc
+                    );
                 }
             }
         }
@@ -777,7 +801,7 @@ impl Keyboard {
                     );
                 }
 
-                translation[0] = translation[0] | 0x80;
+                translation[0] |= 0x80;
             }
             _ => {
                 unimplemented!();
@@ -795,7 +819,7 @@ impl Keyboard {
         // Update keys pressed.
         for vkey in &self.keys_pressed {
             if self.typematic && self.is_typematic_key(*vkey) {
-                if let Some(key_state) = self.kb_hash.get_mut(&vkey) {
+                if let Some(key_state) = self.kb_hash.get_mut(vkey) {
                     key_state.pressed_time += ms;
                     if key_state.pressed_time > (self.typematic_delay - self.typematic_rate) {
                         if self.debug {

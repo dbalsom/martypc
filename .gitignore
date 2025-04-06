@@ -74,8 +74,11 @@ icon.png
 # Files to include as wasm assets
 !/frontends/martypc_eframe/assets/martypc.toml
 
-/install/media/roms/romdef_s100.toml
-/install/media/roms/romdef_ast.toml
+# Experimental rom definitions
+/install/configs/rom_definitions/romdef_s100.toml
+/install/configs/rom_definitions/romdef_ast.toml
+
+# Miscellaneous GlaBIOS ROMs
 /install/media/roms/GLaBIOS/parking
 
 # Ignore autofloppy dirs

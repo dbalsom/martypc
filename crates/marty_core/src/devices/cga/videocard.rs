@@ -114,7 +114,7 @@ impl VideoCard for CGACard {
         let height = self.crtc_vertical_displayed as u32 * (self.crtc_maximum_scanline_address as u32 + 1);
 
         if self.mode_hires_gfx {
-            width = width * 2;
+            width *= 2;
         }
         (width, height)
     }
@@ -234,7 +234,7 @@ impl VideoCard for CGACard {
 
     /// Return the 16-bit value computed from the CRTC's pair of Page Address registers.
     fn get_start_address(&self) -> u16 {
-        return (self.crtc_start_address_ho as u16) << 8 | self.crtc_start_address_lo as u16;
+        (self.crtc_start_address_ho as u16) << 8 | self.crtc_start_address_lo as u16
     }
 
     fn get_cursor_info(&self) -> CursorInfo {
@@ -323,6 +323,9 @@ impl VideoCard for CGACard {
         crtc_vec.push(("Start Address".to_string(), VideoCardStateEntry::String(format!("{:04X}", self.crtc_start_address))));
         push_reg_str!(crtc_vec, CRTCRegister::CursorAddressH, "[R14]", self.crtc_cursor_address_ho);
         push_reg_str!(crtc_vec, CRTCRegister::CursorAddressL, "[R15]", self.crtc_cursor_address_lo);
+        push_reg_str!(crtc_vec, CRTCRegister::LightPenPositionH, "[R16]", self.crtc_lightpen_latch_ho);
+        push_reg_str!(crtc_vec, CRTCRegister::LightPenPositionL, "[R17]", self.crtc_lightpen_latch_lo);
+
         map.insert("CRTC".to_string(), crtc_vec);
 
         let mut internal_vec = Vec::new();
@@ -364,11 +367,33 @@ impl VideoCard for CGACard {
         external_vec.push(("Blinking".to_string(), VideoCardStateEntry::String(format!("{:?}", self.mode_blinking))));
         
         map.insert("External".to_string(), external_vec);
-        
+
+        let mut lp_vec = Vec::new();
+        lp_vec.push((String::from("pen x position:"), VideoCardStateEntry::String(format!("{:?}", self.lightpen_pos.0))));
+        lp_vec.push((String::from("pen y position:"), VideoCardStateEntry::String(format!("{:?}", self.lightpen_pos.1))));
+        lp_vec.push((String::from("pen tick:"), VideoCardStateEntry::String(format!("{}", self.lightpen_tick))));
+        lp_vec.push((String::from("switch state:"), VideoCardStateEntry::String(
+            if self.lightpen_switch {
+                String::from("Pressed")
+            }
+            else {
+                String::from("Released")
+            }
+        )));
+        lp_vec.push((String::from("trigger tick:"), VideoCardStateEntry::String(
+            if let Some(trigger_tick) = self.lightpen_trigger_tick {
+                format!("{}", trigger_tick)
+            }
+            else {
+                String::from("No trigger")
+            }
+        )));
+        map.insert("Light Pen".to_string(), lp_vec);
+
         map
     }
 
-    fn run(&mut self, time: DeviceRunTimeUnit, _pic: &mut Option<Pic>, _cpumem: Option<&[u8]>) {
+    fn run(&mut self, time: DeviceRunTimeUnit, _pic: &mut Option<Box<Pic>>, _cpumem: Option<&[u8]>) {
         /*
         if self.scanline > 1000 {
             log::error!("run(): scanlines way too high: {}", self.scanline);
@@ -434,7 +459,7 @@ impl VideoCard for CGACard {
 
         match self.clock_mode {
             ClockingMode::Character | ClockingMode::Dynamic => {
-                if self.cycles & self.char_clock_mask as u64 != 0 {
+                if self.cycles & self.char_clock_mask != 0 {
                     log::warn!(
                         "out of phase with char clock: {} mask: {:02X} \
                         cycles: {} out of phase: {} \
@@ -538,7 +563,7 @@ impl VideoCard for CGACard {
         let mut filename = path.to_path_buf();
         filename.push("cga_mem.bin");
 
-        match std::fs::write(filename.clone(), &*self.mem) {
+        match std::fs::write(filename.clone(), *self.mem) {
             Ok(_) => {
                 log::debug!("Wrote memory dump: {}", filename.display())
             }
@@ -568,7 +593,7 @@ impl VideoCard for CGACard {
         for _ in 0..rows {
             let mut line = String::new();
             line.extend(
-                self.mem[row_addr..(row_addr + (columns * 2) & 0x3fff)]
+                self.mem[row_addr..((row_addr + (columns * 2)) & 0x3fff)]
                     .iter()
                     .step_by(2)
                     .filter_map(|&byte| {
@@ -585,5 +610,27 @@ impl VideoCard for CGACard {
         }
 
         strings
+    }
+
+    fn set_light_pen_pos(&mut self, x: u32, y: u32) {
+        self.lightpen_pos = (x, y);
+        self.lightpen_tick = ((y / 2) * self.extents.field_w + x) / 8 / self.clock_divisor as u32;
+
+        // Adjust for rasterization latency
+        self.lightpen_tick += match self.clock_divisor {
+            1 => 5,
+            2 => 3,
+            _ => 0,
+        }
+    }
+
+    fn set_light_pen_state(&mut self, pressed: bool) {
+        self.lightpen_switch = pressed;
+    }
+
+    fn light_pen_trigger(&mut self, x: u32, y: u32) {
+        log::debug!("Setting light pen trigger.");
+        self.set_light_pen_pos(x, y);
+        self.lightpen_trigger_tick = Some(self.lightpen_tick);
     }
 }

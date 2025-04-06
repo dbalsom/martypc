@@ -29,11 +29,15 @@
     Machine configuration services for frontends.
 */
 
+use std::{
+    collections::{BTreeMap, HashSet},
+    ffi::OsString,
+};
+
 use crate::resource_manager::ResourceManager;
-use anyhow::Error;
 use marty_core::{
-    device_traits::videocard::VideoType,
     machine_config::{
+        ConventionalExpansionConfig,
         CpuConfig,
         EmsMemoryConfig,
         FloppyControllerConfig,
@@ -43,6 +47,7 @@ use marty_core::{
         MachineConfiguration,
         MediaConfig,
         MemoryConfig,
+        ParallelControllerConfig,
         SerialControllerConfig,
         SerialMouseConfig,
         SoundDeviceConfig,
@@ -51,11 +56,11 @@ use marty_core::{
     machine_types::{HardDiskControllerType, MachineType},
 };
 
+#[cfg(any(feature = "ega", feature = "vga"))]
+use marty_core::device_traits::videocard::VideoType;
+
+use anyhow::Error;
 use serde_derive::Deserialize;
-use std::{
-    collections::{BTreeMap, HashSet},
-    ffi::OsString,
-};
 
 #[derive(Clone, Debug, Deserialize)]
 pub struct MachineConfigFile {
@@ -84,12 +89,14 @@ pub struct MachineConfigFileEntry {
     fdc: Option<FloppyControllerConfig>,
     hdc: Option<HardDriveControllerConfig>,
     serial: Option<Vec<SerialControllerConfig>>,
+    parallel: Option<Vec<ParallelControllerConfig>>,
     video: Option<Vec<VideoCardConfig>>,
     sound: Option<Vec<SoundDeviceConfig>>,
     keyboard: Option<KeyboardConfig>,
     serial_mouse: Option<SerialMouseConfig>,
     game_port: Option<GamePortConfig>,
     media: Option<MediaConfig>,
+    conventional_expansion: Option<Vec<ConventionalExpansionConfig>>,
 }
 
 #[derive(Clone, Debug, Deserialize)]
@@ -101,11 +108,13 @@ pub struct MachineConfigFileOverlayEntry {
     fdc: Option<FloppyControllerConfig>,
     hdc: Option<HardDriveControllerConfig>,
     serial: Option<Vec<SerialControllerConfig>>,
+    parallel: Option<Vec<ParallelControllerConfig>>,
     video: Option<Vec<VideoCardConfig>>,
     sound: Option<Vec<SoundDeviceConfig>>,
     keyboard: Option<KeyboardConfig>,
     serial_mouse: Option<SerialMouseConfig>,
     game_port: Option<GamePortConfig>,
+    conventional_expansion: Option<Vec<ConventionalExpansionConfig>>,
     // TODO: Support media in overlay?
     #[allow(unused)]
     media: Option<MediaConfig>,
@@ -299,7 +308,7 @@ impl MachineConfigFileEntry {
         Some(self.rom_set.clone())
     }
 
-    /// Returns a a tuple of vectors of strings representing the required and optional ROM features for this
+    /// Returns a tuple of vectors of strings representing the required and optional ROM features for this
     /// configuration
     pub fn get_rom_requirements(&self) -> Result<(Vec<String>, Vec<String>), Error> {
         let mut req_set: HashSet<String> = HashSet::new();
@@ -338,6 +347,14 @@ impl MachineConfigFileEntry {
                     }
                     if req_set.insert(String::from("xtide")) {
                         req_vec.push(String::from("xtide"));
+                    }
+                }
+                HardDiskControllerType::JrIde => {
+                    if req_set.insert(String::from("expansion")) {
+                        req_vec.push(String::from("expansion"));
+                    }
+                    if req_set.insert(String::from("jride")) {
+                        req_vec.push(String::from("jride"));
                     }
                 }
             }
@@ -404,6 +421,10 @@ impl MachineConfigFileEntry {
             log::debug!("Applying serial overlay: {:?}", serial);
             self.serial = Some(serial);
         }
+        if let Some(parallel) = overlay.parallel {
+            log::debug!("Applying parallel overlay: {:?}", parallel);
+            self.parallel = Some(parallel);
+        }
         if let Some(video) = overlay.video {
             log::debug!("Applying video overlay: {:?}", video);
             self.video = Some(video);
@@ -424,6 +445,10 @@ impl MachineConfigFileEntry {
             log::debug!("Applying game port overlay: {:?}", game_port);
             self.game_port = Some(game_port);
         }
+        if let Some(conventional_expansion) = overlay.conventional_expansion {
+            log::debug!("Applying conventional expansion overlay: {:?}", conventional_expansion);
+            self.conventional_expansion = Some(conventional_expansion);
+        }
     }
 
     pub fn to_machine_config(&self) -> MachineConfiguration {
@@ -439,9 +464,11 @@ impl MachineConfigFileEntry {
             serial: self.serial.clone().unwrap_or_default(),
             video: self.video.clone().unwrap_or_default(),
             sound: self.sound.clone().unwrap_or_default(),
+            parallel: self.parallel.clone().unwrap_or_default(),
             keyboard: self.keyboard.clone(),
             serial_mouse: self.serial_mouse.clone(),
             game_port: self.game_port.clone(),
+            conventional_expansion: self.conventional_expansion.clone().unwrap_or_default(),
             media: self.media.clone(),
         }
     }

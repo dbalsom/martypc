@@ -101,7 +101,8 @@ lazy_static! {
 
 lazy_static! {
     pub static ref DISK_FORMATS: HashMap<usize, DiskFormat> = {
-        let map = HashMap::from([
+        
+        HashMap::from([
             (
                 163_840,
                 DiskFormat {
@@ -144,7 +145,6 @@ lazy_static! {
                     chs: DiskChs::new(80, 2, 18),
                 },
             ),
-        ]);
-        map
+        ])
     };
 }

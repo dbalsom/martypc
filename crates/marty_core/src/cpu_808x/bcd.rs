@@ -65,9 +65,9 @@ impl Intel808x {
         // Handle undefined flag behavior. Determined by testing against real 8088.
         self.set_flag_state(Flag::Zero, new_al == 0);
         self.set_flag_state(Flag::Parity, PARITY_TABLE[new_al as usize]);
-        self.set_flag_state(Flag::Overflow, old_al >= 0x7A && old_al <= 0x7F);
+        self.set_flag_state(Flag::Overflow, (0x7A..=0x7F).contains(&old_al));
 
-        if old_al >= 0x7A && old_al <= 0xF9 {
+        if (0x7A..=0xF9).contains(&old_al) {
             self.set_flag(Flag::Sign);
         }
         else {
@@ -107,7 +107,7 @@ impl Intel808x {
         self.set_flag_state(Flag::Zero, new_al == 0);
         self.set_flag_state(Flag::Parity, PARITY_TABLE[new_al as usize]);
 
-        if old_af && old_al >= 0x80 && old_al <= 0x85 {
+        if old_af && (0x80..=0x85).contains(&old_al) {
             self.set_flag(Flag::Overflow);
         }
         if !old_af && old_al >= 0x80 {
@@ -201,22 +201,13 @@ impl Intel808x {
         self.clear_flag(Flag::Overflow);
 
         match (old_af, old_cf) {
-            (false, false) => match self.a.l() {
-                0x9A..=0xDF => self.set_flag(Flag::Overflow),
-                _ => {}
-            },
+            (false, false) => if let 0x9A..=0xDF = self.a.l() { self.set_flag(Flag::Overflow) },
             (true, false) => match self.a.l() {
                 0x80..=0x85 | 0xA0..=0xE5 => self.set_flag(Flag::Overflow),
                 _ => {}
             },
-            (false, true) => match self.a.l() {
-                0x80..=0xDF => self.set_flag(Flag::Overflow),
-                _ => {}
-            },
-            (true, true) => match self.a.l() {
-                0x80..=0xE5 => self.set_flag(Flag::Overflow),
-                _ => {}
-            },
+            (false, true) => if let 0x80..=0xDF = self.a.l() { self.set_flag(Flag::Overflow) },
+            (true, true) => if let 0x80..=0xE5 = self.a.l() { self.set_flag(Flag::Overflow) },
         }
 
         self.clear_flag(Flag::Carry);
@@ -237,28 +228,5 @@ impl Intel808x {
         }
 
         self.set_szp_flags_from_result_u8(self.a.l());
-    }
-
-    /// AAM - Ascii adjust AX After multiply
-    /// Flags: The SF, ZF, and PF flags are set according to the resulting binary value in the AL register
-    /// As AAM is implemented via CORD, it can throw an exception. This is indicated by a return value
-    /// of false.
-    pub fn aam(&mut self, imm8: u8) -> bool {
-        cycles_mc!(self, 0x175, 0x176, MC_JUMP);
-        // 176: A->tmpc   | UNC CORD
-        // Jump delay
-
-        match 0u8.cord(self, 0, imm8 as u16, self.a.l() as u16) {
-            Ok((quotient, remainder, _)) => {
-                // 177:          | COM1 tmpc
-                self.set_register8(Register8::AH, !(quotient as u8));
-                self.set_register8(Register8::AL, remainder as u8);
-                self.cycle_i(0x177);
-                // Other sources set flags from AX register. Intel's documentation specifies AL
-                self.set_szp_flags_from_result_u8(self.a.l());
-                true
-            }
-            Err(_) => false,
-        }
     }
 }

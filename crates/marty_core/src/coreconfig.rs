@@ -72,6 +72,8 @@ pub trait CoreConfig {
     fn get_validator_trace_file(&self) -> Option<PathBuf>;
     fn get_validator_baud(&self) -> Option<u32>;
     fn get_cpu_trace_mode(&self) -> Option<TraceMode>;
+
+    fn get_cpu_dram_refresh_simulation(&self) -> bool;
     fn get_cpu_trace_on(&self) -> bool;
     fn get_cpu_trace_file(&self) -> Option<PathBuf>;
     fn get_title_hacks(&self) -> bool;

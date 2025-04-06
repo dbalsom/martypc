@@ -337,7 +337,7 @@ impl NecVx0 {
         let mut tmpa: u16;
         let mut tmpc: u16 = al as u16; // 150 A->tmpc     | LRCY tmpc
         let mut carry;
-        let zf;
+        
 
         //(_, carry) = rcl_u8_with_carry(tmpc as u8, 1, carry);
         carry = tmpc & 0x80 != 0; // LRCY is just checking MSB of tmpc
@@ -439,7 +439,7 @@ impl NecVx0 {
         // JMP
 
         self.cycles_i(6, &[0x155, 0x156, MC_JUMP, 0x1d2, 0x1d3, MC_JUMP]);
-        zf = sigma == 0;
+        let zf = sigma == 0;
 
         // 1d0:                | Z 8  (jump if zero)
         if zf {
@@ -458,8 +458,8 @@ impl NecVx0 {
 
         //self.cycle_i(0x157); // 157: tmpa-> X        | RNI
 
-        let product = tmpa << 8 | (tmpc & 0xFF);
-        product
+        
+        tmpa << 8 | (tmpc & 0xFF)
     }
 
     #[allow(unused_assignments)] // This isn't pretty but we are trying to mirror the microcode
@@ -471,11 +471,11 @@ impl NecVx0 {
         let mut tmpa: u16;
         let mut tmpc: u16 = ax; // 158 XA->tmpc     | LRCY tmpc
         let mut carry;
-        let zf;
+        
 
         //(_, carry) = rcl_u16_with_carry(tmpc, 1, carry); // SIGMA isn't used? Just setting carry flag(?)
         carry = tmpc & 0x8000 != 0; // LRCY is just checking msb
-        let mut tmpb: u16 = operand as u16; // 159: M->tmpb    | X0 PREIMUL
+        let mut tmpb: u16 = operand; // 159: M->tmpb    | X0 PREIMUL
         self.cycles_i(2, &[0x158, 0x159]);
 
         // PREIMUL if signed == true
@@ -561,7 +561,7 @@ impl NecVx0 {
         // 1d3: SIGMA->.       | UNC 12  | F  (Set flags)
         // JMP
         self.cycles_i(6, &[0x15d, 0x15e, MC_JUMP, 0x1d2, 0x1d3, MC_JUMP]);
-        zf = sigma == 0;
+        let zf = sigma == 0;
 
         // 1d0:                | Z 8  (jump if zero)
         if zf {
@@ -679,13 +679,13 @@ impl NecVx0 {
                 // divisor is negative
 
                 //log::debug!("  div8: tmpb was negative in POSTIDIV");
-                sigma16 = sigma_next16 as u16; // 1c8 SIGMA->tmpa
+                sigma16 = sigma_next16; // 1c8 SIGMA->tmpa
                 tmpa = sigma16; // if tmpb was negative (msb was set), set tmpa to NEG tempa (flip sign)
                 self.cycle_i(0x1c8);
             }
 
             // 1c9              | INC tmpc
-            sigma16 = tmpc.wrapping_add(1) as u16;
+            sigma16 = tmpc.wrapping_add(1);
 
             self.cycles_i(2, &[0x1c9, 0x1ca]);
             // 1ca              | F1 8
@@ -716,7 +716,7 @@ impl NecVx0 {
     pub fn div16(&mut self, dividend: u32, divisor: u16, signed: bool, mut negate: bool) -> Result<(u16, u16), bool> {
         let mut tmpa: u16 = (dividend >> 16) as u16; // 160
         let mut tmpc: u16 = (dividend & 0xFFFF) as u16; // 161
-        let mut tmpb = divisor as u16; // 162
+        let mut tmpb = divisor; // 162
 
         let mut sigma16: u16;
         let sigma_next: u16;
@@ -795,7 +795,7 @@ impl NecVx0 {
             else {
                 // divisor is negative
                 //log::debug!("  div16: tmpb was negative in POSTIDIV");
-                sigma16 = sigma_next as u16; // 1c8 SIGMA->tmpa
+                sigma16 = sigma_next; // 1c8 SIGMA->tmpa
                 tmpa = sigma16; // if tmpb was negative (msb was set), set tmpa to NEG tempa (flip sign)
                 self.cycle_i(0x1c8);
             }

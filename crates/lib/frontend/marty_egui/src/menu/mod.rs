@@ -27,6 +27,7 @@
 
 //! The main menu logic for MartyPC's egui user interface.
 
+mod debug;
 mod display;
 mod floppy;
 mod input;

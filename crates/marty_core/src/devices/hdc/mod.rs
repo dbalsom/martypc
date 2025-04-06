@@ -31,6 +31,7 @@
 //! - xtide: The XT-IDE hard disk controller.
 
 pub mod at_formats;
+pub mod jr_ide;
 pub mod xebec;
 pub mod xtide;
 

@@ -45,8 +45,10 @@ use std::{
     str::FromStr,
 };
 
+#[cfg(feature = "use_display")]
+use marty_display_common::display_scaler::ScalerPreset;
+
 use marty_frontend_common::{
-    display_scaler::ScalerPreset,
     resource_manager::PathConfigItem,
     types::window::WindowDefinition,
     BenchmarkEndCondition,
@@ -203,6 +205,7 @@ pub struct Emulator {
     pub pit_output_int_trigger: bool,
 
     pub window: Vec<WindowDefinition>,
+    #[cfg(feature = "use_display")]
     pub scaler_preset: Vec<ScalerPreset>,
     pub input: EmulatorInput,
     pub benchmark: Benchmark,
@@ -271,6 +274,7 @@ pub struct Tests {
 
 #[derive(Debug, Deserialize)]
 pub struct Cpu {
+    pub dram_refresh_simulation: Option<bool>,
     pub wait_states: Option<bool>,
     pub off_rails_detection: Option<bool>,
     pub on_halt: Option<OnHaltBehavior>,
