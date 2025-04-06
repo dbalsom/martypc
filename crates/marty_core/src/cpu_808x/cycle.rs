@@ -174,9 +174,6 @@ impl Intel808x {
                             self.io_wait_states = 0;
                             self.bus_wait_states = 0;
                         }
-                        else if self.have_wait_states() {
-                            self.ready = false;
-                        }
 
                         // A prefetch decision is made at the end of T2 of the last bus cycle of an atomic
                         // bus operation, regardless of wait states.
@@ -332,7 +329,12 @@ impl Intel808x {
                     _ => TCycle::T2,
                 }
             }
-            TCycle::T2 => TCycle::T3,
+            TCycle::T2 => {
+                if self.have_wait_states() {
+                    self.ready = false;
+                }
+                TCycle::T3
+            }
             TCycle::Tw | TCycle::T3 => {
                 // If no wait states have been reported, advance to T3, otherwise go to Tw
                 if self.have_wait_states() {
@@ -342,10 +344,10 @@ impl Intel808x {
                     // Only drain IO wait states when DMA is not active. When DMA is on, the 8288
                     // outputs are suppressed. This means that IO and DMA wait states cannot overlap -
                     // an IO device would gain no benefit from the wait state it can't see or detect
-                    // if self.dma_wait_states == 0 {
-                    //     self.io_wait_states = self.io_wait_states.saturating_sub(1);
-                    // }
-                    self.io_wait_states = self.io_wait_states.saturating_sub(1);
+                    if self.dma_wait_states == 0 {
+                        self.io_wait_states = self.io_wait_states.saturating_sub(1);
+                    }
+                    //self.io_wait_states = self.io_wait_states.saturating_sub(1);
 
                     TCycle::Tw
                 }
@@ -433,7 +435,8 @@ impl Intel808x {
             DmaState::HoldA => {
                 // DMA Hold Acknowledge has been issued. DMA controller will enter S1
                 // on next cycle, if no bus wait states are present.
-                if self.bus_wait_states < 2 && self.io_wait_states == 0 {
+                if self.bus_wait_states < 2 && self.io_wait_states < 2 {
+                    //if self.bus_wait_states < 2 {
                     self.dma_state = DmaState::Operating(0);
                     self.dma_aen = true;
                 }
