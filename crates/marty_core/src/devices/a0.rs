@@ -84,7 +84,7 @@ impl IoDevice for A0Register {
         _analyzer: Option<&mut LogicAnalyzer>,
     ) {
         self.a0_byte = data;
-        log::debug!("A0 NMI Control Register Write: {:08b}", data);
+        //log::debug!("A0 NMI Control Register Write: {:08b}", data);
         if let A0Type::PCJr = self.a0type {
             self.nmi_enabled = (data & 0x80) != 0;
             self.ir_test_ena = (data & 0x40) != 0;
