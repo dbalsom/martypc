@@ -727,7 +727,7 @@ impl FloppyDiskDrive {
 
     pub fn read_operation_buf(&mut self) -> u8 {
         let byte_buf = &mut [0u8];
-        self.operation_buf.read_exact(byte_buf).unwrap();
+        _ = self.operation_buf.read_exact(byte_buf);
 
         byte_buf[0]
     }
@@ -737,7 +737,7 @@ impl FloppyDiskDrive {
             .seek(std::io::SeekFrom::Start(offset as u64))
             .unwrap();
         let byte_buf = &mut [0u8];
-        self.operation_buf.read_exact(byte_buf).unwrap();
+        _ = self.operation_buf.read_exact(byte_buf);
 
         byte_buf[0]
     }
