@@ -29,7 +29,7 @@
 
 use std::str::FromStr;
 
-use crate::{devices::ata::ata_string::AtaString, vhd::VHDGeometry};
+use crate::devices::ata::ata_string::AtaString;
 
 use crate::device_types::geometry::DriveGeometry;
 use binrw::binrw;

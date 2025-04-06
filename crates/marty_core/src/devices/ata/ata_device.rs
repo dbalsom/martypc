@@ -29,7 +29,7 @@
 
 use crate::{
     bus::BusInterface,
-    device_types::{chs::DiskChs, disk::Disk, hdc::HardDiskFormat},
+    device_types::{chs::DiskChs, disk::Disk},
     devices::{
         ata::{
             ata_error::{AtaError, AtaOperationError},
@@ -37,7 +37,6 @@ use crate::{
             ata_register16::AtaRegister16,
         },
         dma,
-        hdc::xebec::{ControllerError, HardDisk},
     },
     vhd::VirtualHardDisk,
 };
@@ -1188,7 +1187,7 @@ impl AtaDevice {
 
     /// Process the Read Sector Buffer operation.
     /// This operation continues until the DMA transfer is complete.
-    fn opearation_read_sector_buffer(&mut self, dma: &mut dma::DMAController, bus: &mut BusInterface) {
+    fn opearation_read_sector_buffer(&mut self, _dma: &mut dma::DMAController, _bus: &mut BusInterface) {
         // if self.dreq_active && dma.read_dma_acknowledge(HDC_DMA) {
         //     if self.operation_status.dma_bytes_left > 0 {
         //         let byte = 0;
@@ -1233,7 +1232,7 @@ impl AtaDevice {
 
     /// Process the Write Sector Buffer operation.
     /// This operation continues until the DMA transfer is complete.
-    fn opearation_write_sector_buffer(&mut self, dma: &mut dma::DMAController, bus: &mut BusInterface) {
+    fn opearation_write_sector_buffer(&mut self, _dma: &mut dma::DMAController, _bus: &mut BusInterface) {
         // if self.dreq_active && dma.read_dma_acknowledge(HDC_DMA) {
         //     if self.operation_status[self.drive_select].dma_bytes_left > 0 {
         //         // Bytes left to transfer

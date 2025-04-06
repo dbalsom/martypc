@@ -35,10 +35,7 @@ use crate::{
     bus::{BusInterface, DeviceRunTimeUnit, IoDevice},
     cpu_common::LogicAnalyzer,
     device_types::{geometry::DriveGeometry, hdc::HardDiskFormat},
-    devices::{
-        ata::ata_device::AtaDevice,
-        hdc::{at_formats::AtFormats, DEFAULT_SECTOR_SIZE},
-    },
+    devices::{ata::ata_device::AtaDevice, hdc::at_formats::AtFormats},
     vhd::VirtualHardDisk,
 };
 
@@ -467,7 +464,7 @@ impl JrIdeController {
 }
 
 impl MemoryMappedDevice for JrIdeController {
-    fn get_read_wait(&mut self, address: usize, _cycles: u32) -> u32 {
+    fn get_read_wait(&mut self, _address: usize, _cycles: u32) -> u32 {
         0
     }
 
@@ -577,15 +574,15 @@ impl MemoryMappedDevice for JrIdeController {
         }
     }
 
-    fn mmio_peek_u16(&self, address: usize, _cpumem: Option<&[u8]>) -> u16 {
+    fn mmio_peek_u16(&self, _address: usize, _cpumem: Option<&[u8]>) -> u16 {
         0
     }
 
-    fn get_write_wait(&mut self, address: usize, cycles: u32) -> u32 {
+    fn get_write_wait(&mut self, _address: usize, _cycles: u32) -> u32 {
         0
     }
 
-    fn mmio_write_u8(&mut self, address: usize, data: u8, _cycles: u32, cpumem: Option<&mut [u8]>) -> u32 {
+    fn mmio_write_u8(&mut self, address: usize, data: u8, _cycles: u32, _cpumem: Option<&mut [u8]>) -> u32 {
         let offset = address - self.base_address;
         match offset {
             ..DATA_WINDOW_OFFSET => 0,
@@ -629,7 +626,7 @@ impl MemoryMappedDevice for JrIdeController {
         }
     }
 
-    fn mmio_write_u16(&mut self, address: usize, data: u16, _cycles: u32, _cpumem: Option<&mut [u8]>) -> u32 {
+    fn mmio_write_u16(&mut self, _address: usize, _data: u16, _cycles: u32, _cpumem: Option<&mut [u8]>) -> u32 {
         0
     }
 

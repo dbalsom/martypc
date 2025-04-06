@@ -35,11 +35,8 @@ use std::{error::Error, fmt::Debug};
 use crate::{
     bus::{BusInterface, DeviceRunTimeUnit, IoDevice},
     cpu_common::LogicAnalyzer,
-    device_types::{geometry::DriveGeometry, hdc::HardDiskFormat},
-    devices::{
-        ata::ata_device::AtaDevice,
-        hdc::{at_formats::AtFormats, DEFAULT_SECTOR_SIZE},
-    },
+    device_types::hdc::HardDiskFormat,
+    devices::{ata::ata_device::AtaDevice, hdc::at_formats::AtFormats},
     vhd::VirtualHardDisk,
 };
 
