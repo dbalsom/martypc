@@ -2287,7 +2287,7 @@ impl FloppyController {
         if self.operation_accumulator > FDC_RESET_TIME {
             log::trace!("FDC Operation Reset complete.");
             self.operation_accumulator = 0.0;
-            self.reset_internal(false);
+            self.reset_internal(true);
             self.operation = Operation::NoOperation;
             self.send_interrupt = true;
         }
