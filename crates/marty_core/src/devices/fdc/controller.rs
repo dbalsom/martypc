@@ -1089,6 +1089,7 @@ impl FloppyController {
             let command_byte = CommandByte::from_bytes([data]);
             let command = command_byte.command();
             self.mt = command_byte.mt();
+            self.command_skip = command_byte.skip();
             self.command_deleted = false;
             match command {
                 COMMAND_READ_TRACK => {
