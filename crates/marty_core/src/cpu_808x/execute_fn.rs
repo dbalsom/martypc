@@ -396,6 +396,7 @@ impl Intel808x {
             self.cycle_i(0x068);
             let (segment, offset) = self.read_operand_farptr(self.i.operand1_type, self.i.segment_override).unwrap();
             let next_i = self.ip();
+            let next_cs = self.cs;
 
             self.farcall(segment, offset, true);
 
@@ -405,12 +406,13 @@ impl Intel808x {
             // Add to call stack
             self.push_call_stack(
                 CallStackEntry::CallF {
-                    ret_cs: self.cs,
+                    ret_cs: next_cs,
+                    ip: self.instruction_ip,
                     ret_ip: next_i,
                     call_cs: segment,
                     call_ip: offset
                 },
-                self.cs,
+                next_cs,
                 next_i
             );
         }
@@ -424,9 +426,9 @@ impl Intel808x {
             }
 
             // EALOAD sets tmpa into IND, but on a register operand, IND is never set.
-            // Even worse, the microcode goes on to reference tmpa and tmpb, which are uninitialized.
+            // Even worse, the microcode goes on to reference tmpb, which is uninitialized.
             // There is no way to properly emulate this, unless you basically track every place where
-            // tmpa and tmpb are changed.
+            // tmpb is changed.
             // At that point, you might as well make a microcode emulator.
 
             // Some random value seen in tests. Don't copy this.
@@ -467,6 +469,7 @@ impl Intel808x {
         self.push_call_stack(
             CallStackEntry::CallF {
                 ret_cs: self.cs,
+                ip: self.instruction_ip,
                 ret_ip: self.ip(),
                 call_cs: segment,
                 call_ip: offset
@@ -499,7 +502,8 @@ impl Intel808x {
         // Add to call stack
         self.push_call_stack(
             CallStackEntry::Call {
-                ret_cs: self.cs,
+                cs: self.cs,
+                ip: self.instruction_ip,
                 ret_ip: self.pc,
                 call_ip: ptr16
             },
@@ -536,7 +540,8 @@ impl Intel808x {
         // Add to call stack
         self.push_call_stack(
             CallStackEntry::Call {
-                ret_cs: self.cs,
+                cs: self.cs,
+                ip: self.instruction_ip,
                 ret_ip: self.pc,
                 call_ip: new_pc
             },
@@ -991,7 +996,7 @@ impl Intel808x {
             if self.in_rep {
                 // Check for interrupt
                 self.cycle_i(0x11f);
-                if self.intr_pending {
+                if self.intr_pending || self.get_flag(Flag::Trap) {
                     self.cycle_i(MC_JUMP); // Jump to RPTI
                     self.rep_interrupt();
                 }
@@ -1047,7 +1052,7 @@ impl Intel808x {
 
                 if !end {
                     self.cycle_i(0x12a);
-                    if self.intr_pending {
+                    if self.intr_pending || self.get_flag(Flag::Trap) {
                         self.cycle_i(MC_JUMP); // Jump to RPTI
                         self.rep_interrupt();
                     }
@@ -1081,7 +1086,7 @@ impl Intel808x {
             if self.in_rep {
                 self.decrement_register16(Register16::CX); // 131
                 // Check for interrupt
-                if self.intr_pending {
+                if self.intr_pending || self.get_flag(Flag::Trap) {
                     cycles_mc!(self, 0x131, MC_JUMP); // Jump to RPTI
                     self.rep_interrupt();
                 }
@@ -1117,7 +1122,7 @@ impl Intel808x {
                 cycles_mc!(self, MC_JUMP, 0x131); // Jump to 131
                 self.decrement_register16(Register16::CX); // 131
                 // Check for interrupt
-                if self.intr_pending {
+                if self.intr_pending || self.get_flag(Flag::Trap) {
                     self.cycle_i(MC_JUMP); // Jump to RPTI
                     self.rep_interrupt();
                 }

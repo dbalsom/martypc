@@ -337,7 +337,6 @@ impl Intel808x {
         }
         else if self.intr && self.interrupts_enabled() {
             // An interrupt needs to be processed.
-
             if self.in_rep {
                 // We're in an REP prefixed-string instruction.
                 // Delay processing of the interrupt so that the string
@@ -348,7 +347,6 @@ impl Intel808x {
             else {
                 // We are not in a REP prefixed string instruction, so we
                 // can process an interrupt normally.
-
                 if self.halted {
                     // Resume from halt on interrupt
                     self.resume();
