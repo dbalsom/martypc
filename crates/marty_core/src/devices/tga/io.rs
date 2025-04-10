@@ -30,7 +30,10 @@
 
 */
 use super::*;
-use crate::{bus::IoDevice, cpu_common::LogicAnalyzer};
+use crate::{
+    bus::{IoDevice, NO_IO_BYTE},
+    cpu_common::LogicAnalyzer,
+};
 
 // CRTC registers are mirrored from 0x3D0 - 0x3D5 due to incomplete
 // address decoding.
@@ -62,8 +65,12 @@ impl IoDevice for TGACard {
         //self.rw_op(ticks, 0, port as u32, RwSlotType::Io);
 
         if (port & !CRTC_REGISTER_MASK) == CRTC_REGISTER_BASE {
+            if self.a0.external_vid() {
+                // Ports 3D0-3D7 disabled by A0 register.
+                NO_IO_BYTE
+            }
             // Read is from CRTC register.
-            if port & 0x01 != 0 {
+            else if port & 0x01 != 0 {
                 self.handle_crtc_register_read()
             }
             else {
@@ -107,7 +114,10 @@ impl IoDevice for TGACard {
 
         if (port & !CRTC_REGISTER_MASK) == CRTC_REGISTER_BASE {
             // Write is to CRTC register.
-            if port & 0x01 == 0 {
+            if self.a0.external_vid() {
+                // Ports 3D0-3D7 disabled by A0 register.
+            }
+            else if port & 0x01 == 0 {
                 self.handle_crtc_register_select(data);
             }
             else {
@@ -133,7 +143,7 @@ impl IoDevice for TGACard {
                     // PCJr uses a flip/flop for both address and data via 3DA.
                     // Tandy uses 3DE as a dedicated data port.
                     match self.subtype {
-                        VideoCardSubType::Tandy1000 => {
+                        VideoCardSubType::Tandy1000 | VideoCardSubType::Tandy1000_256 => {
                             self.video_array_select(data);
                         }
                         VideoCardSubType::IbmPCJr => {
@@ -176,7 +186,10 @@ impl IoDevice for TGACard {
         // One of the minor differences between Tandy and PCJr:
         // PCJr uses a flip/flop for both address and data via 3DA.
         // Tandy uses 3DE as a dedicated data port.
-        if matches!(self.subtype, VideoCardSubType::Tandy1000) {
+        if matches!(
+            self.subtype,
+            VideoCardSubType::Tandy1000 | VideoCardSubType::Tandy1000_256
+        ) {
             ports.push((String::from("TGA Mode Control Register"), CGA_MODE_CONTROL_REGISTER));
             ports.push((String::from("TGA Color Control Register"), CGA_COLOR_CONTROL_REGISTER));
             ports.push((String::from("TGA Video Array Data"), TGA_VIDEO_ARRAY_DATA));

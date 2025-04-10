@@ -1697,6 +1697,11 @@ impl BusInterface {
                 video.reset()
             }
         }
+
+        // Reset the A0 register
+        if let Some(a0) = self.a0.as_mut() {
+            a0.reset();
+        }
     }
 
     /// Call the reset methods for devices to be reset on warm boot

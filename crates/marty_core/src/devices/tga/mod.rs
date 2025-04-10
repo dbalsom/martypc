@@ -80,6 +80,17 @@ struct RwSlot {
 
 #[bitfield]
 #[derive(Copy, Clone, Debug)]
+pub struct A0Register {
+    external_vid: bool,
+    mem_config: B3,
+    enable_256: bool,
+    #[skip]
+    unused: B2,
+    enable_nmi: bool,
+}
+
+#[bitfield]
+#[derive(Copy, Clone, Debug)]
 pub struct TModeControlRegister {
     pub unused: B2,
     pub border_enable: bool,
@@ -140,6 +151,9 @@ static DUMMY_PIXEL: [u8; 4] = [0, 0, 0, 0];
 // CGA clock could issue a memory request on.
 static WAIT_TABLE: [u32; 16] = [14, 13, 12, 11, 10, 9, 24, 23, 22, 21, 20, 19, 18, 17, 16, 15];
 // in cpu cycles: 5,5,4,4,4,3,8,8,8,7,7,7,6,6,6,5
+
+pub const TGA_VIDEO_APERTURE_128K: usize = 0x20000;
+pub const TGA_VIDEO_APERTURE_256K: usize = 0x40000;
 
 pub const TGA_MEM_ADDRESS: usize = 0xB8000;
 pub const TGA_MEM_APERTURE: usize = 0x8000; // 32Kb aperture.
@@ -698,8 +712,10 @@ pub struct TGACard {
     crt_page_offset: usize,
     page_size: usize,
     address_flipflop: bool,
-    a0: u8,
+    a0_byte: u8,
+    a0: A0Register,
     aperture_base: usize,
+    aperture_size: usize,
 
     lightpen_pos: (u32, u32),
     lightpen_tick: u32,
@@ -924,8 +940,10 @@ impl Default for TGACard {
             crt_page_offset: 0,
             page_size: 0x8000,
             address_flipflop: true,
-            a0: 0,
+            a0_byte: 0,
+            a0: A0Register::new(),
             aperture_base: 0,
+            aperture_size: TGA_VIDEO_APERTURE_128K,
 
             lightpen_pos: (0, 0),
             lightpen_tick: 0,
@@ -947,6 +965,7 @@ impl TGACard {
         let mut cga = TGACard {
             subtype,
             trace_logger,
+            aperture_size: TGA_VIDEO_APERTURE_128K,
             ..Self::default()
         };
 
@@ -975,19 +994,39 @@ impl TGACard {
             frame_count: self.frame_count, // Keep frame count as to not confuse frontend
             trace_logger,
             extents: self.extents.clone(),
-
+            a0_byte: 0,
+            a0: A0Register::new(),
             ..Self::default()
         }
     }
 
     #[inline(always)]
     pub fn set_a0(&mut self, byte: u8) {
-        self.a0 = byte & 0x0F;
-        if matches!(self.subtype, VideoCardSubType::Tandy1000) {
-            // A0 register bits 0-3 specify the video aperture location in increments of 64K,
+        if byte == self.a0_byte {
+            return;
+        }
+        self.a0_byte = byte;
+        self.a0 = A0Register::from_bytes([byte]);
+
+        if matches!(
+            self.subtype,
+            VideoCardSubType::Tandy1000 | VideoCardSubType::Tandy1000_256
+        ) {
+            // A0 register bits 1-3 specify the video aperture location.
+            // For 128k machines, they are increments of 0x20000 starting at 0x000000.
             // The aperture can be put anywhere in the 1MB address space, but of course putting
             // it outside existing RAM would not be very useful.
-            self.aperture_base = (self.a0 as usize) << 16;
+            if self.subtype == VideoCardSubType::Tandy1000_256 && self.a0.enable_256() {
+                // 256K aperture
+                self.aperture_size = TGA_VIDEO_APERTURE_256K;
+                self.aperture_base = (self.a0.mem_config().saturating_sub(1) as usize) << 17;
+                log::debug!("Set 256K TGA aperture to: {:X}", self.aperture_base);
+            }
+            else {
+                // 128K aperture
+                self.aperture_size = TGA_VIDEO_APERTURE_128K;
+                self.aperture_base = (self.a0.mem_config() as usize) << 17;
+            }
         }
     }
 
@@ -1088,7 +1127,7 @@ impl TGACard {
     fn set_lp_latch(&mut self) {
         if !self.lightpen_latch {
             // Low to high transition of light pen latch, set latch addr.
-            log::debug!("Updating lightpen latch address");
+            log::trace!("Updating lightpen latch address");
             self.latch_lightpen();
         }
 
@@ -1096,12 +1135,12 @@ impl TGACard {
     }
 
     fn clear_lp_latch(&mut self) {
-        log::debug!("clearing lightpen latch");
+        //log::debug!("clearing lightpen latch");
         self.lightpen_latch = false;
     }
 
     fn latch_lightpen(&mut self) {
-        log::debug!("latch_lightpen(): updating lightpen registers");
+        log::trace!("latch_lightpen(): updating lightpen registers");
         // Latch lightpen address
         self.lightpen_latch = true;
         self.lightpen_addr = self.vma;
@@ -1466,7 +1505,7 @@ impl TGACard {
 
                 self.mode_byte = vmode_byte;
             }
-            VideoCardSubType::Tandy1000 => {
+            VideoCardSubType::Tandy1000 | VideoCardSubType::Tandy1000_256 => {
                 self.mode_hires_txt = self.mode_byte & MODE_HIRES_TEXT != 0;
                 self.mode_graphics = self.mode_byte & MODE_GRAPHICS != 0;
                 self.mode_bw = self.mode_byte & MODE_BW != 0;
@@ -1540,13 +1579,14 @@ impl TGACard {
 
     /// Update the CGA character clock. Can only be done on LCLOCK boundaries to simplify
     /// our logic.
+    /// TODO: If these are both really the same we can get rid of this match
     #[inline]
     fn update_clock(&mut self) {
         match self.subtype {
             VideoCardSubType::IbmPCJr => {
                 self.update_clock_tandy();
             }
-            VideoCardSubType::Tandy1000 => {
+            VideoCardSubType::Tandy1000_256 | VideoCardSubType::Tandy1000 => {
                 self.update_clock_tandy();
             }
             _ => {
@@ -2853,7 +2893,7 @@ impl TGACard {
                 self.border_color = data & 0x0F;
             }
 
-            (0x03, VideoCardSubType::Tandy1000) => {
+            (0x03, VideoCardSubType::Tandy1000 | VideoCardSubType::Tandy1000_256) => {
                 // Tandy1000 Mode control register
                 self.t_mode_control = TModeControlRegister::from_bytes([data]);
                 log::trace!("Write to TGA Mode Control: {:02X} {:?}", data, self.t_mode_control);
