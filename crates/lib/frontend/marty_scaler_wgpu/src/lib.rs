@@ -51,7 +51,7 @@ use marty_display_common::display_scaler::{
 };
 
 use ultraviolet::Mat4;
-use wgpu::{util::DeviceExt, TextureDescriptor, TextureFormat::Rgba8Unorm};
+use wgpu::{util::DeviceExt, TextureDescriptor};
 
 /// A logical texture size for a window surface.
 #[derive(Debug)]

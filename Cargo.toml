@@ -13,6 +13,7 @@ members = [
     "crates/lib/frontend/marty_web_helpers",
     "crates/binaries/martypc_headless",
     "crates/binaries/martypc_eframe",
+    "crates/binaries/martypc_launcher",
     "crates/binaries/martypc_web_player_wgpu",
     "crates/binaries/martypc_desktop_wgpu"
 ]

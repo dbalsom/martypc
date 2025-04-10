@@ -69,6 +69,8 @@ pub type HotkeyConfigEntry = types::hotkeys::HotkeyConfigEntry;
 pub type JoyKeyEntry = types::joykeys::JoyKeyEntry;
 pub type RelativeDirectory = types::floppy::RelativeDirectory;
 
+pub use types::gui::*;
+
 pub use async_exec::exec_async;
 pub use marty_common;
 

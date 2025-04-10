@@ -25,13 +25,14 @@
     --------------------------------------------------------------------------
 */
 
+use std::sync::Arc;
+
 use marty_display_common::display_manager::DmGuiOptions;
 use marty_egui::{
     state::GuiState,
     themes::{make_theme, GuiTheme},
 };
-use marty_frontend_common::MartyGuiTheme;
-use std::sync::Arc;
+use marty_frontend_common::{GuiContextOptions, MartyGuiTheme};
 
 use egui::{Color32, Context};
 use egui_extras::install_image_loaders;
@@ -73,7 +74,7 @@ impl GuiRenderContext {
         width: u32,
         height: u32,
         scale_factor: f64,
-        gui_options: &DmGuiOptions,
+        gui_options: &GuiContextOptions,
     ) -> Self {
         //let max_texture_size = pixels.device().limits().max_texture_dimension_2d as usize;
         //let egui_ctx = Context::default();

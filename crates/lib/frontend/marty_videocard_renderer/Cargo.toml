@@ -32,6 +32,8 @@ bytemuck = { workspace = true, features = ["derive"] }
 default = ["ega", "vga"]
 ega = []
 vga = []
+use_wgpu = ["display_backend_trait/use_wgpu"]
+use_glow = ["display_backend_trait/use_glow"]
 
 [[bench]]
 name = "render_bench"
