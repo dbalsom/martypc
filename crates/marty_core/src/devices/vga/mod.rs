@@ -326,6 +326,18 @@ const CGA_TO_EGA_U8: [u8; 16] = [
     0x00, 0x01, 0x02, 0x03, 0x04, 0x05, 0x14, 0x07, 0x38, 0x39, 0x3A, 0x3B, 0x3C, 0x3D, 0x3E, 0x3F,
 ];
 
+// This lookup table holds the values for the first color register that should
+// trigger the switch sense bit to be set. I am not sure of the actual triggering
+// condition, but we model what the BIOS expects
+const SWITCH_SENSE_LUT: [[u8; 3]; 6] = [
+    [0x14, 0x14, 0x14],
+    [0x04, 0x12, 0x04],
+    [0x00, 0x00, 0x00],
+    [0x04, 0x12, 0x04],
+    [0x12, 0x12, 0x12],
+    [0x04, 0x04, 0x04],
+];
+
 const fn init_ega_6bpp_u64_colors() -> [u64; 64] {
     let mut colors: [u64; 64] = [0; 64];
     let mut i: usize = 0;
@@ -878,16 +890,27 @@ impl VGACard {
     fn read_input_status_register_0(&mut self) -> u8 {
         let mut byte = 0x0F;
 
-        // Note: DIP switches are wired up in reverse order
-        let switch_status = match self.misc_output_register.clock_select() {
-            ClockSelect::Unused => self.dip_sw.read() & 0x01,
-            ClockSelect::ExternalClock => self.dip_sw.read() >> 1 & 0x01,
-            ClockSelect::Clock28 => self.dip_sw.read() >> 2 & 0x01,
-            ClockSelect::Clock25 => self.dip_sw.read() >> 3 & 0x01,
-        };
+        // // Note: DIP switches are wired up in reverse order
+        // let switch_status = match self.misc_output_register.clock_select() {
+        //     ClockSelect::Unused => self.dip_sw.read() & 0x01,
+        //     ClockSelect::ExternalClock => self.dip_sw.read() >> 1 & 0x01,
+        //     ClockSelect::Clock28 => self.dip_sw.read() >> 2 & 0x01,
+        //     ClockSelect::Clock25 => self.dip_sw.read() >> 3 & 0x01,
+        // };
+        //
+        // // Set switch sense bit
+        // byte |= switch_status << 4;
 
-        // Set switch sense bit
-        byte |= switch_status << 4;
+        for i in 0..SWITCH_SENSE_LUT.len() {
+            if SWITCH_SENSE_LUT[i][0] == self.ac.color_registers[0][0]
+                && SWITCH_SENSE_LUT[i][1] == self.ac.color_registers[0][1]
+                && SWITCH_SENSE_LUT[i][2] == self.ac.color_registers[0][2]
+            {
+                log::trace!("Setting switch status bit from Color Register 0 contents.");
+                byte |= 0x10;
+                break;
+            }
+        }
 
         // Set CRT interrupt bit. Bit is 0 when retrace is occurring.
         byte |= match self.crtc.status.vblank {
