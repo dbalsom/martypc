@@ -56,7 +56,9 @@ pub struct A0Register {
     clock_1_select: bool,
     hrq_disable: bool,
 
-    clear_nmi_latch: bool,
+    clear_nmi_latch:    bool,
+    tandy_aperture_sel: u8,
+    tandy_enable_256k:  bool,
 }
 
 impl IoDevice for A0Register {
@@ -85,11 +87,19 @@ impl IoDevice for A0Register {
     ) {
         self.a0_byte = data;
         //log::debug!("A0 NMI Control Register Write: {:08b}", data);
-        if let A0Type::PCJr = self.a0type {
-            self.nmi_enabled = (data & 0x80) != 0;
-            self.ir_test_ena = (data & 0x40) != 0;
-            self.clock_1_select = (data & 0x20) != 0;
-            self.hrq_disable = (data & 0x10) != 0;
+        match self.a0type {
+            A0Type::PCJr => {
+                self.nmi_enabled = (data & 0x80) != 0;
+                self.ir_test_ena = (data & 0x40) != 0;
+                self.clock_1_select = (data & 0x20) != 0;
+                self.hrq_disable = (data & 0x10) != 0;
+            }
+            A0Type::Tandy1000 => {
+                self.nmi_enabled = (data & 0x80) != 0;
+                self.tandy_aperture_sel = (data >> 1) & 0x07;
+                self.tandy_enable_256k = (data >> 4) & 0x01 != 0;
+            }
+            _ => {}
         }
     }
 
@@ -109,7 +119,21 @@ impl A0Register {
             clock_1_select: false,
             hrq_disable: false,
             clear_nmi_latch: false,
+            tandy_aperture_sel: 0,
+            tandy_enable_256k: false,
         }
+    }
+
+    pub fn reset(&mut self) {
+        self.a0_byte = 0;
+        self.nmi_latch = false;
+        self.nmi_enabled = false;
+        self.ir_test_ena = false;
+        self.clock_1_select = false;
+        self.hrq_disable = false;
+        self.clear_nmi_latch = false;
+        self.tandy_aperture_sel = 0;
+        self.tandy_enable_256k = false;
     }
 
     pub fn enable_nmi(&mut self, state: bool) {
@@ -135,6 +159,14 @@ impl A0Register {
 
     pub fn hrq_disable(&self) -> bool {
         self.hrq_disable
+    }
+
+    pub fn tandy_256k_enabled(&self) -> bool {
+        self.tandy_enable_256k
+    }
+
+    pub fn tandy_aperture_sel(&self) -> u8 {
+        self.tandy_aperture_sel
     }
 
     pub fn read(&self) -> u8 {
