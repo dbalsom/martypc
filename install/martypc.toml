@@ -82,6 +82,12 @@ pit_phase = 0
 
 #keyboard_layout = "US"
 
+# controller_layout: What's connected to the game port, if the machine has one?
+# Valid options are:
+#  TwoJoysticksTwoButtons - Two joysticks with two buttons each.
+#  OneJoystickFourButtons - One joystick with four buttons (Gravis gamepad, etc.)
+controller_layout = "TwoJoysticksTwoButtons"
+
 # ----------------------------------------------------------------------------
 # CPU Options
 # ----------------------------------------------------------------------------

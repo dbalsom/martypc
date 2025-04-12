@@ -45,6 +45,8 @@
 
 */
 
+use marty_common::types::joystick::ControllerLayout;
+
 use crate::{
     bus::{BusInterface, DeviceRunTimeUnit, IoDevice, NO_IO_BYTE},
     cpu_common::LogicAnalyzer,
@@ -70,13 +72,6 @@ pub const POT_OHMS: f64 = 100_000.0;
 // Time = 24.2us + (0.011 * R)us
 pub const BASE_CHARGE_TIME_US: f64 = 25.2;
 pub const CHARGE_FACTOR: f64 = 0.011;
-
-#[derive(Default)]
-pub enum ControllerLayout {
-    #[default]
-    TwoJoysticksTwoButtons,
-    OneJoystickFourButtons,
-}
 
 #[derive(Default)]
 pub struct Axis {
@@ -107,11 +102,22 @@ pub struct GamePort {
 }
 
 impl GamePort {
-    pub fn new(port_base: Option<u16>) -> Self {
+    pub const CENTER: f64 = 0.0;
+    pub const LEFT: f64 = -1.0;
+    pub const RIGHT: f64 = 1.0;
+    pub const UP: f64 = 1.0;
+    pub const DOWN: f64 = -1.0;
+
+    pub fn new(port_base: Option<u16>, controller_layout: Option<ControllerLayout>) -> Self {
         GamePort {
             port_base: port_base.unwrap_or(GAMEPORT_DEFAULT_PORT),
+            layout: controller_layout.unwrap_or_default(),
             ..Default::default()
         }
+    }
+
+    pub fn controller_layout(&self) -> ControllerLayout {
+        self.layout
     }
 
     pub fn set_button(&mut self, controller: usize, button: usize, state: bool) {
@@ -134,20 +140,21 @@ impl GamePort {
             ControllerLayout::TwoJoysticksTwoButtons => {
                 if controller < 2 && stick == 0 {
                     if let Some(x) = x {
-                        self.sticks[controller].x.pos = x;
+                        self.sticks[controller].x.pos = x.clamp(-1.0, 1.0);
                     }
                     if let Some(y) = y {
-                        self.sticks[controller].y.pos = y;
+                        log::debug!("set_stick_pos: y = {}", y);
+                        self.sticks[controller].y.pos = -y.clamp(-1.0, 1.0);
                     }
                 }
             }
             ControllerLayout::OneJoystickFourButtons => {
                 if controller == 0 && stick == 0 {
                     if let Some(x) = x {
-                        self.sticks[controller].x.pos = x;
+                        self.sticks[controller].x.pos = x.clamp(-1.0, 1.0);
                     }
                     if let Some(y) = y {
-                        self.sticks[controller].y.pos = y;
+                        self.sticks[controller].y.pos = -y.clamp(-1.0, 1.0);
                     }
                 }
             }

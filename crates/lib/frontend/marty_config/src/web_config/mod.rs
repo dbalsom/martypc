@@ -28,9 +28,9 @@
 //! On the web, we treat the URL query parameters as command line arguments.
 //! This module is conditionally compiled when building for the web wasm target.
 
-use std::path::PathBuf;
-
+use marty_common::types::joystick::ControllerLayout;
 use marty_core::{cpu_common::CpuType, cpu_validator::ValidatorType};
+use std::path::PathBuf;
 
 use url::Url;
 use wasm_bindgen::prelude::*;
@@ -62,6 +62,7 @@ pub struct CmdLineArgs {
     pub title_hacks: bool,
     pub off_rails_detection: bool,
     pub reverse_mouse_buttons: bool,
+    pub controller_layout: Option<ControllerLayout>,
     pub machine_config_name: Option<String>,
     pub machine_config_overlays: Option<String>,
     pub turbo: bool,

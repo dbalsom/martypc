@@ -23,18 +23,17 @@
    DEALINGS IN THE SOFTWARE.
 
    ---------------------------------------------------------------------------
-
-   frontend_common::types::mod.rs
-
-   Define common frontend types.
-
 */
+use serde_derive::Deserialize;
 
-pub mod floppy;
-pub mod gamepad;
-pub mod gui;
-pub mod hotkeys;
-pub mod joykeys;
-pub mod resource_location;
-pub mod sound;
-pub mod window;
+#[cfg(feature = "use_gilrs")]
+pub type GamepadId = gilrs::GamepadId;
+
+#[cfg(not(feature = "use_gilrs"))]
+pub type GamepadId = usize;
+
+pub struct GamepadInfo {
+    pub name: String,
+    pub id: String,
+    pub internal_id: GamepadId,
+}

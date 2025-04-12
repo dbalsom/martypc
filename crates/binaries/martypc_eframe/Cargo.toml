@@ -58,7 +58,7 @@ rfd.workspace = true
 rodio = {  workspace = true, optional = true }
 # gilrs is used to provide gamepad support
 #gilrs = { version = "0.11", default-features = false, features = ["xinput"], optional = true }
-gilrs = { version = "0.11", optional = true }
+gilrs = { workspace = true, optional = true }
 # wgpu is used if the `use_wgpu` feature is enabled.
 wgpu = { workspace = true, optional = true }
 egui_commonmark = { workspace = true, optional = true }
@@ -124,7 +124,7 @@ use_glow = ["eframe/glow", "display_manager_eframe/use_glow"]
 # Use serialport
 use_serialport = ["marty_egui/use_serialport", "marty_egui_eframe/use_serialport"]
 # Use gilrs for gamepads
-use_gilrs = ["dep:gilrs"]
+use_gilrs = ["dep:gilrs", "marty_frontend_common/use_gilrs"]
 # Enable UI for internal development tooling. This is not intended for end-users. No support!
 devtools = ["marty_egui/devtools"]
 arduino_validator = ["marty_core/arduino_validator"]

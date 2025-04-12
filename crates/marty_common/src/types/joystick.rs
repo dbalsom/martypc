@@ -23,18 +23,38 @@
    DEALINGS IN THE SOFTWARE.
 
    ---------------------------------------------------------------------------
-
-   frontend_common::types::mod.rs
-
-   Define common frontend types.
-
 */
+use std::{fmt::Display, str::FromStr};
 
-pub mod floppy;
-pub mod gamepad;
-pub mod gui;
-pub mod hotkeys;
-pub mod joykeys;
-pub mod resource_location;
-pub mod sound;
-pub mod window;
+use serde::Deserialize;
+
+#[derive(Copy, Clone, Default, Debug, PartialEq, Hash, Deserialize)]
+pub enum ControllerLayout {
+    #[default]
+    TwoJoysticksTwoButtons,
+    OneJoystickFourButtons,
+}
+
+impl FromStr for ControllerLayout {
+    type Err = String;
+
+    fn from_str(s: &str) -> Result<Self, Self::Err> {
+        match s.to_lowercase().as_str() {
+            "twojoystickstwobuttons" => Ok(ControllerLayout::TwoJoysticksTwoButtons),
+            "onejoystickfourbuttons" => Ok(ControllerLayout::OneJoystickFourButtons),
+            _ => Err(format!(
+                "Invalid controller layout: {}. Expected 'TwoJoysticksTwoButtons' or 'OneJoystickFourButtons'",
+                s
+            )),
+        }
+    }
+}
+
+impl Display for ControllerLayout {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match self {
+            ControllerLayout::TwoJoysticksTwoButtons => write!(f, "Two Joysticks with Two Buttons"),
+            ControllerLayout::OneJoystickFourButtons => write!(f, "One Joystick with Four Buttons"),
+        }
+    }
+}

@@ -1198,6 +1198,7 @@ impl BusInterface {
 
         // Create a game port
         let mut game_port_addr = None;
+        let mut game_port_layout = None;
         // Is there one onboard?
         if machine_desc.game_port.is_some() {
             game_port_addr = machine_desc.game_port;
@@ -1205,10 +1206,20 @@ impl BusInterface {
         // Is there one in the machine config?
         else if let Some(game_port) = &machine_config.game_port {
             game_port_addr = Some(game_port.io_base);
+
+            // Take the controller layout from the main machine config first, as this is set by
+            // the main configuration file and command line arguments.
+            // If not specified, fall back to the port specified in the game port configuration.
+            if let Some(config_layout) = machine_config.controller_layout {
+                game_port_layout = Some(config_layout);
+            }
+            else if let Some(port_layout) = game_port.controller_layout {
+                game_port_layout = Some(port_layout);
+            }
         }
         // Either way, install it if present
         if let Some(game_port_addr) = game_port_addr {
-            let game_port = GamePort::new(Some(game_port_addr));
+            let game_port = GamePort::new(Some(game_port_addr), game_port_layout);
             add_io_device!(self, game_port, IoDeviceType::GamePort);
             self.game_port = Some(game_port);
         }
@@ -1768,6 +1779,10 @@ impl BusInterface {
 
     pub fn cart_slot_mut(&mut self) -> &mut Option<CartridgeSlot> {
         &mut self.cart_slot
+    }
+
+    pub fn game_port(&self) -> &Option<GamePort> {
+        &self.game_port
     }
 
     pub fn game_port_mut(&mut self) -> &mut Option<GamePort> {

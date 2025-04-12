@@ -73,6 +73,18 @@ pub fn update_egui(emu: &mut Emulator, dm: &mut EFrameDisplayManager, tm: &Times
         emu.gui.set_sound_state(si.info());
     }
 
+    // -- Update gamepads, but only if we have a game port
+    if let Some(gameport) = emu.machine.bus().game_port() {
+        let gamepad_vec = emu.gi.gamepads().collect::<Vec<_>>();
+        emu.gui.set_gameport(true, gameport.controller_layout());
+
+        // log::debug!(
+        //     "got gamepads: {:?}",
+        //     gamepad_vec.iter().map(|i| i.name.clone()).collect::<Vec<_>>()
+        // );
+        emu.gui.set_gamepads(gamepad_vec);
+    }
+
     // -- Update serial ports
     emu.gui.set_serial_ports(emu.machine.bus().enumerate_serial_ports());
 

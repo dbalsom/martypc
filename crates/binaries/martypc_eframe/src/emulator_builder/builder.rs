@@ -46,6 +46,7 @@ use crate::{
         EmuFlags,
         Emulator,
     },
+    input,
     input::HotkeyManager,
 };
 
@@ -630,7 +631,10 @@ impl EmulatorBuilder {
         let stat_counter = Counter::new();
 
         // Create a MachineConfiguration for core initialization
-        let machine_config = machine_config_file.to_machine_config();
+        let mut machine_config = machine_config_file.to_machine_config();
+
+        // Override machine configuration options from main config
+        machine_config.controller_layout = config.machine.input.controller_layout;
 
         let trace_file_base = resource_manager.resource_path("trace").unwrap_or_default();
         let mut trace_file_path = None;
@@ -720,6 +724,10 @@ impl EmulatorBuilder {
             }
         }
 
+        // Create a gamepad interface. If a gamepad backend feature is not enabled, this will be
+        // a stub interface.
+        let gi = input::GamepadInterface::new();
+
         // A DisplayManager is front-end specific, so we'll expect the front-end to create one
         // after we have built the emulator.
 
@@ -788,6 +796,7 @@ impl EmulatorBuilder {
             },
             hkm: hotkey_manager,
             si: sound_player,
+            gi,
             sender,
             receiver,
         })

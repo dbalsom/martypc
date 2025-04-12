@@ -3826,6 +3826,7 @@ dependencies = [
  "egui 0.30.0",
  "fatfs 0.4.0 (git+https://github.com/dbalsom/fatfs_martypc.git?branch=master)",
  "fluxfox",
+ "gilrs",
  "log",
  "marty_common",
  "marty_core",
