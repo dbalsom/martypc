@@ -56,11 +56,11 @@ use crate::event_loop::web_keyboard::handle_web_key_event;
 
 use crossbeam_channel::{Receiver, Sender};
 
-use egui::{Context, CursorGrab, RawInput, Sense, ViewportCommand, ViewportId};
-
 use crate::emulator_builder::builder::EmuBuilderError;
 #[cfg(target_arch = "wasm32")]
 use crate::wasm::*;
+use egui::{Context, CursorGrab, RawInput, Sense, ViewportCommand, ViewportId};
+use gilrs::Gilrs;
 use marty_display_common::display_manager::{DisplayTargetType, DtHandle};
 use marty_frontend_common::{color::MartyColor, constants::NORMAL_NOTIFICATION_TIME};
 use marty_videocard_renderer::AspectCorrectionMode;
@@ -494,7 +494,7 @@ impl MartyApp {
         };
 
         // Create our GUI rendering context.
-        let gui = GuiRenderContext::new(cc.egui_ctx.clone(), 0, 640, 480, 1.0, &gui_options);
+        let gui = GuiRenderContext::new(cc.egui_ctx.clone(), 0, 640, 480, 1.0, &gui_options.into());
 
         Self {
             gui,
@@ -531,6 +531,14 @@ impl eframe::App for MartyApp {
     /// Called each time the UI needs repainting, which may be many times per second.
     /// A display manager must be created before this is called.
     fn update(&mut self, ctx: &Context, _frame: &mut eframe::Frame) {
+        // Enumerate the host's gamepads if the feature is enabled
+        // #[cfg(feature = "use_gilrs")]
+        // let mut gilrs = Gilrs::new().unwrap();
+        // log::debug!("Enumerating {} gamepads...", gilrs.gamepads().count());
+        // for (_id, gamepad) in gilrs.gamepads() {
+        //     log::debug!("Found gamepad: {:?}", gamepad.name());
+        // }
+
         // Get current viewport focus state.
         let vi = ctx.input(|i| {
             let vi = i.viewport();
