@@ -626,10 +626,10 @@ impl Intel808x {
             DmaState::Hrq => "HRQ ",
             DmaState::HoldA => "HLDA",
             DmaState::Operating(n) => match n {
-                4 => "S1",
-                3 => "S2",
+                0 => "S1",
+                1 => "S2",
                 2 => "S3",
-                1 => "S4",
+                3 => "S4",
                 _ => "S?",
             }, //DmaState::DmaWait(..) => "DMAW"
             DmaState::End => "END",

@@ -634,6 +634,7 @@ pub struct Intel808x {
     dma_req: bool,
     dma_ack: bool,
     dma_wait_states: u32,
+    dma_wait: bool,
 
     // Trap stuff
     trap_enable_delay:  u32,  // Number of cycles to delay trap flag enablement.
