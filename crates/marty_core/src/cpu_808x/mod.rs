@@ -502,6 +502,7 @@ pub struct Intel808x {
     // BIU stuff
     bus_width: BusWidth,
     ready: bool, // READY line from 8284
+    ready_next: bool,
     queue: InstructionQueue,
     fetch_size: TransferSize,
     fetch_state: FetchState,
@@ -954,6 +955,7 @@ impl Intel808x {
         self.t_step = 0.00000021;
         self.t_step_h = 0.000000105;
         self.ready = true;
+        self.ready_next = true;
         self.in_rep = false;
         self.halted = false;
         self.reported_halt = false;

@@ -215,6 +215,7 @@ impl Intel808x {
         };
 
         self.ready = !self.have_wait_states();
+        self.ready_next = self.ready;
 
         // Perform cycle tracing, if enabled
         if self.trace_enabled {
@@ -331,8 +332,13 @@ impl Intel808x {
             }
             TCycle::T2 => TCycle::T3,
             TCycle::Tw | TCycle::T3 => {
-                // If no wait states have been reported, advance to T3, otherwise go to Tw
-                if self.have_wait_states() {
+                // If the ready line is asserted on T3 or Tw, we can end the bus cycle,
+                // return to PASV and begin T4.
+                if self.ready {
+                    self.biu_bus_end();
+                    TCycle::T4
+                }
+                else if self.have_wait_states() {
                     // First drain bus wait states
                     self.bus_wait_states = self.bus_wait_states.saturating_sub(1);
                     //self.io_wait_states = self.io_wait_states.saturating_sub(1);
@@ -360,7 +366,7 @@ impl Intel808x {
         self.last_queue_op = self.queue_op;
         self.last_queue_byte = self.queue_byte;
         self.queue_op = QueueOp::Idle;
-
+        self.ready = self.ready_next;
         self.instr_cycle += 1;
         self.device_cycles += 1;
 
@@ -423,8 +429,8 @@ impl Intel808x {
             DmaState::HoldA => {
                 // DMA Hold Acknowledge has been issued. DMA controller will enter S1
                 // on next cycle, if no bus wait states are present.
-                if self.bus_wait_states < 2 && self.io_wait_states < 2 {
-                    //if self.bus_wait_states < 2 {
+                //if self.bus_wait_states < 2 && self.io_wait_states < 2 {
+                if self.bus_wait_states < 2 {
                     self.dma_state = DmaState::Operating(0);
                     self.dma_aen = true;
                 }
@@ -437,7 +443,7 @@ impl Intel808x {
                     1 => {
                         // DMAWAIT asserted after S1
                         self.dma_wait_states = 7; // Effectively 6 as this is decremented this cycle
-                        self.ready = false;
+                        self.ready_next = false;
                     }
                     2 => {
                         // DACK asserted after S2
