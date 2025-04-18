@@ -32,9 +32,9 @@
     This file implements the CoreConfig trait.
 */
 
-use std::path::PathBuf;
-
 use crate::ConfigFileParams;
+use marty_common::types::joystick::ControllerLayout;
+use std::path::PathBuf;
 
 use marty_core::{
     coreconfig::CoreConfig,
@@ -93,11 +93,11 @@ impl CoreConfig for ConfigFileParams {
     fn get_validator_baud(&self) -> Option<u32> {
         self.validator.baud_rate
     }
-    fn get_cpu_dram_refresh_simulation(&self) -> bool {
-        self.machine.cpu.dram_refresh_simulation.unwrap_or(true)
-    }
     fn get_cpu_trace_mode(&self) -> Option<TraceMode> {
         self.machine.cpu.trace_mode
+    }
+    fn get_cpu_dram_refresh_simulation(&self) -> bool {
+        self.machine.cpu.dram_refresh_simulation.unwrap_or(true)
     }
     fn get_cpu_trace_on(&self) -> bool {
         self.machine.cpu.trace_on
@@ -116,5 +116,8 @@ impl CoreConfig for ConfigFileParams {
     }
     fn get_terminal_port(&self) -> Option<u16> {
         self.machine.terminal_port
+    }
+    fn get_controller_layout(&self) -> Option<ControllerLayout> {
+        self.machine.input.controller_layout
     }
 }

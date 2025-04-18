@@ -829,7 +829,7 @@ impl MDACard {
     fn set_lp_latch(&mut self) {
         if !self.lightpen_latch {
             // Low to high transition of light pen latch, set latch addr.
-            log::debug!("Updating lightpen latch address");
+            log::trace!("Updating lightpen latch address");
             self.lightpen_addr = self.vma;
         }
 
@@ -837,7 +837,7 @@ impl MDACard {
     }
 
     fn clear_lp_latch(&mut self) {
-        log::debug!("clearing lightpen latch");
+        //log::debug!("clearing lightpen latch");
         self.lightpen_latch = false;
     }
 
@@ -1003,7 +1003,7 @@ impl MDACard {
 
         // Calculate byte offset
         let glyph_offset: usize = (row_masked as usize * MDA_FONT_SPAN) + glyph as usize;
-        
+
         (MDA_FONT[glyph_offset] & (0x80 >> col)) != 0
     }
 

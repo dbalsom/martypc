@@ -54,6 +54,7 @@ use lazy_static::lazy_static;
 use std::collections::HashMap;
 
 use crate::{device_traits::videocard::VideoCardSubType, devices::a0::A0Type};
+use marty_common::types::joystick::ControllerLayout;
 use serde_derive::Deserialize;
 
 // Clock derivation from reenigne
@@ -179,6 +180,7 @@ pub struct SerialMouseConfig {
 #[derive(Clone, Debug, Deserialize)]
 pub struct GamePortConfig {
     pub io_base: u16,
+    pub controller_layout: Option<ControllerLayout>,
 }
 
 #[derive(Clone, Debug, Deserialize)]
@@ -293,6 +295,7 @@ pub struct MachineConfiguration {
     pub serial: Vec<SerialControllerConfig>,
     pub parallel: Vec<ParallelControllerConfig>,
     pub game_port: Option<GamePortConfig>,
+    pub controller_layout: Option<ControllerLayout>,
     pub fdc: Option<FloppyControllerConfig>,
     pub hdc: Option<HardDriveControllerConfig>,
     pub conventional_expansion: Vec<ConventionalExpansionConfig>,
@@ -435,7 +438,7 @@ lazy_static! {
     /// Eventually we will want to move these machine definitions into a config file
     /// so that people can define custom architectures.
     pub static ref MACHINE_DESCS: HashMap<MachineType, MachineDescriptor> = {
-        
+
         HashMap::from([
             (
                 MachineType::Ibm5150v64K,

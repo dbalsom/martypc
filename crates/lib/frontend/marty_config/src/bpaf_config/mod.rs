@@ -28,6 +28,7 @@ use marty_core::{cpu_common::CpuType, cpu_validator::ValidatorType};
 use std::path::PathBuf;
 
 use bpaf::Bpaf;
+use marty_common::types::joystick::ControllerLayout;
 
 #[cfg_attr(feature = "use_bpaf", derive(Bpaf))]
 #[cfg_attr(feature = "use_bpaf", bpaf(options, version, generate(cli_args)))]
@@ -81,6 +82,9 @@ pub struct CmdLineArgs {
     //pub scaler_aspect_correction: bool,
     #[bpaf(long, switch)]
     pub reverse_mouse_buttons: bool,
+
+    #[bpaf(long)]
+    pub controller_layout: Option<ControllerLayout>,
 
     #[bpaf(long)]
     pub machine_config_name: Option<String>,

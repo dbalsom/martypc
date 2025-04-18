@@ -42,3 +42,12 @@ pub enum MartyGuiTheme {
     Purple,
     Cobalt,
 }
+
+pub struct GuiContextOptions {
+    pub enabled: bool,
+    pub theme: Option<crate::MartyGuiTheme>,
+    pub menu_theme: Option<crate::MartyGuiTheme>,
+    pub menubar_h: u32,
+    pub zoom: f32,
+    pub debug_drawing: bool,
+}

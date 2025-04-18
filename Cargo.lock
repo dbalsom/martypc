@@ -1252,7 +1252,7 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "117725a109d387c937a1533ce01b450cbde6b88abceea8473c4d7a85853cda3c"
 dependencies = [
  "lazy_static",
- "windows-sys 0.48.0",
+ "windows-sys 0.59.0",
 ]
 
 [[package]]
@@ -1261,7 +1261,7 @@ version = "3.0.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "fde0e0ec90c9dfb3b4b1a0891a7dcd0e2bffde2f7efed5fe7c9bb00e5bfb915e"
 dependencies = [
- "windows-sys 0.48.0",
+ "windows-sys 0.59.0",
 ]
 
 [[package]]
@@ -1833,7 +1833,7 @@ version = "0.5.2"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "330c60081dcc4c72131f8eb70510f1ac07223e5d4163db481a04a0befcffa412"
 dependencies = [
- "libloading 0.7.4",
+ "libloading 0.8.6",
 ]
 
 [[package]]
@@ -2325,7 +2325,7 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "33d852cb9b869c2a9b3df2f71a3074817f01e1844f839a144f5fcef059a4eb5d"
 dependencies = [
  "libc",
- "windows-sys 0.52.0",
+ "windows-sys 0.59.0",
 ]
 
 [[package]]
@@ -2445,7 +2445,7 @@ dependencies = [
 [[package]]
 name = "fluxfox"
 version = "0.2.0"
-source = "git+https://github.com/dbalsom/fluxfox.git?branch=martypc_consumer#49b9c22c02b60390a12ad6822d08a60d3b5d2da5"
+source = "git+https://github.com/dbalsom/fluxfox.git?branch=martypc_consumer#3d976291e5a9a9a7c9e5241c97a89eb86cd85d97"
 dependencies = [
  "binrw",
  "bit-vec 0.8.0",
@@ -2477,7 +2477,7 @@ dependencies = [
 [[package]]
 name = "fluxfox_egui"
 version = "0.3.3"
-source = "git+https://github.com/dbalsom/fluxfox.git?branch=martypc_consumer#49b9c22c02b60390a12ad6822d08a60d3b5d2da5"
+source = "git+https://github.com/dbalsom/fluxfox.git?branch=martypc_consumer#3d976291e5a9a9a7c9e5241c97a89eb86cd85d97"
 dependencies = [
  "egui 0.30.0",
  "egui_extras 0.30.0 (registry+https://github.com/rust-lang/crates.io-index)",
@@ -2499,7 +2499,7 @@ dependencies = [
 [[package]]
 name = "fluxfox_tiny_skia"
 version = "0.2.0"
-source = "git+https://github.com/dbalsom/fluxfox.git?branch=martypc_consumer#49b9c22c02b60390a12ad6822d08a60d3b5d2da5"
+source = "git+https://github.com/dbalsom/fluxfox.git?branch=martypc_consumer#3d976291e5a9a9a7c9e5241c97a89eb86cd85d97"
 dependencies = [
  "fluxfox",
  "log",
@@ -2699,6 +2699,40 @@ dependencies = [
  "wasi 0.13.3+wasi-0.2.2",
  "wasm-bindgen",
  "windows-targets 0.52.6",
+]
+
+[[package]]
+name = "gilrs"
+version = "0.11.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "bbb2c998745a3c1ac90f64f4f7b3a54219fd3612d7705e7798212935641ed18f"
+dependencies = [
+ "fnv",
+ "gilrs-core",
+ "log",
+ "uuid",
+ "vec_map",
+]
+
+[[package]]
+name = "gilrs-core"
+version = "0.6.4"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "a6d95ae10ce5aa99543a28cf74e41c11f3b9e3c14f0452bbde46024753cd683e"
+dependencies = [
+ "core-foundation 0.10.0",
+ "inotify",
+ "io-kit-sys",
+ "js-sys",
+ "libc",
+ "libudev-sys",
+ "log",
+ "nix 0.29.0",
+ "uuid",
+ "vec_map",
+ "wasm-bindgen",
+ "web-sys",
+ "windows 0.44.0",
 ]
 
 [[package]]
@@ -3283,6 +3317,26 @@ dependencies = [
 ]
 
 [[package]]
+name = "inotify"
+version = "0.11.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "f37dccff2791ab604f9babef0ba14fbe0be30bd368dc541e2b08d07c8aa908f3"
+dependencies = [
+ "bitflags 2.8.0",
+ "inotify-sys",
+ "libc",
+]
+
+[[package]]
+name = "inotify-sys"
+version = "0.1.5"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "e05c02b5e89bff3b946cedeca278abc628fe811e604f027c45a8aa3cf793d0eb"
+dependencies = [
+ "libc",
+]
+
+[[package]]
 name = "instant"
 version = "0.1.13"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -3321,7 +3375,7 @@ checksum = "e19b23d53f35ce9f56aebc7d1bb4e6ac1e9c0db7ac85c8d1760c04379edced37"
 dependencies = [
  "hermit-abi",
  "libc",
- "windows-sys 0.52.0",
+ "windows-sys 0.59.0",
 ]
 
 [[package]]
@@ -3492,7 +3546,7 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "fc2f4eb4bc735547cfed7c0a4922cbd04a4655978c09b54f1f7b228750664c34"
 dependencies = [
  "cfg-if",
- "windows-targets 0.48.5",
+ "windows-targets 0.52.6",
 ]
 
 [[package]]
@@ -3662,7 +3716,7 @@ dependencies = [
  "opl3-rs",
  "rand 0.8.5",
  "regex",
- "ringbuf 0.2.8",
+ "ringbuf",
  "serde",
  "serde_derive",
  "serde_with",
@@ -3682,24 +3736,14 @@ version = "0.4.0"
 dependencies = [
  "anyhow",
  "cfg-if",
- "crossbeam-channel",
  "display_backend_trait",
  "egui 0.30.0",
- "fatfs 0.4.0 (git+https://github.com/dbalsom/fatfs_martypc.git?branch=master)",
- "log",
  "marty_common",
  "marty_core",
  "marty_frontend_common",
  "marty_videocard_renderer",
- "md5",
- "pollster 0.4.0",
- "regex",
- "ringbuf 0.3.3",
  "serde",
- "serde_derive",
  "strum",
- "strum_macros",
- "toml 0.8.19",
  "url",
  "wasm-bindgen-futures",
  "web-time 1.1.0",
@@ -3782,6 +3826,7 @@ dependencies = [
  "egui 0.30.0",
  "fatfs 0.4.0 (git+https://github.com/dbalsom/fatfs_martypc.git?branch=master)",
  "fluxfox",
+ "gilrs",
  "log",
  "marty_common",
  "marty_core",
@@ -3959,6 +4004,7 @@ dependencies = [
  "env_logger 0.11.6",
  "fluxfox",
  "getrandom 0.3.1",
+ "gilrs",
  "log",
  "marty_config",
  "marty_core",
@@ -4011,6 +4057,45 @@ dependencies = [
  "serialport 4.3.1-alpha.0",
  "strum",
  "strum_macros",
+]
+
+[[package]]
+name = "martypc_launcher"
+version = "0.4.0"
+dependencies = [
+ "anyhow",
+ "async-std",
+ "crossbeam-channel",
+ "eframe",
+ "egui 0.30.0",
+ "egui-winit 0.30.0",
+ "egui_commonmark",
+ "egui_extras 0.30.0 (git+https://github.com/dbalsom/egui_martypc.git?branch=0.30.0_raw_winit_hook)",
+ "env_logger 0.11.6",
+ "fluxfox",
+ "getrandom 0.3.1",
+ "gilrs",
+ "log",
+ "marty_config",
+ "marty_core",
+ "marty_egui",
+ "marty_egui_eframe",
+ "marty_frontend_common",
+ "marty_web_helpers",
+ "rfd",
+ "rodio",
+ "serde",
+ "serialport 4.3.1-alpha.0",
+ "strum",
+ "thiserror 2.0.11",
+ "url",
+ "wasm-bindgen",
+ "wasm-bindgen-futures",
+ "web-sys",
+ "web-time 1.1.0",
+ "wgpu 23.0.1",
+ "winit 0.30.8",
+ "winres",
 ]
 
 [[package]]
@@ -5366,15 +5451,6 @@ dependencies = [
 ]
 
 [[package]]
-name = "ringbuf"
-version = "0.3.3"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "79abed428d1fd2a128201cec72c5f6938e2da607c6f3745f769fabea399d950a"
-dependencies = [
- "crossbeam-utils",
-]
-
-[[package]]
 name = "rodio"
 version = "0.19.0"
 source = "git+https://github.com/dbalsom/rodio_martypc.git?branch=buffer_size#acd1d239d2093ecabc36dec43c7a49ce2388bf21"
@@ -5421,7 +5497,7 @@ dependencies = [
  "errno",
  "libc",
  "linux-raw-sys",
- "windows-sys 0.52.0",
+ "windows-sys 0.59.0",
 ]
 
 [[package]]
@@ -5922,7 +5998,7 @@ dependencies = [
  "getrandom 0.2.15",
  "once_cell",
  "rustix",
- "windows-sys 0.52.0",
+ "windows-sys 0.59.0",
 ]
 
 [[package]]
@@ -6313,6 +6389,12 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "3ef4c4aa54d5d05a279399bfa921ec387b7aba77caf7a682ae8d86785b8fdad2"
 
 [[package]]
+name = "vec_map"
+version = "0.8.2"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "f1bddf1187be692e79c5ffeab891132dfb0f236ed36a43c7ed39f1165ee20191"
+
+[[package]]
 name = "version_check"
 version = "0.9.5"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -6670,7 +6752,7 @@ dependencies = [
  "js-sys",
  "log",
  "naga 0.12.3",
- "parking_lot 0.11.2",
+ "parking_lot 0.12.3",
  "profiling",
  "raw-window-handle 0.5.2",
  "smallvec",
@@ -6720,7 +6802,7 @@ dependencies = [
  "codespan-reporting",
  "log",
  "naga 0.12.3",
- "parking_lot 0.11.2",
+ "parking_lot 0.12.3",
  "profiling",
  "raw-window-handle 0.5.2",
  "rustc-hash",
@@ -6784,7 +6866,7 @@ dependencies = [
  "metal 0.24.0",
  "naga 0.12.3",
  "objc",
- "parking_lot 0.11.2",
+ "parking_lot 0.12.3",
  "profiling",
  "range-alloc",
  "raw-window-handle 0.5.2",
@@ -6928,7 +7010,7 @@ version = "0.1.9"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "cf221c93e13a30d793f7645a0e7762c55d169dbb0a49671918a2319d289b10bb"
 dependencies = [
- "windows-sys 0.48.0",
+ "windows-sys 0.59.0",
 ]
 
 [[package]]

@@ -65,6 +65,7 @@ struct ScalerOptionsUniform {
     pad2: u32,
     crt_params: CrtParamUniform,
     fill_color: vec4<f32>,
+    texture_order: u32,
 };
 
 @group(0) @binding(2) var<uniform> r_locals: VertexUniform;
@@ -218,6 +219,9 @@ fn fs_main(@location(0) tex_coord: vec2<f32>) -> @location(0) vec4<f32> {
 
         // We can emit a solid color for debugging...
         // return vec4<f32>(0.0, 0.0, 1.0, 1.0);
+        if scaler_opts.texture_order == 0 {
+            return color;
+        }
         return color.bgra;
     }
 }

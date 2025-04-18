@@ -49,7 +49,7 @@ use crate::{
     counter::Counter,
     emulator::{joystick_state::JoystickData, keyboard_state::KeyboardData, mouse_state::MouseData},
     floppy::load_floppy::handle_load_floppy,
-    input::HotkeyManager,
+    input::{GamepadInterface, HotkeyManager},
     sound::SoundInterface,
 };
 use marty_core::{
@@ -101,6 +101,7 @@ pub struct Emulator {
     pub perf: PerfSnapshot,
     pub hkm: HotkeyManager,
     pub si: Option<SoundInterface>,
+    pub gi: GamepadInterface,
     pub receiver: crossbeam_channel::Receiver<FrontendThreadEvent<Arc<DiskImage>>>,
     pub sender: crossbeam_channel::Sender<FrontendThreadEvent<Arc<DiskImage>>>,
 }

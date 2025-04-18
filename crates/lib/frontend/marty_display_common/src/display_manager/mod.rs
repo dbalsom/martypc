@@ -47,7 +47,7 @@ use marty_core::{
     device_traits::videocard::{DisplayApertureType, DisplayExtents, VideoCardId, VideoType},
     machine::Machine,
 };
-use marty_frontend_common::MartyGuiTheme;
+use marty_frontend_common::{GuiContextOptions, MartyGuiTheme};
 use marty_videocard_renderer::{RendererConfigParams, VideoRenderer};
 
 use anyhow::Error;
@@ -152,6 +152,19 @@ pub struct DmGuiOptions {
     pub menubar_h: u32,
     pub zoom: f32,
     pub debug_drawing: bool,
+}
+
+impl From<DmGuiOptions> for GuiContextOptions {
+    fn from(value: DmGuiOptions) -> Self {
+        GuiContextOptions {
+            enabled: value.enabled,
+            theme: value.theme,
+            menu_theme: value.menu_theme,
+            menubar_h: value.menubar_h,
+            zoom: value.zoom,
+            debug_drawing: value.debug_drawing,
+        }
+    }
 }
 
 /// Options for viewport-based display targets.

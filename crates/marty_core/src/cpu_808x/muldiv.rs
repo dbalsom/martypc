@@ -194,7 +194,6 @@ macro_rules! impl_cord {
                 // 189: SIGMA->.  | MAXC
                 internal_counter = Self::BITS;
                 // SET FLAGS HERE
-                // WIP these aren't correct yet.
                 cpu.set_flag_state(Flag::AuxCarry, aux_carry);
                 cpu.set_flag_state(Flag::Overflow, overflow);
                 cpu.set_flag_state(Flag::Carry, carry);
@@ -248,7 +247,6 @@ macro_rules! impl_cord {
                         (sigma_s, carry, overflow, aux_carry) = (tmpa as Self).alu_sub(tmpb as Self);
 
                         // SET FLAGS HERE
-                        // WIP these aren't correct yet.
                         cpu.set_flag_state(Flag::AuxCarry, aux_carry);
                         cpu.set_flag_state(Flag::Overflow, overflow);
                         cpu.set_flag_state(Flag::Carry, carry);
@@ -461,7 +459,6 @@ impl Intel808x {
         let mut tmpc: u16 = al as u16; // 150 A->tmpc     | LRCY tmpc
         let mut carry;
         let aux_carry: bool;
-        
 
         carry = tmpc & 0x80 != 0; // LRCY is just checking MSB of tmpc
         let mut tmpb: u16 = operand as u16; // 151: M->tmpb    | X0 PREIMUL
@@ -572,7 +569,7 @@ impl Intel808x {
         }
 
         // 157: tmpa-> X        | RNI
-        
+
         tmpa << 8 | (tmpc & 0xFF)
     }
 
@@ -584,7 +581,6 @@ impl Intel808x {
         let mut tmpa: u16;
         let mut tmpc: u16 = ax; // 158 XA->tmpc     | LRCY tmpc
         let mut carry;
-        
 
         carry = tmpc & 0x8000 != 0; // LRCY is just checking msb
         let mut tmpb: u16 = operand; // 159: M->tmpb    | X0 PREIMUL

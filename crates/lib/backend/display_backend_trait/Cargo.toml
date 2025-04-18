@@ -10,13 +10,13 @@ path = "src/lib.rs"
 crate-type = ["lib"]
 
 [dependencies]
-thiserror = "2.0"
-anyhow = "1.0"
 egui = { workspace = true, optional = true }
-wgpu = { workspace = true, optional = true}
-
+wgpu = { workspace = true, optional = true }
+thiserror.workspace = true
+anyhow.workspace = true
 
 [features]
+default = []
 use_wgpu = ["dep:wgpu"]
-use_glow = ["dep:egui"]
+use_glow = ["use_egui_backend"]
 use_egui_backend = ["dep:egui"]

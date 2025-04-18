@@ -168,6 +168,10 @@ impl BusInterface {
         (low_byte as u16) | ((high_byte as u16) << 8)
     }
 
+    pub fn io_read_wait(&mut self, _port: u16, _cycles: u32) -> u32 {
+        1
+    }
+
     pub fn io_write_wait(&mut self, port: u16, _cycles: u32) -> u32 {
         let mut write_waits = None;
 

@@ -247,6 +247,10 @@ pub fn handle_egui_event(
                         log::debug!("Got mouse capture mode update event: {:?}", mode);
                         emu.mouse_data.capture_mode = *mode;
                     }
+                    GuiEnum::GamepadMapping(mapping) => {
+                        log::debug!("Got gamepad mapping update event: {:?}", mapping);
+                        emu.gi.set_mapping(*mapping);
+                    }
                     _ => {}
                 },
                 _ => {

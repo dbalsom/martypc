@@ -1,4 +1,5 @@
-use crate::input;
+use crate::input::get_mouse_buttons;
+
 use marty_frontend_common::marty_common::types::ui::MouseCaptureMode;
 
 #[allow(dead_code)]
@@ -23,8 +24,8 @@ impl MouseData {
     pub fn new(reverse_buttons: bool) -> Self {
         Self {
             reverse_buttons,
-            l_button_id: input::get_mouse_buttons(reverse_buttons).0,
-            r_button_id: input::get_mouse_buttons(reverse_buttons).1,
+            l_button_id: get_mouse_buttons(reverse_buttons).0,
+            r_button_id: get_mouse_buttons(reverse_buttons).1,
             is_captured: false,
             capture_mode: MouseCaptureMode::Mouse,
             have_update: false,

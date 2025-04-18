@@ -31,6 +31,7 @@
 */
 
 pub mod floppy;
+pub mod gamepad;
 pub mod gui;
 pub mod hotkeys;
 pub mod joykeys;

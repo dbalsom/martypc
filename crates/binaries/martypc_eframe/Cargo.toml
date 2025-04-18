@@ -56,6 +56,9 @@ rfd.workspace = true
 # Optional Dependencies
 # ---------------------------------------------------------------------------------------------------------------------
 rodio = {  workspace = true, optional = true }
+# gilrs is used to provide gamepad support
+#gilrs = { version = "0.11", default-features = false, features = ["xinput"], optional = true }
+gilrs = { workspace = true, optional = true }
 # wgpu is used if the `use_wgpu` feature is enabled.
 wgpu = { workspace = true, optional = true }
 egui_commonmark = { workspace = true, optional = true }
@@ -106,7 +109,7 @@ marty_config = { path = "../../lib/frontend/marty_config", default-features = fa
 winres = "0.1"
 
 [features]
-default = ["all_video_cards", "use_winit", "use_wgpu", "sound", "opl"]
+default = ["all_video_cards", "use_winit", "use_wgpu", "use_gilrs", "sound", "opl"]
 shader_ui = ["marty_egui/scaler_ui"]
 all_video_cards = ["ega", "vga"]
 sound = ["dep:rodio", "rodio/wasm-bindgen", "marty_core/sound"]
@@ -120,6 +123,8 @@ use_wgpu = ["eframe/wgpu", "marty_frontend_common/use_wgpu", "marty_display_comm
 use_glow = ["eframe/glow", "display_manager_eframe/use_glow"]
 # Use serialport
 use_serialport = ["marty_egui/use_serialport", "marty_egui_eframe/use_serialport"]
+# Use gilrs for gamepads
+use_gilrs = ["dep:gilrs", "marty_frontend_common/use_gilrs"]
 # Enable UI for internal development tooling. This is not intended for end-users. No support!
 devtools = ["marty_egui/devtools"]
 arduino_validator = ["marty_core/arduino_validator"]

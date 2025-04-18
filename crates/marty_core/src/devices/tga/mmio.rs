@@ -65,6 +65,10 @@ impl MemoryMappedDevice for TGACard {
             self.catch_up(DeviceRunTimeUnit::SystemTicks(cycles * 3));
         }*/
 
+        if self.a0.external_vid() {
+            return (0xFF, 0);
+        }
+
         //let a_offset = (address & TGA_MEM_MASK) - TGA_MEM_ADDRESS;
         let a_offset = address - TGA_MEM_ADDRESS;
         if a_offset < TGA_MEM_SIZE {
@@ -84,7 +88,9 @@ impl MemoryMappedDevice for TGACard {
 
     fn mmio_peek_u8(&self, address: usize, cpumem: Option<&[u8]>) -> u8 {
         let a_offset = address - TGA_MEM_ADDRESS;
-
+        if self.a0.external_vid() {
+            return 0xFF;
+        }
         self.cpu_mem(cpumem.unwrap())[a_offset]
     }
 

@@ -37,6 +37,7 @@
       <sourceFolder url="file://$MODULE_DIR$/crates/binaries/martypc_pixels_wasm32/src" isTestSource="false" />
       <sourceFolder url="file://$MODULE_DIR$/crates/binaries/martypc_web_player_wgpu/src" isTestSource="false" />
       <sourceFolder url="file://$MODULE_DIR$/crates/lib/frontend/marty_display_common/src" isTestSource="false" />
+      <sourceFolder url="file://$MODULE_DIR$/crates/binaries/martypc_launcher/src" isTestSource="false" />
       <excludeFolder url="file://$MODULE_DIR$/target" />
     </content>
     <orderEntry type="inheritedJdk" />

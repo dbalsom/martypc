@@ -296,8 +296,7 @@ pub const SREGISTER_LUT: [Register16; 8] = [
     Register16::DS,
 ];
 
-#[derive(Debug, Copy, Clone, PartialEq)]
-#[derive(Default)]
+#[derive(Debug, Copy, Clone, PartialEq, Default)]
 pub enum CpuState {
     #[default]
     Normal,
@@ -307,18 +306,21 @@ pub enum CpuState {
 #[derive(Copy, Clone, Debug)]
 pub enum CallStackEntry {
     Call {
-        ret_cs:  u16,
-        ret_ip:  u16,
+        cs: u16,
+        ip: u16,
+        ret_ip: u16,
         call_ip: u16,
     },
     CallF {
-        ret_cs:  u16,
-        ret_ip:  u16,
+        ret_cs: u16,
+        ip: u16,
+        ret_ip: u16,
         call_cs: u16,
         call_ip: u16,
     },
     Interrupt {
         ret_cs: u16,
+        ip: u16,
         ret_ip: u16,
         call_cs: u16,
         call_ip: u16,
@@ -500,6 +502,7 @@ pub struct Intel808x {
     // BIU stuff
     bus_width: BusWidth,
     ready: bool, // READY line from 8284
+    ready_next: bool,
     queue: InstructionQueue,
     fetch_size: TransferSize,
     fetch_state: FetchState,
@@ -632,6 +635,7 @@ pub struct Intel808x {
     dma_req: bool,
     dma_ack: bool,
     dma_wait_states: u32,
+    dma_wait: bool,
 
     // Trap stuff
     trap_enable_delay:  u32,  // Number of cycles to delay trap flag enablement.
@@ -951,6 +955,7 @@ impl Intel808x {
         self.t_step = 0.00000021;
         self.t_step_h = 0.000000105;
         self.ready = true;
+        self.ready_next = true;
         self.in_rep = false;
         self.halted = false;
         self.reported_halt = false;
@@ -1680,7 +1685,7 @@ impl Intel808x {
         let pos = self.call_stack.iter().position(|&call| {
             return_addr = match call {
                 CallStackEntry::CallF { ret_cs, ret_ip, .. } => Intel808x::calc_linear_address(ret_cs, ret_ip),
-                CallStackEntry::Call { ret_cs, ret_ip, .. } => Intel808x::calc_linear_address(ret_cs, ret_ip),
+                CallStackEntry::Call { cs, ret_ip, .. } => Intel808x::calc_linear_address(cs, ret_ip),
                 CallStackEntry::Interrupt { ret_cs, ret_ip, .. } => Intel808x::calc_linear_address(ret_cs, ret_ip),
             };
 
@@ -1693,7 +1698,7 @@ impl Intel808x {
             drained.for_each(|drained_call| {
                 return_addr = match drained_call {
                     CallStackEntry::CallF { ret_cs, ret_ip, .. } => Intel808x::calc_linear_address(ret_cs, ret_ip),
-                    CallStackEntry::Call { ret_cs, ret_ip, .. } => Intel808x::calc_linear_address(ret_cs, ret_ip),
+                    CallStackEntry::Call { cs, ret_ip, .. } => Intel808x::calc_linear_address(cs, ret_ip),
                     CallStackEntry::Interrupt { ret_cs, ret_ip, .. } => Intel808x::calc_linear_address(ret_cs, ret_ip),
                 };
 
@@ -1884,13 +1889,14 @@ impl Intel808x {
 
         for i in &self.instruction_history {
             if let HistoryEntry::InstructionEntry {
-                    cs,
-                    ip,
-                    cycles: _,
-                    interrupt,
-                    jump: _,
-                    i,
-                } = i {
+                cs,
+                ip,
+                cycles: _,
+                interrupt,
+                jump: _,
+                i,
+            } = i
+            {
                 let i_string = format!(
                     "{:05X}{} [{:04X}:{:04X}] {}\n",
                     i.address,
@@ -1974,25 +1980,31 @@ impl Intel808x {
         for call in &self.call_stack {
             match call {
                 CallStackEntry::Call {
-                    ret_cs,
+                    cs,
+                    ip,
                     ret_ip,
                     call_ip,
                 } => {
-                    call_stack_string.push_str(&format!("{:04X}:{:04X} CALL {:04X}\n", ret_cs, ret_ip, call_ip));
+                    call_stack_string.push_str(&format!(
+                        "[{:04X}:{:04X}] ret:[{:04X}:{:04X}] CALL {:04X}\n",
+                        cs, ip, cs, ret_ip, call_ip
+                    ));
                 }
                 CallStackEntry::CallF {
                     ret_cs,
+                    ip,
                     ret_ip,
                     call_cs,
                     call_ip,
                 } => {
                     call_stack_string.push_str(&format!(
-                        "{:04X}:{:04X} CALL FAR {:04X}:{:04X}\n",
-                        ret_cs, ret_ip, call_cs, call_ip
+                        "[{:04X}:{:04X}] ret:[{:04X}:{:04X}] CALL FAR {:04X}:{:04X}\n",
+                        ret_cs, ip, ret_cs, ret_ip, call_cs, call_ip
                     ));
                 }
                 CallStackEntry::Interrupt {
                     ret_cs,
+                    ip,
                     ret_ip,
                     call_cs,
                     call_ip,
@@ -2001,8 +2013,8 @@ impl Intel808x {
                     ah,
                 } => {
                     call_stack_string.push_str(&format!(
-                        "{:04X}:{:04X} INT {:02X}h {:04X}:{:04X} type={:?} AH=={:02X}\n",
-                        ret_cs, ret_ip, number, call_cs, call_ip, itype, ah
+                        "[{:04X}:{:04X}] ret:[{:04X}:{:04X}] INT {:02X}h {:04X}:{:04X} type={:?} AH=={:02X}\n",
+                        ret_cs, ip, ret_cs, ret_ip, number, call_cs, call_ip, itype, ah
                     ));
                 }
             }

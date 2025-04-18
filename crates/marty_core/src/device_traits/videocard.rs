@@ -115,6 +115,7 @@ pub enum VideoCardSubType {
     None,
     IbmPCJr,
     Tandy1000,
+    Tandy1000_256,
     CompaqCGA,
     Hercules,
 }

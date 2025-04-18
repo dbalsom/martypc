@@ -43,6 +43,7 @@ use crate::{
 use std::path::PathBuf;
 
 use crate::machine_types::OnHaltBehavior;
+use marty_common::types::joystick::ControllerLayout;
 use serde::Deserialize;
 
 #[derive(Copy, Clone, Debug, Deserialize)]
@@ -80,4 +81,6 @@ pub trait CoreConfig {
     fn get_patch_enabled(&self) -> bool;
     fn get_halt_behavior(&self) -> OnHaltBehavior;
     fn get_terminal_port(&self) -> Option<u16>;
+
+    fn get_controller_layout(&self) -> Option<ControllerLayout>;
 }

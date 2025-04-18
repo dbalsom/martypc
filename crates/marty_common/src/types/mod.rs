@@ -32,5 +32,6 @@
 
 pub mod cartridge;
 pub mod history_buffer;
+pub mod joystick;
 pub mod ui;
 pub mod video_dimensions;

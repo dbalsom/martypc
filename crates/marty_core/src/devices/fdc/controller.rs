@@ -1089,6 +1089,7 @@ impl FloppyController {
             let command_byte = CommandByte::from_bytes([data]);
             let command = command_byte.command();
             self.mt = command_byte.mt();
+            self.command_skip = command_byte.skip();
             self.command_deleted = false;
             match command {
                 COMMAND_READ_TRACK => {
@@ -2287,7 +2288,7 @@ impl FloppyController {
         if self.operation_accumulator > FDC_RESET_TIME {
             log::trace!("FDC Operation Reset complete.");
             self.operation_accumulator = 0.0;
-            self.reset_internal(false);
+            self.reset_internal(true);
             self.operation = Operation::NoOperation;
             self.send_interrupt = true;
         }

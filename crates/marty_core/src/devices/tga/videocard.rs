@@ -365,11 +365,11 @@ impl VideoCard for TGACard {
         video_vec.push(("border color:".into(), VideoCardStateEntry::String(format!("{:04b}", self.border_color))));
 
         match self.subtype {
-            VideoCardSubType::Tandy1000 => {
+            VideoCardSubType::Tandy1000 | VideoCardSubType::Tandy1000_256 => {
                 video_vec.push(("Tandy: border enable:".into(), VideoCardStateEntry::String(format!("{}", self.t_mode_control.border_enable()))));
                 video_vec.push(("Tandy: 2bpp hires mode:".into(), VideoCardStateEntry::String(format!("{}", self.t_mode_control.twobpp_hires()))));
                 video_vec.push(("Tandy: 4bpp mode:".into(), VideoCardStateEntry::String(format!("{}", self.t_mode_control.fourbpp_mode()))));
-                video_vec.push(("Tandy: a0:".into(), VideoCardStateEntry::String(format!("{}", self.a0))));
+                video_vec.push(("Tandy: a0:".into(), VideoCardStateEntry::String(format!("{:?}", self.a0))));
             }
             VideoCardSubType::IbmPCJr => {
                 video_vec.push(("PCJr: bandwidth:".into(), VideoCardStateEntry::String(format!("{}", self.jr_mode_control.bandwidth()))));

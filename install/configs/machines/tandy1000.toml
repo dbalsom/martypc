@@ -184,8 +184,14 @@ overlays = [
 
     [machine.memory]
     conventional.size = 0x40000 # Tandy 1000 HX came with 256kb RAM default
-    #conventional.size = 0xA0000 # 640K (not functional with HX yet)
     conventional.wait_states = 0
+
+    [[machine.conventional_expansion]]
+    type = "Isa8"
+    address = 0x40000
+    # This will provide the 1000HX with an extra 512K for a total of 640 KB of RAM.
+    size = 0x60000
+    wait_states = 0
 
     [machine.keyboard]
     type = "Tandy1000"
@@ -209,16 +215,8 @@ overlays = [
     [[machine.video]]
     bus_type = "Onboard"
     type = "TGA"
-    subtype = "Tandy1000"
+    # The HX has a 256K aperture.
+    subtype = "Tandy1000_256"
     clock_mode = "Default"
 
-    # Hard disk controller
-    [machine.hdc]
-    bus_type = "ISA"
-    type = "IbmXebec"
 
-        # Drives connected to controller. Maximum of 2.
-        # Drive #0 - (Typically C:)
-        [[machine.hdc.drive]]
-        format = "Mfm"
-        vhd = "xebec20MB.vhd"

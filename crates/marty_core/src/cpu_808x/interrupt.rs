@@ -198,6 +198,7 @@ impl Intel808x {
         self.push_call_stack(
             CallStackEntry::Interrupt {
                 ret_cs: self.cs,
+                ip: self.instruction_ip,
                 ret_ip: self.ip(),
                 call_cs: new_cs,
                 call_ip: new_ip,

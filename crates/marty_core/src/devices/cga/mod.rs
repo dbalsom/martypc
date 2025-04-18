@@ -91,23 +91,43 @@ pub const CGA_MEM_MASK: usize = !0x4000; // Applying this mask will implement me
 pub const CGA_MODE_ENABLE_MASK: u8 = 0b1_0111;
 
 // Sensible defaults for CRTC registers. A real CRTC is probably uninitialized.
-// 4/5/2023: Changed these values to 40 column mode.
-const DEFAULT_HORIZONTAL_TOTAL: u8 = 56;
-const DEFAULT_HORIZONTAL_DISPLAYED: u8 = 40;
-const DEFAULT_HORIZONTAL_SYNC_POS: u8 = 45;
-const DEFAULT_HORIZONTAL_SYNC_WIDTH: u8 = 10;
-const DEFAULT_VERTICAL_TOTAL: u8 = 31;
-const DEFAULT_VERTICAL_TOTAL_ADJUST: u8 = 6;
-const DEFAULT_VERTICAL_DISPLAYED: u8 = 25;
-const DEFAULT_VERTICAL_SYNC_POS: u8 = 28;
-const DEFAULT_MAXIMUM_SCANLINE: u8 = 7;
-const DEFAULT_CURSOR_START_LINE: u8 = 6;
-const DEFAULT_CURSOR_END_LINE: u8 = 7;
+// 40-column mode defaults for CRTC registers.
+// const DEFAULT_HORIZONTAL_TOTAL: u8 = 56;
+// const DEFAULT_HORIZONTAL_DISPLAYED: u8 = 40;
+// const DEFAULT_HORIZONTAL_SYNC_POS: u8 = 45;
+// const DEFAULT_HORIZONTAL_SYNC_WIDTH: u8 = 10;
+// const DEFAULT_VERTICAL_TOTAL: u8 = 31;
+// const DEFAULT_VERTICAL_TOTAL_ADJUST: u8 = 6;
+// const DEFAULT_VERTICAL_DISPLAYED: u8 = 25;
+// const DEFAULT_VERTICAL_SYNC_POS: u8 = 28;
+// const DEFAULT_MAXIMUM_SCANLINE: u8 = 7;
+// const DEFAULT_CURSOR_START_LINE: u8 = 6;
+// const DEFAULT_CURSOR_END_LINE: u8 = 7;
 
-const DEFAULT_CLOCK_DIVISOR: u8 = 2;
-const DEFAULT_CHAR_CLOCK: u32 = 16;
-const DEFAULT_CHAR_CLOCK_MASK: u64 = 0x0F;
-const DEFAULT_CHAR_CLOCK_ODD_MASK: u64 = 0x1F;
+// Uninitialized default values for CRTC registers.
+const DEFAULT_HORIZONTAL_TOTAL: u8 = 0;
+const DEFAULT_HORIZONTAL_DISPLAYED: u8 = 0;
+const DEFAULT_HORIZONTAL_SYNC_POS: u8 = 0;
+const DEFAULT_HORIZONTAL_SYNC_WIDTH: u8 = 0;
+const DEFAULT_VERTICAL_TOTAL: u8 = 0;
+const DEFAULT_VERTICAL_TOTAL_ADJUST: u8 = 0;
+const DEFAULT_VERTICAL_DISPLAYED: u8 = 0;
+const DEFAULT_VERTICAL_SYNC_POS: u8 = 0;
+const DEFAULT_MAXIMUM_SCANLINE: u8 = 0;
+const DEFAULT_CURSOR_START_LINE: u8 = 0;
+const DEFAULT_CURSOR_END_LINE: u8 = 0;
+
+// 40 column mode defaults
+// const DEFAULT_CLOCK_DIVISOR: u8 = 2;
+// const DEFAULT_CHAR_CLOCK: u32 = 16;
+// const DEFAULT_CHAR_CLOCK_MASK: u64 = 0x0F;
+// const DEFAULT_CHAR_CLOCK_ODD_MASK: u64 = 0x1F;
+
+// 80 column mode defaults
+const DEFAULT_CLOCK_DIVISOR: u8 = 1;
+const DEFAULT_CHAR_CLOCK: u32 = 8;
+const DEFAULT_CHAR_CLOCK_MASK: u64 = 0x07;
+const DEFAULT_CHAR_CLOCK_ODD_MASK: u64 = 0x0F;
 
 // CGA is clocked at 14.318180Mhz, which is the main clock of the entire PC system.
 // The original CGA card did not have its own crystal.
@@ -907,7 +927,7 @@ impl CGACard {
     }
 
     fn clear_lp_latch(&mut self) {
-        log::debug!("clearing lightpen latch");
+        //log::trace!("clearing lightpen latch");
         self.lightpen_latch = false;
     }
 
@@ -2249,7 +2269,7 @@ impl CGACard {
     }
 
     fn latch_lightpen(&mut self) {
-        log::debug!("latch_lightpen(): updating lightpen registers");
+        log::trace!("latch_lightpen(): updating lightpen registers");
         // Latch lightpen address
         self.lightpen_latch = true;
         self.lightpen_addr = self.vma;

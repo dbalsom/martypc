@@ -468,6 +468,7 @@ impl MachineConfigFileEntry {
             keyboard: self.keyboard.clone(),
             serial_mouse: self.serial_mouse.clone(),
             game_port: self.game_port.clone(),
+            controller_layout: self.game_port.as_ref().map(|gp| gp.controller_layout.clone()).flatten(),
             conventional_expansion: self.conventional_expansion.clone().unwrap_or_default(),
             media: self.media.clone(),
         }

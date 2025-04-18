@@ -34,10 +34,10 @@ impl JoystickData {
             0.0
         };
         let y = if *self.joy_state.get(&JoyKeyInput::JoyUp).unwrap() {
-            -1.0
+            1.0
         }
         else if *self.joy_state.get(&JoyKeyInput::JoyDown).unwrap() {
-            1.0
+            -1.0
         }
         else {
             0.0

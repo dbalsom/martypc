@@ -107,7 +107,8 @@ use marty_frontend_common::{
 use egui::ColorImage;
 use egui_notify::{Anchor, Toasts};
 use fluxfox::{DiskImage, DiskImageFileFormat, StandardFormat};
-use marty_common::types::ui::MouseCaptureMode;
+use marty_common::types::{joystick::ControllerLayout, ui::MouseCaptureMode};
+use marty_frontend_common::types::gamepad::{GamepadId, GamepadInfo};
 use serde::{Deserialize, Serialize};
 #[cfg(feature = "use_serialport")]
 use serialport::SerialPortInfo;
@@ -288,6 +289,12 @@ pub struct GuiState {
     // VHD Images
     pub(crate) vhd_names: Vec<OsString>,
 
+    // Gamepads
+    pub(crate) gamepads: Vec<GamepadInfo>,
+    pub(crate) gameport: bool,
+    pub(crate) controller_layout: ControllerLayout,
+    pub(crate) selected_gamepad: [Option<GamepadId>; 2],
+
     // Serial ports
     pub(crate) serial_ports: Vec<SerialPortDescriptor>,
     #[cfg(feature = "use_serialport")]
@@ -384,6 +391,12 @@ impl GuiState {
             capture_option,
         );
 
+        let gamepad_mapping = GuiEnum::GamepadMapping((None, None));
+        option_enums.insert(
+            (GuiVariableContext::default(), discriminant(&gamepad_mapping)),
+            gamepad_mapping,
+        );
+
         Self {
             event_queue: GuiEventQueue::new(),
             thread_sender,
@@ -418,6 +431,11 @@ impl GuiState {
             carts: Vec::new(),
             vhd_names: Vec::new(),
             autofloppy_paths: Vec::new(),
+
+            gamepads: Vec::new(),
+            gameport: false,
+            controller_layout: Default::default(),
+            selected_gamepad: [None, None],
 
             serial_ports: Vec::new(),
             #[cfg(feature = "use_serialport")]
@@ -718,6 +736,27 @@ impl GuiState {
 
     pub fn update_pit_state(&mut self, state: &PitDisplayState) {
         self.pit_viewer.update_state(state);
+    }
+
+    /// Update the GUI state with a list of gamepads, represented by GamepadInfo.
+    pub fn set_gamepads(&mut self, gamepads: Vec<GamepadInfo>) {
+        self.gamepads = gamepads;
+
+        for mapping in &mut self.selected_gamepad {
+            if let Some(gamepad) = mapping {
+                if self.gamepads.iter().find(|g| g.internal_id == *gamepad).is_none() {
+                    // Gamepad is no longer available, so clear the mapping.
+                    log::debug!("Gamepad id {} is no longer valid. Clearing mapping.", gamepad);
+                    *mapping = None;
+                }
+            }
+        }
+    }
+
+    /// Specify the presence of a gameport. This will enable the gameport submenu under Input.
+    #[inline]
+    pub fn set_gameport(&mut self, state: bool, layout: ControllerLayout) {
+        self.gameport = state;
     }
 
     pub fn set_serial_ports(&mut self, ports: Vec<SerialPortDescriptor>) {

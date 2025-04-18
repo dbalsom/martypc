@@ -72,6 +72,7 @@ use bpaf_config::{cli_args, CmdLineArgs};
 use web_config::{parse_query_params, CmdLineArgs};
 
 use cfg_if::cfg_if;
+use marty_common::types::joystick::ControllerLayout;
 use serde_derive::Deserialize;
 
 const fn _default_true() -> bool {
@@ -288,7 +289,8 @@ pub struct Cpu {
 
 #[derive(Debug, Deserialize)]
 pub struct MachineInput {
-    pub keyboard_layout: Option<String>,
+    pub keyboard_layout:   Option<String>,
+    pub controller_layout: Option<ControllerLayout>,
 }
 
 #[derive(Debug, Deserialize)]
