@@ -80,6 +80,13 @@ pub const fn sn76489_volume_table() -> [f32; 16] {
 
 const VOLUME_TABLE: [f32; 16] = sn76489_volume_table();
 
+/// A macro to normalize a unsigned audio signal to a normalized range of -1.0 to 1.0.
+macro_rules! normalize {
+    ($value:expr) => {
+        (($value) * 2.0) - 1.0
+    };
+}
+
 #[derive(Clone, Default)]
 pub struct SnDisplayState {
     pub tone_channels: [SnChannelDisplayState; 3],
@@ -87,6 +94,7 @@ pub struct SnDisplayState {
     pub noise_divider: u16,
     pub noise_attenuation: u8,
     pub noise_volume: f32,
+    pub noise_level: f32,
     pub noise_feedback: FeedbackType,
     pub noise_scope: Vec<(u64, f32)>,
 }
@@ -98,42 +106,47 @@ pub struct SnChannelDisplayState {
     pub attenuation: u8,
     pub volume: f32,
     pub output: bool,
+    pub output_level: f32,
     pub scope: Vec<(u64, f32)>,
+}
+
+macro_rules! sn_channel_display_state {
+    ($sn:expr, $index:expr) => {
+        SnChannelDisplayState {
+            period: $sn.tone_channels[$index].period,
+            counter: $sn.tone_channels[$index].freq_counter,
+            attenuation: $sn.attenuation_registers[$index].attenuation as u8,
+            volume: $sn.attenuation_registers[$index].get() * 4.0,
+            output: $sn.tone_channels[$index].output(),
+            output_level: if $sn.tone_channels[$index].output() {
+                normalize!($sn.attenuation_registers[$index].get())
+            }
+            else {
+                0.0
+            },
+            scope: $sn.tone_channels[$index].scope.points($sn.ticks),
+        }
+    };
 }
 
 impl From<&mut Sn76489> for SnDisplayState {
     fn from(sn: &mut Sn76489) -> Self {
         SnDisplayState {
             tone_channels: [
-                SnChannelDisplayState {
-                    period: sn.tone_channels[0].period,
-                    counter: sn.tone_channels[0].freq_counter,
-                    attenuation: sn.attenuation_registers[0].attenuation as u8,
-                    volume: sn.attenuation_registers[0].get() * 4.0,
-                    output: sn.tone_channels[0].output(),
-                    scope: sn.tone_channels[0].scope.points(sn.ticks),
-                },
-                SnChannelDisplayState {
-                    period: sn.tone_channels[1].period,
-                    counter: sn.tone_channels[1].freq_counter,
-                    attenuation: sn.attenuation_registers[1].attenuation as u8,
-                    volume: sn.attenuation_registers[1].get() * 4.0,
-                    output: sn.tone_channels[1].output(),
-                    scope: sn.tone_channels[1].scope.points(sn.ticks),
-                },
-                SnChannelDisplayState {
-                    period: sn.tone_channels[2].period,
-                    counter: sn.tone_channels[2].freq_counter,
-                    attenuation: sn.attenuation_registers[2].attenuation as u8,
-                    volume: sn.attenuation_registers[2].get() * 4.0,
-                    output: sn.tone_channels[2].output(),
-                    scope: sn.tone_channels[2].scope.points(sn.ticks),
-                },
+                sn_channel_display_state!(sn, 0),
+                sn_channel_display_state!(sn, 1),
+                sn_channel_display_state!(sn, 2),
             ],
             noise_mode: sn.noise_channel.feedback as u8,
             noise_divider: sn.noise_channel.shift_rate as u16,
             noise_attenuation: sn.attenuation_registers[3].attenuation as u8,
             noise_volume: sn.attenuation_registers[3].get() * 4.0,
+            noise_level: if sn.noise_channel.output() {
+                normalize!(sn.attenuation_registers[3].get())
+            }
+            else {
+                0.0
+            },
             noise_feedback: sn.noise_channel.feedback,
             noise_scope: sn.noise_scope.points(sn.ticks),
         }
@@ -555,12 +568,18 @@ impl Sn76489 {
             if channel.output() {
                 sample += self.attenuation_registers[c_idx].get();
             }
+            else {
+                sample -= self.attenuation_registers[c_idx].get();
+            }
         }
         if self.noise_channel.output() {
-            sample += self.attenuation_registers[3].get()
+            sample += self.attenuation_registers[3].get();
+        }
+        else {
+            sample -= self.attenuation_registers[3].get();
         }
 
-        (sample * 2.0) - 1.0
+        sample
     }
 
     pub fn display_state(&mut self) -> SnDisplayState {

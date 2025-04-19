@@ -27,7 +27,7 @@
 
 //! Implement a debug window for the SN76496 sound chip.
 
-use egui::*;
+use egui::{RichText, *};
 use egui_plot::{Line, PlotPoints};
 use marty_core::devices::sn76489::SnDisplayState;
 
@@ -98,6 +98,11 @@ impl SnViewerControl {
                                                 RichText::new(channel.attenuation.to_string())
                                                     .text_style(TextStyle::Monospace),
                                             );
+                                            ui.label(RichText::new("Level").text_style(TextStyle::Monospace));
+                                            ui.label(
+                                                RichText::new(format!("{:.2}", channel.output_level))
+                                                    .text_style(TextStyle::Monospace),
+                                            );
                                             ui.end_row();
                                         });
 
@@ -154,6 +159,11 @@ impl SnViewerControl {
                                         ui.label(RichText::new("Attenuation").text_style(TextStyle::Monospace));
                                         ui.label(
                                             RichText::new(self.sn_state.noise_attenuation.to_string())
+                                                .text_style(TextStyle::Monospace),
+                                        );
+                                        ui.label(RichText::new("Level").text_style(TextStyle::Monospace));
+                                        ui.label(
+                                            RichText::new(format!("{:.2}", self.sn_state.noise_level))
                                                 .text_style(TextStyle::Monospace),
                                         );
                                         ui.end_row();
