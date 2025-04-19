@@ -581,7 +581,7 @@ lazy_static! {
             WorkspaceWindowDef {
                 id: GuiWindow::SnViewer,
                 title: "SN76489 Viewer",
-                menu: "SN76489f",
+                menu: "SN76489",
                 width: 600.0,
                 resizable: false,
             },
