@@ -996,22 +996,20 @@ checksum = "325918d6fe32f23b19878fe4b34794ae41fc19ddbe53b10571a4874d44ffd39b"
 
 [[package]]
 name = "bzip2"
-version = "0.4.4"
+version = "0.5.2"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "bdb116a6ef3f6c3698828873ad02c3014b3c85cadb88496095628e3ef1e347f8"
+checksum = "49ecfb22d906f800d4fe833b6282cf4dc1c298f5057ca0b5445e5c209735ca47"
 dependencies = [
  "bzip2-sys",
- "libc",
 ]
 
 [[package]]
 name = "bzip2-sys"
-version = "0.1.11+1.0.8"
+version = "0.1.13+1.0.8"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "736a955f3fa7875102d57c82b8cac37ec45224a07fd32d58f9f7a186b6cd4cdc"
+checksum = "225bff33b2141874fe80d71e07d6eec4f85c5c216453dd96388240f96e1acc14"
 dependencies = [
  "cc",
- "libc",
  "pkg-config",
 ]
 
@@ -1542,9 +1540,9 @@ dependencies = [
 
 [[package]]
 name = "crossbeam-channel"
-version = "0.5.14"
+version = "0.5.15"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "06ba6d68e24814cb8de6bb986db8222d3a027d15872cabc0d18817bc3c0e4471"
+checksum = "82b8f8f868b36967f9606790d1903570de9ceaf870a7bf9fbbd3016d636a2cb2"
 dependencies = [
  "crossbeam-utils",
 ]
@@ -2464,7 +2462,7 @@ dependencies = [
  "regex",
  "serde",
  "sha1_smol",
- "strum",
+ "strum 0.26.3",
  "tar",
  "thiserror 2.0.11",
  "tiny-skia",
@@ -2488,8 +2486,8 @@ dependencies = [
  "log",
  "rayon",
  "serde",
- "strum",
- "strum_macros",
+ "strum 0.26.3",
+ "strum_macros 0.26.4",
  "thiserror 2.0.11",
  "wasm-bindgen",
  "wasm-bindgen-futures",
@@ -2732,7 +2730,7 @@ dependencies = [
  "vec_map",
  "wasm-bindgen",
  "web-sys",
- "windows 0.44.0",
+ "windows 0.58.0",
 ]
 
 [[package]]
@@ -3666,8 +3664,8 @@ version = "0.4.0"
 dependencies = [
  "fxhash",
  "serde",
- "strum",
- "strum_macros",
+ "strum 0.27.1",
+ "strum_macros 0.27.1",
  "web-time 1.1.0",
 ]
 
@@ -3721,8 +3719,8 @@ dependencies = [
  "serde_derive",
  "serde_with",
  "serialport 4.3.1-alpha.0",
- "strum",
- "strum_macros",
+ "strum 0.26.3",
+ "strum_macros 0.26.4",
  "toml 0.5.11",
  "uuid",
  "wasm-bindgen",
@@ -3743,7 +3741,7 @@ dependencies = [
  "marty_frontend_common",
  "marty_videocard_renderer",
  "serde",
- "strum",
+ "strum 0.27.1",
  "url",
  "wasm-bindgen-futures",
  "web-time 1.1.0",
@@ -3777,8 +3775,8 @@ dependencies = [
  "rfd",
  "serde",
  "serialport 4.3.1-alpha.0",
- "strum",
- "strum_macros",
+ "strum 0.27.1",
+ "strum_macros 0.27.1",
  "toml 0.8.19",
  "web-time 1.1.0",
 ]
@@ -3837,8 +3835,8 @@ dependencies = [
  "regex",
  "serde",
  "serde_derive",
- "strum",
- "strum_macros",
+ "strum 0.27.1",
+ "strum_macros 0.27.1",
  "toml 0.8.19",
  "url",
  "wasm-bindgen-futures",
@@ -3978,8 +3976,8 @@ dependencies = [
  "serde_derive",
  "serde_json",
  "serialport 4.3.1-alpha.0",
- "strum",
- "strum_macros",
+ "strum 0.26.3",
+ "strum_macros 0.26.4",
  "wasm-bindgen",
  "wasm-bindgen-futures",
  "web-sys",
@@ -4018,7 +4016,7 @@ dependencies = [
  "rodio",
  "serde",
  "serialport 4.3.1-alpha.0",
- "strum",
+ "strum 0.27.1",
  "thiserror 2.0.11",
  "url",
  "wasm-bindgen",
@@ -4055,8 +4053,8 @@ dependencies = [
  "serde_derive",
  "serde_json",
  "serialport 4.3.1-alpha.0",
- "strum",
- "strum_macros",
+ "strum 0.27.1",
+ "strum_macros 0.27.1",
 ]
 
 [[package]]
@@ -4086,7 +4084,7 @@ dependencies = [
  "rodio",
  "serde",
  "serialport 4.3.1-alpha.0",
- "strum",
+ "strum 0.27.1",
  "thiserror 2.0.11",
  "url",
  "wasm-bindgen",
@@ -5878,7 +5876,16 @@ version = "0.26.3"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "8fec0f0aef304996cf250b31b5a10dee7980c85da9d759361292b8bca5a18f06"
 dependencies = [
- "strum_macros",
+ "strum_macros 0.26.4",
+]
+
+[[package]]
+name = "strum"
+version = "0.27.1"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "f64def088c51c9510a8579e3c5d67c65349dcf755e5479ad3d010aa6454e2c32"
+dependencies = [
+ "strum_macros 0.27.1",
 ]
 
 [[package]]
@@ -5886,6 +5893,19 @@ name = "strum_macros"
 version = "0.26.4"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "4c6bee85a5a24955dc440386795aa378cd9cf82acd5f764469152d2270e581be"
+dependencies = [
+ "heck",
+ "proc-macro2",
+ "quote",
+ "rustversion",
+ "syn 2.0.96",
+]
+
+[[package]]
+name = "strum_macros"
+version = "0.27.1"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "c77a8c5abcaf0f9ce05d62342b7d298c346515365c36b673df4ebe3ced01fde8"
 dependencies = [
  "heck",
  "proc-macro2",
@@ -7893,21 +7913,19 @@ dependencies = [
 
 [[package]]
 name = "zip"
-version = "2.2.2"
+version = "2.6.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "ae9c1ea7b3a5e1f4b922ff856a129881167511563dc219869afe3787fc0c1a45"
+checksum = "1dcb24d0152526ae49b9b96c1dcf71850ca1e0b882e4e28ed898a93c41334744"
 dependencies = [
  "arbitrary",
  "bzip2",
  "crc32fast",
  "crossbeam-utils",
  "deflate64",
- "displaydoc",
  "flate2",
  "indexmap 2.7.1",
  "lzma-rs",
  "memchr",
- "thiserror 2.0.11",
  "time",
  "zopfli",
  "zstd",
