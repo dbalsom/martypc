@@ -1,5 +1,5 @@
 # file_manifest.toml
-version = "0.3.0"
+version = "0.4.0"
 
 # An inline array of tables for the files and directories we want to expose to the wasm build via ResourceManager
 entries = [
@@ -13,10 +13,10 @@ entries = [
 
     { path = "configs/machines/ibm5160.toml",               type = "File" },
     { path = "configs/machines/config_overlays.toml",       type = "File" },
+    { path = "configs/rom_definitions/romdef_glabios.toml", type = "File" },
 
     { path = "media",                                       type = "Directory" },
     { path = "media/roms",                                  type = "Directory" },
-    { path = "media/roms/romdef_glabios.toml",              type = "File" },
 
     { path = "media/roms/GLaBIOS",                          type = "Directory" },
     { path = "media/roms/GlaBIOS/GLABIOS_0.2.6_8P.ROM",     type = "File"},
