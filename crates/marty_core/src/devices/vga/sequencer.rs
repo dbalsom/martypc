@@ -156,6 +156,11 @@ impl Sequencer {
         *self = Sequencer::default();
     }
 
+    #[inline]
+    pub fn clock(&self) -> u64 {
+        self.char_clock as u64
+    }
+
     pub fn read_address(&mut self) -> u8 {
         self.address_byte
     }
@@ -211,10 +216,13 @@ impl Sequencer {
                 log::trace!("Write to Sequencer::ClockingMode register: {:02X}", data_byte);
 
                 self.clock_change_pending = true;
-                (self.clock_divisor, self.char_clock) = match self.clocking_mode.dot_clock() {
-                    DotClock::HalfClock => (2, 16),
-                    DotClock::Native => (1, 8),
-                }
+                (self.clock_divisor, self.char_clock) =
+                    match (self.clocking_mode.character_clock(), self.clocking_mode.dot_clock()) {
+                        (CharacterClock::EightDots, DotClock::Native) => (1, 8),
+                        (CharacterClock::NineDots, DotClock::Native) => (1, 9),
+                        (CharacterClock::EightDots, DotClock::HalfClock) => (2, 16),
+                        (CharacterClock::NineDots, DotClock::HalfClock) => (2, 18),
+                    }
             }
             SequencerRegister::MapMask => {
                 self.map_mask = data_byte & 0x0F;

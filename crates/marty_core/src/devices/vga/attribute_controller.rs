@@ -29,8 +29,8 @@
     Implements the EGA Attribute Controller
 
 */
-
 use super::*;
+use std::cmp::PartialEq;
 
 pub const DAC_STATE_READ: u8 = 0;
 pub const DAC_STATE_WRITE: u8 = 0x03;
@@ -65,7 +65,7 @@ pub enum AttributeRegisterFlipFlop {
     Data,
 }
 
-#[derive(Debug, BitfieldSpecifier)]
+#[derive(Debug, PartialEq, BitfieldSpecifier)]
 pub enum AttributeMode {
     Text,
     Graphics,
@@ -158,7 +158,7 @@ pub enum AttributeInput<'a> {
     Serial(&'a [u8]),
     Serial64(u64),
     Parallel(&'a [u8], u8, bool),
-    Parallel64(u64, u8, bool),
+    Parallel64(u64, u8, u8, bool),
 }
 
 #[derive(Copy, Clone, Debug, Default)]
@@ -178,6 +178,12 @@ impl AttributePaletteEntry {
     }
 }
 
+pub struct ColorRegister {
+    pub(crate) native: [u8; 3],
+    pub(crate) rgba:   [u8; 4],
+    pub(crate) u32:    u32,
+}
+
 pub struct AttributeController {
     register_flipflop: AttributeRegisterFlipFlop,
     register_select_byte: u8,
@@ -193,12 +199,14 @@ pub struct AttributeController {
     blink_state: bool,
     last_den: bool,
     shift_reg: u128,
+    shift_reg9: u64,
     shift_buf: [u8; 8],
 
     shift_flipflop: bool,
 
     pub color_registers: [[u8; 3]; 256],
     pub color_registers_rgba: [[u8; 4]; 256],
+    pub color_registers_u32: [u32; 256],
     color_pel_write_address: u8,
     color_pel_write_address_color: u8,
     color_pel_read_address: u8,
@@ -224,12 +232,14 @@ impl Default for AttributeController {
             blink_state: false,
             last_den: false,
             shift_reg: 0,
+            shift_reg9: 0,
             shift_buf: [0; 8],
 
             shift_flipflop: false,
 
             color_registers: [[0; 3]; 256],
             color_registers_rgba: [[0; 4]; 256],
+            color_registers_u32: [0; 256],
             color_pel_write_address: 0,
             color_pel_write_address_color: 0,
             color_pel_read_address: 0,
@@ -371,14 +381,22 @@ impl AttributeController {
         }
     }
 
+    #[inline]
     pub fn mode(&self) -> AttributeMode {
         self.mode_control.mode()
     }
 
+    #[inline]
+    pub fn is_text_mode(&self) -> bool {
+        self.mode_control.mode() == AttributeMode::Text
+    }
+
+    #[inline]
     pub fn pixel_clock(&self) -> PixelClockSelect {
         self.mode_control.pixel_clock_select()
     }
 
+    #[inline]
     pub fn display_type(&self) -> AttributeDisplayType {
         self.mode_control.display_type()
     }
@@ -421,8 +439,7 @@ impl AttributeController {
                     PixelClockSelect::EveryCycle => {
                         for (i, byte) in data.iter().enumerate() {
                             let color = *byte & self.color_plane_enable.enable_plane();
-                            self.shift_reg |=
-                                (self.palette_registers[color as usize].four_to_six as u128) << ((7 - i) * 8);
+                            self.shift_reg |= (self.palette_registers[color as usize].six as u128) << ((7 - i) * 8);
                         }
                     }
                     PixelClockSelect::EveryOtherCycle => {
@@ -454,13 +471,30 @@ impl AttributeController {
                         resolved_glyph |= (*byte as u64) << ((7 - i) * 8);
                     }
                 }
-                resolved_glyph = self.apply_attribute(resolved_glyph, attr, clock_select);
+                resolved_glyph = self.apply_attribute_8col(resolved_glyph, attr, clock_select);
                 self.shift_reg |= resolved_glyph as u128;
             }
-            AttributeInput::Parallel64(data, attr, cursor) => {
-                let resolved_glyph = if cursor { ALL_SET64 } else { data };
-                self.shift_reg |= self.apply_attribute(resolved_glyph, attr, clock_select) as u128;
-            }
+            AttributeInput::Parallel64(data, char, attr, cursor) => match self.mode_control.mode() {
+                AttributeMode::Text => {
+                    let resolved_glyph = if cursor { ALL_SET64 } else { data };
+
+                    // If character is a line drawing character
+                    let col9 = if char & LINE_CHAR_MASK == LINE_CHAR_TEST {
+                        (data & 0xFF) as u8
+                    }
+                    else {
+                        0
+                    };
+
+                    let attr = self.apply_attribute_9col(resolved_glyph, col9, attr, clock_select);
+                    self.shift_reg9 = (attr.0 & 0xFF) << 8 | (attr.1 as u64);
+                    self.shift_reg |= attr.0 as u128 >> 8;
+                }
+                AttributeMode::Graphics => {
+                    let resolved_glyph = if cursor { ALL_SET64 } else { data };
+                    self.shift_reg |= self.apply_attribute_8col(resolved_glyph, attr, clock_select) as u128;
+                }
+            },
         }
     }
 
@@ -469,8 +503,19 @@ impl AttributeController {
 
         // Shift the attribute data 64 bits to make room for next character clock
         self.shift_reg <<= 64;
-
         out_data.to_be()
+    }
+
+    pub fn shift_out64_9(&mut self) -> (u64, u8) {
+        let shifted_reg = self.shift_reg << ((self.pel_panning & 0x07) * 8);
+        let out_data_64 = (shifted_reg >> 64) as u64;
+        let out_data_8 = (shifted_reg >> 56) as u8;
+
+        // Shift the attribute data 72 bits to make room for next character clock
+        self.shift_reg <<= 72;
+        // Add the 16 bits from the spillover register
+        self.shift_reg |= ((self.shift_reg9 & 0xFFFF) as u128) << 56;
+        (out_data_64.to_be(), out_data_8)
     }
 
     #[rustfmt::skip]
@@ -543,12 +588,11 @@ impl AttributeController {
         let out_data = ((self.shift_reg << ((self.pel_panning & 0x07) * 8)) >> 64) as u64;
         self.shift_buf = out_data.to_be_bytes();
         self.shift_reg <<= 64;
-
         &self.shift_buf
     }
 
     #[inline]
-    pub fn apply_attribute(&self, glyph_row_base: u64, attribute: u8, clock_select: ClockSelect) -> u64 {
+    pub fn apply_attribute_8col(&self, glyph_row_base: u64, attribute: u8, clock_select: ClockSelect) -> u64 {
         let mut fg_index = (attribute & 0x0F) as usize;
         let mut bg_index = (attribute >> 4) as usize;
 
@@ -581,6 +625,50 @@ impl AttributeController {
 
         // Combine glyph mask with foreground and background colors.
         glyph_row_base & EGA_COLORS_U64[fg_color] | !glyph_row_base & EGA_COLORS_U64[bg_color]
+    }
+
+    #[inline]
+    pub fn apply_attribute_9col(
+        &self,
+        glyph_row_base: u64,
+        glyph_col_9: u8,
+        attribute: u8,
+        clock_select: ClockSelect,
+    ) -> (u64, u8) {
+        let mut fg_index = (attribute & 0x0F) as usize;
+        let mut bg_index = (attribute >> 4) as usize;
+
+        // If blinking is enabled, the bg attribute is only 3 bits and only low-intensity colors
+        // are available.
+        // If blinking is disabled, all 16 colors are available as background attributes.
+        if let AttributeBlinkOrIntensity::Blink = self.mode_control.enable_blink_or_intensity() {
+            bg_index = ((attribute >> 4) & 0x07) as usize;
+            let char_blink = attribute & 0x80 != 0;
+            if char_blink && self.blink_state {
+                // Blinking on the EGA is implemented by toggling the MSB of the color index
+                bg_index |= 0x08;
+                fg_index ^= 0x08;
+            }
+        }
+
+        let fg_color;
+        let bg_color;
+
+        match clock_select {
+            ClockSelect::Clock25 => {
+                fg_color = self.palette_registers[fg_index].four_to_six as usize;
+                bg_color = self.palette_registers[bg_index].four_to_six as usize;
+            }
+            _ => {
+                fg_color = self.palette_registers[fg_index].six as usize;
+                bg_color = self.palette_registers[bg_index].six as usize;
+            }
+        }
+
+        // Combine glyph mask with foreground and background colors.
+        let glyph_u64 = glyph_row_base & EGA_COLORS_U64[fg_color] | !glyph_row_base & EGA_COLORS_U64[bg_color];
+        let glyph_u8 = glyph_col_9 & fg_color as u8 | !glyph_col_9 & bg_color as u8;
+        (glyph_u64, glyph_u8)
     }
 
     pub fn palette(&self, pel: u8) -> u8 {
@@ -616,7 +704,6 @@ impl AttributeController {
     }
 
     pub fn read_pel_data(&mut self) -> u8 {
-        
         let color = self.color_pel_read_address as usize;
         let rgb_idx = self.color_pel_read_address_color as usize;
 
@@ -653,12 +740,17 @@ impl AttributeController {
         self.color_pel_write_address_color += 1;
         if self.color_pel_write_address_color == 3 {
             // Save converted RGBA palette entries along with native ones
-            self.color_registers_rgba[color][0] = ((self.color_registers[color][0] as u32 * 255) / 63) as u8;
-            self.color_registers_rgba[color][1] = ((self.color_registers[color][1] as u32 * 255) / 63) as u8;
-            self.color_registers_rgba[color][2] = ((self.color_registers[color][2] as u32 * 255) / 63) as u8;
+            let r = ((self.color_registers[color][0] as u32 * 255) / 63) as u8;
+            let g = ((self.color_registers[color][1] as u32 * 255) / 63) as u8;
+            let b = ((self.color_registers[color][2] as u32 * 255) / 63) as u8;
+            self.color_registers_rgba[color][0] = r;
+            self.color_registers_rgba[color][1] = g;
+            self.color_registers_rgba[color][2] = b;
             self.color_registers_rgba[color][3] = 0xFF;
+            self.color_registers_u32[color] = 0xFF << 24 | (b as u32) << 16 | (g as u32) << 8 | r as u32;
 
-            /*            trace!(
+            /*
+            trace!(
                 self,
                 "Wrote color register [{}] ({:02X},{:02X},{:02X})",
                 color,

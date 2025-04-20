@@ -112,8 +112,8 @@ const EGA_CURSOR_BLINK_RATE: u32 = 8;
 // EGA display field can be calculated via the maximum programmed value in
 // H0 of 91. 91+2*8 = 744.  VerticalTotal 364   744x364 = 270816 * 60Hz = 16,248,960
 
-const VGA25_MAX_RASTER_X: u32 = 912;
-const VGA25_MAX_RASTER_Y: u32 = 450;
+const VGA25_MAX_RASTER_X: u32 = 800;
+const VGA25_MAX_RASTER_Y: u32 = 524;
 
 const VGA28_MAX_RASTER_X: u32 = 1024;
 const VGA28_MAX_RASTER_Y: u32 = 512;
@@ -172,6 +172,9 @@ pub const PEL_DATA: u16 = 0x3C9;
 pub const PEL_MASK: u16 = 0x3C6;
 pub const DAC_STATE_REGISTER: u16 = 0x3C7;
 
+pub const LINE_CHAR_MASK: u8 = 0b1110_0000;
+pub const LINE_CHAR_TEST: u8 = 0b1100_0000; // C0-DF
+
 pub enum EgaDefaultColor4Bpp {
     Black = 0,
     Blue = 1,
@@ -211,6 +214,16 @@ pub enum EgaDefaultColor6Bpp {
 }
 
 const ALL_SET64: u64 = 0xFFFFFFFFFFFFFFFF;
+
+// None of this code is really endian-safe, but we can start attempting it...
+// Full alpha fill color.
+#[cfg(target_endian = "little")]
+const FILL_COLOR: u32 = 0xFF000000;
+#[cfg(target_endian = "big")]
+const FILL_COLOR: u32 = 0x000000FF;
+
+const FOUR_BITS: u8 = 0x0F;
+const SIX_BITS: u8 = 0x3F;
 
 const EGA_PALETTE: [u32; 64] = [
     0x000000, // 000 000
@@ -388,30 +401,15 @@ const EGA_COLORS_4BPP_U64: [u64; 64] = init_ega_4bpp_u64_colors();
 
 const VERT_ADJUST: u32 = 1;
 
-const EGA14_APERTURE_CROPPED_W: u32 = 640;
-const EGA14_APERTURE_CROPPED_H: u32 = 200;
-const EGA14_APERTURE_CROPPED_X: u32 = 128;
-const EGA14_APERTURE_CROPPED_Y: u32 = 32 + VERT_ADJUST;
+const VGA25_APERTURE_ACCURATE_W: u32 = 640;
+const VGA25_APERTURE_ACCURATE_H: u32 = 480;
+const VGA25_APERTURE_ACCURATE_X: u32 = 96;
+const VGA25_APERTURE_ACCURATE_Y: u32 = 32;
 
-const EGA14_APERTURE_ACCURATE_W: u32 = 704;
-const EGA14_APERTURE_ACCURATE_H: u32 = 232;
-const EGA14_APERTURE_ACCURATE_X: u32 = 96;
-const EGA14_APERTURE_ACCURATE_Y: u32 = 16 + VERT_ADJUST;
-
-const EGA14_APERTURE_FULL_W: u32 = 704;
-const EGA14_APERTURE_FULL_H: u32 = 232;
-const EGA14_APERTURE_FULL_X: u32 = 96;
-const EGA14_APERTURE_FULL_Y: u32 = 16 + VERT_ADJUST;
-
-const EGA16_APERTURE_CROPPED_W: u32 = 640;
-const EGA16_APERTURE_CROPPED_H: u32 = 350;
-const EGA16_APERTURE_CROPPED_X: u32 = 56;
-const EGA16_APERTURE_CROPPED_Y: u32 = VERT_ADJUST;
-
-const EGA16_APERTURE_FULL_W: u32 = 640 + 16 + 16;
-const EGA16_APERTURE_FULL_H: u32 = 350;
-const EGA16_APERTURE_FULL_X: u32 = 40;
-const EGA16_APERTURE_FULL_Y: u32 = VERT_ADJUST;
+const VGA28_APERTURE_ACCURATE_W: u32 = 720;
+const VGA28_APERTURE_ACCURATE_H: u32 = 480;
+const VGA28_APERTURE_ACCURATE_X: u32 = 108;
+const VGA28_APERTURE_ACCURATE_Y: u32 = 34;
 
 const MDA_MAX_RASTER_X: u32 = 882;
 const MDA_MAX_RASTER_Y: u32 = 369; // Actual value works out to 325,140 / 882 or 368.639
@@ -440,18 +438,18 @@ const VGA_APERTURES: [[DisplayAperture; 4]; 3] = [
     [
         // 25Mhz CROPPED aperture
         DisplayAperture {
-            w: 640,
-            h: 400,
-            x: 104,
-            y: 17,
+            w: VGA25_APERTURE_ACCURATE_W,
+            h: VGA25_APERTURE_ACCURATE_H,
+            x: VGA25_APERTURE_ACCURATE_X,
+            y: VGA25_APERTURE_ACCURATE_Y,
             debug: false,
         },
         // 25Mhz ACCURATE aperture
         DisplayAperture {
-            w: VGA25_MAX_RASTER_X,
-            h: VGA25_MAX_RASTER_Y,
-            x: 0,
-            y: 0,
+            w: VGA25_APERTURE_ACCURATE_W,
+            h: VGA25_APERTURE_ACCURATE_H,
+            x: VGA25_APERTURE_ACCURATE_X,
+            y: VGA25_APERTURE_ACCURATE_Y,
             debug: false,
         },
         // 25Mhz FULL aperture
@@ -472,20 +470,20 @@ const VGA_APERTURES: [[DisplayAperture; 4]; 3] = [
         },
     ],
     [
-        // 28Mhz CROPPED aperture
+        // 28Mhz 8dots CROPPED aperture
         DisplayAperture {
-            w: VGA28_MAX_RASTER_X,
-            h: VGA28_MAX_RASTER_Y,
-            x: 0,
-            y: 0,
+            w: VGA28_APERTURE_ACCURATE_W,
+            h: VGA28_APERTURE_ACCURATE_H,
+            x: VGA28_APERTURE_ACCURATE_X,
+            y: VGA28_APERTURE_ACCURATE_Y,
             debug: false,
         },
         // 28Mhz ACCURATE aperture
         DisplayAperture {
-            w: VGA28_MAX_RASTER_X,
-            h: VGA28_MAX_RASTER_Y,
-            x: 0,
-            y: 0,
+            w: VGA28_APERTURE_ACCURATE_W,
+            h: VGA28_APERTURE_ACCURATE_H,
+            x: VGA28_APERTURE_ACCURATE_X,
+            y: VGA28_APERTURE_ACCURATE_Y,
             debug: false,
         },
         // 28Mhz FULL aperture
@@ -506,7 +504,23 @@ const VGA_APERTURES: [[DisplayAperture; 4]; 3] = [
         },
     ],
     [
-        // 16Mhz MDA CROPPED aperture
+        // 28Mhz 9dots CROPPED aperture
+        DisplayAperture {
+            w: VGA28_APERTURE_ACCURATE_W,
+            h: VGA28_APERTURE_ACCURATE_H,
+            x: VGA28_APERTURE_ACCURATE_X,
+            y: VGA28_APERTURE_ACCURATE_Y,
+            debug: false,
+        },
+        // 28Mhz ACCURATE aperture
+        DisplayAperture {
+            w: VGA28_APERTURE_ACCURATE_W,
+            h: VGA28_APERTURE_ACCURATE_H,
+            x: VGA28_APERTURE_ACCURATE_X,
+            y: VGA28_APERTURE_ACCURATE_Y,
+            debug: false,
+        },
+        // 28Mhz FULL aperture
         DisplayAperture {
             w: VGA28_MAX_RASTER_X,
             h: VGA28_MAX_RASTER_Y,
@@ -514,23 +528,7 @@ const VGA_APERTURES: [[DisplayAperture; 4]; 3] = [
             y: 0,
             debug: false,
         },
-        // 16Mhz MDA ACCURATE aperture
-        DisplayAperture {
-            w: VGA28_MAX_RASTER_X,
-            h: VGA28_MAX_RASTER_Y,
-            x: 0,
-            y: 0,
-            debug: false,
-        },
-        // 16Mhz MDA FULL aperture
-        DisplayAperture {
-            w: VGA28_MAX_RASTER_X,
-            h: VGA28_MAX_RASTER_Y,
-            x: 0,
-            y: 0,
-            debug: false,
-        },
-        // 16Mhz MDA DEBUG aperture
+        // 28Mhz DEBUG aperture
         DisplayAperture {
             w: VGA28_MAX_RASTER_X,
             h: VGA28_MAX_RASTER_Y,
@@ -624,7 +622,7 @@ pub struct VGACard {
     extents: DisplayExtents,
     aperture: usize,
     //buf: Vec<Vec<u8>>,
-    buf: [Box<[u8; VGA_MAX_CLOCK28]>; 2],
+    buf: [Box<[u32; VGA_MAX_CLOCK28]>; 2],
     rba: usize,
 
     // Debug colors
@@ -690,6 +688,24 @@ pub enum PageSelect {
 pub enum RetracePolarity {
     Positive,
     Negative,
+}
+
+pub enum DisplaySync {
+    Sync768,
+    Sync480,
+    Sync400,
+    Sync350,
+}
+
+impl From<DisplaySync> for u32 {
+    fn from(sync: DisplaySync) -> Self {
+        match sync {
+            DisplaySync::Sync768 => 480, // Plain VGA doesn't support 768
+            DisplaySync::Sync480 => 480,
+            DisplaySync::Sync400 => 400,
+            DisplaySync::Sync350 => 350,
+        }
+    }
 }
 
 impl Default for VGACard {
@@ -822,6 +838,19 @@ impl VGACard {
             ega.clock_mode = clock_mode;
         }
         ega
+    }
+
+    fn vertical_sync(&self) -> DisplaySync {
+        use RetracePolarity::*;
+        match (
+            self.misc_output_register.vertical_retrace_polarity(),
+            self.misc_output_register.horizontal_retrace_polarity(),
+        ) {
+            (Positive, Positive) => DisplaySync::Sync768,
+            (Positive, Negative) => DisplaySync::Sync400,
+            (Negative, Positive) => DisplaySync::Sync350,
+            (Negative, Negative) => DisplaySync::Sync480,
+        }
     }
 
     fn get_default_extents() -> DisplayExtents {
@@ -1052,8 +1081,8 @@ impl VGACard {
         byte
     }
 
-    /// Tick the EGA device. This is much simpler than the implementation in the CGA device as
-    /// we only support ticking by character clock.
+    /// Tick the VGA. This is much simpler than the implementation in the CGA as we only support
+    /// ticking by character clock.
     fn tick(&mut self, ticks: f64, pic: &mut Option<Box<Pic>>) {
         self.ticks_accum += ticks;
 
@@ -1069,39 +1098,48 @@ impl VGACard {
             }
             self.ticks_accum -= self.sequencer.char_clock as f64;
 
-            if self.intr && !self.last_intr {
-                // Rising edge of INTR - raise IRQ2
-                if let Some(pic) = pic {
-                    pic.request_interrupt(2);
-                }
-            }
-            else if !self.intr {
-                // Falling edge of INTR - release IRQ2
-                if let Some(pic) = pic {
-                    //log::debug!("clearing irq2!");
-                    pic.clear_interrupt(2);
-                }
-            }
-            self.last_intr = self.intr;
+            // VGA doesn't have vsync interrupt
+            // if self.intr && !self.last_intr {
+            //     // Rising edge of INTR - raise IRQ2
+            //     if let Some(pic) = pic {
+            //         pic.request_interrupt(2);
+            //     }
+            // }
+            // else if !self.intr {
+            //     // Falling edge of INTR - release IRQ2
+            //     if let Some(pic) = pic {
+            //         //log::debug!("clearing irq2!");
+            //         pic.clear_interrupt(2);
+            //     }
+            // }
+            // self.last_intr = self.intr;
         }
     }
 
     fn tick_hchar(&mut self, clock_select: ClockSelect) {
-        assert_eq!(self.cycles & 0x07, 0);
-        assert_eq!(self.sequencer.char_clock, 8);
+        //assert_eq!(self.cycles & 0x07, 0);
+        //assert_eq!(self.sequencer.char_clock, 8);
 
-        self.cycles += 8;
+        self.cycles += self.sequencer.clock();
 
-        // Only draw if marty_render buffer address is in bounds.
+        // Only draw if buffer address is in bounds.
         if self.rba < (VGA_MAX_CLOCK28 - 9) {
             // Shift the current character span out from the attribute controller and draw it
-
             match self.ac.pixel_clock() {
-                PixelClockSelect::EveryCycle => {
-                    let out_span = self.ac.shift_out64();
-                    self.draw_from_ac(out_span);
-                }
+                PixelClockSelect::EveryCycle => match self.ac.is_text_mode() {
+                    true => {
+                        // We're in text mode - shift out a 9-column glyph span
+                        let out_span = self.ac.shift_out64_9();
+                        self.draw_from_ac_9col(out_span);
+                    }
+                    false => {
+                        // We're in graphics mode, shift out an 8-column gfx span
+                        let out_span = self.ac.shift_out64();
+                        self.draw_from_ac(out_span);
+                    }
+                },
                 PixelClockSelect::EveryOtherCycle => {
+                    // The "every other cycle" mode is primarily (only?) used for mode 13h (chain-4)
                     let out_span = self.ac.shift_out64_mode13();
                     self.draw_from_ac(out_span);
 
@@ -1125,6 +1163,7 @@ impl VGACard {
                                 self.sequencer
                                     .get_glyph_span(self.cur_char, self.current_font, self.crtc.vlc()),
                                 //self.sequencer.test_glyph_span(self.crtc.vlc()),
+                                self.cur_char,
                                 self.cur_attr,
                                 self.crtc.status.cursor,
                             ),
@@ -1146,32 +1185,25 @@ impl VGACard {
                 }
             }
             else {
-                /*                self.ac.load(
-                    AttributeInput::SolidColor(EgaDefaultColor6Bpp::Green as u8),
-                    clock_select,
-                    true,
-                );*/
+                // We can do some debug rendering here if needed
+
+                // self.ac.load(
+                //     AttributeInput::SolidColor(EgaDefaultColor6Bpp::Green as u8),
+                //     clock_select,
+                //     true,
+                // );
+                // self.draw_solid_hchar_6bpp(EgaDefaultColor6Bpp::Magenta as u8);
             }
-            /*            else if self.crtc.status.hborder {
-                self.ac.load(
-                    AttributeInput::SolidColor(EgaDefaultColor6Bpp::Green as u8),
-                    clock_select,
-                    self.crtc.status.den | self.crtc.in_skew(),
-                );
 
-                //self.draw_solid_hchar_6bpp(EgaDefaultColor6Bpp::Magenta as u8);
-            }*/
-
-            /*            if self.crtc.status.vborder | self.crtc.status.hborder {
-                // High res modes on EGA do not support the overscan color
-                //self.ac.shift_in(AttributeInput::Black, ClockSelect::Clock16);
-                /*
-                self.ac.shift_in(
-                    AttributeInput::SolidColor(EgaDefaultColor6Bpp::Green as u8),
-                    clock_select,
-                );*/
-                self.draw_solid_hchar_6bpp(EgaDefaultColor6Bpp::Black as u8);
-            }*/
+            // if self.crtc.status.row_den {
+            //     self.draw_tint_blue();
+            // }
+            // if self.crtc.in_skew() {
+            //     self.draw_tint_green();
+            // }
+            // if self.crtc.scanline() == 0 {
+            //     self.draw_solid_hchar_6bpp(EgaDefaultColor6Bpp::Magenta as u8);
+            // }
 
             if self.crtc.status.hsync {
                 if self.debug_draw {
@@ -1200,13 +1232,13 @@ impl VGACard {
                     AttributeInput::SolidColor(EgaDefaultColor6Bpp::Magenta as u8),
                     clock_select,
                 );*/
-                self.draw_solid_hchar_6bpp(EgaDefaultColor6Bpp::Magenta as u8);
+                //self.draw_solid_hchar_6bpp(EgaDefaultColor6Bpp::Magenta as u8);
             }
         }
 
         // Update position to next pixel and character column.
-        self.raster_x += 8 * self.sequencer.clock_divisor;
-        self.rba += 8 * self.sequencer.clock_divisor as usize;
+        self.raster_x += self.sequencer.char_clock;
+        self.rba += self.sequencer.char_clock as usize;
 
         // If we have reached the right edge of the 'monitor', return the raster position
         // to the left side of the screen.
@@ -1227,7 +1259,7 @@ impl VGACard {
 
     fn tick_lchar(&mut self, clock_select: ClockSelect) {
         //assert_eq!(self.cycles & 0x0F, 0);
-        assert_eq!(self.sequencer.char_clock, 16);
+        //assert_eq!(self.sequencer.char_clock, 16);
 
         self.cycles += 8;
 
@@ -1247,6 +1279,7 @@ impl VGACard {
                                 self.sequencer
                                     .get_glyph_span(self.cur_char, self.current_font, self.crtc.vlc()),
                                 //self.sequencer.test_glyph_span(self.crtc.vlc()),
+                                self.cur_char,
                                 self.cur_attr,
                                 self.crtc.status.cursor,
                             ),
@@ -1328,7 +1361,7 @@ impl VGACard {
     }
 
     /// Perform a (virtual) vsync. Our virtual raster position (rba) returns to the top of the
-    /// display field and we swap the front and back buffer index.
+    /// display field, and we swap the front and back buffer index.
     pub fn do_vsync(&mut self) {
         /*
         self.cycles_per_vsync = self.cur_screen_cycles;
@@ -1404,7 +1437,7 @@ impl VGACard {
         //std::mem::swap(&mut self.back_buf, &mut self.front_buf);
 
         std::mem::swap(&mut self.back_buf, &mut self.front_buf);
-        self.buf[self.back_buf].fill(0);
+        self.buf[self.back_buf].fill(FILL_COLOR);
     }
 
     fn update_clock(&mut self) {
@@ -1445,6 +1478,13 @@ impl VGACard {
                 _ => {
                     // Unsupported
                 }
+            }
+        }
+
+        let sync: u32 = self.vertical_sync().into();
+        for aperture in self.extents.apertures.iter_mut() {
+            if !aperture.debug && (sync < aperture.h) {
+                aperture.h = sync;
             }
         }
 

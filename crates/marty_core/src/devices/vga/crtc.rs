@@ -32,11 +32,11 @@
 
 use super::*;
 
-pub const EGA_VBLANK_MASK: u16 = 0x001F;
-pub const EGA_VSYNC_MASK: u16 = 0x001F;
-pub const EGA_HBLANK_MASK: u8 = 0x001F;
-pub const EGA_HSYNC_MASK: u8 = 0x001F;
-pub const EGA_HSLC_MASK: u16 = 0x01FF;
+pub const VGA_VBLANK_MASK: u16 = 0x007F;
+pub const VGA_VSYNC_MASK: u16 = 0x000F;
+pub const VGA_HBLANK_MASK: u8 = 0x001F;
+pub const VGA_HSYNC_MASK: u8 = 0x001F;
+pub const VGA_HSLC_MASK: u16 = 0x03FF;
 
 const DEFAULT_CURSOR_START_LINE: u8 = 6;
 const DEFAULT_CURSOR_END_LINE: u8 = 7;
@@ -221,6 +221,8 @@ pub struct CrtcStatus {
     pub hborder: bool,
     pub vborder: bool,
     pub den: bool,
+    /// A debug signal that is enabled starting at row 0 and ending at the last row of the display.
+    pub row_den: bool,
     pub den_skew: bool,
     pub cursor: bool,
     pub cref: bool,
@@ -263,6 +265,7 @@ pub struct VgaCrtc {
     crtc_underline_location: CUnderlineLocation, // R(14)
     crtc_start_vertical_blank: u16,   // R(15) Start Vertical Blank (9-bit value)
     crtc_end_vertical_blank: CEndVerticalBlank, // R(16)
+    crtc_end_vertical_blank_norm: u16, // End Horizontal Blank value normalized to scanline number
     crtc_mode_control: CModeControl,  // R(17)
     crtc_line_compare: u16,           // R(18) Line Compare (9-bit value)
 
@@ -334,6 +337,7 @@ impl Default for VgaCrtc {
             crtc_underline_location: CUnderlineLocation::new(),
             crtc_start_vertical_blank: 0,
             crtc_end_vertical_blank: CEndVerticalBlank::new(),
+            crtc_end_vertical_blank_norm: 0,
             crtc_mode_control: CModeControl::new(),
             crtc_line_compare: 0,
 
@@ -531,7 +535,7 @@ impl VgaCrtc {
     }
 
     /// Write to one of the CRT Controller registers.
-    /// Returns a a tuple, a boolean representing whether the card should recalculate mode parameters after this write,
+    /// Returns a tuple, a boolean representing whether the card should recalculate mode parameters after this write,
     /// and a boolean representing whether the current interrupt status should be cleared.
     pub fn write_crtc_register_data(&mut self, byte: u8) -> (bool, bool) {
         //log::trace!("VGA: Write to CRTC register: {:?}: {:02}", self.crtc_register_selected, byte );
@@ -700,6 +704,7 @@ impl VgaCrtc {
             CRTCRegister::EndVerticalBlank => {
                 // R(16) - Bits 0-3: End Vertical Blank
                 self.crtc_end_vertical_blank = CEndVerticalBlank::from_bytes([byte]);
+                self.normalize_end_vertical_blank();
             }
             CRTCRegister::ModeControl => {
                 // (R17) Mode Control Register
@@ -772,6 +777,21 @@ impl VgaCrtc {
             proposed_ehb = ehb
         }
         self.crtc_end_horizontal_blank_norm = proposed_ehb;
+    }
+
+    fn normalize_end_vertical_blank(&mut self) {
+        let evb = self.crtc_end_vertical_blank.end_vertical_blank() as u16;
+
+        let mut proposed_evb = self.crtc_start_vertical_blank & 0xFFE0 | evb;
+        if proposed_evb <= self.crtc_start_vertical_blank {
+            proposed_evb = (self.crtc_start_vertical_blank + 0x20) & 0xFFE0 | evb;
+        }
+
+        if proposed_evb > self.crtc_vertical_total {
+            // Wrap at VT
+            proposed_evb = evb
+        }
+        self.crtc_end_vertical_blank_norm = proposed_evb;
     }
 
     /// Calculate the normalized End Horizontal Retrace value
@@ -883,7 +903,7 @@ impl VgaCrtc {
         // Process horizontal blank period
         if self.status.hblank {
             // End horizontal blank when we reach R3
-            if (self.hcc & EGA_HBLANK_MASK) == self.crtc_end_horizontal_blank.end_horizontal_blank() {
+            if (self.hcc & VGA_HBLANK_MASK) == self.crtc_end_horizontal_blank.end_horizontal_blank() {
                 self.status.hblank = false;
                 self.status.hborder = true;
             }
@@ -920,7 +940,7 @@ impl VgaCrtc {
 
         if self.status.hsync {
             // End horizontal sync when we reach R3
-            if ((self.hcc - 1) & EGA_HSYNC_MASK) == self.crtc_end_horizontal_retrace.end_horizontal_retrace() {
+            if ((self.hcc - 1) & VGA_HSYNC_MASK) == self.crtc_end_horizontal_retrace.end_horizontal_retrace() {
                 // Enter horizontal retrace delay time
                 //log::debug!("entering hrd @ {}", self.hcc);
                 self.in_hrd = true;
@@ -951,7 +971,7 @@ impl VgaCrtc {
         // Horizontal Display end is -1 on EGA and VGA (Ferraro is wrong)
         if self.hcc == self.crtc_horizontal_display_end + 1 {
             // Leaving active display area, entering right overscan
-            self.den_skew_back = true;
+            //self.den_skew_back = true;
             self.status.den = false;
         }
 
@@ -971,6 +991,7 @@ impl VgaCrtc {
             // Entering horizontal retrace. Retrace can start before hblank!
 
             // Both monitor and CRTC will enter hsync at the same time. Monitor may leave hsync first.
+            //log::debug!("entering hsync @ slc: {} hcc: {}", self.slc, self.hcc);
             self.status.hsync = true;
             self.monitor_hsync = true;
             self.status.den = false;
@@ -994,12 +1015,6 @@ impl VgaCrtc {
             // Leaving left overscan, finished scanning row. Entering active display area with
             // new logical scanline.
 
-            /*
-            if self.crtc_vblank {
-                // If we are in vblank, advance Vertical Sync Counter
-                self.vsc_c3h += 1;
-            }
-            */
             self.status.cref = true;
 
             if self.in_last_vblank_line {
@@ -1019,12 +1034,13 @@ impl VgaCrtc {
             if !self.status.vblank {
                 // Start the new row
                 if self.slc < self.crtc_vertical_display_end + 1 {
-                    self.den_skew_front = true;
+                    //self.den_skew_front = true;
+                    self.start_visible_row();
                 }
             }
 
             if self.vlc > self.crtc_maximum_scanline.maximum_scanline() {
-                // C9 == R9 We finished drawing this row of characters
+                // C9 == R9: We finished drawing this row of characters
 
                 self.vlc = 0;
                 // Advance Vertical Character Counter
@@ -1067,8 +1083,10 @@ impl VgaCrtc {
                 // We are leaving the bottom of the active display area, entering the lower overscan area.
                 self.status.vborder = true;
                 self.status.den = false;
-                self.den_skew_back = true;
-                self.status.den_skew = true;
+                self.status.row_den = false;
+
+                //self.den_skew_back = true;
+                //self.status.den_skew = true;
             }
 
             if self.slc == self.crtc_vertical_total {
@@ -1120,38 +1138,42 @@ impl VgaCrtc {
                 self.vma_sl = self.vma;
 
                 // Delay toggle of display enable by Display Enable Skew value.
-                self.den_skew_front = true;
+                //self.den_skew_front = true;
                 //self.status.den_skew = true;
+
                 self.status.vborder = false;
                 self.status.vblank = false;
+                self.status.den = true;
+                self.status.row_den = true;
             }
         }
 
         // Handle DEN skew.  Ideally we would not have a separate status variable for this, but it's
         // a little easier to handle this way. DEN skew is 1 in almost all modes on the EGA as far as I can tell
-        if self.den_skew_front {
-            if self.dsc == self.crtc_end_horizontal_blank.display_enable_skew() + AC_LATENCY {
-                self.den_skew_front = false;
-                self.status.vborder = false;
-                self.status.hborder = false;
-                self.status.den = true;
-                self.dsc = 0;
-            } else {
-                self.dsc = self.dsc.wrapping_add(1);
-            }
-        }
-
-        if self.den_skew_back {
-            if self.dsc == self.crtc_end_horizontal_blank.display_enable_skew() + AC_LATENCY + BACK_SKEW_DELAY {
-                self.den_skew_back = false;
-                self.status.den_skew = false;
-                self.status.hborder = true;
-                self.dsc = 0;
-            } else {
-                self.status.den_skew = true;
-                self.dsc = self.dsc.wrapping_add(1);
-            }
-        }
+        // if self.den_skew_front {
+        //     if self.dsc == self.crtc_end_horizontal_blank.display_enable_skew() + AC_LATENCY {
+        //         self.den_skew_front = false;
+        //         self.status.vblank = false;
+        //         self.status.vborder = false;
+        //         self.status.hborder = false;
+        //         self.status.den = true;
+        //         self.dsc = 0;
+        //     } else {
+        //         self.dsc = self.dsc.wrapping_add(1);
+        //     }
+        // }
+        //
+        // if self.den_skew_back {
+        //     if self.dsc == self.crtc_end_horizontal_blank.display_enable_skew() + AC_LATENCY + BACK_SKEW_DELAY {
+        //         self.den_skew_back = false;
+        //         self.status.den_skew = false;
+        //         self.status.hborder = true;
+        //         self.dsc = 0;
+        //     } else {
+        //         self.status.den_skew = true;
+        //         self.dsc = self.dsc.wrapping_add(1);
+        //     }
+        // }
 
         // Update cursor status
         self.status.cursor = (self.vma
@@ -1186,21 +1208,42 @@ impl VgaCrtc {
         output_addr
     }
 
+    #[inline]
+    fn start_visible_row(&mut self) {
+        self.den_skew_front = false;
+        self.status.vblank = false;
+        self.status.vborder = false;
+        self.status.hborder = false;
+        self.status.den = true;
+        self.status.row_den = true;
+        self.dsc = 0;
+    }
+
     fn do_hsync(&mut self) {
         // Reset hsync delay
         self.in_hrd = false;
         self.hrdc = 0;
 
+        //log::debug!("Doing hsync at slc: {}", self.slc);
+        // if self.slc > self.crtc_start_vertical_blank {
+        //     if (self.slc & VGA_VBLANK_MASK) == self.crtc_end_vertical_blank.end_vertical_blank() as u16 {
+        //         self.in_last_vblank_line = true;
+        //         self.monitor_hsync = false;
+        //         return;
+        //     }
+        // }
+
         if self.status.vblank {
             //if self.vsc_c3h == CRTC_VBLANK_HEIGHT || self.beam_y == CGA_MONITOR_VSYNC_POS {
-            if (self.slc & EGA_VBLANK_MASK) == self.crtc_end_vertical_blank.end_vertical_blank() as u16 {
+            if (self.slc & VGA_VBLANK_MASK) == self.crtc_end_vertical_blank.end_vertical_blank() as u16 {
+                //log::debug!("Ending vblank at scanline {}", self.slc);
                 self.in_last_vblank_line = true;
                 self.monitor_hsync = false;
                 return;
             }
         }
 
-        if self.status.vsync && (self.slc & EGA_VSYNC_MASK) == self.crtc_vertical_retrace_end.vertical_retrace_end() as u16 {
+        if self.status.vsync && (self.slc & VGA_VSYNC_MASK) == self.crtc_vertical_retrace_end.vertical_retrace_end() as u16 {
             // We are leaving vsync period, generate a frame
             self.status.begin_vsync = true;
             self.status.vsync = false;
@@ -1209,7 +1252,7 @@ impl VgaCrtc {
         }
 
         // Restrict HSLC to 9-bit range.
-        self.slc = (self.slc + 1) & EGA_HSLC_MASK;
+        self.slc = (self.slc + 1) & VGA_HSLC_MASK;
         self.status.begin_hsync = true;
     }
 
@@ -1306,6 +1349,7 @@ impl VgaCrtc {
                 self.crtc_underline_location.underline_location()));
         push_reg_str!(crtc_vec, CRTCRegister::StartVerticalBlank, "[R15]", self.crtc_start_vertical_blank);
         push_reg_str!(crtc_vec, CRTCRegister::EndVerticalBlank, "[R16]", self.crtc_end_vertical_blank.into_bytes()[0]);
+        push_reg_str!(crtc_vec, CRTCRegister::EndVerticalBlank, "[R16:norm]", self.crtc_end_vertical_blank_norm);
         //push_reg_str!(crtc_vec, CRTCRegister::ModeControl, "[R17]", self.crtc_mode_control.into_bytes()[0]);
         crtc_vec.push(("[R17] ModeControl".to_string(), VideoCardStateEntry::String(format!("{:08b}",self.crtc_mode_control.into_bytes()[0]))));
         push_reg_str!(crtc_vec, CRTCRegister::LineCompare, "[R18]", self.crtc_line_compare);

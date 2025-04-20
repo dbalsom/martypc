@@ -196,6 +196,7 @@ pub enum RenderBpp {
     Four,
     Six,
     Eight,
+    ThirtyTwo,
 }
 
 //pub const TEXTMODE_MEM_ADDRESS: usize = 0xB8000;
