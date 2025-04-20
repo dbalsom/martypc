@@ -413,6 +413,7 @@ impl AttributeController {
             ai = AttributeInput::Border;
         }
         self.last_den = den;
+        self.shift_reg9 = 0;
 
         match ai {
             AttributeInput::Black => {
@@ -474,27 +475,21 @@ impl AttributeController {
                 resolved_glyph = self.apply_attribute_8col(resolved_glyph, attr, clock_select);
                 self.shift_reg |= resolved_glyph as u128;
             }
-            AttributeInput::Parallel64(data, char, attr, cursor) => match self.mode_control.mode() {
-                AttributeMode::Text => {
-                    let resolved_glyph = if cursor { ALL_SET64 } else { data };
+            AttributeInput::Parallel64(data, char, attr, cursor) => {
+                let resolved_glyph = if cursor { ALL_SET64 } else { data };
 
-                    // If character is a line drawing character
-                    let col9 = if char & LINE_CHAR_MASK == LINE_CHAR_TEST {
-                        (data & 0xFF) as u8
-                    }
-                    else {
-                        0
-                    };
+                // If character is a line drawing character
+                let col9 = if char & LINE_CHAR_MASK == LINE_CHAR_TEST {
+                    (data & 0xFF) as u8
+                }
+                else {
+                    0
+                };
 
-                    let attr = self.apply_attribute_9col(resolved_glyph, col9, attr, clock_select);
-                    self.shift_reg9 = (attr.0 & 0xFF) << 8 | (attr.1 as u64);
-                    self.shift_reg |= attr.0 as u128 >> 8;
-                }
-                AttributeMode::Graphics => {
-                    let resolved_glyph = if cursor { ALL_SET64 } else { data };
-                    self.shift_reg |= self.apply_attribute_8col(resolved_glyph, attr, clock_select) as u128;
-                }
-            },
+                let attr = self.apply_attribute_9col(resolved_glyph, col9, attr, clock_select);
+                self.shift_reg9 = (attr.0 & 0xFF) << 8 | (attr.1 as u64);
+                self.shift_reg |= attr.0 as u128 >> 8;
+            }
         }
     }
 
