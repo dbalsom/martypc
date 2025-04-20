@@ -82,8 +82,10 @@ pub struct SMemoryModeRegister {
 pub struct SCharacterMapSelect {
     pub generator_b: B2,
     pub generator_a: B2,
+    pub offset_b: bool,
+    pub offset_a: bool,
     #[skip]
-    unused: B4,
+    unused: B2,
 }
 
 #[derive(Copy, Clone, Debug, BitfieldSpecifier)]
@@ -262,6 +264,14 @@ impl Sequencer {
             0b10 => 0x8000,
             0b11 | _ => 0xC000,
         };
+
+        if self.character_map_select.offset_b() {
+            self.font_offset_b += 0x2000;
+        }
+
+        if self.character_map_select.offset_a() {
+            self.font_offset_a += 0x2000;
+        }
     }
 
     pub fn cpu_read_u8(&self, plane: usize, addr: usize, _a0: usize) -> u8 {
