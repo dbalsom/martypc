@@ -163,6 +163,22 @@ impl Sequencer {
         self.char_clock as u64
     }
 
+    #[inline]
+    pub fn set_clock_change_pending(&mut self) {
+        self.clock_change_pending = true;
+    }
+
+    #[inline]
+    pub fn poll_clock_change(&mut self) -> bool {
+        if self.clock_change_pending {
+            self.clock_change_pending = false;
+            true
+        }
+        else {
+            false
+        }
+    }
+
     pub fn read_address(&mut self) -> u8 {
         self.address_byte
     }

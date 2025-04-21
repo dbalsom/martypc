@@ -54,7 +54,7 @@ const DEFAULT_MAX_SCANLINE: u8 = 13;
 const VSYNC_LENGTH: u8 = 16;
 const CURSOR_LINE_MASK: u8 = 0b0001_1111;
 const AC_LATENCY: u8 = 1;
-const BACK_SKEW_DELAY: u8 = 3;
+const BACK_SKEW_DELAY: u8 = 1;
 
 // Helper macro for pushing video card state entries.
 macro_rules! push_reg_str {
@@ -182,7 +182,7 @@ pub struct CMaximumScanline {
     pub maximum_scanline: B5,
     pub vbs: B1,
     pub lc: B1,
-    pub two_t4: B1,
+    pub two_t4: bool,
 }
 
 #[derive(Debug, BitfieldSpecifier)]
@@ -211,6 +211,47 @@ pub struct CModeControl {
 }
 
 #[derive(Copy, Clone, Default, Debug)]
+pub struct CrtcAperture {
+    pub top: u32,
+    pub left: u32,
+    pub right: u32,
+    pub bottom: u32,
+}
+
+impl CrtcAperture {
+    #[inline]
+    pub fn width(&self) -> u32 {
+        self.right - self.left
+    }
+    #[inline]
+    pub fn height(&self) -> u32 {
+        self.bottom - self.top
+    }
+
+    pub fn is_compatible_with(&self, extents: (u32, u32)) -> bool {
+        if self.left + self.width() > extents.0 {
+            false
+        } else if self.top + self.height() > extents.1 {
+            false
+        } else if self.left > extents.0 {
+            false
+        } else { self.top <= extents.1 }
+    }
+
+    pub fn adjust(&mut self, char_clock: u32, mode: ShiftMode) {
+        let mut latency_adjust = match char_clock {
+            8 | 16 => 1,
+            _ => 2,
+        };
+        if matches!(mode, ShiftMode::Chain4) {
+            latency_adjust += 1;
+        }
+        self.left += char_clock * (AC_LATENCY + latency_adjust) as u32;
+        self.right += char_clock * (AC_LATENCY + latency_adjust) as u32;
+    }
+}
+
+#[derive(Copy, Clone, Default, Debug)]
 pub struct CrtcStatus {
     pub begin_hsync: bool,
     pub begin_vsync: bool,
@@ -226,6 +267,7 @@ pub struct CrtcStatus {
     pub den_skew: bool,
     pub cursor: bool,
     pub cref: bool,
+    pub dynamic_aperture: CrtcAperture,
 }
 
 pub struct VgaCrtc {
@@ -889,7 +931,7 @@ impl VgaCrtc {
     }
 
     /// Update the CRTC logic for next character.
-    pub fn tick(&mut self, clock_divisor: u32) -> u16 {
+    pub fn tick(&mut self, clock_divisor: u32, raster: (u32, u32)) -> u16 {
         // Reset hsync and vsync edge-triggered flags
         self.status.begin_hsync = false;
         self.status.begin_vsync = false;
@@ -971,8 +1013,9 @@ impl VgaCrtc {
         // Horizontal Display end is -1 on EGA and VGA (Ferraro is wrong)
         if self.hcc == self.crtc_horizontal_display_end + 1 {
             // Leaving active display area, entering right overscan
-            //self.den_skew_back = true;
+            self.den_skew_back = true;
             self.status.den = false;
+            self.status.dynamic_aperture.right = raster.0; // Set right side of screen
         }
 
         if self.hcc == self.crtc_start_horizontal_blank + 1 {
@@ -1000,7 +1043,7 @@ impl VgaCrtc {
             self.hsc = 0;
         }
 
-        if self.hcc == self.crtc_horizontal_total && self.in_last_vblank_line {
+        if self.hcc == self.crtc_horizontal_total + 4 && self.in_last_vblank_line {
             // We are one char away from the beginning of the new frame.
             // Draw one char of border
             //self.status.hborder = true;
@@ -1014,6 +1057,9 @@ impl VgaCrtc {
         if self.hcc == self.crtc_horizontal_total + 5 {
             // Leaving left overscan, finished scanning row. Entering active display area with
             // new logical scanline.
+            //log::debug!(">>>>>> Setting aperture left to {}", raster.0);
+            self.status.dynamic_aperture.left = raster.0;
+
 
             self.status.cref = true;
 
@@ -1025,7 +1071,19 @@ impl VgaCrtc {
             // Reset Horizontal Character Counter and increment character row counter
             self.hcc = 0;
             //self.status.hborder = false;
-            self.vlc += 1;
+
+            // The 2T4 bit in the Maximum Scanline register is used to halve the clock to the
+            // vertical line counter, to scan-double CGA modes.
+            self.vlc += if self.crtc_maximum_scanline.two_t4() {
+                if (self.slc & 0x01) != 0 {
+                    0
+                } else {
+                    1
+                }
+            } else {
+                1
+            };
+
             // Return video memory address to starting position for next character row
             self.vma = self.vma_sl;
 
@@ -1085,8 +1143,10 @@ impl VgaCrtc {
                 self.status.den = false;
                 self.status.row_den = false;
 
-                //self.den_skew_back = true;
-                //self.status.den_skew = true;
+                self.den_skew_back = true;
+                self.status.den_skew = true;
+                self.status.dynamic_aperture.right = raster.0; // Set right side of screen
+                self.status.dynamic_aperture.bottom = raster.1; // Set bottom side of screen
             }
 
             if self.slc == self.crtc_vertical_total {
@@ -1099,7 +1159,8 @@ impl VgaCrtc {
                 self.hcc = 0;
                 self.vcc = 0;
                 self.vlc = self.crtc_preset_row_scan;
-
+                //log::debug!(">>>>>> Setting aperture top to {}x{}", raster.0, raster.1);
+                self.status.dynamic_aperture.top = raster.1; // Set top side of screen
                 self.frame += 1;
                 // Toggle blink state. This is toggled every 8 frames by default.
                 if (self.frame % EGA_CURSOR_BLINK_RATE as u64) == 0 {
@@ -1163,17 +1224,19 @@ impl VgaCrtc {
         //     }
         // }
         //
-        // if self.den_skew_back {
-        //     if self.dsc == self.crtc_end_horizontal_blank.display_enable_skew() + AC_LATENCY + BACK_SKEW_DELAY {
-        //         self.den_skew_back = false;
-        //         self.status.den_skew = false;
-        //         self.status.hborder = true;
-        //         self.dsc = 0;
-        //     } else {
-        //         self.status.den_skew = true;
-        //         self.dsc = self.dsc.wrapping_add(1);
-        //     }
-        // }
+
+        // Do back porch timings
+        if self.den_skew_back {
+            if self.dsc == self.crtc_end_horizontal_blank.display_enable_skew() + AC_LATENCY + BACK_SKEW_DELAY {
+                self.den_skew_back = false;
+                self.status.den_skew = false;
+                self.status.hborder = true;
+                self.dsc = 0;
+            } else {
+                self.status.den_skew = true;
+                self.dsc = self.dsc.wrapping_add(1);
+            }
+        }
 
         // Update cursor status
         self.status.cursor = (self.vma

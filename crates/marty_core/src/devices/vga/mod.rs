@@ -24,18 +24,16 @@
 
     ---------------------------------------------------------------------------
 
-    vga::mod.rs
-
-    Implement the IBM Video Graphics Array (VGA) card.
-
-    Resources:
-
-    "Programmer's Guide to the EGA, VGA and Super VGA Cards", Richard F Ferraro
-    "EGA/VGA, A Programmer's Reference Guide 2nd Edition", Bradley Dyck Kliewer
-    "Hardware Level VGA and SVGA Video Programming Information Page",
-        http://www.osdever.net/FreeVGA/home.htm
-
 */
+
+//! Implement the IBM Video Graphics Array (VGA) adapter.
+//!
+//! Resources used:
+//!
+//! "Programmer's Guide to the EGA, VGA and Super VGA Cards", Richard F Ferraro
+//! "EGA/VGA, A Programmer's Reference Guide 2nd Edition", Bradley Dyck Kliewer
+//! "Hardware Level VGA and SVGA Video Programming Information Page",
+//! http://www.osdever.net/FreeVGA/home.htm
 
 use modular_bitfield::prelude::*;
 
@@ -52,7 +50,6 @@ mod draw;
 mod graphics_controller;
 mod io;
 mod mmio;
-mod planes;
 mod sequencer;
 mod tablegen;
 mod videocard;
@@ -174,6 +171,10 @@ pub const DAC_STATE_REGISTER: u16 = 0x3C7;
 
 pub const LINE_CHAR_MASK: u8 = 0b1110_0000;
 pub const LINE_CHAR_TEST: u8 = 0b1100_0000; // C0-DF
+
+pub const RGBA_RED: u32 = 0xFF0000FF;
+pub const RGBA_GREEN: u32 = 0xFF00FF00;
+pub const RGBA_BLUE: u32 = 0xFFFF0000;
 
 pub enum EgaDefaultColor4Bpp {
     Black = 0,
@@ -900,7 +901,6 @@ impl VGACard {
         if clock_old != self.misc_output_register.clock_select() {
             // Clock updated.
             self.sequencer.clock_change_pending = true;
-            self.update_clock();
         }
 
         log::trace!(
@@ -1119,7 +1119,6 @@ impl VGACard {
     fn tick_hchar(&mut self, clock_select: ClockSelect) {
         //assert_eq!(self.cycles & 0x07, 0);
         //assert_eq!(self.sequencer.char_clock, 8);
-
         self.cycles += self.sequencer.clock();
 
         // Only draw if buffer address is in bounds.
@@ -1141,7 +1140,7 @@ impl VGACard {
                 PixelClockSelect::EveryOtherCycle => {
                     // The "every other cycle" mode is primarily (only?) used for mode 13h (chain-4)
                     let out_span = self.ac.shift_out64_mode13();
-                    self.draw_from_ac(out_span);
+                    self.draw_from_ac_dac(out_span);
 
                     //let shift_out_8 = self.ac.shift_out_8().to_vec();
                     //self.draw_from_ac8(&shift_out_8);
@@ -1260,13 +1259,23 @@ impl VGACard {
     fn tick_lchar(&mut self, clock_select: ClockSelect) {
         //assert_eq!(self.cycles & 0x0F, 0);
         //assert_eq!(self.sequencer.char_clock, 16);
-
-        self.cycles += 8;
+        self.cycles += self.sequencer.clock();
 
         // Only draw if buffer address is in bounds.
-        if self.rba < (VGA_MAX_CLOCK28 - 16) {
-            let (out_span1, outspan2) = self.ac.shift_out64_halfclock();
-            self.draw_from_ac_halfclock(out_span1, outspan2);
+        if self.rba < (VGA_MAX_CLOCK28 - 18) {
+            // Shift the current character span out from the attribute controller and draw it
+            match self.ac.is_text_mode() {
+                true => {
+                    // We're in text mode - shift out a 9-column glyph span
+                    let (out_span1, outspan2, out_byte) = self.ac.shift_out64_halfclock_9col();
+                    self.draw_from_ac_halfclock_9col(out_span1, outspan2, out_byte);
+                }
+                false => {
+                    // We're in graphics mode, shift out an 8-column gfx span
+                    let (out_span1, outspan2) = self.ac.shift_out64_halfclock();
+                    self.draw_from_ac_halfclock(out_span1, outspan2);
+                }
+            }
 
             //if self.crtc.status.den | self.crtc.status.den_skew {}
 
@@ -1304,25 +1313,27 @@ impl VGACard {
             }
 
             if self.crtc.status.hborder {
-                self.draw_overscan_lchar();
+                //self.draw_overscan_lchar();
             }
 
             if self.debug_draw {
                 if self.crtc.status.hsync {
-                    self.draw_solid_lchar_6bpp(EgaDefaultColor6Bpp::BlueBright as u8);
+                    //self.draw_solid_lchar_6bpp(EgaDefaultColor6Bpp::BlueBright as u8);
                 }
                 else if self.crtc.status.hblank {
-                    self.draw_solid_lchar_6bpp(EgaDefaultColor6Bpp::Blue as u8);
+                    //self.draw_solid_lchar_6bpp(EgaDefaultColor6Bpp::Blue as u8);
                 }
                 else if self.crtc.status.vsync {
-                    self.draw_solid_lchar_6bpp(EgaDefaultColor6Bpp::Magenta as u8)
+                    //self.draw_solid_lchar_6bpp(EgaDefaultColor6Bpp::Magenta as u8)
                 }
             }
         }
 
         // Update position to next pixel and character column.
-        self.raster_x += 8 * self.sequencer.clock_divisor;
-        self.rba += 8 * self.sequencer.clock_divisor as usize;
+        // self.raster_x += 8 * self.sequencer.clock_divisor;
+        // self.rba += 8 * self.sequencer.clock_divisor as usize;
+        self.raster_x += self.sequencer.char_clock;
+        self.rba += self.sequencer.char_clock as usize;
 
         if self.update_char_tick() && self.crtc.int_enabled() {
             self.intr = true;
@@ -1334,7 +1345,7 @@ impl VGACard {
 
     pub fn update_char_tick(&mut self) -> bool {
         let mut did_vsync = false;
-        self.vma = self.crtc.tick(self.get_clock_divisor()) as usize;
+        self.vma = self.crtc.tick(self.get_clock_divisor(), (self.raster_x, self.raster_y)) as usize;
         if self.crtc.status.begin_vsync {
             self.do_vsync();
             did_vsync = true;
@@ -1363,6 +1374,8 @@ impl VGACard {
     /// Perform a (virtual) vsync. Our virtual raster position (rba) returns to the top of the
     /// display field, and we swap the front and back buffer index.
     pub fn do_vsync(&mut self) {
+        self.update_clock();
+
         /*
         self.cycles_per_vsync = self.cur_screen_cycles;
         self.cur_screen_cycles = 0;
@@ -1441,11 +1454,20 @@ impl VGACard {
     }
 
     fn update_clock(&mut self) {
-        if self.sequencer.clock_change_pending {
-            (self.sequencer.clock_divisor, self.sequencer.char_clock) = match self.sequencer.clocking_mode.dot_clock() {
-                DotClock::HalfClock => (2, 16),
-                DotClock::Native => (1, 8),
-            };
+        if self.sequencer.poll_clock_change() {
+            // TODO: Should we defer sequencer clock updates? If so we can do them here, but for now
+            //       they are immediate. The issue is potentially that we draw out of frame if we do
+            //       not also immediately update the aperture.
+
+            // (self.sequencer.clock_divisor, self.sequencer.char_clock) = match (
+            //     self.sequencer.clocking_mode.character_clock(),
+            //     self.sequencer.clocking_mode.dot_clock(),
+            // ) {
+            //     (CharacterClock::EightDots, DotClock::Native) => (1, 8),
+            //     (CharacterClock::NineDots, DotClock::Native) => (1, 9),
+            //     (CharacterClock::EightDots, DotClock::HalfClock) => (2, 16),
+            //     (CharacterClock::NineDots, DotClock::HalfClock) => (2, 18),
+            // };
 
             // Update display extents and aperture lists for new clock.
             match self.misc_output_register.clock_select() {
@@ -1479,20 +1501,60 @@ impl VGACard {
                     // Unsupported
                 }
             }
+
+            log::debug!(
+                "Updated VGA Clocks: Master {:?} Dot: {:?} new extents: {}x{}",
+                self.misc_output_register.clock_select(),
+                self.sequencer.clocking_mode.dot_clock(),
+                self.extents.field_w,
+                self.extents.field_h,
+            );
         }
 
+        // Update dynamic aperture per-frame
         let sync: u32 = self.vertical_sync().into();
+        self.crtc
+            .status
+            .dynamic_aperture
+            .adjust(self.sequencer.char_clock, self.gc.shift_mode());
+
         for aperture in self.extents.apertures.iter_mut() {
-            if !aperture.debug && (sync < aperture.h) {
-                aperture.h = sync;
+            if !aperture.debug {
+                if sync < aperture.h {
+                    aperture.h = sync;
+                }
+
+                // Do auto-aperture
+                if self
+                    .crtc
+                    .status
+                    .dynamic_aperture
+                    .is_compatible_with((self.extents.field_w, self.extents.field_h))
+                {
+                    // log::debug!(
+                    //     "update_clock: Updating aperture from dynamic aperture: {:?}",
+                    //     self.crtc.status.dynamic_aperture
+                    // );
+                    aperture.x = self.crtc.status.dynamic_aperture.left;
+                    aperture.y = self.crtc.status.dynamic_aperture.top;
+
+                    // log::debug!(
+                    //     "update_clock(): Set dynamic aperture: {}x{} x:{} y:{}",
+                    //     aperture.w,
+                    //     aperture.h,
+                    //     aperture.x,
+                    //     aperture.y
+                    // );
+                }
+                else {
+                    log::warn!(
+                        "update_clock(): Dynamic aperture {:?} not compatible with current aperture {:?}",
+                        self.crtc.status.dynamic_aperture,
+                        aperture
+                    );
+                }
             }
         }
-
-        log::debug!(
-            "Updated EGA Clock, new extents: {}x{}",
-            self.extents.field_w,
-            self.extents.field_h,
-        );
     }
 
     fn ega_to_rgb(egacolor: u8) -> (u8, u8, u8) {

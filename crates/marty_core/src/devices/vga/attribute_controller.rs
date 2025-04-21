@@ -23,12 +23,10 @@
     DEALINGS IN THE SOFTWARE.
 
     ---------------------------------------------------------------------------
-
-    ega::attribute_controller.rs
-
-    Implements the EGA Attribute Controller
-
 */
+
+//! Implements the VGA's Attribute Controller.
+
 use super::*;
 use std::cmp::PartialEq;
 
@@ -57,6 +55,7 @@ pub enum AttributeRegister {
     OverscanColor,
     ColorPlaneEnable,
     HorizontalPelPanning,
+    ColorSelect,
 }
 
 #[derive(Debug)]
@@ -149,6 +148,15 @@ pub struct AColorPlaneEnable {
     unused: B2,
 }
 
+#[bitfield]
+#[derive(Copy, Clone)]
+pub struct AColorSelectRegister {
+    pub c45: B2,
+    pub c67: B2,
+    #[skip]
+    unused:  B4,
+}
+
 pub enum AttributeInput<'a> {
     Black,
     SolidColor(u8),
@@ -195,6 +203,7 @@ pub struct AttributeController {
     overscan_color64: u64,
     color_plane_enable: AColorPlaneEnable,
     color_plane_enable64: u64,
+    color_select: AColorSelectRegister,
     pel_panning: u8,
     blink_state: bool,
     last_den: bool,
@@ -228,6 +237,7 @@ impl Default for AttributeController {
             overscan_color64: 0,
             color_plane_enable: AColorPlaneEnable::new(),
             color_plane_enable64: !0,
+            color_select: AColorSelectRegister::new(),
             pel_panning: 0,
             blink_state: false,
             last_den: false,
@@ -286,6 +296,7 @@ impl AttributeController {
                 AttributeRegister::OverscanColor => self.overscan_color.six,
                 AttributeRegister::ColorPlaneEnable => self.color_plane_enable.into_bytes()[0],
                 AttributeRegister::HorizontalPelPanning => self.pel_panning,
+                AttributeRegister::ColorSelect => self.color_select.into_bytes()[0],
             },
         }
     }
@@ -366,6 +377,10 @@ impl AttributeController {
                         self.pel_panning = byte & 0x0F;
                         //log::debug!("pel panning set to {}", self.pel_panning);
                     }
+                    AttributeRegister::ColorSelect => {
+                        self.color_select = AColorSelectRegister::from_bytes([byte]);
+                        //log::debug!("color select set to {:08b}", byte);
+                    }
                 }
 
                 // IBM: "The flip-flop toggles each time an OUT is issued to the Attribute Controller"
@@ -379,6 +394,22 @@ impl AttributeController {
         for i in 0..8 {
             self.color_plane_enable64 |= (self.color_plane_enable.enable_plane() as u64) << (i * 8);
         }
+    }
+
+    #[inline(always)]
+    pub fn palette_lookup(&self, index: u8) -> u32 {
+        let color_index = match self.mode_control.internal_palette_size() {
+            0 => {
+                // Substitute bits 6-7 of the palette register with bits 0-1 of the color register
+                (self.palette_registers[(index & 0x0F) as usize].six | (self.color_select.c67() << 6)) as usize
+            }
+            _ => {
+                // Substitute bits 4-5 of the palette register with bits 0-1 of the color register
+                ((self.palette_registers[(index & 0x0F) as usize].six & 0x0F) | (self.color_select.c45() << 4)) as usize
+            }
+        };
+
+        self.color_registers_u32[color_index]
     }
 
     #[inline]
@@ -440,7 +471,7 @@ impl AttributeController {
                     PixelClockSelect::EveryCycle => {
                         for (i, byte) in data.iter().enumerate() {
                             let color = *byte & self.color_plane_enable.enable_plane();
-                            self.shift_reg |= (self.palette_registers[color as usize].six as u128) << ((7 - i) * 8);
+                            self.shift_reg |= (color as u128) << ((7 - i) * 8);
                         }
                     }
                     PixelClockSelect::EveryOtherCycle => {
@@ -455,7 +486,7 @@ impl AttributeController {
                 _ => {
                     for (i, byte) in data.iter().enumerate() {
                         let color = *byte & self.color_plane_enable.enable_plane();
-                        self.shift_reg |= (self.palette_registers[color as usize].six as u128) << ((7 - i) * 8);
+                        self.shift_reg |= (color as u128) << ((7 - i) * 8);
                     }
                 }
             },
@@ -465,7 +496,7 @@ impl AttributeController {
             AttributeInput::Parallel(data, attr, cursor) => {
                 let mut resolved_glyph = 0;
                 if cursor {
-                    resolved_glyph = BYTE_EXTEND_TABLE64[0xFF];
+                    resolved_glyph = ALL_SET64;
                 }
                 else {
                     for (i, byte) in data.iter().enumerate() {
@@ -545,6 +576,41 @@ impl AttributeController {
     }
 
     #[rustfmt::skip]
+    pub fn shift_out64_halfclock_9col(&mut self) -> (u64, u64, u8) {
+        let mut out_data0 = 0;
+        let mut out_data1 = 0;
+
+        let shifted_reg = self.shift_reg << ((self.pel_panning & 0x07) * 8);
+        let out_data = (shifted_reg >> 64) as u64;
+        let out_data_8 = (shifted_reg >> 56) as u8;
+
+        // Shift the attribute data 72 bits to make room for next character clock
+        self.shift_reg <<= 72;
+        // Add the 16 bits from the spillover register
+        self.shift_reg |= ((self.shift_reg9 & 0xFFFF) as u128) << 56;
+
+        out_data0 |= (out_data & 0xFF00000000000000) >> 56; // -> 0x00000000000000FF
+        out_data0 |= (out_data & 0xFF00000000000000) >> 48; // -> 0x000000000000FF00
+        out_data0 |= (out_data & 0x00FF000000000000) >> 32; // -> 0x0000000000FF0000
+        out_data0 |= (out_data & 0x00FF000000000000) >> 24; // -> 0x00000000FF000000
+        out_data0 |= (out_data & 0x0000FF0000000000) >> 8;  // -> 0x000000FF00000000
+        out_data0 |=  out_data & 0x0000FF0000000000;        // -> 0x0000FF0000000000
+        out_data0 |= (out_data & 0x000000FF00000000) << 16; // -> 0x00FF000000000000
+        out_data0 |= (out_data & 0x000000FF00000000) << 24; // -> 0xFF00000000000000
+
+        out_data1 |= (out_data & 0x00000000FF000000) >> 24; // -> 0x00000000000000FF
+        out_data1 |= (out_data & 0x00000000FF000000) >> 16; // -> 0x000000000000FF00
+        out_data1 |=  out_data & 0x0000000000FF0000;        // -> 0x0000000000FF0000
+        out_data1 |= (out_data & 0x0000000000FF0000) << 8;  // -> 0x00000000FF000000
+        out_data1 |= (out_data & 0x000000000000FF00) << 24; // -> 0x000000FF00000000
+        out_data1 |= (out_data & 0x000000000000FF00) << 32; // -> 0x0000FF0000000000
+        out_data1 |= (out_data & 0x00000000000000FF) << 48; // -> 0x00FF000000000000
+        out_data1 |= (out_data & 0x00000000000000FF) << 56; // -> 0xFF00000000000000
+
+        (out_data0, out_data1, out_data_8)
+    }
+
+    #[rustfmt::skip]
     pub fn shift_out64_mode13(&mut self) -> u64 {
         let mut out_data0 = 0;
         let mut out_data1 = 0;
@@ -559,7 +625,6 @@ impl AttributeController {
         out_data0 |= out_data & 0x0000FF0000000000;         // -> 0x0000FF0000000000
         out_data0 |= (out_data & 0x000000FF00000000) << 16; // -> 0x00FF000000000000
         out_data0 |= (out_data & 0x000000FF00000000) << 24; // -> 0xFF00000000000000
-
 
         out_data1 |= (out_data & 0x00000000FF000000) >> 24; // -> 0x00000000000000FF
         out_data1 |= (out_data & 0x00000000FF000000) >> 16; // -> 0x000000000000FF00

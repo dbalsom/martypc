@@ -46,7 +46,7 @@ macro_rules! palette_lookup4 {
 
 macro_rules! palette_lookup6 {
     ($self:expr, $color:expr) => {
-        $self.ac.color_registers_u32[$self.ac.palette_registers[($color & 0x0F) as usize].six as usize]
+        $self.ac.palette_lookup($color)
     };
 }
 
@@ -101,12 +101,6 @@ impl VGACard {
         }
     }
 
-    /*    #[inline]
-        pub fn draw_from_ac(&mut self, attr_char: u64) {
-            let frame_u64: &mut [u64] = bytemuck::cast_slice_mut(&mut *self.buf[self.back_buf]);
-            frame_u64[self.rba >> 3] = attr_char;
-        }
-    */
     /// Draw a character from the attribute controller packed into a u64 of 8 pixels
     /// (32-bit)
     #[inline]
@@ -115,8 +109,20 @@ impl VGACard {
 
         for i in (0..=7).rev() {
             let pixel = (attr_char >> (i * 8)) as u8;
+            let color_u32 = palette_lookup6!(self, pixel);
+            buf_mut[i] = color_u32;
+        }
+    }
+
+    /// Draw a character from the attribute controller packed into a u64 of 8 pixels
+    /// (32-bit)
+    #[inline]
+    pub fn draw_from_ac_dac(&mut self, attr_char: u64) {
+        let buf_mut = buf_mut!(self);
+
+        for i in (0..=7).rev() {
+            let pixel = (attr_char >> (i * 8)) as u8;
             let color_u32 = self.ac.color_registers_u32[pixel as usize];
-            //let color_u32 = palette_lookup6!(self, pixel);
             buf_mut[i] = color_u32;
         }
     }
@@ -154,6 +160,25 @@ impl VGACard {
         }
     }
 
+    #[inline]
+    pub fn draw_from_ac_halfclock_9col(&mut self, attr_char0: u64, attr_char1: u64, attr_byte: u8) {
+        let buf_mut = buf_mut!(self);
+
+        for i in (0..=7).rev() {
+            let pixel = (attr_char0 >> (i * 8)) as u8;
+            let color_u32 = palette_lookup6!(self, pixel);
+            buf_mut[i] = color_u32;
+        }
+        for i in (0..=7).rev() {
+            let pixel = (attr_char1 >> (i * 8)) as u8;
+            let color_u32 = palette_lookup6!(self, pixel);
+            buf_mut[8 + i] = color_u32;
+        }
+        let color_9col = palette_lookup6!(self, attr_byte);
+        buf_mut[16] = color_9col;
+        buf_mut[17] = color_9col;
+    }
+
     /// Draw a character (8 pixels) in a hires 4bpp mode using a single solid color.
     /// Use the color's 6bpp palette entry.
     /// (32-bit)
@@ -164,6 +189,18 @@ impl VGACard {
 
         for i in 0..8 {
             buf_mut[i] = color_u32;
+        }
+    }
+
+    /// Draw 8 pixels of a solid color at a specified framebuffer address.
+    /// (32-bit)
+    #[inline]
+    pub fn draw_debug_hchar(&mut self, color: u8) {
+        let buf_mut = buf_mut!(self);
+
+        let color = EGA_PALETTE[(color & FOUR_BITS) as usize];
+        for i in (0..=7).rev() {
+            buf_mut[i] = color;
         }
     }
 

@@ -23,13 +23,11 @@
     DEALINGS IN THE SOFTWARE.
 
     ---------------------------------------------------------------------------
-
-    ega::graphics_controller.rs
-
-    Implement the EGA Graphics Controllers. Although there are two physical LSI
-    chips on the IBM EGA, we treat them as one functional unit here.
-
 */
+
+//! Implements the VGA's Graphics Controller subsystem.
+//! The Graphics Controllers were originally independent LSI chips on the EGA, but they now serve as a single 
+//! functional unit within the VGA's VLSI chip.
 
 use super::*;
 
