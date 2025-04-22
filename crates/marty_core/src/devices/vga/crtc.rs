@@ -181,7 +181,7 @@ pub struct COverflow {
 pub struct CMaximumScanline {
     pub maximum_scanline: B5,
     pub vbs: B1,
-    pub lc: B1,
+    pub line_compare_bit_9: B1,
     pub two_t4: bool,
 }
 
@@ -659,6 +659,12 @@ impl VgaCrtc {
             CRTCRegister::MaximumScanLine => {
                 // (R9)
                 self.crtc_maximum_scanline = CMaximumScanline::from_bytes([byte]);
+                // Write 9th bit of line compare 
+                self.crtc_line_compare &= 0xFDFF;
+                self.crtc_line_compare |= match self.crtc_maximum_scanline.line_compare_bit_9() {
+                    0 => 0,
+                    _ => 0x0200,
+                };
             }
             CRTCRegister::CursorStartLine => {
                 // R(A)
@@ -1109,8 +1115,6 @@ impl VgaCrtc {
 
                 self.vma_sl += self.crtc_offset as u16 * 2;
                 self.vma = self.vma_sl;
-
-                // Load next char + attr
             }
 
             if self.slc == self.crtc_line_compare {
