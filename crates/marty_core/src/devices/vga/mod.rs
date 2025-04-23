@@ -1039,7 +1039,14 @@ impl VGACard {
                                 (00..=39, AttributeDisplayType::Color) => DisplayMode::ModeDEGALowResGraphics,
                                 (79, AttributeDisplayType::Color) => match self.crtc.vertical_display_end() {
                                     0..=199 => DisplayMode::ModeEEGAMedResGraphics,
-                                    _ => DisplayMode::Mode10EGAHiResGraphics,
+                                    _ => {
+                                        if self.gc.chain4() {
+                                            DisplayMode::Mode13VGALowRes256
+                                        }
+                                        else {
+                                            DisplayMode::Mode10EGAHiResGraphics
+                                        }
+                                    }
                                 },
                                 _ => {
                                     log::warn!("Unsupported graphics mode.");
