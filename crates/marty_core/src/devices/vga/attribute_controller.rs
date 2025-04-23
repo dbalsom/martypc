@@ -467,15 +467,22 @@ impl AttributeController {
                 self.shift_reg |= BYTE_EXTEND_TABLE64[self.overscan_color.six as usize] as u128;
             }
             AttributeInput::Serial(data) => match clock_select {
+                // TODO: Do we need 'clock_select' at all here?
                 ClockSelect::Clock25 => match self.mode_control.pixel_clock_select() {
                     PixelClockSelect::EveryCycle => {
+                        // This clock is used in 16 color modes.
+                        // The shift register is loaded normally, one nibble per clock.
                         for (i, byte) in data.iter().enumerate() {
                             let color = *byte & self.color_plane_enable.enable_plane();
                             self.shift_reg |= (color as u128) << ((7 - i) * 8);
                         }
                     }
                     PixelClockSelect::EveryOtherCycle => {
-                        let shift_idx = if !self.shift_flipflop { 7 } else { 3 };
+                        // This clock is used in 256 color modes.
+                        // The GC serializes nibbles to the AC.
+                        // To produce 8 bits per pixel, the AC's shift register must be loaded with
+                        // two nibbles, taking two clocks per pixel.
+                        let shift_idx = if !self.shift_flipflop { 3 } else { 7 };
                         for (i, b) in data.chunks_exact(2).enumerate() {
                             self.shift_reg |= ((b[0] as u128) << ((shift_idx - i) * 8)) << 4;
                             self.shift_reg |= (b[1] as u128) << ((shift_idx - i) * 8);
@@ -484,6 +491,7 @@ impl AttributeController {
                     }
                 },
                 _ => {
+                    // Clock28 or some unknown clock (which we will just pretend we don't see)
                     for (i, byte) in data.iter().enumerate() {
                         let color = *byte & self.color_plane_enable.enable_plane();
                         self.shift_reg |= (color as u128) << ((7 - i) * 8);
@@ -615,16 +623,52 @@ impl AttributeController {
         let mut out_data0 = 0;
         let mut out_data1 = 0;
 
-        let out_data = ((self.shift_reg << (std::cmp::min(self.pel_panning, 0x07) * 8)) >> 64) as u64;
+        let shifted_reg = self.shift_reg << ((self.pel_panning & 0x0F) * 8);
+        let out_data = (shifted_reg >> 64) as u64;
+
+        match self.shift_flipflop {
+            false => {
+                out_data0 |= (out_data & 0xFF00000000000000) >> 56; // -> 0x00000000000000FF
+                out_data0 |= (out_data & 0xFF00000000000000) >> 48; // -> 0x000000000000FF00
+                out_data0 |= (out_data & 0x00FF000000000000) >> 32; // -> 0x0000000000FF0000
+                out_data0 |= (out_data & 0x00FF000000000000) >> 24; // -> 0x00000000FF000000
+                out_data0 |= (out_data & 0x0000FF0000000000) >> 8;  // -> 0x000000FF00000000
+                out_data0 |=  out_data & 0x0000FF0000000000;        // -> 0x0000FF0000000000
+                out_data0 |= (out_data & 0x000000FF00000000) << 16; // -> 0x00FF000000000000
+                out_data0 |= (out_data & 0x000000FF00000000) << 24; // -> 0xFF00000000000000
+                out_data0
+            }
+            true => {
+                out_data1 |= (out_data & 0x00000000FF000000) >> 24; // -> 0x00000000000000FF
+                out_data1 |= (out_data & 0x00000000FF000000) >> 16; // -> 0x000000000000FF00
+                out_data1 |=  out_data & 0x0000000000FF0000;        // -> 0x0000000000FF0000
+                out_data1 |= (out_data & 0x0000000000FF0000) << 8;  // -> 0x00000000FF000000
+                out_data1 |= (out_data & 0x000000000000FF00) << 24; // -> 0x000000FF00000000
+                out_data1 |= (out_data & 0x000000000000FF00) << 32; // -> 0x0000FF0000000000
+                out_data1 |= (out_data & 0x00000000000000FF) << 48; // -> 0x00FF000000000000
+                out_data1 |= (out_data & 0x00000000000000FF) << 56; // -> 0xFF00000000000000
+                self.shift_reg <<= 64;
+                out_data1
+            }
+        }
+    }
+
+    #[rustfmt::skip]
+    pub fn shift_out64_mode13_2(&mut self) -> u64 {
+        let mut out_data0 = 0;
+        let mut out_data1 = 0;
+
+        let shifted_reg = self.shift_reg << ((self.pel_panning & 0x07) * 8);
+        let out_data = (shifted_reg >> 64) as u64;
 
         out_data0 |= (out_data & 0xFF00000000000000) >> 56; // -> 0x00000000000000FF
-        out_data0 |= (out_data & 0xFF00000000000000) >> 48; // -> 0x000000000000FF00
-        out_data0 |= (out_data & 0x00FF000000000000) >> 32; // -> 0x0000000000FF0000
-        out_data0 |= (out_data & 0x00FF000000000000) >> 24; // -> 0x00000000FF000000
-        out_data0 |= (out_data & 0x0000FF0000000000) >> 8;  // -> 0x000000FF00000000
-        out_data0 |= out_data & 0x0000FF0000000000;         // -> 0x0000FF0000000000
-        out_data0 |= (out_data & 0x000000FF00000000) << 16; // -> 0x00FF000000000000
-        out_data0 |= (out_data & 0x000000FF00000000) << 24; // -> 0xFF00000000000000
+        out_data0 |= (out_data & 0x00FF000000000000) >> 48; // -> 0x000000000000FF00
+        out_data0 |= (out_data & 0x0000FF0000000000) >> 24; // -> 0x0000000000FF0000
+        out_data0 |= (out_data & 0x000000FF00000000) >> 8;  // -> 0x00000000FF000000
+        out_data0 |= (out_data & 0x00000000FF000000) << 8;  // -> 0x000000FF00000000
+        out_data0 |= (out_data & 0x0000000000FF0000) << 24; // -> 0x0000FF0000000000
+        out_data0 |= (out_data & 0x000000000000FF00) << 40; // -> 0x00FF000000000000
+        out_data0 |= (out_data & 0x00000000000000FF) << 56; // -> 0xFF00000000000000
 
         out_data1 |= (out_data & 0x00000000FF000000) >> 24; // -> 0x00000000000000FF
         out_data1 |= (out_data & 0x00000000FF000000) >> 16; // -> 0x000000000000FF00
