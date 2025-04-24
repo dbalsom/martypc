@@ -310,6 +310,10 @@ impl MartyApp {
             }
         }
 
+        log::debug!(
+            "init(): Setting emulator update tick to highest video refresh rate: {}",
+            highest_rate
+        );
         self.tm.set_emu_update_rate(highest_rate);
         self.tm.set_emu_render_rate(highest_rate);
 

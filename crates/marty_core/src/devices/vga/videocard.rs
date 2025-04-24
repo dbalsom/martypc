@@ -147,9 +147,8 @@ impl VideoCard for VGACard {
     }
 
     /// Return the current refresh rate. For VGA, this can be 60Hz or 70Hz depending on mode.
-    /// TODO: Handle VGA 70Hz modes.
     fn get_refresh_rate(&self) -> f32 {
-        60.0
+        70.0
     }
 
     /// Return the 16-bit value computed from the CRTC's pair of Page Address registers.
