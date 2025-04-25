@@ -24,7 +24,7 @@
 
     --------------------------------------------------------------------------
 */
-use gilrs::Event;
+
 use marty_frontend_common::types::gamepad::{GamepadId, GamepadInfo};
 
 pub struct GamepadInterface {

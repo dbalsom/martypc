@@ -23,12 +23,9 @@
     DEALINGS IN THE SOFTWARE.
 
     ---------------------------------------------------------------------------
-
-    ega::mmio.rs
-
-    Implement the EGA MMIO Interface
-
 */
+
+//! Implement the VGA cards' MMIO interface.
 
 use super::*;
 use crate::bus::{MemRangeDescriptor, MemoryMappedDevice};

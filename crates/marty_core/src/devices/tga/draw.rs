@@ -160,7 +160,6 @@ impl TGACard {
             self.draw_solid_hchar(self.cur_fg);
         }
         else if self.mode_enable {
-            
             // Get the u64 glyph row to draw for the current fg and bg colors and character row (vlc)
             let glyph_row: u64 = self.get_hchar_glyph_row(self.cur_char as usize, self.vlc_c9 as usize);
 
@@ -219,7 +218,7 @@ impl TGACard {
     /// Draw 16 pixels in medium res 2bpp graphics mode (320x200x4)
     /// This routine uses precalculated lookups and masks to generate two u64
     /// values to write to the index frame buffer directly.
-    pub fn draw_gfx_mode_2bpp_mchar(&mut self, cpumem: &[u8]) {
+    pub fn draw_gfx_mode_2bpp_mchar_cga(&mut self, cpumem: &[u8]) {
         if self.mode_enable {
             let mchar_dat = self.get_lowres_gfx_mchar(self.vlc_c9, cpumem);
             let color0 = mchar_dat.0 .0;
@@ -231,6 +230,44 @@ impl TGACard {
 
             frame_u64[self.rba >> 3] = color0 | (mask0 & CGA_COLORS_U64[self.cc_altcolor as usize]);
             frame_u64[(self.rba >> 3) + 1] = color1 | (mask1 & CGA_COLORS_U64[self.cc_altcolor as usize]);
+        }
+        else {
+            self.draw_solid_char(self.cc_altcolor);
+        }
+    }
+
+    pub fn draw_gfx_mode_2bpp_mchar(&mut self, cpumem: &[u8]) {
+        if self.mode_enable {
+            let base_addr = self.get_gfx_addr(self.vlc_c9);
+            let byte0 = self.crt_mem(cpumem)[base_addr] as usize;
+            let byte1 = self.crt_mem(cpumem)[base_addr + 1] as usize;
+
+            let mask = self.palette_mask as usize;
+            let pixel0 = self.palette_registers[mask & (byte0 >> 6 & 0x03)];
+            let pixel1 = self.palette_registers[mask & (byte0 >> 4 & 0x03)];
+            let pixel2 = self.palette_registers[mask & (byte0 >> 2 & 0x03)];
+            let pixel3 = self.palette_registers[mask & (byte0 & 0x03)];
+            let pixel4 = self.palette_registers[mask & (byte1 >> 6 & 0x03)];
+            let pixel5 = self.palette_registers[mask & (byte1 >> 4 & 0x03)];
+            let pixel6 = self.palette_registers[mask & (byte1 >> 2 & 0x03)];
+            let pixel7 = self.palette_registers[mask & (byte1 & 0x03)];
+
+            self.buf[self.back_buf][self.rba] = pixel0;
+            self.buf[self.back_buf][self.rba + 1] = pixel0;
+            self.buf[self.back_buf][self.rba + 2] = pixel1;
+            self.buf[self.back_buf][self.rba + 3] = pixel1;
+            self.buf[self.back_buf][self.rba + 4] = pixel2;
+            self.buf[self.back_buf][self.rba + 5] = pixel2;
+            self.buf[self.back_buf][self.rba + 6] = pixel3;
+            self.buf[self.back_buf][self.rba + 7] = pixel3;
+            self.buf[self.back_buf][self.rba + 8] = pixel4;
+            self.buf[self.back_buf][self.rba + 9] = pixel4;
+            self.buf[self.back_buf][self.rba + 10] = pixel5;
+            self.buf[self.back_buf][self.rba + 11] = pixel5;
+            self.buf[self.back_buf][self.rba + 12] = pixel6;
+            self.buf[self.back_buf][self.rba + 13] = pixel6;
+            self.buf[self.back_buf][self.rba + 14] = pixel7;
+            self.buf[self.back_buf][self.rba + 15] = pixel7;
         }
         else {
             self.draw_solid_char(self.cc_altcolor);

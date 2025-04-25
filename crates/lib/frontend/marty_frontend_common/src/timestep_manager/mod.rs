@@ -371,6 +371,7 @@ impl TimestepManager {
     pub fn set_emu_render_rate(&mut self, fps: f32) {
         self.emu_render_rate.set(fps);
         self.frame_target = Duration::from_micros(1_000_000 / self.emu_render_rate.get() as u64);
+        self.recalculate_target();
         log::info!(
             "Emulator render rate has changed to {} FPS, new frame target: {:.2}ms",
             self.emu_render_rate.get(),
@@ -381,17 +382,17 @@ impl TimestepManager {
     pub fn set_cpu_mhz(&mut self, mhz: f64) {
         self.cpu_mhz = mhz;
         self.recalculate_target();
-    }
-
-    fn recalculate_target(&mut self) {
-        self.cpu_cycle_update_target =
-            ((self.cpu_mhz * 1_000_000.0 / self.emu_update_rate.get() as f64) * self.throttle_factor.get()) as u32;
         log::info!(
             "CPU clock has changed to {:.4}Mhz, speed factor: {}, new cycle target: {}",
             self.cpu_mhz,
             self.throttle_factor.get(),
             self.cpu_cycle_update_target,
         );
+    }
+
+    fn recalculate_target(&mut self) {
+        self.cpu_cycle_update_target =
+            ((self.cpu_mhz * 1_000_000.0 / self.emu_update_rate.get() as f64) * self.throttle_factor.get()) as u32;
     }
 
     pub fn set_emu_update_rate(&mut self, fps: f32) {
