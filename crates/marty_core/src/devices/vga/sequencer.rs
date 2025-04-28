@@ -82,8 +82,10 @@ pub struct SMemoryModeRegister {
 pub struct SCharacterMapSelect {
     pub generator_b: B2,
     pub generator_a: B2,
+    pub offset_b: bool,
+    pub offset_a: bool,
     #[skip]
-    unused: B4,
+    unused: B2,
 }
 
 #[derive(Copy, Clone, Debug, BitfieldSpecifier)]
@@ -156,6 +158,27 @@ impl Sequencer {
         *self = Sequencer::default();
     }
 
+    #[inline]
+    pub fn clock(&self) -> u64 {
+        self.char_clock as u64
+    }
+
+    #[inline]
+    pub fn set_clock_change_pending(&mut self) {
+        self.clock_change_pending = true;
+    }
+
+    #[inline]
+    pub fn poll_clock_change(&mut self) -> bool {
+        if self.clock_change_pending {
+            self.clock_change_pending = false;
+            true
+        }
+        else {
+            false
+        }
+    }
+
     pub fn read_address(&mut self) -> u8 {
         self.address_byte
     }
@@ -211,10 +234,13 @@ impl Sequencer {
                 log::trace!("Write to Sequencer::ClockingMode register: {:02X}", data_byte);
 
                 self.clock_change_pending = true;
-                (self.clock_divisor, self.char_clock) = match self.clocking_mode.dot_clock() {
-                    DotClock::HalfClock => (2, 16),
-                    DotClock::Native => (1, 8),
-                }
+                (self.clock_divisor, self.char_clock) =
+                    match (self.clocking_mode.character_clock(), self.clocking_mode.dot_clock()) {
+                        (CharacterClock::EightDots, DotClock::Native) => (1, 8),
+                        (CharacterClock::NineDots, DotClock::Native) => (1, 9),
+                        (CharacterClock::EightDots, DotClock::HalfClock) => (2, 16),
+                        (CharacterClock::NineDots, DotClock::HalfClock) => (2, 18),
+                    }
             }
             SequencerRegister::MapMask => {
                 self.map_mask = data_byte & 0x0F;
@@ -254,6 +280,14 @@ impl Sequencer {
             0b10 => 0x8000,
             0b11 | _ => 0xC000,
         };
+
+        if self.character_map_select.offset_b() {
+            self.font_offset_b += 0x2000;
+        }
+
+        if self.character_map_select.offset_a() {
+            self.font_offset_a += 0x2000;
+        }
     }
 
     pub fn cpu_read_u8(&self, plane: usize, addr: usize, _a0: usize) -> u8 {

@@ -1,6 +1,14 @@
 
 ## [0.4.0](https://github.com/dbalsom/martypc/releases/tag/0.4.0) (2025-04-XX)
 
+This update brings a massive list of new features, so here's a quick summary:
+ - New sound system and sound devices including Adlib, Disney Sound Source, and SN76489 3-voice sound
+ - New floppy disk image library enabling a ton of new floppy disk image types and support for several copy protections
+ - New frontend supporting both native and WASM, support for native file dialogs
+ - ATA device emulation, supported by XT-IDE and jr-IDE devices for larger hard disk support 
+ - VGA support and improved PCjr and TGA video emulation
+ - Memory and register editing
+
 ## New `eframe` Frontend
 
 Some dependency API changes prompted me to switch window frameworks. The active Desktop frontend for MartyPC is now
@@ -8,7 +16,7 @@ based on a customized fork of [eframe](https://github.com/emilk/egui/tree/master
 
 This provides a few nice things:
  - Alternate backend support. We can now compile MartyPC for either:
-   - [wgpu](https://github.com/gfx-rs/wgpu) (the old default)
+   - [wgpu](https://github.com/gfx-rs/wgpu) - (the old default)
    - [glow](https://github.com/grovesNL/glow) - OpenGL bindings for Rust
 
    It is my hope that the`glow` backend may be more performant on older machines. We'll see, I suppose. Unfortunately,
@@ -21,89 +29,100 @@ This provides a few nice things:
    like which windows you had open and their positions, for example. This feature will be expanded upon.
 
 ## Native File Dialogs
- - The RFD crate provides access to native file dialogs for your particular OS.  Besides file open and file save pickers,
-   we can also use MessageBox(es).
- - Initialization errors are now described in hopefully helpful detail via an error MessageBox. You should no longer 
+ - The RFD crate provides access to native file dialogs for your particular OS, including File Open and Save dialogs.
+ - Initialization errors are now reported via an error MessageBox. You should no longer 
    have to rely on the command line output to tell why MartyPC didn't start.
 
-## XTIDE Hard Disk Controller
- - 0.4.0 adds a new type of Hard Disk Controller - we can now emulate an XTIDE Rev 2. Since this BIOS is open-source,
-   a machine configuration that includes hard drive support is now the default: `ibm5160_xtide`.
- - If you want the 'authentic retro' experience, the IBM/Xebec controller is still available as `ibm5160_hdd` as usual.
- - The VHD creator has been updated to support the wide selection of common hard drive geometries that the XTIDE can 
-   support. You'll need to be running a machine with the XTIDE configured to see them.
- - It is now possible to take a VHD file from 86Box (assuming you created it as a 'fixed' VHD) and use it in MartyPC
-   (and vice versa!).
+## New Devices
 
-## New Machine Types
- - CompaqPortable: The original Compaq Portable, the classic luggable 
- - CompaqDeskpro: The original Compaq Deskpro, with an 8086 CPU
+* ### VGA
+  - The IBM VGA card is emulated at last. MartyPC's VGA is based off its EGA implementation, with appropriate changes 
+    and additions. Clocked up to 28Mhz, the VGA is an expensive device to run at a character-clock accurate rate, so you
+    may need a fast computer. Mode 13h and ModeX/Y are supported (Wolfenstein 3D's 'ModeY' works!).
+  - The Video Card debugger window will show you the VGA's register state, including the current palette in realtime.
 
-## SN76489
- - The 3-voice sound chip found in the IBM PCjr and Tandy 1000 is now emulated! These machines will automatically 
-   get this new audio device installed by default with no configuration changes necessary.
+* ### XTIDE Hard Disk Controller
+  - An XTIDE Rev 2 device can now be emulated. Since this BIOS is open-source, a machine configuration that includes 
+    hard drive support is now the default: `ibm5160_xtide`.
+  - If you want the 'authentic retro' experience, the IBM/Xebec controller is still available as `ibm5160_hdd` as usual.
+  - The VHD creator has been updated to support the wide selection of common hard drive geometries that the XTIDE can 
+    support. You'll need to be running a machine with the XTIDE configured to see them.
+  - It is now possible to take a VHD file from 86Box (assuming you created it as a 'fixed' VHD) and use it in MartyPC
+    (and vice versa!).
 
-## Disney Sound Source
- - If you have a parallel adapter specified, you can attach a Disney Sound Source, and enjoy various squawky digitized
-   sounds in games that support it (Mostly Disney titles, Wolf 3d, Prince of Persia, and a few others. See Mobygames
-   for a list of supported titles).
+* ### jr-IDE Hard Disk Controller
+  - To go along with the XTIDE, you can now emulate the jr-IDE. This gives you LBA-enabled ATA hard disk
+    support and 736k of conventional memory backfill for your PCjr.
 
-## Memory Expansion Cards
- - Conventional memory expansion cards can now be specified, at any address and with any capacity. It is possible 
-   to have non-contiguous memory regions if you decide to do so, but caveat emptor.
- - An overlay for the IBM PCjr called 'pcjr_memory_sidecar' will provide an extra 512k to bring your PCjr up to 640k.
+* ### Adlib Music Card
+  -  The first audio device in MartyPC besides the PC speaker is the Adlib Music Card. OPL2 emulation is provided by the
+     highly-accurate [nuked-opl3](https://github.com/nukeykt/Nuked-OPL3) library. This marks the first device I have not
+     emulated myself, but the time it would take to research FM synthesis and produce anything near nuked-opl3 quality
+     would have you waiting for OPL2 emulation for another decade.
 
-## New Debugger Features
-- The FDC debug window was expanded with much more information about operational state besides log messages.
-- A debug status viewer for the SN76489 was added, with nifty VU meters and oscilloscope displays for each channel.
-- You can now edit memory, at last! Double-clicking on byte in the hex view will enter edit mode. Hit enter to accept
-  the current value and go to the next byte. Click outside the edit box to cancel.
-- You can now edit the CPU registers and flags when the machine is paused from the CPU State debug window.
-    - You can also flush the CPU's instructon queue by clicking the 'flush' button.
-    - To take a manual jump, first, flush the queue, then edit PC to the value of IP you'd like to jump to.
+* ### SN76489
+  - The 3-voice sound chip found in the IBM PCjr and Tandy 1000 is now emulated! These machines will automatically 
+    get this new audio device installed by default with no configuration changes necessary.
+
+* ### Disney Sound Source
+  - If you have a parallel adapter specified, you can attach a Disney Sound Source, and enjoy various squawky digitized
+    sounds in games that support it (Mostly Disney titles, Wolf 3d, Prince of Persia, and a few others. See Mobygames
+    for a list of supported titles).
+
+* ### Memory Expansion Cards
+  - Conventional memory expansion cards can now be specified, at any address and with any capacity. It is possible 
+    to have non-contiguous memory regions if you decide to do so, but caveat emptor.
+  - An overlay for the IBM PCjr called 'pcjr_memory_sidecar' will provide an extra 512k to bring your PCjr up to 640k.
 
 ### Frontend Bug Fixes / Improvements
  - Mouse capture is even easier, with double-click to capture and middle-click to release implemented by default.
  - The new Sound menu has been improved with the ability to mute and adjust the volume of sound sources.
- - You can now toggle the display between the window background and a GUI widget window. Shaders are also available
+ - Toggle the display between the window background and a GUI widget window. Shaders are also available
    in windowed mode (With the wgpu backend)!
- - When in windowed mode, you can apply a bezel overlay. This works best with a shader preset that applies curvature,
+ - Apply a bezel overlay in windowed mode. This works best with a shader preset that applies curvature,
    and the 'accurate' aperture selected. This isn't really a shader effect, just a GUI trick.
- - Fixed an issue where MartyPC would receive keyboard events even though it didn't have keyboard focus (weird)
- - Stopped the emulated machine from receiving keyboard events when paused (I may make this optional, but it can be 
-   frustrating when stepping if you accidentally generate a keyboard interrupt).
- - The keyboard will be reset on loss of window focus, to avoid stuck keys.
- - The data visualizer now keeps the current view offset when resizing the bitmap, making it easier to resolve bitmap
-   resources of different sizes.
- - A revamped Input/Output menu allows control of peripherals:
+ - Fixed an issue where MartyPC would receive keyboard events even though it didn't have keyboard focus.
+ - Prevent the emulated machine from receiving keyboard events when paused.
+ - Reset the keyboard on loss of window focus (prevents stuck keys).
+ - Revamped Input/Output menu allows control of peripherals:
    - Mouse sensitivity/speed is now adjustable via the Mouse menu.
-   - The Keyboard menu allows for resetting the keyboard (clearing any stuck keys). 
+   - The Keyboard menu allows for resetting the keyboard (clearing any stuck keys).
+   - Mouse capture mode can toggle between emulating Mouse or Light Pen
+   - Game port joysticks can be mapped to host controllers
+
+## New Debugger Features
+ 
+ - A floppy controller debug window shows operational state and command logs.
+ - A debug window for the SN76489 shows channel state with optional UV meters and oscilloscope displays.
+ - The memory viewer will now resolve memory-mapped addresses, although what is shown in those regions is device-specific.
+ - The memory viewer now supports memory editing. 
+ - The CPU state viewer now supports editing registers and flags when the CPU is paused.
+ - The Disassembly viewer will now disassemble instructions in memory-mapped regions, such as PCjr cartridges.
 
 ### Core Bug Fixes / Improvements
- - Emulation speed improved overall by approximately 10%.
- - Added a parallel port card overlay.
- - Added a keyboard reset function to clear stuck keys. 
+ - Improvements to TGA/PCjr video emulation
+   - Support for hi-res 2bpp mode (ColorPaint)  
+   - Palette lookups in 2bpp modes
+   - Framerate fixes in low resolution (160x200) modes.
+   - Support for 256k TGA apertures (1000HX)
+  
+ - Added 8086 subtype of 8088 CPU for 16-bit data bus support
  - Improved accuracy of the Programmable Interrupt Timer (PIT)
- - Fixed a bug the CPU's DRAM refresh DMA scheduler. Many tests in Acid88 now pass.
  - Reworked wait state calculations
- - The timer hack for Area 5150 is no longer required and has been removed. MartyPC is now finally accurate enough to run
-   Area 5150 without any hacks or modificatons.
+ - Improved DRAM refresh DMA emulation
+   - Removed timer hack for Area 5150 end credits as DMA accuracy is now sufficient.
+   - Many tests in Acid88 now pass
+ - Emulation speed improved overall by approximately 10%.
+ 
 
-## 0.3.0 (Unreleased)
-
-## Fluxfox is here!
+## Bitstream-level Disk Image Emulation
 
 The inclusion of the [fluxfox](https://github.com/dbalsom/fluxfox) disk image library has greatly expanded MartyPC's 
-floppy disk emulation capabilities.
-
-### Bitstream-level disk emulation
-
-MartyPC now can emulate floppy disks at the sector or bitstream level. This makes support for many copy-protected titles
-possible. 
+floppy disk image support, and enabled support for several copy protection schemes.
 
 ### Disk Image Support
 
-fluxfox adds support for reading a wide array of disk image formats:
+Fluxfox supports reading a wide array of disk image formats:
  * TD0 (TeleDisk)
  * IMD (ImageDisk)
  * PSI (PCE Sector Image)
@@ -116,19 +135,18 @@ fluxfox adds support for reading a wide array of disk image formats:
  * SCP (SuperCardPro Image)
  * RAW (Kryoflux stream file set)
 
-fluxfox can write bitstream images to 86f and PRI formats. 
+Disk image loading is multithreaded so large disk images can be loaded without pausing the emulator.
 
-Not every feature of every format may be fully implemented, and there's just too much to test all by myself. I hope that
-I'll get a lot of issues opened so that I can squash any bugs.
+### Bitstream Image Writing
 
-See the wiki for more information on MartyPC's new disk support.
+Fluxfox can write bitstream images to 86f and PRI formats.
 
-## Disk Visualization
+### Disk Image Visualization
 
 fluxfox also enables a new Floppy Image info window, including a Disk View that shows a graphical visualization of the 
 disk surface.
 
-## Directory & Zip Floppy Mounting
+### Directory & Zip Floppy Mounting
 
 * Thanks to [rust-fatfs](https://github.com/rafalh/rust-fatfs), we can now dynamically build FAT12 images. This enables
   mounting both directories and ZIP archives as floppy images. Of course the contents must fit! By default, an image of 
@@ -143,43 +161,9 @@ disk surface.
   bytes as rendered text mode, or 1,2,4 or 8bpp pixels. This is a good way to explore the contents of memory, and when 
   investigating a running game one can find things like the game's back buffer as well as sprites loaded into memory.
 
-## New Sound System
-
-* MartyPC's original sound system only supported the PC speaker, and had a very awkward design (one might call it a 
-  gross hack). For 0.3.0, MartyPC has a new sound system. The emulator core determines how many sound producing devices
-  are installed and creates crossbeam channels for each device to send samples to the frontend, which is responsible for
-  mixing and playback.
-
-* The sound backend was changed from cpal to rodio to take advantage of the latter's sound mixing capabilities.
-
-* Known Issues:
-  * Some audio latency may be experienced with certain output devices, especially USB speakers that set a large default 
-    buffer size.
-  * Some pop/crackles may be heard due to large timestep skipping if when the window is moved while program drives the 
-    silent speaker high. Need to repeat the last sample level instead of 0 when the sample buffer is exhausted. 
-
-### New Devices
-
-* #### Adlib Music Card
-
-  * The first audio device in MartyPC besides the PC speaker is the Adlib Music Card. OPL2 emulation is provided by the 
-    highly-accurate [nuked-opl3](https://github.com/nukeykt/Nuked-OPL3) library. This marks the first device I have not 
-    emulated myself, but the time it would take to research FM synthesis and produce anything near nuked-opl3 quality 
-    would have you waiting for OPL2 emulation for another decade.
-
-* #### VGA 
-
-  * **PRERELEASE feature** - may not be included in official release!
-
-  * The IBM VGA card gets an initial implementation at last. MartyPC's VGA is based off its EGA implementation, with 
-    appropriate changes and additions. Clocked up to 28Mhz, the VGA is an expensive device to run at a character-clock
-    accurate rate, so you may need a fast computer. Aperture definitions may not be final. Mode 13h and ModeX/Y are 
-    supported (Wolfenstein 3D's 'ModeY' works!) 
  
 ### Frontend Bug Fixes / Improvements 
   * Added basic debug window for floppy disk controller
-  * Threaded disk image loading so that we don't freeze loading large images (Kryoflux)
-  * Modal GUI mode implemented for file browsers and file loading status
   * Performance Viewer:
     * Show stats for Audio sources 
   * File tree browser: 
@@ -191,14 +175,8 @@ disk surface.
 
 ### Core Bug Fixes / Improvements
 
-* BUS: Fixed race condition in DMA scheduler update
-* BUS: Reworked ByteQueue trait to support MMIO resolution
-* TGA: Implement hi-res 2bpp mode (PCJr Colorpaint, etc)
-* FDC: Refactoring of various functionality from FDC to FloppyDrive
 * FDC: Fix PCjr keyboard watchdog timer handling
-* BUS/PPI: Improve PCjr keyboard handling  
-* BUS: New sound system. Removed cpal dependency from core. Core now produces samples and sends them to the frontend for 
-  mixing and playback.
+* BUS/PPI: Improve PCjr keyboard handling
 * PPI: Fixed memory bank DIP switch masks for memory configurations less than <64K.
 
 ### Debugger Bug Fixes / Improvements

@@ -51,6 +51,7 @@ use marty_frontend_common::{GuiContextOptions, MartyGuiTheme};
 use marty_videocard_renderer::{RendererConfigParams, VideoRenderer};
 
 use anyhow::Error;
+use strum::EnumIter;
 use web_time::Duration;
 
 #[derive(Copy, Clone, Debug, Hash, PartialEq, Eq)]
@@ -101,7 +102,7 @@ impl From<DisplayDimensions> for (u32, u32) {
     }
 }
 
-#[derive(Copy, Clone, Debug, Default, PartialEq, Eq, Hash, strum::EnumIter)]
+#[derive(Copy, Clone, Debug, Default, PartialEq, Eq, Hash, EnumIter)]
 pub enum DisplayTargetType {
     #[default]
     WindowBackground,

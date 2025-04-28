@@ -23,13 +23,11 @@
     DEALINGS IN THE SOFTWARE.
 
     ---------------------------------------------------------------------------
-
-    ega::graphics_controller.rs
-
-    Implement the EGA Graphics Controllers. Although there are two physical LSI
-    chips on the IBM EGA, we treat them as one functional unit here.
-
 */
+
+//! Implements the VGA's Graphics Controller subsystem.
+//! The Graphics Controllers were originally independent LSI chips on the EGA, but they now serve as a single 
+//! functional unit within the VGA's VLSI chip.
 
 use super::*;
 
@@ -317,15 +315,9 @@ impl GraphicsController {
                 seq.serialize_linear(offset)
             }
             ShiftMode::Chain4 => {
-                // Chain 4 mode. One nibble from each plane is serialized, in order of planes.
+                // Chain 4 mode. Two nibbles from each plane are serialized, in order of planes.
                 for i in 0..4 {
                     let byte = seq.gc_read_u8(i, offset, address & 0x01);
-
-                    if byte != 0 {
-                        //log::debug!("addr: {:04X} byte: {:02X}", address, byte);
-                        //byte = (i as u8 + 1).wrapping_add(self.debug_ctr);
-                    }
-
                     self.serialize_buf[i * 2] = byte >> 4;
                     self.serialize_buf[i * 2 + 1] = byte & 0x0F;
                 }
@@ -389,14 +381,12 @@ impl GraphicsController {
                 match self.graphics_mode.odd_even() {
                     OddEvenModeComplement::Sequential => {
                         let plane = self.graphics_read_map_select as usize;
-                        
                         seq.cpu_read_u8(plane, offset, a0)
                     }
                     OddEvenModeComplement::OddEven => {
                         // If selected plane is 0 or 1, choose 0 or 1 based on a0.
                         // If selected plane is 2 or 3, choose 2 or 3 based on a0.
                         let plane = (self.graphics_read_map_select as usize & !0x01) | a0;
-                        
                         seq.cpu_read_u8(plane, offset, a0)
                     }
                 }
@@ -406,7 +396,6 @@ impl GraphicsController {
                 // In Read Mode 1, the processor reads the result of a comparison with the value in the
                 // Color Compare register, from the set of enabled planes in the Color Don't Care register
                 self.get_pixels(seq, offset);
-                
                 self.pixel_op_compare()
             }
         }

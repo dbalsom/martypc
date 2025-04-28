@@ -110,6 +110,8 @@ winres = "0.1"
 
 [features]
 default = ["all_video_cards", "use_winit", "use_wgpu", "use_gilrs", "sound", "opl"]
+wasm_glow = ["all_video_cards","sound","use_glow","use_gilrs"]
+wasm_wgpu = ["all_video_cards","sound","use_wgpu","use_gilrs"]
 shader_ui = ["marty_egui/scaler_ui"]
 all_video_cards = ["ega", "vga"]
 sound = ["dep:rodio", "rodio/wasm-bindgen", "marty_core/sound"]

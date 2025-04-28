@@ -1738,9 +1738,9 @@ impl FloppyController {
         self.last_error = DriveError::NoError;
     }
 
-    fn operation_read_data_pio(&mut self, _bus: &mut BusInterface, h: u8, chs: DiskChs, n: u8, track_len: u8) {
+    fn operation_read_data_pio(&mut self, _bus: &mut BusInterface, h: u8, chs: DiskChs, n: u8, eot: u8) {
         if !self.operation_init {
-            self.xfer_size_sectors = (track_len.saturating_sub(chs.s())) as usize + 1;
+            self.xfer_size_sectors = (eot.saturating_sub(chs.s())) as usize + 1;
             self.xfer_completed_sectors = 0;
             // TODO: fixme for sector size
             self.xfer_size_bytes = self.xfer_size_sectors * 512;
@@ -1760,6 +1760,10 @@ impl FloppyController {
                 Ok(read_result) => {
                     log::trace!("Read sector command accepted, new chs: {}", read_result.new_chs);
                     self.operation_final_chs = read_result.new_chs;
+                    if self.operation_final_chs.s() > eot {
+                        // Don't exceed EOT parameter for returned CHS.
+                        self.operation_final_chs.set_s(eot);
+                    }
 
                     if read_result.not_found {
                         self.send_results_phase(InterruptCode::AbnormalTermination, self.drive_select, chs, n);
@@ -1830,7 +1834,7 @@ impl FloppyController {
                 .into();
             //let (new_c, new_h, new_s) = self.get_next_sector(self.drive_select, cylinder, head, sector);
 
-            let new_chs = DiskChs::new(new_c, new_h, new_s);
+            let new_chs = self.operation_final_chs;
 
             // Terminate normally by sending results registers
             self.send_results_phase(InterruptCode::NormalTermination, self.drive_select, new_chs, n);

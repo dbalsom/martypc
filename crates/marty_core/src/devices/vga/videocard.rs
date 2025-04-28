@@ -35,10 +35,6 @@ use crate::{bus::DeviceRunTimeUnit, devices::pic::Pic};
 use std::{collections::HashMap, path::Path};
 
 impl VideoCard for VGACard {
-    fn get_sync(&self) -> (bool, bool, bool, bool) {
-        (false, false, false, false)
-    }
-
     fn set_video_option(&mut self, opt: VideoOption) {
         match opt {
             VideoOption::EnableSnow(_state) => {
@@ -60,7 +56,7 @@ impl VideoCard for VGACard {
     }
 
     fn get_render_depth(&self) -> RenderBpp {
-        RenderBpp::Eight
+        RenderBpp::ThirtyTwo
     }
 
     fn get_display_mode(&self) -> DisplayMode {
@@ -90,45 +86,9 @@ impl VideoCard for VGACard {
         (320, 200)
     }
 
-    /// Return the 16-bit value computed from the CRTC's pair of Page Address registers.
-    fn get_start_address(&self) -> u16 {
-        self.crtc.start_address()
-    }
-
     /// Unimplemented for indirect rendering.
     fn get_display_extents(&self) -> &DisplayExtents {
         &self.extents
-    }
-
-    /// Unimplemented for indirect rendering.
-    fn get_beam_pos(&self) -> Option<(u32, u32)> {
-        Some((self.raster_x, self.raster_y))
-    }
-
-    /// Unimplemented
-    fn debug_tick(&mut self, _ticks: u32, _cpumem: Option<&[u8]>) {}
-
-    /// Get the current scanline being rendered.
-    fn get_scanline(&self) -> u32 {
-        0
-    }
-
-    /// Return whether to double scanlines produced by this adapter.
-    /// For EGA, this is false in 16Mhz modes and true in 14Mhz modes
-    fn get_scanline_double(&self) -> bool {
-        self.extents.double_scan
-    }
-
-    /// Return the u8 slice representing the requested buffer type.
-    fn get_buf(&self, buf_select: BufferSelect) -> &[u8] {
-        match buf_select {
-            BufferSelect::Back => &self.buf[self.back_buf][..],
-            BufferSelect::Front => &self.buf[self.front_buf][..],
-        }
-    }
-
-    fn get_display_buf(&self) -> &[u8] {
-        &self.buf[self.front_buf][..]
     }
 
     fn list_display_apertures(&self) -> Vec<DisplayApertureDesc> {
@@ -143,10 +103,20 @@ impl VideoCard for VGACard {
         0
     }
 
-    /// Return the current refresh rate. For VGA, this can be 60Hz or 70Hz depending on mode.
-    /// TODO: Handle VGA 70Hz modes.
-    fn get_refresh_rate(&self) -> f32 {
-        60.0
+    /// Return the u8 slice representing the requested buffer type.
+    fn get_buf(&self, buf_select: BufferSelect) -> &[u8] {
+        match buf_select {
+            BufferSelect::Back => {
+                bytemuck::cast_slice(&self.buf[self.back_buf][..])
+            }
+            BufferSelect::Front => {
+                bytemuck::cast_slice(&self.buf[self.front_buf][..])
+            }
+        }
+    }
+
+    fn get_display_buf(&self) -> &[u8] {
+        bytemuck::cast_slice(&self.buf[self.front_buf][..])
     }
 
     fn get_clock_divisor(&self) -> u32 {
@@ -154,6 +124,36 @@ impl VideoCard for VGACard {
             DotClock::Native => 1,
             DotClock::HalfClock => 2,
         }
+    }
+
+    fn get_sync(&self) -> (bool, bool, bool, bool) {
+        (false, false, false, false)
+    }
+
+    /// Unimplemented for indirect rendering.
+    fn get_beam_pos(&self) -> Option<(u32, u32)> {
+        Some((self.raster_x, self.raster_y))
+    }
+
+    /// Get the current scanline being rendered.
+    fn get_scanline(&self) -> u32 {
+        0
+    }
+
+    /// Return whether to double scanlines produced by this adapter.
+    /// For EGA, this is false in 16Mhz modes and true in 14Mhz modes
+    fn get_scanline_double(&self) -> bool {
+        self.extents.double_scan
+    }
+
+    /// Return the current refresh rate. For VGA, this can be 60Hz or 70Hz depending on mode.
+    fn get_refresh_rate(&self) -> f32 {
+        70.0
+    }
+
+    /// Return the 16-bit value computed from the CRTC's pair of Page Address registers.
+    fn get_start_address(&self) -> u16 {
+        self.crtc.start_address()
     }
 
     fn is_40_columns(&self) -> bool {
@@ -326,6 +326,9 @@ impl VideoCard for VGACard {
         }
     }
 
+    /// Unimplemented
+    fn debug_tick(&mut self, _ticks: u32, _cpumem: Option<&[u8]>) {}
+
     /*
     fn run(&mut self, cpu_cycles: u32) {
 
@@ -387,10 +390,6 @@ impl VideoCard for VGACard {
         self.reset_private();
     }
 
-    fn get_pixel(&self, _x: u32, _y: u32) -> &[u8] {
-        &DUMMY_PIXEL
-    }
-
     fn get_pixel_raw(&self, _x: u32, _y: u32) -> u8 {
         /*        let mut byte = 0;
 
@@ -431,8 +430,16 @@ impl VideoCard for VGACard {
         0
     }
 
+    fn get_pixel(&self, _x: u32, _y: u32) -> &[u8] {
+        &DUMMY_PIXEL
+    }
+
     fn get_plane_slice(&self, plane: usize) -> &[u8] {
         self.sequencer.vram.plane_slice(plane)
+    }
+
+    fn get_frame_count(&self) -> u64 {
+        self.frame
     }
 
     fn dump_mem(&self, path: &Path) {
@@ -476,10 +483,6 @@ impl VideoCard for VGACard {
                 log::error!("Failed to write memory dump '{}': {}", &filename.display(), e)
             }
         }
-    }
-
-    fn get_frame_count(&self) -> u64 {
-        self.frame
     }
 
     fn write_trace_log(&mut self, _msg: String) {

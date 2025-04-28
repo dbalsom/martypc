@@ -99,7 +99,7 @@ pub fn parse_query_params() -> CmdLineArgs {
                     "configfile" => args.config_file = Some(PathBuf::from(value.into_owned())),
                     "no_sound" => args.no_sound = true,
                     "machine_config_name" => args.machine_config_name = Some(String::from(value.into_owned())),
-                    "machine_config_overlays" => args.machine_config_name = Some(String::from(value.into_owned())),
+                    "machine_config_overlays" => args.machine_config_overlays = Some(String::from(value.into_owned())),
                     "no_roms" => args.no_roms = true,
                     "turbo" => args.turbo = true,
                     _ => {} // Ignore unknown parameters

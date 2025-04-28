@@ -196,6 +196,7 @@ pub enum RenderBpp {
     Four,
     Six,
     Eight,
+    ThirtyTwo,
 }
 
 //pub const TEXTMODE_MEM_ADDRESS: usize = 0xB8000;
@@ -315,7 +316,7 @@ pub struct DisplayApertureDesc {
 /// horizontal and vertical offsets from the origin (0,0)
 /// Additionally, a debug flag is set to indicate whether an aperture should render debugging
 /// information along with pixel data.
-#[derive(Copy, Clone)]
+#[derive(Copy, Clone, Debug)]
 pub struct DisplayAperture {
     pub w: u32,
     pub h: u32,

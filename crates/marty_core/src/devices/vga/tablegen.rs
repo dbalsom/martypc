@@ -23,13 +23,9 @@
     DEALINGS IN THE SOFTWARE.
 
     --------------------------------------------------------------------------
-
-    devices::ega::tablegen.rs
-
-    Const table generation for various lookups used by the CGA for fast
-    character drawing.
-
 */
+
+//! Const table generation for various lookups used by the VGA for fast character drawing.
 
 /// LUT to extend an 8-bit bitfield into a packed 64-bit value
 pub const BIT_EXTEND_TABLE64: [u64; 256] = {
