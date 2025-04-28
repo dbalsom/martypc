@@ -727,25 +727,31 @@ impl AtaDevice {
         // here.
         //self.status_register.set_busy(true);
 
-        let geometry = self.disk.as_ref().unwrap().geometry();
-        log::debug!(
-            "Writing Drive Identification block to sector buffer with geometry: {:?}",
-            geometry
-        );
-        let id_blob = AtaDriveIdentification::new(&geometry, DEFAULT_SECTOR_SIZE, self.lba, self.dma);
-        self.clear_buffer();
-        self.sector_buffer.seek(SeekFrom::Start(0)).unwrap();
-        match id_blob.write(&mut self.sector_buffer) {
-            Ok(_) => {
-                log::debug!("Drive Identification block written to sector buffer");
-                self.status_register.set_ready(true);
-                self.status_register.set_drq(true);
-                self.sector_buffer.seek(SeekFrom::Start(0)).unwrap();
+        if let Some(disk) = self.disk.as_ref() {
+            let geometry = self.disk.as_ref().unwrap().geometry();
+            log::debug!(
+                "Writing Drive Identification block to sector buffer with geometry: {:?}",
+                geometry
+            );
+            let id_blob = AtaDriveIdentification::new(&geometry, DEFAULT_SECTOR_SIZE, self.lba, self.dma);
+            self.clear_buffer();
+            self.sector_buffer.seek(SeekFrom::Start(0)).unwrap();
+            match id_blob.write(&mut self.sector_buffer) {
+                Ok(_) => {
+                    log::debug!("Drive Identification block written to sector buffer");
+                    self.status_register.set_ready(true);
+                    self.status_register.set_drq(true);
+                    self.sector_buffer.seek(SeekFrom::Start(0)).unwrap();
+                }
+                Err(e) => {
+                    log::error!("Error writing Drive Identification block to sector buffer: {}", e);
+                    self.error_register.set_abrt(true);
+                }
             }
-            Err(e) => {
-                log::error!("Error writing Drive Identification block to sector buffer: {}", e);
-                self.error_register.set_abrt(true);
-            }
+        }
+        else {
+            log::warn!("command_identify_drive(): No disk image!");
+            self.error_register.set_abrt(true);
         }
 
         //bus.pic_mut().as_mut().unwrap().request_interrupt(HDC_IRQ);
