@@ -18,12 +18,24 @@ config_version = "0.4"
 # Machine configurations are defined in the various machine configuration
 # definition files in /configs/machines.
 
-# This is not a filename reference.
+# This is not a filename reference - definition files can contain multiple machine configurations.
+
+# The basic IBM 5160 (XT) machine configuration is "ibm5160".
+# This configuration does not come with a hard disk controller by default.
+
+# A configuration with an original IBM hard disk controller is "ibm5160_hdd" (requires Xebec ROM)
+# A configuration with an XTIDE hard disk controller is "ibm5160_xtide" (recommended, ROM included)
+# For other configuration names, see the configuration files in /config/machines/.
+
 # Only one `config_name` should be uncommented at a time.
-#
-# If you just want to enable the hard drive, change config_name to
-# "ibm5160_hdd"
-config_name = "ibm5160"
+config_name = "ibm5160_xtide"
+#config_name = "ibm5150_16k"
+#config_name = "ibm5150_256k"
+#config_name = "ibm5160"
+#config_name = "ibm5160_hdd"
+#config_name = "ibm_pcjr"
+#config_name = "tandy1000"
+#config_name = "generic_xt"
 
 # Specify configuration overlays to load on top of machine configuration.
 # Config overlays are a convenient way to swap or add to a base config. 
@@ -251,10 +263,23 @@ raw_sector_image_extensions = ["img", "ima", "dsk", "mnx"]
 # Default state of write protection for newly loaded floppy images.
 write_protect_default = false
 
-#[[emulator.media.vhd]]
+# ----------------------------------------------------------------------------
+# Automounting VHD images
+# You can specify VHD images to be automatically mounted into the specified
+# drives on startup.
+# ----------------------------------------------------------------------------
+[[emulator.media.vhd]]
 # VHD to mount into drive 0 (Typically C:)
-#drive = 0
-#filename = "dos330.vhd"
+drive = 0
+# A default image formatted with DOS 3.30 is provided which
+# gives excellent compatibility with software of the IBM XT era. Only the
+# system has been transferred - you will need to copy over your own full DOS
+# installation if you want to use DOS utilities.
+# This image is 32MB - the maximum partition size allowed by DOS 3.30.
+# It is too large to be compatible with the original IBM Xebec hard disk
+# controller, so if you switch to the Xebec controller you will need to
+# create a new VHD.
+filename = "default_xtide.vhd"
 
 #[[emulator.media.vhd]]
 # VHD to mount into drive 1 (Typically D:)

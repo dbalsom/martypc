@@ -124,12 +124,19 @@ overlays = [
     "pcxt_2_serial_ports",   
     "us_modelf_keyboard",
     "microsoft_serial_mouse",
+    "lotech_ems",
     "game_port",
 ]
 
     [machine.memory]
-    conventional.size = 0xA0000
+    conventional.size = 0x40000 # 256k base conventional memory
     conventional.wait_states = 0
+
+    [[machine.conventional_expansion]]
+    type = "Isa8"
+    address = 0x40000
+    size = 0x60000 # 394K RAM expansion to take us up to 640K.
+    wait_states = 0
 
     # Hard disk controller
     [machine.hdc]
@@ -150,44 +157,6 @@ overlays = [
     [[machine.video]]
     type = "CGA"
     clock_mode = "Dynamic"    
-
-[[machine]]
-name = "ibm5160_hdd_ega"
-type = "Ibm5160"
-rom_set = "auto"
-speaker = true
-overlays = [
-    "pcxt_2_720k_floppies",
-    "pcxt_2_serial_ports", 
-    "us_modelf_keyboard",
-    "microsoft_serial_mouse",
-    "game_port",
-]
-    
-    [machine.memory]
-    conventional.size = 0xA0000
-    conventional.wait_states = 0
-
-    # Hard disk controller
-    [machine.hdc]
-    bus_type = "ISA"
-    type = "IbmXebec"
-    
-        # Drives connected to controller. Maximum of 2.
-        # Drive #0 - (Typically C:)
-        [[machine.hdc.drive]]
-        format = "Mfm"
-        vhd = "xebec20MB.vhd"
-        
-        # Drive #1 - (Typically D:)
-        #[[machine.hdc.drive]]
-        #vhd = "games.vhd"
-    
-    # Video cards
-    [[machine.video]]
-    bus_type = "ISA"
-    type = "EGA"
-    clock_mode = "Dynamic"
 
 
 

@@ -69,6 +69,7 @@ icon.png
 !/install/media/roms/XUB
 !/install/media/roms/GLaBIOS
 !/install/media/roms/*.toml
+!/install/media/hdds/default_xtide.vhd
 !/install/martypc.toml
 
 # Files to include as wasm assets
@@ -77,6 +78,7 @@ icon.png
 # Experimental rom definitions
 /install/configs/rom_definitions/romdef_s100.toml
 /install/configs/rom_definitions/romdef_ast.toml
+/install/configs/rom_definitions/romdef_ibm_ps2.toml
 
 # Miscellaneous GlaBIOS ROMs
 /install/media/roms/GLaBIOS/parking
