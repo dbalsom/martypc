@@ -185,7 +185,7 @@ impl ChannelAttenuation {
     }
     #[inline]
     pub fn set(&mut self, data: u8) {
-        log::debug!("[{}]: Setting attenuation: {:02X}", self.idx, data);
+        log::trace!("[{}]: Setting attenuation: {:02X}", self.idx, data);
         self.attenuation = (data & 0x0F) as usize;
     }
     #[inline(always)]
@@ -621,7 +621,7 @@ impl IoDevice for Sn76489 {
     ) {
         if data & 0x80 != 0 {
             let reg = (data >> 4) & 0x07;
-            log::debug!("Write to reg: {} data: {:02X}", reg, data);
+            log::trace!("Write to reg: {} data: {:02X}", reg, data);
 
             self.selected_channel = (reg >> 1) as usize;
 
@@ -655,7 +655,7 @@ impl IoDevice for Sn76489 {
     /// This is approximately 32 clock ticks after the last write.
     fn write_wait(&mut self, _port: u16, _delta: DeviceRunTimeUnit) -> u32 {
         let sys_tick_waits = self.write_wait * self.internal_divisor;
-        log::debug!("SN76489 write_wait: {} sys_tick_waits", sys_tick_waits);
+        //log::trace!("SN76489 write_wait: {} sys_tick_waits", sys_tick_waits);
         0
     }
 

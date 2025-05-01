@@ -192,7 +192,7 @@ impl BusInterface {
 
         if let Some(write_waits) = write_waits {
             let cpu_waits = self.system_ticks_to_cpu_cycles(write_waits);
-            log::debug!("io_write_wait: {} wait states for port {:04X}", cpu_waits, port);
+            //log::trace!("io_write_wait: {} wait states for port {:04X}", cpu_waits, port);
             cpu_waits
         }
         else {
