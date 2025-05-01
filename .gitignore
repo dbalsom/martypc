@@ -85,6 +85,7 @@ icon.png
 /install/configs/rom_definitions/romdef_s100.toml
 /install/configs/rom_definitions/romdef_ast.toml
 /install/configs/rom_definitions/romdef_ibm_ps2.toml
+/install/configs/rom_definitions/romdef_custom.toml
 
 # Miscellaneous GlaBIOS ROMs
 /install/media/roms/GLaBIOS/parking

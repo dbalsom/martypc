@@ -489,7 +489,9 @@ impl Ppi {
             port_c_mode: match machine_type {
                 MachineType::Ibm5150v64K | MachineType::Ibm5150v256K => PortCMode::Switch2OneToFour,
                 MachineType::Ibm5160 => PortCMode::Switch1FiveToEight,
-                MachineType::Tandy1000 => PortCMode::Switch1FiveToEight,
+                MachineType::Tandy1000 | MachineType::Tandy1000SL | MachineType::Tandy1000HX => {
+                    PortCMode::Switch1FiveToEight
+                }
                 MachineType::CompaqPortable | MachineType::CompaqDeskpro => PortCMode::Switch1FiveToEight,
                 _ => {
                     log::error!("Machine type: {:?} has no configured PPI port C", machine_type);
@@ -507,7 +509,7 @@ impl Ppi {
                     log::debug!("DIP SW1: {:08b}", dip_sw1);
                     !dip_sw1
                 }
-                MachineType::Tandy1000 => 0,
+                MachineType::Tandy1000 | MachineType::Tandy1000SL | MachineType::Tandy1000HX => 0,
                 MachineType::CompaqPortable => {
                     // Compaq Portable doesn't set switches 3 and 4 for memory size.
                     let dip_sw1 = COMPAQ_SW1_NO_FPU | sw1_floppy_ct_bits | sw1_video_bits;
@@ -752,7 +754,8 @@ impl Ppi {
             MachineType::CompaqPortable
             | MachineType::CompaqDeskpro
             | MachineType::Tandy1000
-            | MachineType::Tandy1000SL => {
+            | MachineType::Tandy1000SL
+            | MachineType::Tandy1000HX => {
                 // On most XT-compatible systems, this bit clears the keyboard and suppresses IRQ1.
                 if byte & PORTB_KB_CLEAR != 0 {
                     self.keyboard_clear_scheduled = true;
@@ -799,7 +802,7 @@ impl Ppi {
                 // PCjr keyboard is serialized at 1200 baud
                 self.kb_serializer.set_data(byte);
             }
-            MachineType::Tandy1000 => {
+            MachineType::Tandy1000 | MachineType::Tandy1000SL | MachineType::Tandy1000HX => {
                 // No bits to disable kb on Tandy?
                 if self.ksr_cleared {
                     self.ksr_cleared = false;
@@ -827,7 +830,7 @@ impl Ppi {
     /// Return whether the keyboard enable line (PB7) is set and the keyboard clock line is not held low.
     pub fn kb_enabled(&self) -> bool {
         match self.machine_type {
-            MachineType::Tandy1000 => true,
+            MachineType::Tandy1000 | MachineType::Tandy1000SL | MachineType::Tandy1000HX => true,
             MachineType::CompaqDeskpro => true,
             MachineType::IbmPCJr => false,
             _ => self.kb_enabled && !self.kb_clock_low,
@@ -867,7 +870,7 @@ impl Ppi {
                 // On 5160, all four switches 5-8 are readable
                 (self.dip_sw1 >> 4 & 0x0F) | speaker_bit | timer_bit
             }
-            (MachineType::Tandy1000, _) => {
+            (MachineType::Tandy1000 | MachineType::Tandy1000SL | MachineType::Tandy1000HX, _) => {
                 // Tandy 1000 has no DIP switches
 
                 timer_bit | PORTC_TANDY_COLOR

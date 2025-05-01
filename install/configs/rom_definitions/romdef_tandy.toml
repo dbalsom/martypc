@@ -5,8 +5,8 @@
 # ROM definitions for Tandy 1000
 # ----------------------------------------------------------------------------
 [[romset]]
-alias = "tandy1000_v1"
-desc = "Tandy 1000 v1"
+alias = "tandy1000_1_0_1"
+desc = "Tandy 1000 BIOS v1.0.1"
 priority = 5
 provides = ["bios", "tandy1000", "expansion"]
 oem_for = ["tandy1000"]
@@ -19,31 +19,31 @@ checkpoint = [
 ]
 
 [[romset]]
-alias = "tandy1000_v2"
-desc = "Tandy 1000 v2"
+alias = "tandy1000_1_0_2"
+desc = "Tandy 1000 BIOS v1.0.2"
 priority = 1
-provides = ["bios", "tandy1000", "expansion"]
-oem_for = ["tandy1000"]
+provides = ["bios", "tandy1000sx", "expansion"]
+oem_for = ["tandy1000sx"]
 rom = [
     { md5 = "7844c637dc246ec5f0e760ea33475073", addr = 0xF0000, size = 0x10000, chip = "1" },
 ]
 
 [[romset]]
-alias = "tandy1000_v3"
-desc = "Tandy 1000 v3"
+alias = "tandy1000_1_0_3"
+desc = "Tandy 1000TX BIOS v1.0.3"
 priority = 2
-provides = ["bios", "tandy1000", "expansion"]
-oem_for = ["tandy1000"]
+provides = ["bios", "tandy1000tx", "expansion"]
+oem_for = ["tandy1000tx"]
 rom = [
     { md5 = "1c25e4d439be8e8488467d466a28091f", addr = 0xF0000, size = 0x10000, chip = "1" },
 ]
 
 [[romset]]
-alias = "tandy1000hx"
-desc = "Tandy 1000HX"
+alias = "tandy1000_2_0_0"
+desc = "Tandy 1000HX BIOS v2.0.0"
 priority = 0
-provides = ["bios", "tandy1000", "expansion"]
-oem_for = ["tandy1000"]
+provides = ["bios", "tandy1000hx", "expansion"]
+oem_for = ["tandy1000hx"]
 rom = [
     { md5 = "364dd8f7a8c5338227545c7c41960036", addr = 0xE0000, size = 0x20000, chip = "u12" },
 ]
