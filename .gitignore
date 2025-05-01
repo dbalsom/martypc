@@ -68,9 +68,15 @@ icon.png
 !/install/media/roms/readme.md
 !/install/media/roms/XUB
 !/install/media/roms/GLaBIOS
-!/install/media/roms/*.toml
+!/install/media/roms/VGA
+# Ignore everything in VGA unless specified
+/install/media/roms/VGA/*
+!/install/media/roms/VGA/BOCHS-VGABIOS.bin
+!/install/media/roms/VGA/BOCHS-README.md
+!/install/media/roms/VGA/BOCHS-LICENSE
 !/install/media/hdds/default_xtide.vhd
 !/install/martypc.toml
+
 
 # Files to include as wasm assets
 !/frontends/martypc_eframe/assets/martypc.toml
