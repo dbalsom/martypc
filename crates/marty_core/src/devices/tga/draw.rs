@@ -32,6 +32,8 @@
 
 use super::{tga::tablegen::CGA_HIRES_GFX_TABLE, *};
 
+//pub const BIT_REVERSE_2BPP: [u8; 4] = [0b00, 0b10, 0b01, 0b11];
+
 impl TGACard {
     pub fn draw_overscan_pixel(&mut self) {
         self.buf[self.back_buf][self.rba] = self.cc_overscan_color;
@@ -236,21 +238,49 @@ impl TGACard {
         }
     }
 
+    #[inline]
+    pub fn palette_lookup(&self, color: u8) -> u8 {
+        let color_in = (color & 0x03);
+        //let color = BIT_REVERSE_2BPP[color_in as usize] << 1;
+        let mut color = color_in << 1;
+        if matches!(
+            self.subtype,
+            VideoCardSubType::Tandy1000 | VideoCardSubType::Tandy1000_256
+        ) {
+            if color_in == 0 {
+                return self.cc_overscan_color;
+            }
+
+            // Override blue & intensity bits.
+            // TODO: Should this be done before or after applying mask?
+            //color &= !0x09;
+
+            color &= !0x09;
+            color |= (self.cc_register & 0x10) >> 1;
+            color |= (self.cc_register & 0x20) >> 5;
+
+            let mut color_out = self.palette_registers[color as usize];
+            color_out
+        }
+        else {
+            self.palette_registers[color as usize]
+        }
+    }
+
     pub fn draw_gfx_mode_2bpp_mchar(&mut self, cpumem: &[u8]) {
         if self.mode_enable {
             let base_addr = self.get_gfx_addr(self.vlc_c9);
-            let byte0 = self.crt_mem(cpumem)[base_addr] as usize;
-            let byte1 = self.crt_mem(cpumem)[base_addr + 1] as usize;
+            let byte0 = self.crt_mem(cpumem)[base_addr];
+            let byte1 = self.crt_mem(cpumem)[base_addr + 1];
 
-            let mask = self.palette_mask as usize;
-            let pixel0 = self.palette_registers[mask & (byte0 >> 6 & 0x03)];
-            let pixel1 = self.palette_registers[mask & (byte0 >> 4 & 0x03)];
-            let pixel2 = self.palette_registers[mask & (byte0 >> 2 & 0x03)];
-            let pixel3 = self.palette_registers[mask & (byte0 & 0x03)];
-            let pixel4 = self.palette_registers[mask & (byte1 >> 6 & 0x03)];
-            let pixel5 = self.palette_registers[mask & (byte1 >> 4 & 0x03)];
-            let pixel6 = self.palette_registers[mask & (byte1 >> 2 & 0x03)];
-            let pixel7 = self.palette_registers[mask & (byte1 & 0x03)];
+            let pixel0 = self.palette_lookup(byte0 >> 6);
+            let pixel1 = self.palette_lookup(byte0 >> 4);
+            let pixel2 = self.palette_lookup(byte0 >> 2);
+            let pixel3 = self.palette_lookup(byte0);
+            let pixel4 = self.palette_lookup(byte1 >> 6);
+            let pixel5 = self.palette_lookup(byte1 >> 4);
+            let pixel6 = self.palette_lookup(byte1 >> 2);
+            let pixel7 = self.palette_lookup(byte1);
 
             self.buf[self.back_buf][self.rba] = pixel0;
             self.buf[self.back_buf][self.rba + 1] = pixel0;

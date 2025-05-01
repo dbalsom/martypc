@@ -367,10 +367,14 @@ impl VideoCard for TGACard {
 
         match self.subtype {
             VideoCardSubType::Tandy1000 | VideoCardSubType::Tandy1000_256 => {
+                video_vec.push(("Tandy: Mode register:".into(), VideoCardStateEntry::String(format!("{:08b}", self.mode_byte))));
                 video_vec.push(("Tandy: border enable:".into(), VideoCardStateEntry::String(format!("{}", self.t_mode_control.border_enable()))));
                 video_vec.push(("Tandy: 2bpp hires mode:".into(), VideoCardStateEntry::String(format!("{}", self.t_mode_control.twobpp_hires()))));
                 video_vec.push(("Tandy: 4bpp mode:".into(), VideoCardStateEntry::String(format!("{}", self.t_mode_control.fourbpp_mode()))));
                 video_vec.push(("Tandy: a0:".into(), VideoCardStateEntry::String(format!("{:08b}", self.a0.into_bytes()[0]))));
+                video_vec.push(("Tandy: Color Select:".into(), VideoCardStateEntry::String(format!("{:08b}", self.cc_register))));
+                video_vec.push(("Tandy: Intensity bit:".into(), VideoCardStateEntry::String(format!("{}", (self.cc_register & 0x10) >> 4))));
+                video_vec.push(("Tandy: Blue bit:".into(), VideoCardStateEntry::String(format!("{}", (self.cc_register & 0x20) >> 5))));
             }
             VideoCardSubType::IbmPCJr => {
                 video_vec.push(("PCJr: bandwidth:".into(), VideoCardStateEntry::String(format!("{}", self.jr_mode_control.bandwidth()))));
@@ -384,6 +388,7 @@ impl VideoCard for TGACard {
             }
         }
 
+        video_vec.push(("page register:".into(), VideoCardStateEntry::String(format!("{:02X}", self.page_register.into_bytes()[0]))));
         video_vec.push(("page register [crt]:".into(), VideoCardStateEntry::String(self.page_register.crt_page().to_string())));
         video_vec.push(("page register [cpu]:".into(), VideoCardStateEntry::String(self.page_register.cpu_page().to_string())));
         video_vec.push(("page register [vam]:".into(), VideoCardStateEntry::String(self.page_register.address_mode().to_string())));
