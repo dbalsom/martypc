@@ -572,7 +572,7 @@ impl RomManager {
         // HashSet and detecting collisions.
         let mut md5_set: HashSet<String> = HashSet::new();
         for rom in set.rom.iter_mut() {
-            let md5 = rom.md5.clone().unwrap();
+            let md5 = rom.md5.clone().unwrap_or_default();
             if md5_set.contains(&md5) {
                 return Err(anyhow::anyhow!(
                     "ROM set {} is invalid due to hash collision: {}.",
