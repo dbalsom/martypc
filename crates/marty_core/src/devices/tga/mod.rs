@@ -1754,9 +1754,10 @@ impl TGACard {
 
         self.cc_altcolor = self.cc_register & 0x0F;
 
-        if !self.mode_hires_gfx {
-            self.cc_overscan_color = self.cc_altcolor;
-        }
+        // Tandy/PCjr have a dedicated overscan color register.
+        // if !self.mode_hires_gfx {
+        //     self.cc_overscan_color = self.cc_altcolor;
+        // }
     }
 
     /// Swaps the front and back buffers by exchanging indices.
@@ -2929,7 +2930,7 @@ impl TGACard {
                 self.cpu_page_offset = self.page_register.cpu_page() as usize * 0x4000;
             }
             VideoModeSize::Mode32k => {
-                // Select 32K page for CPU} // Select 32K page for CPU
+                // Select 32K page for CPU
                 // 32K page is chosen by ignoring bit 0 of the CPU page register
                 self.cpu_page_offset = (self.page_register.cpu_page() & 0x0E) as usize * 0x4000;
             }
