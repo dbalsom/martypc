@@ -240,7 +240,7 @@ impl TGACard {
 
     #[inline]
     pub fn palette_lookup(&self, color: u8) -> u8 {
-        let color_in = (color & 0x03);
+        let color_in = color & 0x03;
         //let color = BIT_REVERSE_2BPP[color_in as usize] << 1;
         let mut color = color_in << 1;
         if matches!(
@@ -258,9 +258,7 @@ impl TGACard {
             color &= !0x09;
             color |= (self.cc_register & 0x10) >> 1;
             color |= (self.cc_register & 0x20) >> 5;
-
-            let mut color_out = self.palette_registers[color as usize];
-            color_out
+            self.palette_registers[color as usize]
         }
         else {
             self.palette_registers[color as usize]

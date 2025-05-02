@@ -727,7 +727,7 @@ impl AtaDevice {
         // here.
         //self.status_register.set_busy(true);
 
-        if let Some(disk) = self.disk.as_ref() {
+        if let Some(_disk) = self.disk.as_ref() {
             let geometry = self.disk.as_ref().unwrap().geometry();
             log::debug!(
                 "Writing Drive Identification block to sector buffer with geometry: {:?}",
