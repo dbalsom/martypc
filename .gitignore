@@ -66,7 +66,8 @@ icon.png
 
 # Files to include for distribution
 !/install/media/roms/readme.md
-!/install/media/roms/XUB
+/install/media/roms/XUB/*
+!/install/media/roms/XUB/ide_xtl.bin
 !/install/media/roms/GLaBIOS
 !/install/media/roms/VGA
 # Ignore everything in VGA unless specified

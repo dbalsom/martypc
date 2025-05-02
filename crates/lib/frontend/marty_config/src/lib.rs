@@ -37,6 +37,7 @@
 #[cfg(feature = "use_bpaf")]
 mod bpaf_config;
 mod coreconfig;
+mod mount;
 #[cfg(target_arch = "wasm32")]
 mod web_config;
 
@@ -71,6 +72,7 @@ use bpaf_config::{cli_args, CmdLineArgs};
 #[cfg(target_arch = "wasm32")]
 use web_config::{parse_query_params, CmdLineArgs};
 
+use crate::mount::MountableDeviceType;
 use cfg_if::cfg_if;
 use marty_common::types::joystick::ControllerLayout;
 use serde_derive::Deserialize;
@@ -127,12 +129,19 @@ pub struct FloppyConfigEntry {
 }
 
 #[derive(Debug, Deserialize)]
+pub struct CartConfigEntry {
+    pub slot: usize,
+    pub filename: String,
+}
+
+#[derive(Debug, Deserialize)]
 pub struct Media {
     pub raw_sector_image_extensions: Option<Vec<String>>,
     #[serde(default)]
     pub write_protect_default: bool,
     pub floppy: Option<Vec<FloppyConfigEntry>>,
     pub vhd: Option<Vec<VhdConfigEntry>>,
+    pub cart: Option<Vec<CartConfigEntry>>,
 }
 
 #[derive(Debug, Deserialize)]
@@ -422,6 +431,54 @@ impl ConfigFileParams {
 
         self.emulator.romscan = shell_args.romscan;
         self.emulator.machinescan = shell_args.romscan;
+
+        let mut have_cmd_hdd = false;
+        let mut have_cmd_floppy = false;
+        let mut have_cmd_cart = false;
+        // Handle mount arguments
+        for mount in shell_args.mounts.iter() {
+            match mount.device {
+                MountableDeviceType::HardDisk => {
+                    // Ignore any existing vector. Command line arguments override.
+                    if !have_cmd_hdd {
+                        self.emulator.media.vhd = Some(vec![]);
+                        have_cmd_hdd = true;
+                    }
+                    if let Some(vhd) = self.emulator.media.vhd.as_mut() {
+                        vhd.push(VhdConfigEntry {
+                            drive:    mount.index,
+                            filename: mount.path.to_string_lossy().to_string(),
+                        });
+                    }
+                }
+                MountableDeviceType::Floppy => {
+                    // Ignore any existing vector. Command line arguments override.
+                    if !have_cmd_floppy {
+                        self.emulator.media.floppy = Some(vec![]);
+                        have_cmd_floppy = true;
+                    }
+                    if let Some(floppy) = self.emulator.media.floppy.as_mut() {
+                        floppy.push(FloppyConfigEntry {
+                            drive:    mount.index,
+                            filename: mount.path.to_string_lossy().to_string(),
+                        });
+                    }
+                }
+                MountableDeviceType::Cartridge => {
+                    // Ignore any existing vector. Command line arguments override.
+                    if !have_cmd_cart {
+                        self.emulator.media.cart = Some(vec![]);
+                        have_cmd_cart = true;
+                    }
+                    if let Some(cart) = self.emulator.media.cart.as_mut() {
+                        cart.push(CartConfigEntry {
+                            slot: mount.index,
+                            filename: mount.path.to_string_lossy().to_string(),
+                        });
+                    }
+                }
+            }
+        }
     }
 }
 

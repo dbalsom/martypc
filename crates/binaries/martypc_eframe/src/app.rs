@@ -31,6 +31,7 @@ use crate::{
     timestep_update::process_update,
     MARTY_ICON,
 };
+use std::path::PathBuf;
 
 use display_manager_eframe::{
     builder::EFrameDisplayManagerBuilder,
@@ -62,6 +63,7 @@ use crate::wasm::*;
 use egui::{Context, CursorGrab, RawInput, Sense, ViewportCommand, ViewportId};
 use gilrs::Gilrs;
 use marty_display_common::display_manager::{DisplayTargetType, DtHandle};
+use marty_egui::state::FloppyDriveSelection;
 use marty_frontend_common::{color::MartyColor, constants::NORMAL_NOTIFICATION_TIME};
 use marty_videocard_renderer::AspectCorrectionMode;
 #[cfg(target_arch = "wasm32")]
@@ -462,9 +464,19 @@ impl MartyApp {
         }
 
         // Insert floppies specified in config.
-        match emu.insert_floppies(emu.sender.clone()) {
-            Ok(_) => {
-                log::debug!("Inserted floppies from config");
+        match emu.mount_floppies(emu.sender.clone()) {
+            Ok(mounted_images) => {
+                for image in mounted_images {
+                    log::debug!("Mounted floppy image: {} in drive {}", image.name, image.index);
+                    emu.gui.set_floppy_selection(
+                        image.index,
+                        None,
+                        FloppyDriveSelection::Image(PathBuf::from(image.name)),
+                        None,
+                        Vec::new(),
+                        None,
+                    );
+                }
             }
             Err(e) => {
                 log::error!("Failed to insert floppies from config: {}", e);

@@ -24,11 +24,23 @@
 
     --------------------------------------------------------------------------
 */
-use marty_core::{cpu_common::CpuType, cpu_validator::ValidatorType};
+
 use std::path::PathBuf;
 
-use bpaf::Bpaf;
+use crate::mount::MountSpec;
 use marty_common::types::joystick::ControllerLayout;
+use marty_core::{cpu_common::CpuType, cpu_validator::ValidatorType};
+
+use bpaf::{Bpaf, Parser};
+
+fn mount_arg() -> impl Parser<Vec<MountSpec>> {
+    bpaf::short('m')
+        .long("mount")
+        .help("Mount media with syntax: fd:0:disk.img")
+        .argument::<String>("mountspec")
+        .parse(|s| s.parse::<MountSpec>())
+        .many()
+}
 
 #[cfg_attr(feature = "use_bpaf", derive(Bpaf))]
 #[cfg_attr(feature = "use_bpaf", bpaf(options, version, generate(cli_args)))]
@@ -127,4 +139,7 @@ pub struct CmdLineArgs {
     pub test_cpu_type: Option<CpuType>,
     #[bpaf(long)]
     pub test_path: Option<PathBuf>,
+
+    #[bpaf(external(mount_arg))]
+    pub mounts: Vec<MountSpec>,
 }
