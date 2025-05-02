@@ -197,7 +197,7 @@ pub fn handle_egui_event(
                             );
 
                             // Update aspect correction checkbox state
-                            let aspect_correct = renderer.get_params().aspect_correction;
+                            let aspect_correct = renderer.params().aspect_correction;
                             let aspect_correct_on = !matches!(aspect_correct, AspectCorrectionMode::None);
                             emu.gui.set_option_enum(
                                 GuiEnum::DisplayAspectCorrect(aspect_correct_on),

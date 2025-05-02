@@ -607,7 +607,7 @@ impl DisplayTargetContext {
         scaler_update.push(ScalerOption::Filtering(params.filter));
 
         if let Some(renderer) = &self.renderer {
-            let rparams = renderer.get_params();
+            let rparams = renderer.params();
 
             let lines = if rparams.line_double {
                 rparams.render.h / 2
@@ -999,7 +999,7 @@ impl<'p> DisplayManager<EFrameBackend, GuiRenderContext, ViewportId, ViewportId,
             let mut render_time = Duration::from_secs(0);
             let renderer_params = if let Some(renderer) = &vtc.renderer {
                 render_time = renderer.get_last_render_time();
-                Some(renderer.get_config_params().clone())
+                Some(renderer.config_params().clone())
             }
             else {
                 None
@@ -1207,9 +1207,9 @@ impl<'p> DisplayManager<EFrameBackend, GuiRenderContext, ViewportId, ViewportId,
                     // Inform the renderer if the card is to be double-scanned
                     renderer.set_line_double(extents.double_scan);
 
-                    software_aspect = matches!(renderer.get_params().aspect_correction, AspectCorrectionMode::Software);
+                    software_aspect = matches!(renderer.params().aspect_correction, AspectCorrectionMode::Software);
 
-                    let aperture = renderer.get_params().aperture;
+                    let aperture = renderer.params().aperture;
                     let w = extents.apertures[aperture as usize].w;
                     let mut h = extents.apertures[aperture as usize].h;
 
