@@ -1,4 +1,3 @@
-#![feature(slice_take)]
 /*
     MartyPC
     https://github.com/dbalsom/martypc

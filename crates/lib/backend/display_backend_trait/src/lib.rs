@@ -60,7 +60,19 @@ pub type DynDisplayTargetSurface = Arc<
     >,
 >;
 
-#[cfg(not(feature = "use_wgpu"))]
+#[cfg(feature = "use_glow")]
+pub type DynDisplayTargetSurface = Arc<
+    RwLock<
+        dyn DisplayTargetSurface<
+            NativeTexture = (),
+            NativeDevice = egui_glow::glow::Context,
+            NativeQueue = (),
+            NativeTextureFormat = (),
+        >,
+    >,
+>;
+
+#[cfg(not(any(feature = "use_wgpu", feature = "use_glow")))]
 pub type DynDisplayTargetSurface = Arc<
     RwLock<
         dyn DisplayTargetSurface<

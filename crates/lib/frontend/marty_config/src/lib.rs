@@ -436,6 +436,7 @@ impl ConfigFileParams {
         let mut have_cmd_floppy = false;
         let mut have_cmd_cart = false;
         // Handle mount arguments
+
         for mount in shell_args.mounts.iter() {
             match mount.device {
                 MountableDeviceType::HardDisk => {

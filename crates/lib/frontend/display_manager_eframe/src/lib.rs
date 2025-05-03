@@ -60,8 +60,19 @@ use std::{
     time::Duration,
 };
 
-#[cfg(not(feature = "use_wgpu"))]
+#[cfg(not(any(feature = "use_wgpu", feature = "use_glow")))]
 pub use display_backend_eframe::{
+    BufferDimensions,
+    DisplayBackend,
+    DisplayBackendBuilder,
+    DynDisplayTargetSurface,
+    EFrameBackend,
+    EFrameBackendSurface,
+    EFrameScalerType,
+    TextureDimensions,
+};
+#[cfg(feature = "use_glow")]
+pub use display_backend_eframe_glow::{
     BufferDimensions,
     DisplayBackend,
     DisplayBackendBuilder,
@@ -111,7 +122,9 @@ use marty_display_common::{
 };
 
 // Conditionally use the appropriate scaler per backend
-#[cfg(not(feature = "use_wgpu"))]
+#[cfg(feature = "use_glow")]
+use marty_scaler_glow::MartyScaler;
+#[cfg(not(any(feature = "use_wgpu", feature = "use_glow")))]
 use marty_scaler_null::MartyScaler;
 #[cfg(feature = "use_wgpu")]
 use marty_scaler_wgpu::MartyScaler;
@@ -706,9 +719,18 @@ impl EFrameDisplayManager {
         self.targets[0].clone()
     }
 
-    pub fn main_display_callback(&self) -> DisplayTargetCallback {
-        DisplayTargetCallback {
-            lock: self.targets[0].clone(),
+    pub fn main_display_callback(&self, ui: &mut egui::Ui) -> egui::PaintCallback {
+        let (rect, response) = ui.allocate_exact_size(egui::Vec2::splat(300.0), egui::Sense::drag());
+
+        let target = self.targets[0].clone();
+
+        egui::PaintCallback {
+            rect,
+            callback: Arc::new(egui_glow::CallbackFn::new(move |_info, painter| {
+                if let Some(scaler) = &mut target.write().unwrap().scaler {
+                    scaler.render_with_context(painter.gl());
+                }
+            })),
         }
     }
 }
@@ -884,7 +906,16 @@ impl<'p> DisplayManager<EFrameBackend, GuiRenderContext, ViewportId, ViewportId,
                     true,
                     MartyColor::from_u24(scaler_preset.border_color.unwrap_or_default()),
                 );
-                #[cfg(not(feature = "use_wgpu"))]
+                #[cfg(feature = "use_glow")]
+                let scaler = MartyScaler::new(
+                    &*self.backend.as_ref().unwrap().device(),
+                    (0.0, 0.0),
+                    (0.0, 0.0),
+                    (0.0, 0.0),
+                    0.0,
+                    scaler_preset.mode.unwrap_or(ScalerMode::Integer),
+                );
+                #[cfg(not(any(feature = "use_wgpu", feature = "use_glow")))]
                 let scaler = MartyScaler::new();
 
                 // If we have a video card id, we need to build a VideoRenderer to render the card.
@@ -1055,6 +1086,24 @@ impl<'p> DisplayManager<EFrameBackend, GuiRenderContext, ViewportId, ViewportId,
         info_vec
     }
 
+    fn main_viewport(&self) -> Option<ViewportId> {
+        // Main display should always be index 0.
+        resolve_dtc!(self.targets[0]).viewport.clone()
+    }
+
+    fn viewport_by_id(&self, _vid: ViewportId) -> Option<ViewportId> {
+        None
+        // self.viewport_id_map.get(&wid).and_then(|idx| {
+        //     //log::warn!("got id, running map():");
+        //     self.targets[*idx].window.as_ref()
+        // })
+    }
+
+    fn viewport(&self, _dt: DtHandle) -> Option<ViewportId> {
+        //self.targets.get(dt.idx()).and_then(|dt| dt.window.as_ref())
+        None
+    }
+
     fn display_type(&self, dt: DtHandle) -> Option<DisplayTargetType> {
         resolve_handle_opt!(dt, self.targets, |vtc: &DisplayTargetContext| { Some(vtc.dt_type) })
     }
@@ -1097,24 +1146,6 @@ impl<'p> DisplayManager<EFrameBackend, GuiRenderContext, ViewportId, ViewportId,
             }
             Ok(())
         })
-    }
-
-    fn viewport_by_id(&self, _vid: ViewportId) -> Option<ViewportId> {
-        None
-        // self.viewport_id_map.get(&wid).and_then(|idx| {
-        //     //log::warn!("got id, running map():");
-        //     self.targets[*idx].window.as_ref()
-        // })
-    }
-
-    fn viewport(&self, _dt: DtHandle) -> Option<ViewportId> {
-        //self.targets.get(dt.idx()).and_then(|dt| dt.window.as_ref())
-        None
-    }
-
-    fn main_viewport(&self) -> Option<ViewportId> {
-        // Main display should always be index 0.
-        resolve_dtc!(self.targets[0]).viewport.clone()
     }
 
     fn backend(&mut self) -> Option<&EFrameBackend> {

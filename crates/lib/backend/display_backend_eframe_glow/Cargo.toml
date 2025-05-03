@@ -1,0 +1,28 @@
+[package]
+name = "display_backend_eframe_glow"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+
+[lib]
+name = "display_backend_eframe_glow"
+path = "src/lib.rs"
+crate-type = ["lib"]
+
+[dependencies]
+marty_display_common = { path = "../../frontend/marty_display_common" }
+display_backend_trait = { path = "../display_backend_trait" }
+egui.workspace = true
+anyhow.workspace = true
+egui_glow = { workspace = true }
+marty_scaler_glow = { path = "../../frontend/marty_scaler_glow" }
+
+# Optional Dependencies
+# ---------------------------------------------------------------------------------------------------------------------
+
+[features]
+default = ["use_egui_backend"]
+use_egui_backend = [
+    "display_backend_trait/use_glow",
+    "display_backend_trait/use_egui_backend",
+]

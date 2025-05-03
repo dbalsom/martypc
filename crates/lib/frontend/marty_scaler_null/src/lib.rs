@@ -67,6 +67,7 @@ type Texture = TextureHandle;
 type Texture = ();
 
 impl DisplayScaler<(), (), Texture> for MartyScaler {
+    type NativeContext = ();
     type NativeRenderPass = ();
     type NativeTextureView = ();
     type NativeEncoder = ();

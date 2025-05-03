@@ -654,7 +654,7 @@ impl IoDevice for Sn76489 {
     /// Return the number of system tick waits required for the device to be ready for a new write.
     /// This is approximately 32 clock ticks after the last write.
     fn write_wait(&mut self, _port: u16, _delta: DeviceRunTimeUnit) -> u32 {
-        let sys_tick_waits = self.write_wait * self.internal_divisor;
+        let _sys_tick_waits = self.write_wait * self.internal_divisor;
         //log::trace!("SN76489 write_wait: {} sys_tick_waits", sys_tick_waits);
         0
     }

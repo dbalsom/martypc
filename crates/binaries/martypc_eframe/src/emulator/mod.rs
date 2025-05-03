@@ -320,16 +320,19 @@ impl Emulator {
         }
 
         #[cfg(target_arch = "wasm32")]
-        for (idx, image_name) in image_names.into_iter().filter_map(|x| x).enumerate() {
-            let floppy_name: OsString = image_name.into();
-            let floppy_path = self
-                .rm
-                .resolve_path_from_filename("floppy", std::path::Path::new(&floppy_name))?;
+        {
+            for (idx, image_name) in image_names.into_iter().filter_map(|x| x).enumerate() {
+                let floppy_name: OsString = image_name.into();
+                let floppy_path = self
+                    .rm
+                    .resolve_path_from_filename("floppy", std::path::Path::new(&floppy_name))?;
 
-            let fsc = FileSelectionContext::Path(floppy_path);
-            let context = FileOpenContext::FloppyDiskImage { drive_select: idx, fsc };
-            file_open::open_file(context, sender.clone());
-            Ok(Vec::new())
+                log::debug!("Loading floppy disk image: {:?}", floppy_path);
+                let fsc = FileSelectionContext::Path(floppy_path);
+                let context = FileOpenContext::FloppyDiskImage { drive_select: idx, fsc };
+                file_open::open_file(context, sender.clone());
+            }
+            return Ok(Vec::new());
         }
         #[cfg(not(target_arch = "wasm32"))]
         {

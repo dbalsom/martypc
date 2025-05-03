@@ -61,6 +61,8 @@ use crate::emulator_builder::builder::EmuBuilderError;
 #[cfg(target_arch = "wasm32")]
 use crate::wasm::*;
 use egui::{Context, CursorGrab, RawInput, Sense, ViewportCommand, ViewportId};
+
+#[cfg(feature = "use_gilrs")]
 use gilrs::Gilrs;
 use marty_display_common::display_manager::{DisplayTargetType, DtHandle};
 use marty_egui::state::FloppyDriveSelection;
@@ -377,7 +379,26 @@ impl MartyApp {
                 panic!("init(): use_wgpu feature enabled, but failed to get wgpu render state from eframe creation context");
             }
         }
-        #[cfg(not(feature = "use_wgpu"))]
+        #[cfg(feature = "use_glow")]
+        {
+            let gl = cc
+                .gl
+                .as_ref()
+                .expect("init(): use_glow feature enabled, but no GL context found");
+            let glow_backend = match EFrameBackend::new(cc.egui_ctx.clone(), gl.clone()) {
+                Ok(backend) => {
+                    log::debug!("init(): Created glow backend");
+                    backend
+                }
+                Err(e) => {
+                    log::error!("init(): Failed to create glow backend: {}", e);
+                    return MartyApp::default();
+                }
+            };
+            log::debug!("init(): Installing glow backend");
+            dm_builder = dm_builder.with_backend(glow_backend);
+        }
+        #[cfg(not(any(feature = "use_wgpu", feature = "use_glow")))]
         {
             let egui_backend = match EFrameBackend::new(cc.egui_ctx.clone()) {
                 Ok(backend) => {
@@ -728,6 +749,11 @@ impl eframe::App for MartyApp {
                                 }
                                 #[cfg(feature = "use_glow")]
                                 {
+                                    let callback = dm.main_display_callback(ui);
+                                    ui.painter().add(callback);
+                                }
+                                #[cfg(not(any(feature = "use_wgpu", feature = "use_glow")))]
+                                {
                                     //let dtc_lock = dm.main_display_target();
                                     //let dtc = dtc_lock.read().unwrap();
                                     let surface = dtc_ref.surface().unwrap();
@@ -799,6 +825,11 @@ impl eframe::App for MartyApp {
                                     let callback = dm.main_display_callback();
                                     let paint_callback = egui_wgpu::Callback::new_paint_callback(rect, callback);
                                     ui.painter().add(paint_callback);
+                                }
+                                #[cfg(feature = "use_glow")]
+                                {
+                                    let callback = dm.main_display_callback(ui);
+                                    ui.painter().add(callback);
                                 }
                                 response
                             })

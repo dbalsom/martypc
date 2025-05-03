@@ -24,7 +24,6 @@
 
    ---------------------------------------------------------------------------
 */
-use serde_derive::Deserialize;
 
 #[cfg(feature = "use_gilrs")]
 pub type GamepadId = gilrs::GamepadId;

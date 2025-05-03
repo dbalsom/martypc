@@ -21,20 +21,22 @@ marty_display_common = { path = "../marty_display_common" }
 marty_videocard_renderer = { path = "../marty_videocard_renderer" }
 egui.workspace = true
 egui-wgpu = { workspace = true, optional = true }
+egui_glow = { workspace = true, optional = true }
 winit.workspace = true
 anyhow.workspace = true
 image.workspace = true
 log.workspace = true
 
-marty_scaler_null = { path = "../marty_scaler_null" }
-
 # Optional Dependencies
 # ---------------------------------------------------------------------------------------------------------------------
-display_backend_eframe = { path = "../../backend/display_backend_eframe", optional = true }
+#display_backend_eframe = { path = "../../backend/display_backend_eframe", optional = true }
+display_backend_eframe_glow = { path = "../../backend/display_backend_eframe_glow", optional = true }
 display_backend_eframe_wgpu = { path = "../../backend/display_backend_eframe_wgpu", optional = true }
 marty_scaler_wgpu = { path = "../marty_scaler_wgpu", optional = true }
+marty_scaler_glow = { path = "../marty_scaler_glow", optional = true }
+marty_scaler_null = { path = "../marty_scaler_null", optional = true }
 
 [features]
 default = []
 use_wgpu = ["dep:egui-wgpu", "marty_scaler_wgpu", "dep:display_backend_eframe_wgpu", "marty_frontend_common/use_wgpu"]
-use_glow = ["dep:display_backend_eframe", "display_backend_eframe/use_egui_backend"]
+use_glow = ["dep:egui_glow", "marty_scaler_glow", "dep:display_backend_eframe_glow"]

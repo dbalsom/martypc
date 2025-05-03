@@ -28,10 +28,12 @@
 //! On the web, we treat the URL query parameters as command line arguments.
 //! This module is conditionally compiled when building for the web wasm target.
 
+use std::{path::PathBuf, str::FromStr};
+
 use marty_common::types::joystick::ControllerLayout;
 use marty_core::{cpu_common::CpuType, cpu_validator::ValidatorType};
-use std::path::PathBuf;
 
+use crate::mount::MountSpec;
 use url::Url;
 use wasm_bindgen::prelude::*;
 use web_sys::window;
@@ -83,6 +85,8 @@ pub struct CmdLineArgs {
     // Test stuff
     pub test_cpu_type: Option<CpuType>,
     pub test_path: Option<PathBuf>,
+
+    pub mounts: Vec<MountSpec>,
 }
 
 /// Parse the URL query parameters into a [CmdLineArgs] struct.
@@ -102,6 +106,14 @@ pub fn parse_query_params() -> CmdLineArgs {
                     "machine_config_overlays" => args.machine_config_overlays = Some(String::from(value.into_owned())),
                     "no_roms" => args.no_roms = true,
                     "turbo" => args.turbo = true,
+                    "mount" => {
+                        if let Ok(mount) = MountSpec::from_str(&value) {
+                            args.mounts.push(mount);
+                        }
+                        else {
+                            log::warn!("Invalid mount spec: {}", value);
+                        }
+                    }
                     _ => {} // Ignore unknown parameters
                 }
             }
