@@ -1,6 +1,6 @@
 {
-  "name": "egui Template PWA",
-  "short_name": "egui-template-pwa",
+  "name": "MartyPC PWA",
+  "short_name": "martypc-pwa",
   "icons": [
     {
       "src": "./assets/icon-256.png",
