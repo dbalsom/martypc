@@ -244,6 +244,22 @@
                 transform: translateY(0) scale(0.98, 1.02); /* Smaller stretch before settling */
             }
         }
+
+        .bottom {
+            color: gainsboro;
+        }
+
+        .tap-label {
+            display: none;
+        }
+
+        .touch-device .click-label {
+            display: none;
+        }
+
+        .touch-device .tap-label {
+            display: inline;
+        }
     </style>
 </head>
 
@@ -260,7 +276,10 @@
             <link rel="prefetch" href="assets/martypc_logo_small.png"/>
             <img src="assets/martypc_logo_off_small.png" alt="Start MartyPC" class="start-logo">
         </div>
-        <div class="bottom">Click Me!</div>
+        <div class="bottom">
+            <span class="click-label">Click Me!</span>
+            <span class="tap-label">Tap Me!</span>
+        </div>
     </div>
 </div>
 
