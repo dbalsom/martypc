@@ -1755,7 +1755,7 @@ version = "0.4.0"
 dependencies = [
  "anyhow",
  "egui 0.30.0",
- "egui_glow",
+ "glow 0.16.0",
  "thiserror 2.0.11",
  "wgpu 23.0.1",
 ]
@@ -4017,6 +4017,7 @@ dependencies = [
  "fluxfox",
  "getrandom 0.3.1",
  "gilrs",
+ "glow 0.16.0",
  "log",
  "marty_config",
  "marty_core",

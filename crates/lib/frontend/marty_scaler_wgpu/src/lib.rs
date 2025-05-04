@@ -617,13 +617,15 @@ impl MartyScaler {
 }
 
 impl DisplayScaler<wgpu::Device, wgpu::Queue, wgpu::Texture> for MartyScaler {
+    type NativeContext = ();
     type NativeRenderPass = wgpu::RenderPass<'static>;
+    type NativeTexture = ();
     type NativeTextureView = wgpu::TextureView;
     type NativeEncoder = wgpu::CommandEncoder;
 
-    fn texture_view(&self) -> &wgpu::TextureView {
-        &self.texture_view
-    }
+    // fn texture_view(&self) -> &wgpu::TextureView {
+    //     &self.texture_view
+    // }
 
     fn render(&self, encoder: &mut wgpu::CommandEncoder, render_target: &wgpu::TextureView) {
         let mut render_pass = encoder.begin_render_pass(&wgpu::RenderPassDescriptor {
@@ -1119,12 +1121,18 @@ impl ScalingMatrix {
         let (screen_width, screen_height) = screen_size;
         let adjusted_screen_h = screen_height - margin_y;
 
+        if texture_width <= 0.0 || target_height <= 0.0 {
+            return Self {
+                transform: Mat4::identity(),
+            };
+        }
+
         let max_height_factor = ((screen_height - margin_y) / screen_height).max(1.0);
         let width_ratio = (screen_width / texture_width).max(1.0);
         let height_ratio = (adjusted_screen_h / target_height).max(max_height_factor);
 
         // Get the smallest scale size. (Removed floor() call from integer scaler)
-        let scale = width_ratio.clamp(1.0, height_ratio);
+        let scale = width_ratio.min(height_ratio);
 
         let scaled_width = texture_width * scale;
         let scaled_height = target_height * scale;

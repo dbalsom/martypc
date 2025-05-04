@@ -26,8 +26,7 @@
 */
 
 use bytemuck::{Pod, Zeroable};
-use std::default::Default;
-
+use std::{default::Default, sync::Arc};
 // Reexport trait items
 pub use marty_frontend_common::color::MartyColor;
 
@@ -42,7 +41,7 @@ use marty_display_common::display_scaler::{
 
 use eframe::{
     glow,
-    glow::{Context, HasContext, NativeTexture, Program, UniformLocation, VertexArray},
+    glow::{Context, HasContext, Program, Texture, UniformLocation, VertexArray},
 };
 use ultraviolet::Mat4;
 
@@ -121,15 +120,21 @@ pub struct MartyScaler {
 
     program: Program,
     vertex_array: VertexArray,
+    vbo: glow::Buffer,
     // texture: NativeTexture,
     // u_transform: UniformLocation,
     // u_texture: UniformLocation,
     // transform: [f32; 16],
     //
-    screen_size: (f32, f32),
-    target_size: (f32, f32),
-    texture_size: (f32, f32),
-    margin_y: f32,
+    screen_size: (u32, u32),
+    target_size: (u32, u32),
+    texture_size: (u32, u32),
+    margin_y: u32,
+
+    scaling_matrix: ScalingMatrix,
+    //u_transform: UniformLocation,
+    //u_texture: UniformLocation,
+
     //
     // bilinear: bool,
     // //fill_color: wgpu::Color,
@@ -157,56 +162,71 @@ pub struct MartyScaler {
 }
 
 impl MartyScaler {
+    #[rustfmt::skip]
     pub fn new(
         gl: &Context,
-        texture_size: (f32, f32),
-        target_size: (f32, f32),
-        screen_size: (f32, f32),
-        margin_y: f32,
+        texture_size: (u32, u32),
+        target_size: (u32, u32),
+        screen_size: (u32, u32),
+        margin_y: u32,
         mode: ScalerMode,
     ) -> Self {
         let shader_version = if cfg!(target_arch = "wasm32") {
             "#version 300 es"
-        }
-        else {
+        } else {
             "#version 330"
         };
 
         unsafe {
             let program = gl.create_program().expect("Cannot create program");
 
-            let (vertex_shader_source, fragment_shader_source) = (
-                r#"
-                    const vec2 verts[3] = vec2[3](
-                        vec2(0.0, 1.0),
-                        vec2(-1.0, -1.0),
-                        vec2(1.0, -1.0)
-                    );
-                    const vec4 colors[3] = vec4[3](
-                        vec4(1.0, 0.0, 0.0, 1.0),
-                        vec4(0.0, 1.0, 0.0, 1.0),
-                        vec4(0.0, 0.0, 1.0, 1.0)
-                    );
-                    out vec4 v_color;
-                    void main() {
-                        v_color = colors[gl_VertexID];
-                        gl_Position = vec4(verts[gl_VertexID], 0.0, 1.0);
-                        gl_Position.x *= cos(0.0);
-                    }
-                "#,
-                r#"
-                    precision mediump float;
-                    in vec4 v_color;
-                    out vec4 out_color;
-                    void main() {
-                        out_color = v_color;
-                    }
-                "#,
-            );
+            // Vertex + UV quad (triangle strip)
+            let vertices: [f32; 16] = [
+                -1.0,  1.0, 0.0, 0.0, // top-left
+                -1.0, -1.0, 0.0, 1.0, // bottom-left
+                 1.0,  1.0, 1.0, 0.0, // top-right
+                 1.0, -1.0, 1.0, 1.0, // bottom-right
+            ];
+
+            let vertex_shader_src = r#"
+                layout(location = 0) in vec2 a_pos;
+                layout(location = 1) in vec2 a_uv;
+
+                uniform mat4 u_transform;
+                out vec2 v_uv;
+
+                void main() {
+                    gl_Position = u_transform * vec4(a_pos, 0.0, 1.0);
+                    v_uv = a_uv;
+                }
+            "#;
+
+            let fragment_shader_src = r#"
+                precision mediump float;
+                in vec2 v_uv;
+                uniform sampler2D u_texture;
+                out vec4 out_color;
+
+                void main() {
+                    out_color = texture(u_texture, v_uv);
+                }
+            "#;
+
+            // let fragment_shader_src = r#"
+            //     precision mediump float;
+            //     in vec2 v_uv;
+            //     uniform sampler2D u_texture;
+            //     out vec4 out_color;
+            //
+            //     void main() {
+            //         out_color = vec4(v_uv.x, v_uv.y, 1.0 - v_uv.x, 1.0);
+            //     }
+            // "#;
+
 
             let shader_sources = [
-                (glow::VERTEX_SHADER, vertex_shader_source),
-                (glow::FRAGMENT_SHADER, fragment_shader_source),
+                (glow::VERTEX_SHADER, vertex_shader_src),
+                (glow::FRAGMENT_SHADER, fragment_shader_src),
             ];
 
             let shaders: Vec<_> = shader_sources
@@ -237,84 +257,96 @@ impl MartyScaler {
                 gl.delete_shader(shader);
             }
 
-            let vertex_array = gl.create_vertex_array().expect("Cannot create vertex array");
+            // --- Vertex Array / Buffer setup ---
+            let vao = gl.create_vertex_array().unwrap();
+            gl.bind_vertex_array(Some(vao));
+
+            let vbo = gl.create_buffer().unwrap();
+            gl.bind_buffer(glow::ARRAY_BUFFER, Some(vbo));
+            gl.buffer_data_u8_slice(glow::ARRAY_BUFFER, bytemuck::cast_slice(&vertices), glow::STATIC_DRAW);
+
+            gl.enable_vertex_attrib_array(0);
+            gl.vertex_attrib_pointer_f32(0, 2, glow::FLOAT, false, 16, 0);
+            gl.enable_vertex_attrib_array(1);
+            gl.vertex_attrib_pointer_f32(1, 2, glow::FLOAT, false, 16, 8);
+
+            //let u_transform = gl.get_uniform_location(program, "u_transform").unwrap();
+            //let u_texture = gl.get_uniform_location(program, "u_texture").unwrap();
+
+            let matrix = ScalingMatrix::new(
+                mode,
+                (texture_size.0 as f32, texture_size.1 as f32),
+                (target_size.0 as f32, target_size.1 as f32),
+                (screen_size.0 as f32, screen_size.1 as f32),
+                margin_y as f32,
+            );
 
             Self {
                 mode,
                 program,
-                vertex_array,
+                vertex_array: vao,
+                vbo,
                 screen_size,
                 target_size,
                 texture_size,
                 margin_y,
+                scaling_matrix: matrix,
+
             }
         }
-    }
-
-    fn compute_transform(
-        mode: ScalerMode,
-        texture: (f32, f32),
-        target: (f32, f32),
-        screen: (f32, f32),
-        margin_y: f32,
-    ) -> [f32; 16] {
-        let (tw, th) = texture;
-        let (tw_out, th_out) = target;
-        let (sw, sh) = screen;
-        let margin_ndc = margin_y / (sh / 2.0);
-        let mut sw_f = 1.0;
-        let mut sh_f = 1.0;
-
-        match mode {
-            ScalerMode::Null | ScalerMode::Fixed => {
-                sw_f = tw / sw;
-                sh_f = th_out / sh;
-            }
-            ScalerMode::Integer => {
-                let scale = (sw / tw).min((sh - margin_y) / th_out).floor();
-                sw_f = (tw * scale) / sw;
-                sh_f = (th_out * scale) / sh;
-            }
-            ScalerMode::Fit | ScalerMode::Windowed => {
-                let scale = (sw / tw).min((sh - margin_y) / th_out);
-                sw_f = (tw * scale) / sw;
-                sh_f = (th_out * scale) / sh;
-            }
-            ScalerMode::Stretch => {
-                sw_f = 1.0;
-                sh_f = (sh - margin_y) / sh;
-            }
-        }
-
-        let tx = (sw_f / 2.0).fract();
-        let ty = (sh_f / 2.0).fract() - margin_ndc / 2.0;
-
-        [
-            sw_f, 0.0, 0.0, 0.0, 0.0, sh_f, 0.0, 0.0, 0.0, 0.0, 1.0, 0.0, tx, ty, 0.0, 1.0,
-        ]
     }
 }
 
-impl DisplayScaler<Context, (), ()> for MartyScaler {
+impl DisplayScaler<Context, (), Texture> for MartyScaler {
     type NativeContext = Context;
     type NativeRenderPass = ();
+    type NativeTexture = Texture;
     type NativeTextureView = ();
     type NativeEncoder = ();
 
-    fn texture_view(&self) -> &() {
-        &()
-    }
+    // fn texture_view(&self) -> &() {
+    //     &()
+    // }
 
-    fn render(&self, _encoder: &mut (), _render_target: &()) {
+    fn render(&self, _encoder: &mut (), _render_target: &Self::NativeTextureView) {
         // Glow does not use an encoder
     }
 
-    fn render_with_context(&self, gl: &Context) {
-        use glow::HasContext as _;
+    fn render_with_context(&self, gl: &Context, texture: Arc<Self::NativeTexture>) {
         unsafe {
+            gl.disable(glow::CULL_FACE);
+            gl.bind_framebuffer(glow::FRAMEBUFFER, None);
+
             gl.use_program(Some(self.program));
             gl.bind_vertex_array(Some(self.vertex_array));
-            gl.draw_arrays(glow::TRIANGLES, 0, 3);
+
+            // Bind texture to unit 0
+            gl.active_texture(glow::TEXTURE0);
+            gl.bind_texture(glow::TEXTURE_2D, Some(*texture));
+
+            // Set sampler uniform
+            if let Some(loc) = gl.get_uniform_location(self.program, "u_texture") {
+                gl.uniform_1_i32(Some(&loc), 0);
+            }
+
+            // Set transform uniform
+            if let Some(loc) = gl.get_uniform_location(self.program, "u_transform") {
+                // let transform = [
+                //     1.0, 0.0, 0.0, 0.0,
+                //     0.0, 1.0, 0.0, 0.0,
+                //     0.0, 0.0, 1.0, 0.0,
+                //     0.0, 0.0, 0.0, 1.0,
+                // ];
+
+                let transform = self.scaling_matrix.as_slice_f32();
+                gl.uniform_matrix_4_f32_slice(Some(&loc), true, transform);
+                // println!(
+                //     "texture size: {:?} target size: {:?} screen size: {:?}",
+                //     self.texture_size, self.target_size, self.screen_size
+                // );
+            }
+
+            gl.draw_arrays(glow::TRIANGLE_STRIP, 0, 4);
         }
     }
 
@@ -324,9 +356,9 @@ impl DisplayScaler<Context, (), ()> for MartyScaler {
 
     fn resize(
         &mut self,
-        device: &Context,
-        queue: &(),
-        texture: &(),
+        _device: &Context,
+        _queue: &(),
+        _texture: &Self::NativeTexture,
         texture_width: u32,
         texture_height: u32,
         target_width: u32,
@@ -334,78 +366,36 @@ impl DisplayScaler<Context, (), ()> for MartyScaler {
         screen_width: u32,
         screen_height: u32,
     ) {
-        // //self.texture_view = create_texture_view(pixels, self.texture_width, self.texture_height);
-        // self.texture_view = texture.create_view(&wgpu::TextureViewDescriptor::default());
-        // self.nearest_bind_group = create_bind_group(
-        //     device,
-        //     &self.bind_group_layout,
-        //     &self.texture_view,
-        //     &self.nearest_sampler,
-        //     &self.transform_uniform_buffer,
-        //     &self.params_uniform_buffer,
-        // );
-        //
-        // self.bilinear_bind_group = create_bind_group(
-        //     device,
-        //     &self.bind_group_layout,
-        //     &self.texture_view,
-        //     &self.bilinear_sampler,
-        //     &self.transform_uniform_buffer,
-        //     &self.params_uniform_buffer,
-        // );
-        //
-        // //println!("screen_margin_y: {}", self.screen_margin_y);
-        // let matrix = ScalingMatrix::new(
-        //     self.mode,
-        //     (texture_width as f32, texture_height as f32),
-        //     (target_width as f32, target_height as f32),
-        //     (screen_width as f32, screen_height as f32),
-        //     self.screen_margin_y as f32,
-        // );
-        // let transform_bytes = matrix.as_bytes();
-        //
-        // self.texture_width = texture_width;
-        // self.texture_height = texture_height;
-        // self.target_width = target_width;
-        // self.target_height = target_height;
-        // self.screen_width = screen_width;
-        // self.screen_height = screen_height;
-        //
-        // queue.write_buffer(&self.transform_uniform_buffer, 0, transform_bytes);
+        self.texture_size = (texture_width, texture_height);
+        self.screen_size = (screen_width, screen_height);
+        self.target_size = (target_width, target_height);
+
+        self.scaling_matrix = ScalingMatrix::new(
+            self.mode,
+            (texture_width as f32, texture_height as f32),
+            (target_width as f32, target_height as f32),
+            (screen_width as f32, screen_height as f32),
+            self.margin_y as f32,
+        );
     }
 
-    fn resize_surface(&mut self, device: &Context, queue: &(), texture: &(), screen_width: u32, screen_height: u32) {
-        // self.texture_view = texture.create_view(&wgpu::TextureViewDescriptor::default());
-        // self.nearest_bind_group = create_bind_group(
-        //     device,
-        //     &self.bind_group_layout,
-        //     &self.texture_view,
-        //     &self.nearest_sampler,
-        //     &self.transform_uniform_buffer,
-        //     &self.params_uniform_buffer,
-        // );
-        //
-        // self.bilinear_bind_group = create_bind_group(
-        //     device,
-        //     &self.bind_group_layout,
-        //     &self.texture_view,
-        //     &self.bilinear_sampler,
-        //     &self.transform_uniform_buffer,
-        //     &self.params_uniform_buffer,
-        // );
-        //
-        // self.screen_width = screen_width;
-        // self.screen_height = screen_height;
-        // let matrix = ScalingMatrix::new(
-        //     self.mode,
-        //     (self.texture_width as f32, self.texture_height as f32),
-        //     (self.target_width as f32, self.target_height as f32),
-        //     (self.screen_width as f32, self.screen_height as f32),
-        //     self.screen_margin_y as f32,
-        // );
-        // let transform_bytes = matrix.as_bytes();
-        //
-        // queue.write_buffer(&self.transform_uniform_buffer, 0, transform_bytes);
+    fn resize_surface(
+        &mut self,
+        _device: &Context,
+        _queue: &(),
+        _texture: &Self::NativeTexture,
+        screen_width: u32,
+        screen_height: u32,
+    ) {
+        self.screen_size = (screen_width, screen_height);
+
+        self.scaling_matrix = ScalingMatrix::new(
+            self.mode,
+            (self.texture_size.0 as f32, self.texture_size.1 as f32),
+            (self.target_size.0 as f32, self.target_size.1 as f32),
+            (self.screen_size.0 as f32, self.screen_size.1 as f32),
+            self.margin_y as f32,
+        );
     }
 
     fn mode(&self) -> ScalerMode {
@@ -415,7 +405,13 @@ impl DisplayScaler<Context, (), ()> for MartyScaler {
     fn set_mode(&mut self, _device: &eframe::glow::Context, queue: &(), new_mode: ScalerMode) {
         //println!(">>> set_mode(): {:?}", new_mode);
         self.mode = new_mode;
-        //self.update_matrix(queue);
+        self.scaling_matrix = ScalingMatrix::new(
+            self.mode,
+            (self.texture_size.0 as f32, self.texture_size.1 as f32),
+            (self.target_size.0 as f32, self.target_size.1 as f32),
+            (self.screen_size.0 as f32, self.screen_size.1 as f32),
+            self.margin_y as f32,
+        );
     }
 
     fn geometry(&self) -> ScalerGeometry {
@@ -447,7 +443,14 @@ impl DisplayScaler<Context, (), ()> for MartyScaler {
     /// Apply a ScalerOption. Update of uniform buffers is controlled by the 'update' boolean. If
     /// it is true we will perform an immediate uniform update; if false it will be delayed and
     /// set_option() will return true to indicate that the caller should perform an update.
-    fn set_option(&mut self, device: &eframe::glow::Context, queue: &(), opt: ScalerOption, update: bool) -> bool {
+    fn set_option(&mut self, device: &Context, queue: &(), opt: ScalerOption, _update: bool) -> bool {
+        match opt {
+            ScalerOption::Mode(new_mode) => {
+                self.set_mode(device, queue, new_mode);
+            }
+            _ => {}
+        }
+
         // let mut update_uniform = false;
         //
         // match opt {
@@ -734,21 +737,33 @@ impl ScalingMatrix {
     /// Create a transformation matrix that fits the texture by scaling it proportionally to the
     /// largest size that will fit the surface, proportionally
     fn fit_matrix(texture_size: (f32, f32), target_size: (f32, f32), screen_size: (f32, f32), margin_y: f32) -> Self {
+        println!(" >>>> called fit_matrix <<<< ");
         //let margin_y = margin_y / 2.0;
         let offset = 0.0;
         let margin_ndc = (margin_y + offset) / (screen_size.1 / 2.0);
 
         let (texture_width, _texture_height) = texture_size;
-        let target_height = target_size.1;
+        let mut target_height = target_size.1;
         let (screen_width, screen_height) = screen_size;
         let adjusted_screen_h = screen_height - margin_y;
 
-        let max_height_factor = ((screen_height - margin_y) / screen_height).max(1.0);
-        let width_ratio = (screen_width / texture_width).max(1.0);
-        let height_ratio = (adjusted_screen_h / target_height).max(max_height_factor);
+        if screen_width < texture_width {
+            // Reduce target height by the same ratio as the texture width
+            //target_height = target_height * (screen_width / texture_width);
+        }
+
+        if texture_width <= 0.0 || target_height <= 0.0 {
+            return Self {
+                transform: Mat4::identity(),
+            };
+        }
+
+        //let max_height_factor = (screen_height - margin_y) / screen_height;
+        let width_ratio = screen_width / texture_width;
+        let height_ratio = adjusted_screen_h / target_height;
 
         // Get the smallest scale size. (Removed floor() call from integer scaler)
-        let scale = width_ratio.clamp(1.0, height_ratio);
+        let scale = width_ratio.min(height_ratio);
 
         let scaled_width = texture_width * scale;
         let scaled_height = target_height * scale;
@@ -788,5 +803,9 @@ impl ScalingMatrix {
 
     fn as_bytes(&self) -> &[u8] {
         self.transform.as_byte_slice()
+    }
+
+    fn as_slice_f32(&self) -> &[f32] {
+        self.transform.as_slice()
     }
 }

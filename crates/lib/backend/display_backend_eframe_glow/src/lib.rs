@@ -49,10 +49,13 @@ pub use surface::EFrameBackendSurface;
 
 use marty_display_common::display_scaler::DisplayScaler;
 
-use anyhow::{anyhow, Error};
+use anyhow::{anyhow, bail, Error};
 use display_backend_trait::DisplayTargetSurface;
 use egui;
-use egui_glow::glow;
+use egui_glow::{
+    glow,
+    glow::{HasContext, PixelUnpackData},
+};
 
 pub struct EFrameBackend {
     ctx: egui::Context,
@@ -69,8 +72,9 @@ pub type EFrameScalerType = Box<
     dyn DisplayScaler<
         glow::Context,
         (),
-        (),
+        glow::Texture,
         NativeContext = glow::Context,
+        NativeTexture = glow::Texture,
         NativeTextureView = (),
         NativeEncoder = (),
         NativeRenderPass = (),
@@ -80,7 +84,7 @@ pub type EFrameScalerType = Box<
 impl DisplayBackend<'_, '_, ()> for EFrameBackend {
     type NativeDevice = glow::Context;
     type NativeQueue = ();
-    type NativeTexture = ();
+    type NativeTexture = glow::Texture;
     type NativeTextureFormat = ();
     type NativeBackend = ();
     type NativeBackendAdapterInfo = ();
@@ -105,26 +109,51 @@ impl DisplayBackend<'_, '_, ()> for EFrameBackend {
         surface_dim: TextureDimensions,
     ) -> Result<DynDisplayTargetSurface, Error> {
         let pixels = vec![0; buffer_dim.w as usize * buffer_dim.h as usize * 4];
+        let gl = &self.gl;
+        unsafe {
+            let tex = gl.create_texture().unwrap();
 
-        let buffer_image = egui::ColorImage {
-            size:   [buffer_dim.w as usize, buffer_dim.h as usize],
-            pixels: pixels
-                .chunks_exact(4)
-                .map(|rgba| egui::Color32::from_rgba_premultiplied(rgba[0], rgba[1], rgba[2], rgba[3]))
-                .collect(),
-        };
-        let buffer_handle =
-            self.ctx
-                .load_texture("marty_buffer_texture", buffer_image, egui::TextureOptions::default());
+            gl.bind_texture(glow::TEXTURE_2D, Some(tex));
+            gl.tex_image_2d(
+                glow::TEXTURE_2D,
+                0,
+                glow::RGBA as i32,
+                buffer_dim.w as i32,
+                buffer_dim.h as i32,
+                0,
+                glow::RGBA,
+                glow::UNSIGNED_BYTE,
+                PixelUnpackData::Slice(Some(&pixels)),
+            );
+            gl.tex_parameter_i32(glow::TEXTURE_2D, glow::TEXTURE_MIN_FILTER, glow::LINEAR as i32);
+            gl.tex_parameter_i32(glow::TEXTURE_2D, glow::TEXTURE_MAG_FILTER, glow::LINEAR as i32);
 
-        Ok(Arc::new(RwLock::new(EFrameBackendSurface {
-            ctx: self.ctx.clone(),
-            pixels,
-            buffer: buffer_handle,
-            buffer_dim,
-            surface_dim,
-            dirty: false,
-        })))
+            let fbo = gl.create_framebuffer().map_err(|_| anyhow!("Failed to create FBO"))?;
+            gl.bind_framebuffer(glow::FRAMEBUFFER, Some(fbo));
+            gl.framebuffer_texture_2d(
+                glow::FRAMEBUFFER,
+                glow::COLOR_ATTACHMENT0,
+                glow::TEXTURE_2D,
+                Some(tex),
+                0,
+            );
+
+            if gl.check_framebuffer_status(glow::FRAMEBUFFER) != glow::FRAMEBUFFER_COMPLETE {
+                bail!("Framebuffer is not complete");
+            }
+
+            gl.bind_framebuffer(glow::FRAMEBUFFER, None);
+
+            Ok(Arc::new(RwLock::new(EFrameBackendSurface {
+                ctx: self.ctx.clone(),
+                pixels,
+                buffer_texture: Arc::new(tex),
+                buffer_object: fbo,
+                buffer_dim,
+                surface_dim,
+                dirty: false,
+            })))
+        }
     }
 
     fn resize_backing_texture(

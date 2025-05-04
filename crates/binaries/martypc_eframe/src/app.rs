@@ -85,6 +85,8 @@ pub const GRAB_MODE: CursorGrab = CursorGrab::Confined;
 pub struct MartyApp {
     current_size: egui::Vec2,
     last_size: egui::Vec2,
+    size_delay: u32,
+    ppp: Option<f32>,
     focused: bool,
     hide_menu: bool,
     menu_height: f32,
@@ -118,6 +120,9 @@ impl Default for MartyApp {
             hide_menu: false,
             current_size: egui::Vec2::ZERO,
             last_size: egui::Vec2::INFINITY,
+            // Stupid hack for web
+            size_delay: 12,
+            ppp: None,
             focused: false,
             menu_height: 22.0,
             // Example stuff:
@@ -579,6 +584,9 @@ impl eframe::App for MartyApp {
         // Get current viewport focus state.
         let vi = ctx.input(|i| {
             let vi = i.viewport();
+
+            self.ppp = vi.native_pixels_per_point;
+
             if let Some(focus) = vi.focused {
                 if self.focused && !focus {
                     log::debug!("MartyApp::update(): Main viewport lost focus");
@@ -604,8 +612,16 @@ impl eframe::App for MartyApp {
         if let Some(emu) = &mut self.emu {
             self.current_size = ctx.screen_rect().size(); // Get window size
 
-            if self.current_size != self.last_size {
-                log::warn!("MartyApp::update(): Window resized to: {:?}", self.current_size);
+            if self.size_delay > 0 || (self.current_size != self.last_size) {
+                log::debug!(
+                    "MartyApp::update(): Window resized to: {:?} ppp: {:?}",
+                    self.current_size,
+                    self.ppp
+                );
+                if self.size_delay > 0 {
+                    log::warn!("This is a synthetic resize event for web.");
+                    self.size_delay = self.size_delay.saturating_sub(1);
+                }
                 MartyApp::viewport_resized(
                     self.dm.as_mut().unwrap(),
                     self.current_size.x as u32,
@@ -749,8 +765,13 @@ impl eframe::App for MartyApp {
                                 }
                                 #[cfg(feature = "use_glow")]
                                 {
-                                    let callback = dm.main_display_callback(ui);
+                                    let callback = dm.main_display_callback(ui, rect);
                                     ui.painter().add(callback);
+
+                                    if show_bezel {
+                                        egui::Image::new(egui::include_image!("../../../../assets/bezel_trans_bg.png"))
+                                            .paint_at(ui, rect);
+                                    }
                                 }
                                 #[cfg(not(any(feature = "use_wgpu", feature = "use_glow")))]
                                 {
@@ -828,7 +849,7 @@ impl eframe::App for MartyApp {
                                 }
                                 #[cfg(feature = "use_glow")]
                                 {
-                                    let callback = dm.main_display_callback(ui);
+                                    let callback = dm.main_display_callback(ui, rect);
                                     ui.painter().add(callback);
                                 }
                                 response

@@ -15,11 +15,11 @@ anyhow.workspace = true
 
 # Optional dependencies
 egui = { workspace = true, optional = true }
-egui_glow = { workspace = true, optional = true }
+glow = { workspace = true, optional = true }
 wgpu = { workspace = true, optional = true }
 
 [features]
-default = ["use_egui_backend"]
+default = []
 use_wgpu = ["dep:wgpu"]
-use_glow = ["dep:egui", "dep:egui_glow"]
+use_glow = ["dep:glow"]
 use_egui_backend = ["dep:egui"]

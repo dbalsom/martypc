@@ -719,18 +719,31 @@ impl EFrameDisplayManager {
         self.targets[0].clone()
     }
 
-    pub fn main_display_callback(&self, ui: &mut egui::Ui) -> egui::PaintCallback {
-        let (rect, response) = ui.allocate_exact_size(egui::Vec2::splat(300.0), egui::Sense::drag());
-
+    #[cfg(feature = "use_glow")]
+    pub fn main_display_callback(&self, ui: &mut egui::Ui, rect: egui::Rect) -> egui::PaintCallback {
         let target = self.targets[0].clone();
 
         egui::PaintCallback {
             rect,
             callback: Arc::new(egui_glow::CallbackFn::new(move |_info, painter| {
-                if let Some(scaler) = &mut target.write().unwrap().scaler {
-                    scaler.render_with_context(painter.gl());
+                if let Ok(mut target) = target.try_write() {
+                    let surface = target.surface().unwrap();
+                    let texture = surface.read().unwrap().backing_texture().clone();
+
+                    if let Some(scaler) = &mut target.scaler {
+                        scaler.render_with_context(painter.gl(), texture.clone());
+                    }
+                }
+                else {
+                    log::warn!("Failed to acquire write lock on display target!");
                 }
             })),
+        }
+    }
+    #[cfg(feature = "use_wgpu")]
+    pub fn main_display_callback(&self) -> DisplayTargetCallback {
+        DisplayTargetCallback {
+            lock: self.targets[0].clone(),
         }
     }
 }
@@ -909,10 +922,10 @@ impl<'p> DisplayManager<EFrameBackend, GuiRenderContext, ViewportId, ViewportId,
                 #[cfg(feature = "use_glow")]
                 let scaler = MartyScaler::new(
                     &*self.backend.as_ref().unwrap().device(),
-                    (0.0, 0.0),
-                    (0.0, 0.0),
-                    (0.0, 0.0),
-                    0.0,
+                    (DEFAULT_RESOLUTION_W, DEFAULT_RESOLUTION_H),
+                    (DEFAULT_RESOLUTION_W, DEFAULT_RESOLUTION_H),
+                    (sw, sh),
+                    0,
                     scaler_preset.mode.unwrap_or(ScalerMode::Integer),
                 );
                 #[cfg(not(any(feature = "use_wgpu", feature = "use_glow")))]
