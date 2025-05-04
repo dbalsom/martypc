@@ -160,7 +160,7 @@ pub const TGA_MEM_APERTURE: usize = 0x8000; // 32Kb aperture.
 pub const TGA_MEM_SIZE: usize = 0x8000; // 32Kb vram
 pub const TGA_MEM_MASK: usize = !0x4000;
 
-pub const CGA_MODE_ENABLE_MASK: u8 = 0b11_0111;
+pub const CGA_MODE_ENABLE_MASK: u8 = 0b101_0111; // Ignore blink and enable bits
 
 // Sensible defaults for CRTC registers. A real CRTC is probably uninitialized.
 // 4/5/2023: Changed these values to 40 column mode.
@@ -251,7 +251,7 @@ const MODE_BW: u8 = 0b0000_0100;
 const MODE_ENABLE: u8 = 0b0000_1000;
 const MODE_HIRES_GRAPHICS: u8 = 0b0001_0000;
 const MODE_BLINKING: u8 = 0b0010_0000;
-const VMODE_4BPP: u8 = 0b0010_0000;
+const VMODE_4BPP: u8 = 0b0100_0000;
 
 const CURSOR_LINE_MASK: u8 = 0b0001_1111;
 const CURSOR_ATTR_MASK: u8 = 0b0110_0000;
@@ -1475,20 +1475,19 @@ impl TGACard {
                     vmode_byte |= MODE_HIRES_GRAPHICS;
                 }
                 if self.mode_4bpp {
-                    // Replaces blinking bit
                     vmode_byte |= VMODE_4BPP;
                 }
                 self.display_mode = match vmode_byte & CGA_MODE_ENABLE_MASK {
-                    0b00_0100 => DisplayMode::Mode0TextBw40,
-                    0b00_0000 => DisplayMode::Mode1TextCo40,
-                    0b00_0101 => DisplayMode::Mode2TextBw80,
-                    0b00_0001 => DisplayMode::Mode3TextCo80,
-                    0b00_0011 => DisplayMode::ModeTextAndGraphicsHack,
-                    0b00_0010 => DisplayMode::Mode4LowResGraphics,
-                    0b00_0110 => DisplayMode::Mode5LowResAltPalette,
-                    0b01_0110 => DisplayMode::Mode6HiResGraphics,
-                    0b01_0010 => DisplayMode::Mode6HiResGraphics,
-                    0b10_0010 => DisplayMode::Mode8TGALowResGraphics,
+                    0b000_0100 => DisplayMode::Mode0TextBw40,
+                    0b000_0000 => DisplayMode::Mode1TextCo40,
+                    0b000_0101 => DisplayMode::Mode2TextBw80,
+                    0b000_0001 => DisplayMode::Mode3TextCo80,
+                    0b000_0011 => DisplayMode::ModeTextAndGraphicsHack,
+                    0b000_0010 => DisplayMode::Mode4LowResGraphics,
+                    0b000_0110 => DisplayMode::Mode5LowResAltPalette,
+                    0b001_0110 => DisplayMode::Mode6HiResGraphics,
+                    0b001_0010 => DisplayMode::Mode6HiResGraphics,
+                    0b100_0010 => DisplayMode::Mode8TGALowResGraphics,
                     _ => {
                         trace!(
                             self,
@@ -1525,7 +1524,6 @@ impl TGACard {
 
                 let mut vmode_byte = self.mode_byte;
                 if self.mode_4bpp {
-                    // Replaces blinking bit
                     vmode_byte |= VMODE_4BPP;
                 }
                 // Updated mask to exclude the enable bit in mode calculation.
@@ -1533,17 +1531,17 @@ impl TGACard {
                 // the CGA card outputs video at a given moment. This can be toggled on
                 // and off during a single frame, such as done in VileR's fontcmp.com
                 self.display_mode = match vmode_byte & CGA_MODE_ENABLE_MASK {
-                    0b00_0100 => DisplayMode::Mode0TextBw40,
-                    0b00_0000 => DisplayMode::Mode1TextCo40,
-                    0b00_0101 => DisplayMode::Mode2TextBw80,
-                    0b00_0001 => DisplayMode::Mode3TextCo80,
-                    0b00_0011 => DisplayMode::ModeTextAndGraphicsHack,
-                    0b00_0010 => DisplayMode::Mode4LowResGraphics,
-                    0b00_0110 => DisplayMode::Mode5LowResAltPalette,
-                    0b01_0110 => DisplayMode::Mode6HiResGraphics,
-                    0b01_0010 => DisplayMode::Mode6HiResGraphics,
-                    0b10_0010 => DisplayMode::Mode8TGALowResGraphics,
-                    0b10_0001 => DisplayMode::Mode9TGAMedResGraphics,
+                    0b000_0100 => DisplayMode::Mode0TextBw40,
+                    0b000_0000 => DisplayMode::Mode1TextCo40,
+                    0b000_0101 => DisplayMode::Mode2TextBw80,
+                    0b000_0001 => DisplayMode::Mode3TextCo80,
+                    0b000_0011 => DisplayMode::ModeTextAndGraphicsHack,
+                    0b000_0010 => DisplayMode::Mode4LowResGraphics,
+                    0b000_0110 => DisplayMode::Mode5LowResAltPalette,
+                    0b001_0110 => DisplayMode::Mode6HiResGraphics,
+                    0b001_0010 => DisplayMode::Mode6HiResGraphics,
+                    0b100_0010 => DisplayMode::Mode8TGALowResGraphics,
+                    0b100_0001 => DisplayMode::Mode9TGAMedResGraphics,
                     _ => {
                         trace!(self, "Invalid display mode selected: {:02X}", self.mode_byte & 0x1F);
                         log::warn!("TGA: Invalid display mode selected: {:02X}", self.mode_byte & 0x1F);
@@ -1650,7 +1648,7 @@ impl TGACard {
     /// Handle a write to the CGA mode register. Defer the mode change if it would change
     /// from graphics mode to text mode or back (Need to measure this on real hardware)
     fn handle_mode_register(&mut self, mode_byte: u8) {
-        self.mode_byte = mode_byte;
+        self.mode_byte = mode_byte & 0x3F; // Mask to 6 bits
         if self.is_deferred_mode_change(mode_byte) {
             // Latch the mode change and mark it pending. We will change the mode on next hsync.
             log::trace!("deferring mode change.");
@@ -1754,9 +1752,10 @@ impl TGACard {
 
         self.cc_altcolor = self.cc_register & 0x0F;
 
-        if !self.mode_hires_gfx {
-            self.cc_overscan_color = self.cc_altcolor;
-        }
+        // Tandy/PCjr have a dedicated overscan color register.
+        // if !self.mode_hires_gfx {
+        //     self.cc_overscan_color = self.cc_altcolor;
+        // }
     }
 
     /// Swaps the front and back buffers by exchanging indices.
@@ -1941,7 +1940,24 @@ impl TGACard {
     #[inline]
     pub fn get_gfx_addr_16k(&self, row: u8) -> usize {
         let row_offset = match self.page_register.address_mode() {
-            0 => 0,
+            0 => {
+                match self.subtype {
+                    VideoCardSubType::IbmPCJr => {
+                        // On PCjr, VAM of 0 will override the row counter address calculation
+                        // even in graphics mode.
+                        0
+                    }
+                    _ => {
+                        // Tandy1000 seems to ignore a VAM of 0 in graphics mode.
+                        if self.mode_graphics {
+                            (row as usize & 0x01) << 12
+                        }
+                        else {
+                            0
+                        }
+                    }
+                }
+            }
             _ => (row as usize & 0x01) << 12,
         };
 
@@ -2913,7 +2929,7 @@ impl TGACard {
 
             (0x10..=0x1F, _) => {
                 log::trace!("Write to TGA palette register: {:02X}", data);
-                let pal_idx = self.video_array_address - 0x10;
+                let pal_idx = self.video_array_address & 0x0F;
                 self.palette_registers[pal_idx] = data & 0x0F;
             }
             _ => {}
@@ -2922,14 +2938,14 @@ impl TGACard {
 
     pub fn page_register_write(&mut self, data: u8) {
         self.page_register = TPageRegister::from_bytes([data]);
-        log::trace!("TGA Page Register: {:?}", self.page_register);
+        log::trace!("TGA Page Register write: {:?}", self.page_register);
         match self.mode_size {
             VideoModeSize::Mode16k => {
                 // Select 16K page for CPU
                 self.cpu_page_offset = self.page_register.cpu_page() as usize * 0x4000;
             }
             VideoModeSize::Mode32k => {
-                // Select 32K page for CPU} // Select 32K page for CPU
+                // Select 32K page for CPU
                 // 32K page is chosen by ignoring bit 0 of the CPU page register
                 self.cpu_page_offset = (self.page_register.cpu_page() & 0x0E) as usize * 0x4000;
             }

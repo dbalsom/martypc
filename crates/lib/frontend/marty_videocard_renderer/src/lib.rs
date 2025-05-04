@@ -311,7 +311,7 @@ impl VideoRenderer {
         self.set_aperture(cfg.display_aperture.unwrap_or(DisplayApertureType::Cropped));
     }
 
-    pub fn get_config_params(&self) -> RendererConfigParams {
+    pub fn config_params(&self) -> RendererConfigParams {
         RendererConfigParams {
             aspect_correction: if self.aspect_ratio.is_some() { true } else { false },
             aspect_ratio: self.aspect_ratio,
@@ -319,8 +319,13 @@ impl VideoRenderer {
             composite: self.composite_enabled,
         }
     }
-    pub fn get_params(&self) -> &VideoParams {
+    pub fn params(&self) -> &VideoParams {
         &self.params
+    }
+
+    #[inline]
+    pub fn is_debug(&self) -> bool {
+        self.params.aperture.is_debug()
     }
 
     pub fn select_buffer(&mut self, selection: BufferSelect) {

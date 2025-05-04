@@ -175,8 +175,8 @@ overlays = [
 
 [[machine]]
 name = "tandy1000hx"
-type = "Tandy1000"
-rom_set = "tandy1000hx"
+type = "Tandy1000HX"
+rom_set = "tandy1000_2_0_0"
 speaker = true
 overlays = [
     "pcxt_2_720k_floppies",

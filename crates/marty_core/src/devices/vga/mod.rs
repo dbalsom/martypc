@@ -1090,7 +1090,7 @@ impl VGACard {
 
     /// Tick the VGA. This is much simpler than the implementation in the CGA as we only support
     /// ticking by character clock.
-    fn tick(&mut self, ticks: f64, pic: &mut Option<Box<Pic>>) {
+    fn tick(&mut self, ticks: f64, _pic: &mut Option<Box<Pic>>) {
         self.ticks_accum += ticks;
 
         // Drain the accumulator while emitting characters.

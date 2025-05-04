@@ -14,7 +14,7 @@ crate-type = ["lib"]
 [dependencies]
 marty_common = { path = "../../../marty_common" }
 marty_frontend_common = { path = "../marty_frontend_common" }
-display_backend_trait = { path = "../../backend/display_backend_trait", optional = true }
+display_backend_trait = { path = "../../backend/display_backend_trait", default-features = false, optional = true }
 marty_videocard_renderer = { path = "../marty_videocard_renderer", optional = true }
 marty_core = { path = "../../../marty_core", default-features = false }
 anyhow.workspace = true

@@ -59,15 +59,6 @@ macro_rules! push_reg_str_enum {
 */
 
 impl VideoCard for CGACard {
-    fn get_sync(&self) -> (bool, bool, bool, bool) {
-        (
-            self.in_crtc_vblank,
-            self.in_crtc_hblank,
-            self.in_display_area,
-            self.hborder | self.vborder,
-        )
-    }
-
     fn set_video_option(&mut self, opt: VideoOption) {
         match opt {
             VideoOption::EnableSnow(state) => {
@@ -131,48 +122,6 @@ impl VideoCard for CGACard {
         self.extents.apertures.clone()
     }
 
-    /// Get the position of the electron beam.
-    fn get_beam_pos(&self) -> Option<(u32, u32)> {
-        Some((self.beam_x, self.beam_y))
-    }
-
-    /// Tick the CGA the specified number of video clock cycles.
-    fn debug_tick(&mut self, ticks: u32, _cpumem: Option<&[u8]>) {
-        match self.clock_mode {
-            ClockingMode::Character | ClockingMode::Dynamic => {
-                let pixel_ticks = ticks % CGA_LCHAR_CLOCK as u32;
-                let lchar_ticks = ticks / CGA_LCHAR_CLOCK as u32;
-
-                assert_eq!(ticks, pixel_ticks + (lchar_ticks * 16));
-
-                for _ in 0..pixel_ticks {
-                    self.tick();
-                }
-                for _ in 0..lchar_ticks {
-                    if self.clock_divisor == 2 {
-                        self.tick_lchar();
-                    } else {
-                        self.tick_hchar();
-                        self.tick_hchar();
-                    }
-                }
-            }
-            ClockingMode::Cycle => {
-                for _ in 0..ticks {
-                    self.tick();
-                }
-            }
-            _ => {}
-        }
-
-        log::warn!(
-            "debug_tick(): new cur_screen_cycles: {} beam_x: {} beam_y: {}",
-            self.cur_screen_cycles,
-            self.beam_x,
-            self.beam_y
-        );
-    }
-
     #[inline]
     fn get_overscan_color(&self) -> u8 {
         if self.mode_hires_gfx {
@@ -182,16 +131,6 @@ impl VideoCard for CGACard {
         } else {
             self.cc_altcolor
         }
-    }
-
-    /// Get the current scanline being rendered.
-    fn get_scanline(&self) -> u32 {
-        self.scanline
-    }
-
-    /// Return whether to double scanlines for this video device. For CGA, this is always true.
-    fn get_scanline_double(&self) -> bool {
-        true
     }
 
     /// Return the u8 slice representing the requested buffer type.
@@ -207,11 +146,44 @@ impl VideoCard for CGACard {
         &self.buf[self.front_buf][..]
     }
 
+    fn get_clock_divisor(&self) -> u32 {
+        1
+    }
+
+    fn get_sync(&self) -> (bool, bool, bool, bool) {
+        (
+            self.in_crtc_vblank,
+            self.in_crtc_hblank,
+            self.in_display_area,
+            self.hborder | self.vborder,
+        )
+    }
+
+    /// Get the position of the electron beam.
+    fn get_beam_pos(&self) -> Option<(u32, u32)> {
+        Some((self.beam_x, self.beam_y))
+    }
+
+    /// Get the current scanline being rendered.
+    fn get_scanline(&self) -> u32 {
+        self.scanline
+    }
+
+    /// Return whether to double scanlines for this video device. For CGA, this is always true.
+    fn get_scanline_double(&self) -> bool {
+        true
+    }
+
     /// Get the current display refresh rate of the device. For CGA, this is always the same value.
     /// On real hardware, this is something slightly less than 60Hz, we set to 60Hz here for 
     /// simplicity.
     fn get_refresh_rate(&self) -> f32 {
         60.0
+    }
+
+    /// Return the 16-bit value computed from the CRTC's pair of Page Address registers.
+    fn get_start_address(&self) -> u16 {
+        (self.crtc_start_address_ho as u16) << 8 | self.crtc_start_address_lo as u16
     }
 
     fn is_40_columns(&self) -> bool {
@@ -230,11 +202,6 @@ impl VideoCard for CGACard {
     #[inline]
     fn is_graphics_mode(&self) -> bool {
         self.mode_graphics
-    }
-
-    /// Return the 16-bit value computed from the CRTC's pair of Page Address registers.
-    fn get_start_address(&self) -> u16 {
-        (self.crtc_start_address_ho as u16) << 8 | self.crtc_start_address_lo as u16
     }
 
     fn get_cursor_info(&self) -> CursorInfo {
@@ -271,10 +238,6 @@ impl VideoCard for CGACard {
         }
     }
 
-    fn get_clock_divisor(&self) -> u32 {
-        1
-    }
-
     fn get_current_font(&self) -> Option<FontInfo> {
         Some(FontInfo {
             w: CGA_HCHAR_CLOCK as u32,
@@ -283,12 +246,12 @@ impl VideoCard for CGACard {
         })
     }
 
-    fn get_palette(&self) -> Option<Vec<[u8; 4]>> {
-        None
-    }
-
     fn get_character_height(&self) -> u8 {
         self.crtc_maximum_scanline_address + 1
+    }
+
+    fn get_palette(&self) -> Option<Vec<[u8; 4]>> {
+        None
     }
 
     #[rustfmt::skip]
@@ -538,17 +501,54 @@ impl VideoCard for CGACard {
         self.slot_idx = 0;
     }
 
+    /// Tick the CGA the specified number of video clock cycles.
+    fn debug_tick(&mut self, ticks: u32, _cpumem: Option<&[u8]>) {
+        match self.clock_mode {
+            ClockingMode::Character | ClockingMode::Dynamic => {
+                let pixel_ticks = ticks % CGA_LCHAR_CLOCK as u32;
+                let lchar_ticks = ticks / CGA_LCHAR_CLOCK as u32;
+
+                assert_eq!(ticks, pixel_ticks + (lchar_ticks * 16));
+
+                for _ in 0..pixel_ticks {
+                    self.tick();
+                }
+                for _ in 0..lchar_ticks {
+                    if self.clock_divisor == 2 {
+                        self.tick_lchar();
+                    } else {
+                        self.tick_hchar();
+                        self.tick_hchar();
+                    }
+                }
+            }
+            ClockingMode::Cycle => {
+                for _ in 0..ticks {
+                    self.tick();
+                }
+            }
+            _ => {}
+        }
+
+        log::warn!(
+            "debug_tick(): new cur_screen_cycles: {} beam_x: {} beam_y: {}",
+            self.cur_screen_cycles,
+            self.beam_x,
+            self.beam_y
+        );
+    }
+
     fn reset(&mut self) {
         log::debug!("Resetting");
         self.reset_private();
     }
 
-    fn get_pixel(&self, _x: u32, _y: u32) -> &[u8] {
-        &DUMMY_PIXEL
-    }
-
     fn get_pixel_raw(&self, _x: u32, _y: u32) -> u8 {
         0
+    }
+
+    fn get_pixel(&self, _x: u32, _y: u32) -> &[u8] {
+        &DUMMY_PIXEL
     }
 
     fn get_plane_slice(&self, _plane: usize) -> &[u8] {
@@ -632,5 +632,9 @@ impl VideoCard for CGACard {
         log::debug!("Setting light pen trigger.");
         self.set_light_pen_pos(x, y);
         self.lightpen_trigger_tick = Some(self.lightpen_tick);
+    }
+
+    fn set_debug_draw_state(&mut self, state: bool) {
+        self.debug_draw = state;
     }
 }

@@ -92,7 +92,7 @@ wasm-bindgen-futures.workspace = true
 #fwasm-bindgen-rayon = "1.3"
 web-sys.workspace = true
 getrandom = { workspace = true, features = ["wasm_js"]}
-
+glow = { workspace = true }
 egui-winit = { workspace = true, default-features = false, optional = true }
 # No need for accesskit or wayland on web.
 eframe = { workspace = true, default-features = false, features = [
@@ -120,9 +120,16 @@ markdown = ["dep:egui_commonmark", "marty_egui/markdown"]
 # Use winit (disabled for wasm builds)
 use_winit = ["dep:egui-winit"]
 # Use the wgpu backend
-use_wgpu = ["eframe/wgpu", "marty_frontend_common/use_wgpu", "marty_display_common/use_wgpu", "display_manager_eframe/use_wgpu", "marty_egui/scaler_ui"]
+use_wgpu = [
+    "eframe/wgpu",
+    "marty_frontend_common/use_wgpu",
+    "marty_display_common/use_wgpu",
+    "display_manager_eframe/use_wgpu",
+    "marty_egui/scaler_ui",
+    "marty_egui/scaler_params"
+]
 # Use the glow backend
-use_glow = ["eframe/glow", "display_manager_eframe/use_glow"]
+use_glow = ["eframe/glow", "display_manager_eframe/use_glow", "marty_egui/scaler_ui"]
 # Use serialport
 use_serialport = ["marty_egui/use_serialport", "marty_egui_eframe/use_serialport"]
 # Use gilrs for gamepads

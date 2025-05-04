@@ -29,10 +29,10 @@
     Definition of the DisplayScaler trait
 
 */
-
 use marty_frontend_common::color::MartyColor;
 use marty_videocard_renderer::RendererConfigParams;
 use serde::Deserialize;
+use std::sync::Arc;
 
 #[derive(Copy, Clone, Debug, Eq, PartialEq, Deserialize)]
 pub enum ScalerMode {
@@ -181,13 +181,19 @@ impl<T> ThreadSafe for T where T: Send + Sync {} // Implement it for all Send + 
 impl<T> ThreadSafe for T where T: Sized {} // Implement it for all types on WASM
 
 pub trait DisplayScaler<D, Q, T>: Send + Sync {
+    type NativeContext;
     type NativeRenderPass;
+
+    type NativeTexture;
     type NativeTextureView;
     type NativeEncoder;
 
-    fn texture_view(&self) -> &Self::NativeTextureView;
+    //fn texture_view(&self) -> &Self::NativeTextureView;
     fn render(&self, encoder: &mut Self::NativeEncoder, render_target: &Self::NativeTextureView);
 
+    fn render_with_context(&self, _context: &Self::NativeContext, _texture: Arc<Self::NativeTexture>) {
+        // Default implementation does nothing
+    }
     fn render_with_renderpass(&self, render_pass: &mut Self::NativeRenderPass);
     fn resize(
         &mut self,

@@ -77,6 +77,12 @@ pub struct EmuFlags {
     pub debug_keyboard: bool,
 }
 
+#[derive(Clone, Debug)]
+pub struct MountInfo {
+    pub index: usize,
+    pub name:  String,
+}
+
 /// Define the main Emulator struct for this frontend.
 /// All the items that the winit event loop closure needs should be set here so that
 /// we can call an event handler in a different file.
@@ -291,10 +297,10 @@ impl Emulator {
     }
 
     /// Insert floppy disks into floppy drives.
-    pub fn insert_floppies(
+    pub fn mount_floppies(
         &mut self,
         sender: crossbeam_channel::Sender<FrontendThreadEvent<Arc<DiskImage>>>,
-    ) -> Result<(), Error> {
+    ) -> Result<Vec<MountInfo>, Error> {
         let floppy_max = self.machine.bus().floppy_drive_ct();
         let mut image_names: Vec<Option<String>> = vec![None; floppy_max];
 
@@ -314,63 +320,75 @@ impl Emulator {
         }
 
         #[cfg(target_arch = "wasm32")]
-        for (idx, image_name) in image_names.into_iter().filter_map(|x| x).enumerate() {
-            let floppy_name: OsString = image_name.into();
-            let floppy_path = self
-                .rm
-                .resolve_path_from_filename("floppy", std::path::Path::new(&floppy_name))?;
+        {
+            for (idx, image_name) in image_names.into_iter().filter_map(|x| x).enumerate() {
+                let floppy_name: OsString = image_name.into();
+                let floppy_path = self
+                    .rm
+                    .resolve_path_from_filename("floppy", std::path::Path::new(&floppy_name))?;
 
-            let fsc = FileSelectionContext::Path(floppy_path);
-            let context = FileOpenContext::FloppyDiskImage { drive_select: idx, fsc };
-            file_open::open_file(context, sender.clone());
+                log::debug!("Loading floppy disk image: {:?}", floppy_path);
+                let fsc = FileSelectionContext::Path(floppy_path);
+                let context = FileOpenContext::FloppyDiskImage { drive_select: idx, fsc };
+                file_open::open_file(context, sender.clone());
+            }
+            return Ok(Vec::new());
         }
         #[cfg(not(target_arch = "wasm32"))]
-        for (idx, image_name) in image_names.into_iter().filter_map(|x| x).enumerate() {
-            use std::path::PathBuf;
-            let floppy_path = PathBuf::from(image_name);
-            //handle_load_floppy(self, idx, FileSelectionContext::Path(floppy_path.clone()));
-            match self
-                .floppy_manager
-                .load_floppy_by_path(floppy_path.clone(), &mut self.rm)
-            {
-                Ok(fis) => match fis {
-                    FloppyImageSource::DiskImage(floppy_file, path) => {
-                        if let Some(fdc) = &mut self.machine.bus_mut().fdc_mut() {
-                            match fdc.load_image_from(idx, floppy_file, Some(&path.clone()), false) {
-                                Ok(_) => {
-                                    log::info!(
-                                        "Floppy disk image {:?} successfully loaded into drive: {}",
-                                        path.display(),
-                                        idx
-                                    );
-                                }
-                                Err(err) => {
-                                    log::error!(
-                                        "Error inserting floppy disk image {:?} into drive {}: {}",
-                                        path.display(),
-                                        idx,
-                                        err
-                                    );
+        {
+            let mut mounted_floppies = Vec::new();
+            for (idx, image_name) in image_names.into_iter().filter_map(|x| x).enumerate() {
+                use std::path::PathBuf;
+                let floppy_path = PathBuf::from(image_name);
+                //handle_load_floppy(self, idx, FileSelectionContext::Path(floppy_path.clone()));
+                match self
+                    .floppy_manager
+                    .load_floppy_by_path(floppy_path.clone(), &mut self.rm)
+                {
+                    Ok(fis) => match fis {
+                        FloppyImageSource::DiskImage(floppy_file, path) => {
+                            if let Some(fdc) = &mut self.machine.bus_mut().fdc_mut() {
+                                match fdc.load_image_from(idx, floppy_file, Some(&path.clone()), false) {
+                                    Ok(_) => {
+                                        log::info!(
+                                            "Floppy disk image {:?} successfully loaded into drive: {}",
+                                            path.display(),
+                                            idx
+                                        );
+
+                                        mounted_floppies.push(MountInfo {
+                                            index: idx,
+                                            name:  path.display().to_string(),
+                                        });
+                                    }
+                                    Err(err) => {
+                                        log::error!(
+                                            "Error inserting floppy disk image {:?} into drive {}: {}",
+                                            path.display(),
+                                            idx,
+                                            err
+                                        );
+                                    }
                                 }
                             }
+                            else {
+                                log::error!("Couldn't load floppy disk: No Floppy Disk Controller present!");
+                            }
                         }
-                        else {
-                            log::error!("Couldn't load floppy disk: No Floppy Disk Controller present!");
+                        _ => {
+                            log::error!(
+                                "Unsupported image source for auto-loading floppy disk: {:?}",
+                                floppy_path.display()
+                            );
                         }
+                    },
+                    Err(err) => {
+                        log::error!("Failed to load floppy disk image {}: {}", floppy_path.display(), err);
                     }
-                    _ => {
-                        log::error!(
-                            "Unsupported image source for auto-loading floppy disk: {:?}",
-                            floppy_path.display()
-                        );
-                    }
-                },
-                Err(err) => {
-                    log::error!("Failed to load floppy disk image {}: {}", floppy_path.display(), err);
                 }
             }
+            Ok(mounted_floppies)
         }
-        Ok(())
     }
 
     /// Mount VHD images into hard drive devices.

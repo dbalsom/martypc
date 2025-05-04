@@ -96,6 +96,8 @@ pub type EFrameScalerType = Box<
         NativeTextureView = wgpu::TextureView,
         NativeEncoder = wgpu::CommandEncoder,
         NativeRenderPass = wgpu::RenderPass<'static>,
+        NativeContext = (),
+        NativeTexture = (),
     >,
 >;
 

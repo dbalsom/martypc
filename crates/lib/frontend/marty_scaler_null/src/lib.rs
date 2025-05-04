@@ -67,13 +67,12 @@ type Texture = TextureHandle;
 type Texture = ();
 
 impl DisplayScaler<(), (), Texture> for MartyScaler {
+    type NativeContext = ();
     type NativeRenderPass = ();
+    type NativeTexture = ();
     type NativeTextureView = ();
     type NativeEncoder = ();
 
-    fn texture_view(&self) -> &() {
-        &()
-    }
     fn render(&self, _encoder: &mut (), _render_target: &()) {}
     fn render_with_renderpass(&self, _render_pass: &mut Self::NativeRenderPass) {}
 

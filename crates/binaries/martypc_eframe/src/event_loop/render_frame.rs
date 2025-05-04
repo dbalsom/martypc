@@ -78,7 +78,7 @@ pub fn render_frame(emu: &mut Emulator, dm: &mut EFrameDisplayManager) {
             );
 
             // Since we have the card and renderer together here, this is a good time to update
-            // the card with the light pen position.
+            // the card with things like the light pen position.
             if renderer.cursor_state() {
                 let light_pen_pos = renderer.cursor_pos_absolute(&extents);
 
@@ -90,6 +90,8 @@ pub fn render_frame(emu: &mut Emulator, dm: &mut EFrameDisplayManager) {
                 }
                 videocard.set_light_pen_state(emu.mouse_data.l_button_is_pressed);
             }
+            // Tell the card whether to draw debug colors.
+            videocard.set_debug_draw_state(renderer.is_debug());
         }
     });
 

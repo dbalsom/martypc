@@ -60,7 +60,19 @@ pub type DynDisplayTargetSurface = Arc<
     >,
 >;
 
-#[cfg(not(feature = "use_wgpu"))]
+#[cfg(feature = "use_glow")]
+pub type DynDisplayTargetSurface = Arc<
+    RwLock<
+        dyn DisplayTargetSurface<
+            NativeTexture = glow::Texture,
+            NativeDevice = glow::Context,
+            NativeQueue = (),
+            NativeTextureFormat = (),
+        >,
+    >,
+>;
+
+#[cfg(not(any(feature = "use_wgpu", feature = "use_glow")))]
 pub type DynDisplayTargetSurface = Arc<
     RwLock<
         dyn DisplayTargetSurface<
@@ -220,22 +232,30 @@ pub trait DisplayBackend<'p, 'win, G> {
     /// Return a structure containing information about the backend adapter, or None if no
     /// adapter information is available (web targets, for example).
     fn adapter_info(&self) -> Option<Self::NativeBackendAdapterInfo>;
+
     /// Return the native device object for the backend.
     fn device(&self) -> Arc<Self::NativeDevice>;
+
     /// Return the native queue object for the backend.
     fn queue(&self) -> Arc<Self::NativeQueue>;
+
+    // Return a reference to the backing texture
+    //fn backing_texture(&self) -> Arc<Self::NativeTexture>;
+
     /// Create a new display target surface.
     fn create_surface(
         &self,
         buffer_size: BufferDimensions,
         surface_size: TextureDimensions,
     ) -> Result<DynDisplayTargetSurface, Error>;
+
     /// Resize the cpu pixel buffer and backing texture to the specified dimensions, or return an error.
     fn resize_backing_texture(
         &mut self,
         surface: &mut DynDisplayTargetSurface,
         new_dim: BufferDimensions,
     ) -> Result<(), Error>;
+
     /// Resize the display surface to the specified dimensions, or return an error.
     fn resize_surface_texture(
         &mut self,

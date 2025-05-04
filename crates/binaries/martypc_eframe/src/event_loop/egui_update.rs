@@ -124,7 +124,7 @@ pub fn update_egui(emu: &mut Emulator, dm: &mut EFrameDisplayManager, tm: &Times
     // -- Update performance viewer
     if emu.gui.is_window_open(GuiWindow::PerfViewer) {
         dm.with_primary_renderer_mut(|renderer| {
-            emu.gui.perf_viewer.update_video_data(renderer.get_params());
+            emu.gui.perf_viewer.update_video_data(renderer.params());
         });
 
         let dti = dm.display_info(&emu.machine);

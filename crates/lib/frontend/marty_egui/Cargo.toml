@@ -51,6 +51,7 @@ rfd = { workspace = true, optional = true }
 default = ["use_rfd"]
 devtools = []
 scaler_ui = []
+scaler_params = []
 use_rfd = ["dep:rfd"]
 use_serialport = ["serialport"]
 markdown = ["dep:egui_commonmark"]

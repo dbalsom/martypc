@@ -32,4 +32,6 @@ entries = [
     { path = "media/floppies/Demos",                        type = "Directory" },
     { path = "media/floppies/8088MPH (Final Version).img",  type = "File",          size = 737280 },
     { path = "media/floppies/Area 5150 (Compo Version).img", type = "File",         size = 737280 },
+    { path = "media/floppies/CGADEMO (Codemasters).img",    type = "File",         size = 737280 },
+    { path = "media/floppies/CGA Plasma (orac81).img",      type = "File",         size = 737280 },
 ]

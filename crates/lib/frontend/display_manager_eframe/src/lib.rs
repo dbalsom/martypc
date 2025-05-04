@@ -60,8 +60,19 @@ use std::{
     time::Duration,
 };
 
-#[cfg(not(feature = "use_wgpu"))]
+#[cfg(not(any(feature = "use_wgpu", feature = "use_glow")))]
 pub use display_backend_eframe::{
+    BufferDimensions,
+    DisplayBackend,
+    DisplayBackendBuilder,
+    DynDisplayTargetSurface,
+    EFrameBackend,
+    EFrameBackendSurface,
+    EFrameScalerType,
+    TextureDimensions,
+};
+#[cfg(feature = "use_glow")]
+pub use display_backend_eframe_glow::{
     BufferDimensions,
     DisplayBackend,
     DisplayBackendBuilder,
@@ -111,7 +122,9 @@ use marty_display_common::{
 };
 
 // Conditionally use the appropriate scaler per backend
-#[cfg(not(feature = "use_wgpu"))]
+#[cfg(feature = "use_glow")]
+use marty_scaler_glow::MartyScaler;
+#[cfg(not(any(feature = "use_wgpu", feature = "use_glow")))]
 use marty_scaler_null::MartyScaler;
 #[cfg(feature = "use_wgpu")]
 use marty_scaler_wgpu::MartyScaler;
@@ -607,7 +620,7 @@ impl DisplayTargetContext {
         scaler_update.push(ScalerOption::Filtering(params.filter));
 
         if let Some(renderer) = &self.renderer {
-            let rparams = renderer.get_params();
+            let rparams = renderer.params();
 
             let lines = if rparams.line_double {
                 rparams.render.h / 2
@@ -706,6 +719,28 @@ impl EFrameDisplayManager {
         self.targets[0].clone()
     }
 
+    #[cfg(feature = "use_glow")]
+    pub fn main_display_callback(&self, ui: &mut egui::Ui, rect: egui::Rect) -> egui::PaintCallback {
+        let target = self.targets[0].clone();
+
+        egui::PaintCallback {
+            rect,
+            callback: Arc::new(egui_glow::CallbackFn::new(move |_info, painter| {
+                if let Ok(mut target) = target.try_write() {
+                    let surface = target.surface().unwrap();
+                    let texture = surface.read().unwrap().backing_texture().clone();
+
+                    if let Some(scaler) = &mut target.scaler {
+                        scaler.render_with_context(painter.gl(), texture.clone());
+                    }
+                }
+                else {
+                    log::warn!("Failed to acquire write lock on display target!");
+                }
+            })),
+        }
+    }
+    #[cfg(feature = "use_wgpu")]
     pub fn main_display_callback(&self) -> DisplayTargetCallback {
         DisplayTargetCallback {
             lock: self.targets[0].clone(),
@@ -884,7 +919,16 @@ impl<'p> DisplayManager<EFrameBackend, GuiRenderContext, ViewportId, ViewportId,
                     true,
                     MartyColor::from_u24(scaler_preset.border_color.unwrap_or_default()),
                 );
-                #[cfg(not(feature = "use_wgpu"))]
+                #[cfg(feature = "use_glow")]
+                let scaler = MartyScaler::new(
+                    &*self.backend.as_ref().unwrap().device(),
+                    (DEFAULT_RESOLUTION_W, DEFAULT_RESOLUTION_H),
+                    (DEFAULT_RESOLUTION_W, DEFAULT_RESOLUTION_H),
+                    (sw, sh),
+                    0,
+                    scaler_preset.mode.unwrap_or(ScalerMode::Integer),
+                );
+                #[cfg(not(any(feature = "use_wgpu", feature = "use_glow")))]
                 let scaler = MartyScaler::new();
 
                 // If we have a video card id, we need to build a VideoRenderer to render the card.
@@ -999,7 +1043,7 @@ impl<'p> DisplayManager<EFrameBackend, GuiRenderContext, ViewportId, ViewportId,
             let mut render_time = Duration::from_secs(0);
             let renderer_params = if let Some(renderer) = &vtc.renderer {
                 render_time = renderer.get_last_render_time();
-                Some(renderer.get_config_params().clone())
+                Some(renderer.config_params().clone())
             }
             else {
                 None
@@ -1055,6 +1099,24 @@ impl<'p> DisplayManager<EFrameBackend, GuiRenderContext, ViewportId, ViewportId,
         info_vec
     }
 
+    fn main_viewport(&self) -> Option<ViewportId> {
+        // Main display should always be index 0.
+        resolve_dtc!(self.targets[0]).viewport.clone()
+    }
+
+    fn viewport_by_id(&self, _vid: ViewportId) -> Option<ViewportId> {
+        None
+        // self.viewport_id_map.get(&wid).and_then(|idx| {
+        //     //log::warn!("got id, running map():");
+        //     self.targets[*idx].window.as_ref()
+        // })
+    }
+
+    fn viewport(&self, _dt: DtHandle) -> Option<ViewportId> {
+        //self.targets.get(dt.idx()).and_then(|dt| dt.window.as_ref())
+        None
+    }
+
     fn display_type(&self, dt: DtHandle) -> Option<DisplayTargetType> {
         resolve_handle_opt!(dt, self.targets, |vtc: &DisplayTargetContext| { Some(vtc.dt_type) })
     }
@@ -1097,24 +1159,6 @@ impl<'p> DisplayManager<EFrameBackend, GuiRenderContext, ViewportId, ViewportId,
             }
             Ok(())
         })
-    }
-
-    fn viewport_by_id(&self, _vid: ViewportId) -> Option<ViewportId> {
-        None
-        // self.viewport_id_map.get(&wid).and_then(|idx| {
-        //     //log::warn!("got id, running map():");
-        //     self.targets[*idx].window.as_ref()
-        // })
-    }
-
-    fn viewport(&self, _dt: DtHandle) -> Option<ViewportId> {
-        //self.targets.get(dt.idx()).and_then(|dt| dt.window.as_ref())
-        None
-    }
-
-    fn main_viewport(&self) -> Option<ViewportId> {
-        // Main display should always be index 0.
-        resolve_dtc!(self.targets[0]).viewport.clone()
     }
 
     fn backend(&mut self) -> Option<&EFrameBackend> {
@@ -1207,9 +1251,9 @@ impl<'p> DisplayManager<EFrameBackend, GuiRenderContext, ViewportId, ViewportId,
                     // Inform the renderer if the card is to be double-scanned
                     renderer.set_line_double(extents.double_scan);
 
-                    software_aspect = matches!(renderer.get_params().aspect_correction, AspectCorrectionMode::Software);
+                    software_aspect = matches!(renderer.params().aspect_correction, AspectCorrectionMode::Software);
 
-                    let aperture = renderer.get_params().aperture;
+                    let aperture = renderer.params().aperture;
                     let w = extents.apertures[aperture as usize].w;
                     let mut h = extents.apertures[aperture as usize].h;
 

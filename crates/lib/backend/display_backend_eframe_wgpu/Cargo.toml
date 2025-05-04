@@ -11,7 +11,7 @@ crate-type = ["lib"]
 
 [dependencies]
 marty_display_common = { path = "../../frontend/marty_display_common" }
-display_backend_trait = { path = "../display_backend_trait", features = ["use_wgpu"]}
+display_backend_trait = { path = "../display_backend_trait", default-features = false, features = ["use_wgpu"]}
 egui.workspace = true
 egui-wgpu.workspace = true
 anyhow.workspace = true

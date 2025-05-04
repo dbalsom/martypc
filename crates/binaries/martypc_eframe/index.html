@@ -7,12 +7,12 @@
 
 <head>
     <!-- change this to your project name -->
-    <title>MartyPC Web Edition 0.3.0</title>
+    <title>MartyPC Web Edition 0.4.0</title>
 
     <meta property="og:title" content="MartyPC Web Edition">
     <meta property="og:description" content="An IBM PC/XT emulator written in Rust - Now compiled for the web!">
     <meta property="og:url" content="https://martypc.net">
-    <meta property="og:image" content="https://martypc.net/assets/marty_logo_about.png">
+    <meta property="og:image" content="https://martypc.net/assets/marty_logo_about_twitter.png">
     <meta property="og:type" content="website">
     <meta property="og:site_name" content="MartyPC">
     <meta property="og:image:width" content="755">
@@ -22,7 +22,7 @@
     <meta name="twitter:card" content="summary_large_image">
     <meta name="twitter:title" content="MartyPC Web Edition">
     <meta name="twitter:description" content="An IBM PC/XT emulator written in Rust - Now compiled for the web!">
-    <meta name="twitter:image" content="https://martypc.net/assets/marty_logo_about.png">
+    <meta name="twitter:image" content="https://martypc.net/assets/marty_logo_about_twitter.png">
 
     <!-- use nightly toolchain for atomics, webworker shared memory, etc. -->
     <meta data-trunk-toolchain="+nightly">
@@ -32,15 +32,20 @@
     <base data-trunk-public-url/>
 
     <link data-trunk rel="icon" href="../../../assets/favicon.ico">
-    <link data-trunk rel="copy-file" href="../../../assets/marty_logo_about.png"
+    <link data-trunk rel="copy-file" href="../../../assets/marty_logo_about_twitter.png"
           data-target-path="assets"/>
 
     <link data-trunk rel="copy-file" href="../../../install/media/floppies/MartyPC Boot Disk v2.0 (PC_XT) 360k.img"
           data-target-path="media/floppies"/>
 
-    <link data-trunk rel="copy-file" href="../../../install/media/floppies/Demos/8088MPH (Final Version).img"
+    <link data-trunk rel="copy-file" href="../../../install/media/floppies/Demos/CGA/8088MPH (Final Version).img"
           data-target-path="media/floppies"/>
-    <link data-trunk rel="copy-file" href="../../../install/media/floppies/Demos/Area 5150 (Compo Version).img"
+    <link data-trunk rel="copy-file" href="../../../install/media/floppies/Demos/CGA/Area 5150 (Compo Version).img"
+          data-target-path="media/floppies"/>
+
+    <link data-trunk rel="copy-file" href="../../../install/media/floppies/Demos/CGA/CGADEMO (Codemasters).img"
+          data-target-path="media/floppies"/>
+    <link data-trunk rel="copy-file" href="../../../install/media/floppies/Demos/CGA/CGA Plasma (orac81).img"
           data-target-path="media/floppies"/>
 
     <link data-trunk rel="copy-file" href="assets/martypc_data.dat" data-target-path="assets"/>
@@ -83,6 +88,13 @@
     <link rel="apple-touch-icon" href="assets/icon_ios_touch_192.png">
     <meta name="theme-color" media="(prefers-color-scheme: light)" content="white">
     <meta name="theme-color" media="(prefers-color-scheme: dark)" content="#404040">
+
+    <script>
+        if ('ontouchstart' in window || navigator.maxTouchPoints > 0) {
+            console.log("Touch device detected");
+            document.documentElement.classList.add('touch-device');
+        }
+    </script>
 
     <style>
         html {
@@ -212,9 +224,9 @@
             content: url("assets/martypc_logo_off_small.png"); /* Default PNG */
         }
 
-        .start-logo-wrapper:hover {
+        html:not(.touch-device) .start-logo:hover {
             animation: bounce-stretch 0.8s infinite; /* Apply the bounce animation */
-            content: url("assets/martypc_logo_small.png"); /* Default PNG */
+            content: url("assets/martypc_logo_small.png"); /* Change to the hover image */
         }
 
         /* Keyframes for bounce with stretch and squash */

@@ -49,7 +49,7 @@ impl VideoRenderer {
         output_buf: &mut [u8],
         extents: &DisplayExtents,
         beam_pos: Option<(u32, u32)>,
-        palette: Option<Vec<[u8; 4]>>,
+        _palette: Option<Vec<[u8; 4]>>,
     ) {
         let render_start = Instant::now();
 

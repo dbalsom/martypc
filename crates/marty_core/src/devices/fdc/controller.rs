@@ -1828,10 +1828,10 @@ impl FloppyController {
             self.pio_bytes_left = 0;
             self.pio_byte_count = 0;
 
-            let (new_c, new_h, new_s) = self
-                .selected_drive()
-                .get_chs_sector_offset(self.xfer_size_sectors, chs)
-                .into();
+            // let (new_c, new_h, new_s) = self
+            //     .selected_drive()
+            //     .get_chs_sector_offset(self.xfer_size_sectors, chs)
+            //     .into();
             //let (new_c, new_h, new_s) = self.get_next_sector(self.drive_select, cylinder, head, sector);
 
             let new_chs = self.operation_final_chs;

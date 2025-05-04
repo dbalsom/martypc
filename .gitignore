@@ -66,11 +66,18 @@ icon.png
 
 # Files to include for distribution
 !/install/media/roms/readme.md
-!/install/media/roms/XUB
+/install/media/roms/XUB/*
+!/install/media/roms/XUB/ide_xtl.bin
 !/install/media/roms/GLaBIOS
-!/install/media/roms/*.toml
+!/install/media/roms/VGA
+# Ignore everything in VGA unless specified
+/install/media/roms/VGA/*
+!/install/media/roms/VGA/BOCHS-VGABIOS.bin
+!/install/media/roms/VGA/BOCHS-README.md
+!/install/media/roms/VGA/BOCHS-LICENSE
 !/install/media/hdds/default_xtide.vhd
 !/install/martypc.toml
+
 
 # Files to include as wasm assets
 !/frontends/martypc_eframe/assets/martypc.toml
@@ -79,6 +86,7 @@ icon.png
 /install/configs/rom_definitions/romdef_s100.toml
 /install/configs/rom_definitions/romdef_ast.toml
 /install/configs/rom_definitions/romdef_ibm_ps2.toml
+/install/configs/rom_definitions/romdef_custom.toml
 
 # Miscellaneous GlaBIOS ROMs
 /install/media/roms/GLaBIOS/parking

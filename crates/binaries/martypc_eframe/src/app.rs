@@ -31,6 +31,7 @@ use crate::{
     timestep_update::process_update,
     MARTY_ICON,
 };
+use std::path::PathBuf;
 
 use display_manager_eframe::{
     builder::EFrameDisplayManagerBuilder,
@@ -60,8 +61,11 @@ use crate::emulator_builder::builder::EmuBuilderError;
 #[cfg(target_arch = "wasm32")]
 use crate::wasm::*;
 use egui::{Context, CursorGrab, RawInput, Sense, ViewportCommand, ViewportId};
+
+#[cfg(feature = "use_gilrs")]
 use gilrs::Gilrs;
 use marty_display_common::display_manager::{DisplayTargetType, DtHandle};
+use marty_egui::state::FloppyDriveSelection;
 use marty_frontend_common::{color::MartyColor, constants::NORMAL_NOTIFICATION_TIME};
 use marty_videocard_renderer::AspectCorrectionMode;
 #[cfg(target_arch = "wasm32")]
@@ -81,6 +85,8 @@ pub const GRAB_MODE: CursorGrab = CursorGrab::Confined;
 pub struct MartyApp {
     current_size: egui::Vec2,
     last_size: egui::Vec2,
+    size_delay: u32,
+    ppp: Option<f32>,
     focused: bool,
     hide_menu: bool,
     menu_height: f32,
@@ -114,6 +120,9 @@ impl Default for MartyApp {
             hide_menu: false,
             current_size: egui::Vec2::ZERO,
             last_size: egui::Vec2::INFINITY,
+            // Stupid hack for web
+            size_delay: 12,
+            ppp: None,
             focused: false,
             menu_height: 22.0,
             // Example stuff:
@@ -375,7 +384,26 @@ impl MartyApp {
                 panic!("init(): use_wgpu feature enabled, but failed to get wgpu render state from eframe creation context");
             }
         }
-        #[cfg(not(feature = "use_wgpu"))]
+        #[cfg(feature = "use_glow")]
+        {
+            let gl = cc
+                .gl
+                .as_ref()
+                .expect("init(): use_glow feature enabled, but no GL context found");
+            let glow_backend = match EFrameBackend::new(cc.egui_ctx.clone(), gl.clone()) {
+                Ok(backend) => {
+                    log::debug!("init(): Created glow backend");
+                    backend
+                }
+                Err(e) => {
+                    log::error!("init(): Failed to create glow backend: {}", e);
+                    return MartyApp::default();
+                }
+            };
+            log::debug!("init(): Installing glow backend");
+            dm_builder = dm_builder.with_backend(glow_backend);
+        }
+        #[cfg(not(any(feature = "use_wgpu", feature = "use_glow")))]
         {
             let egui_backend = match EFrameBackend::new(cc.egui_ctx.clone()) {
                 Ok(backend) => {
@@ -462,9 +490,19 @@ impl MartyApp {
         }
 
         // Insert floppies specified in config.
-        match emu.insert_floppies(emu.sender.clone()) {
-            Ok(_) => {
-                log::debug!("Inserted floppies from config");
+        match emu.mount_floppies(emu.sender.clone()) {
+            Ok(mounted_images) => {
+                for image in mounted_images {
+                    log::debug!("Mounted floppy image: {} in drive {}", image.name, image.index);
+                    emu.gui.set_floppy_selection(
+                        image.index,
+                        None,
+                        FloppyDriveSelection::Image(PathBuf::from(image.name)),
+                        None,
+                        Vec::new(),
+                        None,
+                    );
+                }
             }
             Err(e) => {
                 log::error!("Failed to insert floppies from config: {}", e);
@@ -546,6 +584,9 @@ impl eframe::App for MartyApp {
         // Get current viewport focus state.
         let vi = ctx.input(|i| {
             let vi = i.viewport();
+
+            self.ppp = vi.native_pixels_per_point;
+
             if let Some(focus) = vi.focused {
                 if self.focused && !focus {
                     log::debug!("MartyApp::update(): Main viewport lost focus");
@@ -571,8 +612,16 @@ impl eframe::App for MartyApp {
         if let Some(emu) = &mut self.emu {
             self.current_size = ctx.screen_rect().size(); // Get window size
 
-            if self.current_size != self.last_size {
-                log::warn!("MartyApp::update(): Window resized to: {:?}", self.current_size);
+            if self.size_delay > 0 || (self.current_size != self.last_size) {
+                log::debug!(
+                    "MartyApp::update(): Window resized to: {:?} ppp: {:?}",
+                    self.current_size,
+                    self.ppp
+                );
+                if self.size_delay > 0 {
+                    log::warn!("This is a synthetic resize event for web.");
+                    self.size_delay = self.size_delay.saturating_sub(1);
+                }
                 MartyApp::viewport_resized(
                     self.dm.as_mut().unwrap(),
                     self.current_size.x as u32,
@@ -716,6 +765,16 @@ impl eframe::App for MartyApp {
                                 }
                                 #[cfg(feature = "use_glow")]
                                 {
+                                    let callback = dm.main_display_callback(ui, rect);
+                                    ui.painter().add(callback);
+
+                                    if show_bezel {
+                                        egui::Image::new(egui::include_image!("../../../../assets/bezel_trans_bg.png"))
+                                            .paint_at(ui, rect);
+                                    }
+                                }
+                                #[cfg(not(any(feature = "use_wgpu", feature = "use_glow")))]
+                                {
                                     //let dtc_lock = dm.main_display_target();
                                     //let dtc = dtc_lock.read().unwrap();
                                     let surface = dtc_ref.surface().unwrap();
@@ -787,6 +846,11 @@ impl eframe::App for MartyApp {
                                     let callback = dm.main_display_callback();
                                     let paint_callback = egui_wgpu::Callback::new_paint_callback(rect, callback);
                                     ui.painter().add(paint_callback);
+                                }
+                                #[cfg(feature = "use_glow")]
+                                {
+                                    let callback = dm.main_display_callback(ui, rect);
+                                    ui.painter().add(callback);
                                 }
                                 response
                             })

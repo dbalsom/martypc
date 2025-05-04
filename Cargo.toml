@@ -6,6 +6,7 @@ members = [
     "crates/lib/frontend/marty_display_common",
     "crates/lib/frontend/marty_videocard_renderer",
     "crates/lib/frontend/marty_scaler_wgpu",
+    "crates/lib/frontend/marty_scaler_glow",
     "crates/lib/frontend/display_manager_wgpu",
     "crates/lib/frontend/marty_egui",
     "crates/lib/frontend/marty_egui_wgpu",
@@ -30,6 +31,7 @@ authors = ["Daniel Balsom"]
 [workspace.dependencies]
 winit = "0.30"
 wgpu = "23.0"
+glow = "0.16"
 bytemuck = "1.14"
 raw-window-handle = "0.5.0"
 thiserror = "2.0"
@@ -113,6 +115,9 @@ default-features = false
 [workspace.dependencies.egui-wgpu]
 #git = "https://github.com/dbalsom/egui_martypc.git"
 #branch = "0.30.0_raw_winit_hook"
+version = "0.30.0"
+
+[workspace.dependencies.egui_glow]
 version = "0.30.0"
 
 [workspace.dependencies.egui_extras]

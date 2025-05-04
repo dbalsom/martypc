@@ -299,6 +299,13 @@ pub enum DisplayApertureType {
     Debug,
 }
 
+impl DisplayApertureType {
+    #[inline]
+    pub fn is_debug(&self) -> bool {
+        matches!(self, DisplayApertureType::Debug)
+    }
+}
+
 #[derive(Copy, Clone, Debug)]
 pub enum BufferSelect {
     Front,
@@ -469,6 +476,10 @@ pub trait VideoCard {
     }
 
     fn light_pen_trigger(&mut self, _x: u32, _y: u32) {
+        // Default implementation does nothing
+    }
+
+    fn set_debug_draw_state(&mut self, _state: bool) {
         // Default implementation does nothing
     }
 }

@@ -109,23 +109,26 @@ impl GuiState {
                 });
             }
 
-            ui.menu_button("Scaler Presets", |ui| {
-                for (_preset_idx, preset) in self.scaler_presets.clone().iter().enumerate() {
-                    if ui.button(preset).clicked() {
-                        self.set_option_enum(GuiEnum::DisplayScalerPreset(preset.clone()), Some(vctx));
-                        self.event_queue.send(GuiEvent::VariableChanged(
-                            GuiVariableContext::Display(display),
-                            GuiVariable::Enum(GuiEnum::DisplayScalerPreset(preset.clone())),
-                        ));
-                        ui.close_menu();
+            #[cfg(feature = "scaler_params")]
+            {
+                ui.menu_button("Scaler Presets", |ui| {
+                    for (_preset_idx, preset) in self.scaler_presets.clone().iter().enumerate() {
+                        if ui.button(preset).clicked() {
+                            self.set_option_enum(GuiEnum::DisplayScalerPreset(preset.clone()), Some(vctx));
+                            self.event_queue.send(GuiEvent::VariableChanged(
+                                GuiVariableContext::Display(display),
+                                GuiVariable::Enum(GuiEnum::DisplayScalerPreset(preset.clone())),
+                            ));
+                            ui.close_menu();
+                        }
                     }
-                }
-            });
+                });
 
-            if ui.button("Scaler Adjustments...").clicked() {
-                *self.window_flag(GuiWindow::ScalerAdjust) = true;
-                self.scaler_adjust.select_card(display.into());
-                ui.close_menu();
+                if ui.button("Scaler Adjustments...").clicked() {
+                    *self.window_flag(GuiWindow::ScalerAdjust) = true;
+                    self.scaler_adjust.select_card(display.into());
+                    ui.close_menu();
+                }
             }
         }
 

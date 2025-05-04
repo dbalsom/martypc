@@ -610,8 +610,8 @@ impl AtaDevice {
                         self.process_command_byte(0, bus);
                     }
                     0xC5 => {
-                        log::debug!("Read Multiple received");
-                        self.set_command(AtaCommand::WriteMultiple, 0, AtaDevice::command_read_multiple);
+                        log::debug!("Write Multiple received");
+                        self.set_command(AtaCommand::WriteMultiple, 0, AtaDevice::command_write_multiple);
                         self.process_command_byte(0, bus);
                     }
                     0xC6 => {
@@ -727,7 +727,7 @@ impl AtaDevice {
         // here.
         //self.status_register.set_busy(true);
 
-        if let Some(disk) = self.disk.as_ref() {
+        if let Some(_disk) = self.disk.as_ref() {
             let geometry = self.disk.as_ref().unwrap().geometry();
             log::debug!(
                 "Writing Drive Identification block to sector buffer with geometry: {:?}",
@@ -906,7 +906,7 @@ impl AtaDevice {
     }
 
     /// ATA command 0xC5 Write Multiple
-    fn command_write_multiple(&mut self, _bus: &mut BusInterface) -> Continuation {
+    fn command_write_multiple(&mut self, _bus: Option<&mut BusInterface>) -> Continuation {
         self.set_command_chs();
         log::debug!(
             "command_write_multiple(): sector_count: {} chs: {}",

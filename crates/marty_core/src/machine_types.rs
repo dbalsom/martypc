@@ -46,6 +46,7 @@ pub enum MachineType {
     IbmPCJr,
     Tandy1000,
     Tandy1000SL,
+    Tandy1000HX,
     CompaqPortable,
     CompaqDeskpro,
 }
@@ -64,6 +65,7 @@ impl FromStr for MachineType {
             "ibm_pcjr" => Ok(MachineType::IbmPCJr),
             "tandy1000" => Ok(MachineType::Tandy1000),
             "tandy1000sl" => Ok(MachineType::Tandy1000SL),
+            "tandy1000hx" => Ok(MachineType::Tandy1000HX),
             "compaq_deskpro" => Ok(MachineType::CompaqDeskpro),
             _ => Err("Bad value for model".to_string()),
         }
@@ -79,6 +81,7 @@ impl MachineType {
             MachineType::IbmPCJr => false,
             MachineType::Tandy1000 => false,
             MachineType::Tandy1000SL => false,
+            MachineType::Tandy1000HX => false,
             MachineType::CompaqPortable => false,
             MachineType::CompaqDeskpro => false,
             _ => false,

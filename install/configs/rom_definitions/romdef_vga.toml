@@ -1,0 +1,43 @@
+# romdef_vga.toml
+# VGA Video BIOS ROM definitions for MartyPC.
+
+# This is the ROM from the original IBM VGA card, otherwise known as the "IBM PS/2 Display Adapter".
+# This is the preferred ROM for VGA emulation in MartyPC as it was used during primary development.
+[[romset]]
+alias = "ibm_vga"
+priority = 1
+provides = ["ibm_vga"]
+oem = true
+requires = ["expansion"]
+rom = [
+    { md5 = "2057a38cb472300205132fb9c01d9d85", addr = 0xC0000, offset = 0x2000, size = 32768, chip = "1" },
+    { md5 = "2c8a4e1db93d2cbe148b66122747e4f2", addr = 0xC0000, offset = 0, size = 24576, chip = "1" }
+]
+checkpoints = [
+    { addr = 0xC203B, lvl = 3, desc = "VGA Expansion Init" },
+    { addr = 0xC21F9, lvl = 3, desc = "VGA Vblank Test" },
+]
+
+# This is an open-source VGA Video BIOS ROM from the plex86/Bochs projects. It appears to work in
+# general, but it is possible it has undiscovered issues.
+[[romset]]
+alias = "bochs_vga"
+priority = 2
+provides = ["ibm_vga"]
+oem = false
+requires = ["expansion"]
+rom = [
+    { filename = "BOCHS-VGABIOS.bin", addr = 0xC0000, offset = 0, size = 32768, chip = "1" },
+]
+
+# Test ROM for OTI 037C VGA.
+# Does not work due to unimplemented DIP switches
+#[[romset]]
+#alias = "oti_037C_vga"
+#priority = 0
+#provides = ["ibm_vga"]
+#oem = false
+#requires = ["expansion"]
+#rom = [
+#    { md5 = "8c9c61470c9d59a153c5bbb45efcdb59", addr = 0xC0000, offset = 0, size = 32768, chip = "1" },
+#]

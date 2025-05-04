@@ -2,7 +2,7 @@
 # ROM definition file for MartyPC.
 
 # ----------------------------------------------------------------------------
-# ROM definitions for Compaq
+# ROM definitions for Compaq Portable and Deskpro
 # ----------------------------------------------------------------------------
 [[romset]]
 alias = "compaq_portable_revb"
