@@ -33,6 +33,7 @@
 pub mod big_icon;
 pub mod color_swatch;
 pub mod file_tree_menu;
+pub mod greets;
 pub mod pixel_canvas;
 pub mod sector_status;
 pub mod tab_group;
