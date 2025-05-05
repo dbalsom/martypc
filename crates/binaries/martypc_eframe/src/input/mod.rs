@@ -37,9 +37,13 @@ pub mod gamepad;
 
 #[cfg(feature = "use_gilrs")]
 mod gilrs_gamepad_interface;
+#[cfg(feature = "use_gilrs")]
+pub use gilrs_gamepad_interface::GamepadEvent;
 
 #[cfg(not(feature = "use_gilrs"))]
 mod null_gamepad_interface;
+#[cfg(not(feature = "use_gilrs"))]
+pub use null_gamepad_interface::GamepadEvent;
 
 pub mod hotkey_manager;
 

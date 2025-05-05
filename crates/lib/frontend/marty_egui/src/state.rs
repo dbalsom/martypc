@@ -753,6 +753,25 @@ impl GuiState {
         }
     }
 
+    pub fn set_gamepad_mapping(&mut self, mapping: (Option<GamepadId>, Option<GamepadId>)) {
+        if let Some(id) = mapping.0 {
+            self.selected_gamepad[0] = Some(id);
+        }
+        else {
+            self.selected_gamepad[0] = None;
+        }
+
+        if let Some(id) = mapping.1 {
+            self.selected_gamepad[1] = Some(id);
+        }
+        else {
+            self.selected_gamepad[1] = None;
+        }
+
+        let gamepad_mapping = GuiEnum::GamepadMapping(mapping);
+        self.set_option_enum(gamepad_mapping, Some(GuiVariableContext::default()));
+    }
+
     /// Specify the presence of a gameport. This will enable the gameport submenu under Input.
     #[inline]
     pub fn set_gameport(&mut self, state: bool, layout: ControllerLayout) {

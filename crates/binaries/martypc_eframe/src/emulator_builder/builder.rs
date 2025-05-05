@@ -726,7 +726,10 @@ impl EmulatorBuilder {
 
         // Create a gamepad interface. If a gamepad backend feature is not enabled, this will be
         // a stub interface.
-        let gi = input::GamepadInterface::new();
+        let gi = input::GamepadInterface::new(
+            config.emulator.input.gamepad_auto_connect,
+            config.emulator.input.gamepad_dead_zone.unwrap_or(0.0),
+        );
 
         // A DisplayManager is front-end specific, so we'll expect the front-end to create one
         // after we have built the emulator.

@@ -32,7 +32,7 @@
 use crate::event_loop::egui_update::update_egui;
 use web_time::{Duration, Instant};
 
-use crate::{emulator::Emulator, event_loop::render_frame::render_frame};
+use crate::{emulator::Emulator, event_loop::render_frame::render_frame, input::GamepadEvent};
 use display_manager_eframe::{DisplayManager, EFrameDisplayManager};
 use marty_core::{bus::DeviceEvent, cpu_common::ServiceEvent, devices::game_port::GamePort, machine::MachineEvent};
 use marty_frontend_common::{
@@ -131,96 +131,207 @@ pub fn process_update(emu: &mut Emulator, dm: &mut EFrameDisplayManager, tm: &mu
             #[cfg(feature = "use_gilrs")]
             if let Some(gameport) = emuc.machine.bus_mut().game_port_mut() {
                 // Check if gamepad is connected
-                while let Some(event) = emuc.gi.next_event() {
-                    log::debug!("{} : {:?}", event.id, event.event);
+                let events = emuc.gi.poll();
+                for event in events {
+                    match event {
+                        GamepadEvent::Connected(gamepad_info) => {
+                            log::debug!("Gamepad {:?} connected", gamepad_info);
+                            emuc.gui.set_gamepad_mapping(emuc.gi.mapping())
+                        }
+                        GamepadEvent::Disconnected(id) => {
+                            log::warn!("Gamepad {} disconnected", id);
+                            emuc.gui.set_gamepad_mapping(emuc.gi.mapping())
+                        }
+                        GamepadEvent::Event(gilrs_event) => {
+                            emuc.gui.set_gamepad_mapping(emuc.gi.mapping());
+                            let resolved_gamepad = emuc.gi.select_id(gilrs_event.id);
 
-                    let resolved_gamepad = emuc.gi.select_id(event.id);
-
-                    if let Some(gamepad_idx) = resolved_gamepad {
-                        match event.event {
-                            gilrs::EventType::AxisChanged(axis, value, _) => match axis {
-                                gilrs::Axis::LeftStickX => {
-                                    gameport.set_stick_pos(gamepad_idx, 0, Some(value as f64), None)
-                                }
-                                gilrs::Axis::LeftStickY => {
-                                    log::debug!("LeftStickY: {}", value);
-                                    gameport.set_stick_pos(gamepad_idx, 0, None, Some(value as f64))
-                                }
-                                gilrs::Axis::RightStickX => {
-                                    gameport.set_stick_pos(gamepad_idx, 1, Some(value as f64), None)
-                                }
-                                gilrs::Axis::RightStickY => {
-                                    gameport.set_stick_pos(gamepad_idx, 1, None, Some(value as f64))
-                                }
-                                _ => {}
-                            },
-                            gilrs::EventType::ButtonPressed(button, _) => {
-                                match button {
-                                    // Treat West and South as button 1
-                                    // TODO: Do button mappings
-                                    gilrs::Button::West => {
-                                        gameport.set_button(gamepad_idx, 0, true);
+                            if let Some(gamepad_idx) = resolved_gamepad {
+                                let deadzone = emuc.gi.deadzone();
+                                match gilrs_event.event {
+                                    gilrs::EventType::AxisChanged(axis, mut value, _) => {
+                                        // Apply deadzone
+                                        if value.abs() < deadzone {
+                                            log::debug!("input in deadzone: {}", value);
+                                            value = 0.0;
+                                        }
+                                        match axis {
+                                            gilrs::Axis::LeftStickX => {
+                                                gameport.set_stick_pos(gamepad_idx, 0, Some(value as f64), None)
+                                            }
+                                            gilrs::Axis::LeftStickY => {
+                                                gameport.set_stick_pos(gamepad_idx, 0, None, Some(value as f64))
+                                            }
+                                            gilrs::Axis::RightStickX => {
+                                                gameport.set_stick_pos(gamepad_idx, 1, Some(value as f64), None)
+                                            }
+                                            gilrs::Axis::RightStickY => {
+                                                gameport.set_stick_pos(gamepad_idx, 1, None, Some(value as f64))
+                                            }
+                                            _ => {}
+                                        }
                                     }
-                                    gilrs::Button::South => {
-                                        gameport.set_button(gamepad_idx, 0, true);
+                                    gilrs::EventType::ButtonPressed(button, _) => {
+                                        match button {
+                                            // Treat West and South as button 1
+                                            // TODO: Do button mappings
+                                            gilrs::Button::West => {
+                                                gameport.set_button(gamepad_idx, 0, true);
+                                            }
+                                            gilrs::Button::South => {
+                                                gameport.set_button(gamepad_idx, 0, true);
+                                            }
+                                            // Treat North and East as button 2
+                                            gilrs::Button::North => {
+                                                gameport.set_button(gamepad_idx, 1, true);
+                                            }
+                                            gilrs::Button::East => {
+                                                gameport.set_button(gamepad_idx, 1, true);
+                                            }
+                                            gilrs::Button::DPadLeft => {
+                                                gameport.set_stick_pos(gamepad_idx, 0, Some(GamePort::LEFT), None)
+                                            }
+                                            gilrs::Button::DPadRight => {
+                                                gameport.set_stick_pos(gamepad_idx, 0, Some(GamePort::RIGHT), None)
+                                            }
+                                            gilrs::Button::DPadUp => {
+                                                gameport.set_stick_pos(gamepad_idx, 0, None, Some(GamePort::UP))
+                                            }
+                                            gilrs::Button::DPadDown => {
+                                                gameport.set_stick_pos(gamepad_idx, 0, None, Some(GamePort::DOWN))
+                                            }
+                                            _ => {}
+                                        }
                                     }
-                                    // Treat North and East as button 2
-                                    gilrs::Button::North => {
-                                        gameport.set_button(gamepad_idx, 1, true);
-                                    }
-                                    gilrs::Button::East => {
-                                        gameport.set_button(gamepad_idx, 1, true);
-                                    }
-                                    gilrs::Button::DPadLeft => {
-                                        gameport.set_stick_pos(gamepad_idx, 0, Some(GamePort::LEFT), None)
-                                    }
-                                    gilrs::Button::DPadRight => {
-                                        gameport.set_stick_pos(gamepad_idx, 0, Some(GamePort::RIGHT), None)
-                                    }
-                                    gilrs::Button::DPadUp => {
-                                        gameport.set_stick_pos(gamepad_idx, 0, None, Some(GamePort::UP))
-                                    }
-                                    gilrs::Button::DPadDown => {
-                                        gameport.set_stick_pos(gamepad_idx, 0, None, Some(GamePort::DOWN))
+                                    gilrs::EventType::ButtonReleased(button, _) => {
+                                        match button {
+                                            // Treat West and South as button 1
+                                            gilrs::Button::West => {
+                                                gameport.set_button(gamepad_idx, 0, false);
+                                            }
+                                            gilrs::Button::South => {
+                                                gameport.set_button(gamepad_idx, 0, false);
+                                            }
+                                            // Treat North and East as button 2
+                                            gilrs::Button::North => {
+                                                gameport.set_button(gamepad_idx, 1, false);
+                                            }
+                                            gilrs::Button::East => {
+                                                gameport.set_button(gamepad_idx, 1, false);
+                                            }
+                                            gilrs::Button::DPadLeft => {
+                                                gameport.set_stick_pos(gamepad_idx, 0, Some(GamePort::CENTER), None)
+                                            }
+                                            gilrs::Button::DPadRight => {
+                                                gameport.set_stick_pos(gamepad_idx, 0, Some(GamePort::CENTER), None)
+                                            }
+                                            gilrs::Button::DPadUp => {
+                                                gameport.set_stick_pos(gamepad_idx, 0, None, Some(GamePort::CENTER))
+                                            }
+                                            gilrs::Button::DPadDown => {
+                                                gameport.set_stick_pos(gamepad_idx, 0, None, Some(GamePort::CENTER))
+                                            }
+                                            _ => {}
+                                        }
                                     }
                                     _ => {}
                                 }
                             }
-                            gilrs::EventType::ButtonReleased(button, _) => {
-                                match button {
-                                    // Treat West and South as button 1
-                                    gilrs::Button::West => {
-                                        gameport.set_button(gamepad_idx, 0, false);
-                                    }
-                                    gilrs::Button::South => {
-                                        gameport.set_button(gamepad_idx, 0, false);
-                                    }
-                                    // Treat North and East as button 2
-                                    gilrs::Button::North => {
-                                        gameport.set_button(gamepad_idx, 1, false);
-                                    }
-                                    gilrs::Button::East => {
-                                        gameport.set_button(gamepad_idx, 1, false);
-                                    }
-                                    gilrs::Button::DPadLeft => {
-                                        gameport.set_stick_pos(gamepad_idx, 0, Some(GamePort::CENTER), None)
-                                    }
-                                    gilrs::Button::DPadRight => {
-                                        gameport.set_stick_pos(gamepad_idx, 0, Some(GamePort::CENTER), None)
-                                    }
-                                    gilrs::Button::DPadUp => {
-                                        gameport.set_stick_pos(gamepad_idx, 0, None, Some(GamePort::CENTER))
-                                    }
-                                    gilrs::Button::DPadDown => {
-                                        gameport.set_stick_pos(gamepad_idx, 0, None, Some(GamePort::CENTER))
-                                    }
-                                    _ => {}
-                                }
-                            }
-                            _ => {}
                         }
                     }
                 }
+
+                //
+                // while let Some(event) = emuc.gi.next_event() {
+                //     log::debug!("{} : {:?}", event.id, event.event);
+                //
+                //     let resolved_gamepad = emuc.gi.select_id(event.id);
+                //
+                //     if let Some(gamepad_idx) = resolved_gamepad {
+                //         match event.event {
+                //             gilrs::EventType::AxisChanged(axis, value, _) => match axis {
+                //                 gilrs::Axis::LeftStickX => {
+                //                     gameport.set_stick_pos(gamepad_idx, 0, Some(value as f64), None)
+                //                 }
+                //                 gilrs::Axis::LeftStickY => {
+                //                     log::debug!("LeftStickY: {}", value);
+                //                     gameport.set_stick_pos(gamepad_idx, 0, None, Some(value as f64))
+                //                 }
+                //                 gilrs::Axis::RightStickX => {
+                //                     gameport.set_stick_pos(gamepad_idx, 1, Some(value as f64), None)
+                //                 }
+                //                 gilrs::Axis::RightStickY => {
+                //                     gameport.set_stick_pos(gamepad_idx, 1, None, Some(value as f64))
+                //                 }
+                //                 _ => {}
+                //             },
+                //             gilrs::EventType::ButtonPressed(button, _) => {
+                //                 match button {
+                //                     // Treat West and South as button 1
+                //                     // TODO: Do button mappings
+                //                     gilrs::Button::West => {
+                //                         gameport.set_button(gamepad_idx, 0, true);
+                //                     }
+                //                     gilrs::Button::South => {
+                //                         gameport.set_button(gamepad_idx, 0, true);
+                //                     }
+                //                     // Treat North and East as button 2
+                //                     gilrs::Button::North => {
+                //                         gameport.set_button(gamepad_idx, 1, true);
+                //                     }
+                //                     gilrs::Button::East => {
+                //                         gameport.set_button(gamepad_idx, 1, true);
+                //                     }
+                //                     gilrs::Button::DPadLeft => {
+                //                         gameport.set_stick_pos(gamepad_idx, 0, Some(GamePort::LEFT), None)
+                //                     }
+                //                     gilrs::Button::DPadRight => {
+                //                         gameport.set_stick_pos(gamepad_idx, 0, Some(GamePort::RIGHT), None)
+                //                     }
+                //                     gilrs::Button::DPadUp => {
+                //                         gameport.set_stick_pos(gamepad_idx, 0, None, Some(GamePort::UP))
+                //                     }
+                //                     gilrs::Button::DPadDown => {
+                //                         gameport.set_stick_pos(gamepad_idx, 0, None, Some(GamePort::DOWN))
+                //                     }
+                //                     _ => {}
+                //                 }
+                //             }
+                //             gilrs::EventType::ButtonReleased(button, _) => {
+                //                 match button {
+                //                     // Treat West and South as button 1
+                //                     gilrs::Button::West => {
+                //                         gameport.set_button(gamepad_idx, 0, false);
+                //                     }
+                //                     gilrs::Button::South => {
+                //                         gameport.set_button(gamepad_idx, 0, false);
+                //                     }
+                //                     // Treat North and East as button 2
+                //                     gilrs::Button::North => {
+                //                         gameport.set_button(gamepad_idx, 1, false);
+                //                     }
+                //                     gilrs::Button::East => {
+                //                         gameport.set_button(gamepad_idx, 1, false);
+                //                     }
+                //                     gilrs::Button::DPadLeft => {
+                //                         gameport.set_stick_pos(gamepad_idx, 0, Some(GamePort::CENTER), None)
+                //                     }
+                //                     gilrs::Button::DPadRight => {
+                //                         gameport.set_stick_pos(gamepad_idx, 0, Some(GamePort::CENTER), None)
+                //                     }
+                //                     gilrs::Button::DPadUp => {
+                //                         gameport.set_stick_pos(gamepad_idx, 0, None, Some(GamePort::CENTER))
+                //                     }
+                //                     gilrs::Button::DPadDown => {
+                //                         gameport.set_stick_pos(gamepad_idx, 0, None, Some(GamePort::CENTER))
+                //                     }
+                //                     _ => {}
+                //                 }
+                //             }
+                //             _ => {}
+                //         }
+                //     }
+                //}
             }
 
             // Drain machine events

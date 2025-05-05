@@ -583,6 +583,13 @@ joystick_keys = [
     { input = "JoyDown", key = "ArrowDown" }
 ]
 
+# Configure the gamepad analog stick dead zone. Stick inputs below this value will be
+# treated as zero. This may need to be adjusted for different gamepads and game titles.
+gamepad_dead_zone = 0.2
+
+# Autoconnect any newly-attached gamepads to the first available joystick slot.
+gamepad_auto_connect = true
+
 # Help the developer debug any keyboard issues you may be having. With this
 # feature set to true, MartyPC will print information about every keystroke
 # to the terminal.

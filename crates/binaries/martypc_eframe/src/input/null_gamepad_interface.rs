@@ -31,8 +31,14 @@ pub struct GamepadInterface {
     dummy: bool,
 }
 
+pub enum GamepadEvent {
+    Connected(GamepadInfo),
+    Disconnected(GamepadId),
+    Event(()),
+}
+
 impl GamepadInterface {
-    pub fn new() -> Self {
+    pub fn new(auto_connect: bool, deadzone: f32) -> Self {
         Self { dummy: false }
     }
 
@@ -44,6 +50,13 @@ impl GamepadInterface {
         None
     }
 
+    pub fn poll(&mut self) -> Vec<GamepadEvent> {
+        Vec::new()
+    }
+
+    pub fn mapping(&self) -> (Option<GamepadId>, Option<GamepadId>) {
+        (None, None)
+    }
     pub fn set_mapping(&mut self, mapping: (Option<GamepadId>, Option<GamepadId>)) {}
 
     pub fn select_id(&self, id: GamepadId) -> Option<usize> {

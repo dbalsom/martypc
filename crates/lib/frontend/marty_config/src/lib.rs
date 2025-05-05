@@ -337,6 +337,9 @@ pub struct EmulatorInput {
     pub keyboard_joystick: bool,
     #[serde(default)]
     pub debug_keyboard: bool,
+    #[serde(default)]
+    pub gamepad_auto_connect: bool,
+    pub gamepad_dead_zone: Option<f32>,
 }
 
 #[derive(Debug, Deserialize)]

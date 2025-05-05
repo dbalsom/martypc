@@ -24,15 +24,7 @@
 
     --------------------------------------------------------------------------
 */
-use crate::{
-    state::GuiState,
-    widgets::big_icon::BigIcon,
-    GuiEnum,
-    GuiEvent,
-    GuiFloat,
-    GuiVariable,
-    GuiVariableContext,
-};
+use crate::{state::GuiState, GuiEnum, GuiEvent, GuiFloat, GuiVariable, GuiVariableContext};
 use marty_common::types::{joystick::ControllerLayout, ui::MouseCaptureMode};
 use marty_core::devices::serial::SerialPortDescriptor;
 use strum::IntoEnumIterator;
@@ -40,7 +32,7 @@ use strum::IntoEnumIterator;
 impl GuiState {
     pub fn show_input_menu(&mut self, ui: &mut egui::Ui) {
         ui.menu_button("Serial Ports", |ui| {
-            for port in &self.serial_ports {
+            for port in self.serial_ports.clone() {
                 ui.menu_button(&port.name, |ui| {
                     #[cfg(feature = "use_serialport")]
                     {
@@ -161,37 +153,36 @@ impl GuiState {
                             ui.menu_button(format!("Joystick {}", i + 1), |ui| {
                                 let mut clicked_id = None;
 
-                                ui.horizontal(|ui| {
-                                    ui.vertical(|ui| {
-                                        let mut no_joystick = self.selected_gamepad[i].is_none();
-                                        if ui.radio(no_joystick, "None").clicked() {
-                                            log::debug!("Selected no joystick");
-                                            self.selected_gamepad[i] = None;
-                                            let mut mapping_enum_mut = self
-                                                .get_option_enum_mut(GuiEnum::GamepadMapping((None, None)), None)
-                                                .unwrap();
+                                ui.vertical(|ui| {
+                                    let mut no_joystick = self.selected_gamepad[i].is_none();
+                                    if ui.radio(no_joystick, "None").clicked() {
+                                        log::debug!("Selected no joystick");
+                                        self.selected_gamepad[i] = None;
+                                        let mut mapping_enum_mut = self
+                                            .get_option_enum_mut(GuiEnum::GamepadMapping((None, None)), None)
+                                            .unwrap();
 
-                                            if let GuiEnum::GamepadMapping(mapping) = mapping_enum_mut {
-                                                log::debug!("Updating gamepad mapping for joystick: {} to None", i);
+                                        if let GuiEnum::GamepadMapping(mapping) = mapping_enum_mut {
+                                            log::debug!("Updating gamepad mapping for joystick: {} to None", i);
 
-                                                *mapping_enum_mut = match i {
-                                                    0 => GuiEnum::GamepadMapping((None, mapping.1)),
-                                                    1 => GuiEnum::GamepadMapping((mapping.0, None)),
-                                                    _ => unreachable!(),
-                                                };
+                                            *mapping_enum_mut = match i {
+                                                0 => GuiEnum::GamepadMapping((None, mapping.1)),
+                                                1 => GuiEnum::GamepadMapping((mapping.0, None)),
+                                                _ => unreachable!(),
+                                            };
 
-                                                // Defer sending the event due to borrow checker being mean
-                                                enum_event = Some(GuiEvent::VariableChanged(
-                                                    GuiVariableContext::Global,
-                                                    GuiVariable::Enum(mapping_enum_mut.clone()),
-                                                ));
-                                            }
+                                            // Defer sending the event due to borrow checker being mean
+                                            enum_event = Some(GuiEvent::VariableChanged(
+                                                GuiVariableContext::Global,
+                                                GuiVariable::Enum(mapping_enum_mut.clone()),
+                                            ));
                                         }
+                                    }
 
-                                        for gamepad in &self.gamepads {
-                                            let gamepad_selected =
-                                                Some(gamepad.internal_id) == self.selected_gamepad[i];
+                                    for gamepad in &self.gamepads {
+                                        let gamepad_selected = Some(gamepad.internal_id) == self.selected_gamepad[i];
 
+                                        ui.horizontal(|ui| {
                                             if ui
                                                 .radio(gamepad_selected, format!("{}: {}", gamepad.id, gamepad.name))
                                                 .clicked()
@@ -199,31 +190,31 @@ impl GuiState {
                                                 log::debug!("Selected gamepad {}, id: {}", gamepad.name, gamepad.id);
                                                 clicked_id = Some(gamepad.internal_id);
                                             }
+                                        });
+                                    }
+
+                                    if let Some(clicked_id) = clicked_id {
+                                        self.selected_gamepad[i] = Some(clicked_id);
+                                        let mut mapping_enum_mut = self
+                                            .get_option_enum_mut(GuiEnum::GamepadMapping((None, None)), None)
+                                            .unwrap();
+
+                                        if let GuiEnum::GamepadMapping(mapping) = mapping_enum_mut {
+                                            log::debug!("Updating gamepad mapping for id: {}", clicked_id);
+
+                                            *mapping_enum_mut = match i {
+                                                0 => GuiEnum::GamepadMapping((Some(clicked_id), mapping.1)),
+                                                1 => GuiEnum::GamepadMapping((mapping.0, Some(clicked_id))),
+                                                _ => unreachable!(),
+                                            };
+
+                                            // Defer sending the event due to borrow checker being mean
+                                            enum_event = Some(GuiEvent::VariableChanged(
+                                                GuiVariableContext::Global,
+                                                GuiVariable::Enum(mapping_enum_mut.clone()),
+                                            ));
                                         }
-
-                                        if let Some(clicked_id) = clicked_id {
-                                            self.selected_gamepad[i] = Some(clicked_id);
-                                            let mut mapping_enum_mut = self
-                                                .get_option_enum_mut(GuiEnum::GamepadMapping((None, None)), None)
-                                                .unwrap();
-
-                                            if let GuiEnum::GamepadMapping(mapping) = mapping_enum_mut {
-                                                log::debug!("Updating gamepad mapping for id: {}", clicked_id);
-
-                                                *mapping_enum_mut = match i {
-                                                    0 => GuiEnum::GamepadMapping((Some(clicked_id), mapping.1)),
-                                                    1 => GuiEnum::GamepadMapping((mapping.0, Some(clicked_id))),
-                                                    _ => unreachable!(),
-                                                };
-
-                                                // Defer sending the event due to borrow checker being mean
-                                                enum_event = Some(GuiEvent::VariableChanged(
-                                                    GuiVariableContext::Global,
-                                                    GuiVariable::Enum(mapping_enum_mut.clone()),
-                                                ));
-                                            }
-                                        }
-                                    });
+                                    }
                                 });
                             });
                         }
@@ -233,8 +224,8 @@ impl GuiState {
                             let mut gamepad_selected = Some(gamepad.internal_id) == self.selected_gamepad[0];
                             let mut clicked_id = None;
 
-                            ui.horizontal(|ui| {
-                                ui.vertical(|ui| {
+                            ui.vertical(|ui| {
+                                ui.horizontal(|ui| {
                                     if ui
                                         .radio(gamepad_selected, format!("{}: {}", gamepad.id, gamepad.name))
                                         .changed()
