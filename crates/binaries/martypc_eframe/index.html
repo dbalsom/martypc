@@ -48,6 +48,9 @@
     <link data-trunk rel="copy-file" href="../../../install/media/floppies/Demos/CGA/CGA Plasma (orac81).img"
           data-target-path="media/floppies"/>
 
+    <link data-trunk rel="copy-file" href="../../../install/media/floppies/Games/Barren Planet (Cyningstan).img"
+          data-target-path="media/floppies"/>
+
     <link data-trunk rel="copy-file" href="assets/martypc_data.dat" data-target-path="assets"/>
     <link data-trunk rel="copy-file" href="assets/_headers"/>
     <link data-trunk rel="copy-file" href="assets/worker.js"/>
@@ -221,12 +224,10 @@
             display: block; /* Ensure the image doesn't have extra margins */
             cursor: pointer; /* Indicate it's clickable */
             filter: drop-shadow(0px 4px 8px rgba(0, 0, 0, 0.6)); /* Drop shadow respects transparency */
-            content: url("assets/martypc_logo_off_small.png"); /* Default PNG */
         }
 
         html:not(.touch-device) .start-logo:hover {
             animation: bounce-stretch 0.8s infinite; /* Apply the bounce animation */
-            content: url("assets/martypc_logo_small.png"); /* Change to the hover image */
         }
 
         /* Keyframes for bounce with stretch and squash */
@@ -269,12 +270,15 @@
 <!-- the id is hardcoded in main.rs . so, make sure both match. -->
 <canvas id="the_canvas_id"></canvas>
 
+<!-- Preload the animation img -->
+<img src="assets/martypc_logo_small.png" style="display: none;" alt="">
+
 <!-- Initial screen with "Click to start" -->
 <div class="start-overlay" id="start_screen">
     <div class="start-clickme-wrapper">
         <div class="start-logo-wrapper top" id="start_logo" style="text-align: center;">
             <link rel="prefetch" href="assets/martypc_logo_small.png"/>
-            <img src="assets/martypc_logo_off_small.png" alt="Start MartyPC" class="start-logo">
+            <img id="start_logo_img" src="assets/martypc_logo_off_small.png" class="start-logo" alt="Start Logo">
         </div>
         <div class="bottom">
             <span class="click-label">Click Me!</span>
@@ -290,5 +294,23 @@
     </p>
     <div class="lds-dual-ring"></div>
 </div>
+
+<script>
+    const logo = document.getElementById("start_logo_img");
+
+    // Preload hover image
+    const hoverImage = new Image();
+    hoverImage.src = "assets/martypc_logo_small.png";
+
+    if (!document.documentElement.classList.contains("touch-device")) {
+        logo.addEventListener("mouseenter", () => {
+            logo.src = hoverImage.src;
+        });
+        logo.addEventListener("mouseleave", () => {
+            logo.src = "assets/martypc_logo_off_small.png";
+        });
+    }
+</script>
+
 </body>
 </html>

@@ -44,7 +44,7 @@ jobs:
 
       - name: Cargo build
         run: |
-          & "$env:USERPROFILE\.cargo\bin\cargo" build --profile release-lto --features use_winit,use_wgpu,sound,opl
+          & "$env:USERPROFILE\.cargo\bin\cargo" build --profile release-lto --features use_winit,use_wgpu,sound,opl,use_gilrs,use_serialport
 
       - name: Copy files into install dir
         run: |
