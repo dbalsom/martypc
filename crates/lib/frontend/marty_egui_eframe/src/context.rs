@@ -27,7 +27,6 @@
 
 use std::sync::Arc;
 
-use marty_display_common::display_manager::DmGuiOptions;
 use marty_egui::{
     state::GuiState,
     themes::{make_theme, GuiTheme},

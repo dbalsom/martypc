@@ -44,41 +44,30 @@ impl GuiState {
                             .filter_map(|port| port.brige_port_id)
                             .collect::<Vec<_>>();
 
-                        for SerialPortDescriptor {
-                            id: guest_port_id,
-                            name: guest_port_name,
-                            ..
-                        } in self.serial_ports.clone().iter()
-                        {
-                            ui.menu_button(format!("Passthrough {}", guest_port_name), |ui| {
-                                let mut selected = false;
+                        let mut selected = false;
 
-                                for (host_port_id, host_port) in self.host_serial_ports.iter().enumerate() {
-                                    if let Some(enum_mut) = self.get_option_enum(
-                                        GuiEnum::SerialPortBridge(Default::default()),
-                                        Some(GuiVariableContext::SerialPort(*guest_port_id)),
-                                    ) {
-                                        selected = *enum_mut == GuiEnum::SerialPortBridge(host_port_id);
-                                    }
+                        for (host_port_id, host_port) in self.host_serial_ports.iter().enumerate() {
+                            if let Some(enum_mut) = self.get_option_enum(
+                                GuiEnum::SerialPortBridge(Default::default()),
+                                Some(GuiVariableContext::SerialPort(port.id)),
+                            ) {
+                                selected = *enum_mut == GuiEnum::SerialPortBridge(host_port_id);
+                            }
 
-                                    let enabled = !bridged_ports.contains(&host_port_id);
+                            let enabled = !bridged_ports.contains(&host_port_id);
 
-                                    if ui
-                                        .add_enabled(
-                                            enabled,
-                                            egui::RadioButton::new(selected, host_port.port_name.clone()),
-                                        )
-                                        .clicked()
-                                    {
-                                        self.event_queue.send(GuiEvent::BridgeSerialPort(
-                                            *guest_port_id,
-                                            host_port.port_name.clone(),
-                                            host_port_id,
-                                        ));
-                                        ui.close_menu();
-                                    }
-                                }
-                            });
+                            let port_string = format!("Host port {}", host_port.port_name);
+                            if ui
+                                .add_enabled(enabled, egui::RadioButton::new(selected, port_string))
+                                .clicked()
+                            {
+                                self.event_queue.send(GuiEvent::BridgeSerialPort(
+                                    port.id,
+                                    host_port.port_name.clone(),
+                                    host_port_id,
+                                ));
+                                ui.close_menu();
+                            }
                         }
                     }
                 });
