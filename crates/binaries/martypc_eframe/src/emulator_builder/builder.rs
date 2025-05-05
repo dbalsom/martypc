@@ -752,6 +752,9 @@ impl EmulatorBuilder {
             }
         }
 
+        #[cfg(feature = "use_serialport")]
+        gui.set_host_serial_ports(serial_ports);
+
         gui.set_floppy_drives(drive_types);
 
         // Set default floppy path. This is used to set the default path for Save As dialogs.

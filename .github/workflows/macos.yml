@@ -30,7 +30,7 @@ jobs:
           fetch-depth: 0
 
       - name: Cargo build
-        run: cargo +nightly build --profile release-lto --features use_winit,use_wgpu,sound,opl
+        run: cargo +nightly build --profile release-lto --features use_winit,use_wgpu,sound,opl,use_gilrs,use_serialport
 
       - name: Copy files into install dir
         run: cp LICENSE README.md CHANGELOG.md CREDITS.md target/release-lto/martypc install
