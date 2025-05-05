@@ -38,23 +38,26 @@
 
 use std::collections::{BTreeMap, VecDeque};
 
-#[cfg(feature = "serial")]
-use std::io::Read;
-#[cfg(feature = "serial")]
-use web_time::Duration;
-
 use crate::{
     bus::{BusInterface, DeviceRunTimeUnit, IoDevice},
     cpu_common::LogicAnalyzer,
     devices::pic,
     syntax_token::SyntaxToken,
 };
+#[cfg(feature = "serial")]
+use marty_common::MartyHashMap;
+use serde_derive::Deserialize;
+#[cfg(feature = "serial")]
+use std::io::Read;
+#[cfg(feature = "serial")]
+use web_time::Duration;
 /*  1.8Mhz Oscillator.
     Divided by 16, then again by programmable Divisor to select baud rate.
     The 8250 has a maximum baud of 9600.
     Interestingly, a minimum divisor of 1 provides a baud rate of 115200, which is a number some
     nerds might recognize.
 */
+
 const SERIAL_CLOCK: f64 = 1.8432;
 
 pub const SERIAL1_IRQ: u8 = 4;
@@ -130,6 +133,47 @@ const MODEM_STATUS_CTS: u8 = 0b0001_0000;
 const MODEM_STATUS_DSR: u8 = 0b0010_0000;
 const MODEM_STATUS_RI: u8 = 0b0100_0000;
 const MODEM_STATUS_RLSD: u8 = 0b1000_0000;
+
+#[derive(Copy, Clone, Default, Debug, strum_macros::EnumString, Deserialize)]
+pub enum ParityType {
+    Even,
+    Odd,
+    #[default]
+    None,
+}
+
+#[derive(Copy, Clone, Default, Debug, strum_macros::EnumString, Deserialize)]
+pub enum FlowControlType {
+    #[default]
+    None,
+    Hardware,
+    Software,
+}
+
+#[derive(Clone, Debug, Deserialize)]
+pub struct SerialBridgePortConfiguration {
+    pub host_port_name: String,
+    pub host_port_id: Option<usize>,
+    pub baud_rate: u32,
+    pub stop_bits: u32,
+    pub data_bits: u32,
+    pub parity: ParityType,
+    pub flow_control: FlowControlType,
+}
+
+impl Default for SerialBridgePortConfiguration {
+    fn default() -> Self {
+        Self {
+            host_port_name: String::new(),
+            host_port_id: None,
+            baud_rate: 9600,
+            stop_bits: 1,
+            data_bits: 8,
+            parity: ParityType::default(),
+            flow_control: FlowControlType::default(),
+        }
+    }
+}
 
 impl IoDevice for SerialPortController {
     fn read_u8(&mut self, port: u16, _delta: DeviceRunTimeUnit) -> u8 {
@@ -250,6 +294,8 @@ pub struct SerialPort {
     interrupt_enable_reg: u8,
     intr_action: IntrAction,
     modem_control_reg: u8,
+    last_dtr: bool,
+    last_rts: bool,
     out2_suppresses_int: bool,
     loopback: bool,
     modem_status_reg: u8,
@@ -268,6 +314,8 @@ pub struct SerialPort {
 
     // Serial port bridge
     // Allow a None id when serial feature is not enabled
+    #[cfg(feature = "serial")]
+    bridge_cfg: Option<SerialBridgePortConfiguration>,
     bridge_port_id: Option<usize>,
     #[cfg(feature = "serial")]
     bridge_port: Option<Box<dyn serialport::SerialPort>>,
@@ -291,6 +339,8 @@ impl Default for SerialPort {
             interrupt_enable_reg: 0,
             intr_action: IntrAction::None,
             modem_control_reg: 0,
+            last_dtr: false,
+            last_rts: false,
             out2_suppresses_int: true,
             loopback: false,
             modem_status_reg: 0,
@@ -307,6 +357,8 @@ impl Default for SerialPort {
             tx_timer: 0.0,
             us_per_byte: 833.333, // 9600 baud
 
+            #[cfg(feature = "serial")]
+            bridge_cfg: None,
             bridge_port_id: None,
             #[cfg(feature = "serial")]
             bridge_port: None,
@@ -332,6 +384,18 @@ impl SerialPort {
             irq: self.irq,
             out2_suppresses_int: self.out2_suppresses_int,
             ..Default::default()
+        }
+    }
+
+    #[cfg(feature = "serial")]
+    pub(crate) fn set_bridge_port_cfg(&mut self, bridge_cfg: &SerialBridgePortConfiguration) {
+        self.bridge_cfg = Some(bridge_cfg.clone());
+    }
+
+    #[cfg(feature = "serial")]
+    pub(crate) fn set_bridge_port_default_cfg(&mut self, bridge_cfg: &SerialBridgePortConfiguration) {
+        if self.bridge_cfg.is_none() {
+            self.bridge_cfg = Some(bridge_cfg.clone());
         }
     }
 
@@ -398,11 +462,12 @@ impl SerialPort {
         else {
             // Read the byte in the RX buffer
             if !self.rx_was_read {
-                //log::trace!("{}: Rx buffer read: {:02X}", self.name, self.rx_byte );
+                log::trace!("{}: Rx buffer read: {:02X}", self.name, self.rx_byte);
             }
             let byte = self.rx_byte;
             self.rx_was_read = true;
-            self.rx_byte = 0;
+            //self.rx_byte = 0;
+
             // Clear DR bit in Line Status Register
             self.line_status_reg &= !STATUS_DATA_READY;
             // Clear any pending Data Available interrupt.
@@ -777,10 +842,47 @@ impl SerialPort {
 
     #[cfg(feature = "serial")]
     fn bridge_port(&mut self, port_name: String, port_id: usize) -> anyhow::Result<bool> {
-        let port_result = serialport::new(port_name.clone(), 9600)
-            .timeout(Duration::from_millis(5))
-            .stop_bits(serialport::StopBits::One)
-            .parity(serialport::Parity::None)
+        let bridge_cfg = self.bridge_cfg.clone().unwrap_or_default();
+        log::debug!("bridge_port(): config: {:#?}", bridge_cfg);
+
+        let stop_bits = match bridge_cfg.stop_bits {
+            1 => serialport::StopBits::One,
+            2 => serialport::StopBits::Two,
+            _ => {
+                log::warn!("Invalid stop bits: {}. Defaulting to 1", bridge_cfg.stop_bits);
+                serialport::StopBits::One
+            }
+        };
+
+        let data_bits = match bridge_cfg.data_bits {
+            5 => serialport::DataBits::Five,
+            6 => serialport::DataBits::Six,
+            7 => serialport::DataBits::Seven,
+            8 => serialport::DataBits::Eight,
+            _ => {
+                log::warn!("Invalid data bits: {}. Defaulting to 8", bridge_cfg.data_bits);
+                serialport::DataBits::Eight
+            }
+        };
+
+        let parity = match bridge_cfg.parity {
+            ParityType::Even => serialport::Parity::Even,
+            ParityType::Odd => serialport::Parity::Odd,
+            ParityType::None => serialport::Parity::None,
+        };
+
+        let flow_control = match bridge_cfg.flow_control {
+            FlowControlType::Hardware => serialport::FlowControl::Hardware,
+            FlowControlType::Software => serialport::FlowControl::Software,
+            FlowControlType::None => serialport::FlowControl::None,
+        };
+
+        let port_result = serialport::new(port_name.clone(), bridge_cfg.baud_rate)
+            .timeout(Duration::from_millis(1))
+            .stop_bits(stop_bits)
+            .data_bits(data_bits)
+            .parity(parity)
+            .flow_control(flow_control)
             .open();
 
         match port_result {
@@ -878,6 +980,8 @@ impl SerialPort {
 
 pub struct SerialPortController {
     port: [SerialPort; 2],
+    #[cfg(feature = "serial")]
+    bridge_configs: MartyHashMap<String, SerialBridgePortConfiguration>,
 }
 
 impl SerialPortController {
@@ -887,6 +991,16 @@ impl SerialPortController {
                 SerialPort::new("COM1".to_string(), SERIAL1_IRQ, out2_suppresses_int),
                 SerialPort::new("COM2".to_string(), SERIAL2_IRQ, out2_suppresses_int),
             ],
+            #[cfg(feature = "serial")]
+            bridge_configs: MartyHashMap::default(),
+        }
+    }
+
+    #[cfg(feature = "serial")]
+    pub fn set_bridge_port_cfg(&mut self, port_info: &[SerialBridgePortConfiguration]) {
+        for port_cfg in port_info {
+            self.bridge_configs
+                .insert(port_cfg.host_port_name.clone(), port_cfg.clone());
         }
     }
 
@@ -939,6 +1053,19 @@ impl SerialPortController {
     /// Bridge the specified serial port
     #[cfg(feature = "serial")]
     pub fn bridge_port(&mut self, port: usize, host_port_name: String, host_port_id: usize) -> anyhow::Result<bool> {
+        // Look up the host port configuration
+        let default_cfg = SerialBridgePortConfiguration::default();
+        let mut bridge_cfg = self.bridge_configs.get(&host_port_name);
+        // Resolve to configured default configuration if not found
+        if bridge_cfg.is_none() {
+            bridge_cfg = self.bridge_configs.get("default");
+        }
+        // If still not found, use internal default
+        if bridge_cfg.is_none() {
+            bridge_cfg = Some(&default_cfg);
+        }
+
+        self.port[port].set_bridge_port_cfg(bridge_cfg.unwrap());
         self.port[port].bridge_port(host_port_name, host_port_id)
     }
 
@@ -1010,43 +1137,69 @@ impl SerialPortController {
     pub fn update(&mut self) {
         #[cfg(feature = "serial")]
         for port in &mut self.port {
-            match &mut port.bridge_port {
-                Some(bridge_port) => {
-                    // Write any pending bytes
-                    if port.tx_queue.len() > 0 {
-                        port.tx_queue.make_contiguous();
-                        let (tx1, _) = port.tx_queue.as_slices();
+            if let Some(bridge_port) = &mut port.bridge_port {
+                // Set state of DTR and RTS
 
-                        match bridge_port.write(tx1) {
-                            Ok(_) => {
-                                //log::trace!("Wrote bytes: {:?}", tx1);
-                            }
-                            Err(ref e) if e.kind() == std::io::ErrorKind::TimedOut => (),
-                            Err(e) => log::error!("Error writing byte: {:?}", e),
+                let new_dtr = port.modem_control_reg & MODEM_CONTROL_DTR != 0;
+                let new_rts = port.modem_control_reg & MODEM_CONTROL_RTS != 0;
+                if new_dtr != port.last_dtr {
+                    log::trace!("{}: DTR changed to {}", port.name, new_dtr);
+                    _ = bridge_port.write_data_terminal_ready(new_dtr);
+                    port.last_dtr = new_dtr;
+                }
+
+                if new_rts != port.last_rts {
+                    log::trace!("{}: RTS changed to {}", port.name, new_rts);
+                    _ = bridge_port.write_request_to_send(new_rts);
+                    port.last_rts = new_rts;
+                }
+
+                // Write any pending bytes
+                if !port.tx_queue.is_empty() {
+                    port.tx_queue.make_contiguous();
+                    let (tx1, _) = port.tx_queue.as_slices();
+
+                    match bridge_port.write(tx1) {
+                        Ok(_) => {
+                            //log::trace!("Wrote bytes: {:?}", tx1);
                         }
-
-                        port.tx_queue.clear();
+                        Err(ref e) if e.kind() == std::io::ErrorKind::TimedOut => (),
+                        Err(e) => log::error!("Error writing byte: {:?}", e),
                     }
 
-                    // Read any pending bytes
-                    match bridge_port.read(port.bridge_buf.as_mut_slice()) {
-                        Ok(ct) => {
-                            if ct > 0 {
-                                log::trace!("Read {} bytes from serial port", ct);
-                            }
-                            for i in 0..ct {
-                                // TODO: Must be a more efficient way to copy the vec to vecdeque?
-                                let byte = port.bridge_buf[i];
-                                port.rx_queue.push_back(byte);
-                                //log::trace!("Wrote byte : {:02X} to buf", byte);
+                    port.tx_queue.clear();
+                }
+
+                // Explicitly assert DTR and RTS
+                //_ = bridge_port.write_data_terminal_ready(true);
+                //_ = bridge_port.write_request_to_send(true);
+
+                // Read any pending bytes
+                match bridge_port.bytes_to_read() {
+                    Ok(ct) => {
+                        if ct > 0 {
+                            match bridge_port.read(port.bridge_buf.as_mut_slice()) {
+                                Ok(ct) => {
+                                    if ct > 0 {
+                                        log::trace!("Read {} bytes from serial port", ct);
+                                    }
+                                    for i in 0..ct {
+                                        // TODO: Must be a more efficient way to copy the vec to vecdeque?
+                                        let byte = port.bridge_buf[i];
+                                        port.rx_queue.push_back(byte);
+                                        log::trace!("Wrote byte : {:02X} to buf", byte);
+                                    }
+                                }
+                                Err(e) => {
+                                    log::error!("Error reading serial device: {}", e);
+                                }
                             }
                         }
-                        Err(_) => {
-                            //log::error!("Error reading serial device: {}", e);
-                        }
+                    }
+                    Err(e) => {
+                        log::error!("Error querying serial device receive buffer: {}", e);
                     }
                 }
-                None => {}
             }
         }
     }
