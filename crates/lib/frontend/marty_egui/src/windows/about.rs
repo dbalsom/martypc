@@ -61,6 +61,7 @@ const GREETS: &[&str] = &[
     "electroly",
     "MicroCoreLabs",
     "google0101",
+    "Tape_Worm",
     "DDX",
     "Tom Harte",
     "John Novak",
