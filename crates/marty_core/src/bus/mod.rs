@@ -1124,24 +1124,40 @@ impl BusInterface {
             }
         }
 
-        // If we installed a parallel card, attach a sound source
+        // If we installed a parallel card, attach any specified parallel port DAC
         if let Some(_parallel) = &self.parallel {
             // Add parallel port to installed devices
             #[cfg(feature = "sound")]
             {
-                // Create audio sample channel
-                let (sample_sender, sample_receiver) = unbounded();
+                let mut parallel_dac = machine_config.sound.clone();
+                parallel_dac.retain(|s| s.sound_type.is_parallel());
 
-                let device_channel = _parallel.device_channel();
-                let sound_source = DSoundSource::new(device_channel, sample_sender);
-                installed_devices.sound_sources.push(SoundSourceDescriptor::new(
-                    "Sound Source",
-                    sound_source.sample_rate(),
-                    1,
-                    sample_receiver,
-                ));
+                if parallel_dac.len() > 1 {
+                    log::warn!("More than one parallel DAC specified. Only the first parallel DAC will be created.");
+                }
 
-                self.sound_source = Some(sound_source);
+                if !parallel_dac.is_empty() {
+                    match parallel_dac[0].sound_type {
+                        SoundType::SoundSource => {
+                            // Create audio sample channel
+                            let (sample_sender, sample_receiver) = unbounded();
+
+                            let device_channel = _parallel.device_channel();
+                            let sound_source = DSoundSource::new(device_channel, sample_sender);
+                            installed_devices.sound_sources.push(SoundSourceDescriptor::new(
+                                "Sound Source",
+                                sound_source.sample_rate(),
+                                1,
+                                sample_receiver,
+                            ));
+
+                            self.sound_source = Some(sound_source);
+                        }
+                        _ => {
+                            unimplemented!();
+                        }
+                    }
+                }
             }
         }
 
@@ -1183,9 +1199,6 @@ impl BusInterface {
                 add_io_device!(self, ems, IoDeviceType::Ems);
                 add_mmio_device!(self, ems, MmioDeviceType::Ems);
                 self.ems = Some(ems);
-            }
-            else {
-                log::error!("Bad EMS type {:?}", ems_config.ems_type);
             }
         }
 
@@ -1229,7 +1242,6 @@ impl BusInterface {
         if let Some((chip, io_base, factor)) = machine_desc.onboard_sound {
             match chip {
                 SoundChipType::Sn76489 => {
-                    // Create an Sn76489.
                     let (s, r) = unbounded();
                     installed_devices.sound_sources.push(SoundSourceDescriptor::new(
                         "SN76489 Sound Chip",
@@ -1249,23 +1261,25 @@ impl BusInterface {
 
         // Create sound cards
         #[cfg(feature = "sound")]
-        for (_i, card) in machine_config.sound.iter().enumerate() {
+        for card in machine_config.sound.iter() {
             #[cfg(feature = "opl")]
             {
-                #[allow(irrefutable_let_patterns)]
-                if let SoundType::AdLib = card.sound_type {
-                    // Create an AdLib card.
-
-                    let (s, r) = unbounded();
-                    installed_devices.sound_sources.push(SoundSourceDescriptor::new(
-                        "AdLib Music Synthesizer",
-                        sound_config.sample_rate,
-                        2,
-                        r,
-                    ));
-                    let adlib = AdLibCard::new(card.io_base, 48000, s);
-                    add_io_device!(self, adlib, IoDeviceType::Sound);
-                    self.adlib = Some(adlib);
+                #[allow(clippy::single_match)]
+                match card.sound_type {
+                    SoundType::AdLib => {
+                        // Create an AdLib card.
+                        let (s, r) = unbounded();
+                        installed_devices.sound_sources.push(SoundSourceDescriptor::new(
+                            "AdLib Music Synthesizer",
+                            sound_config.sample_rate,
+                            2,
+                            r,
+                        ));
+                        let adlib = AdLibCard::new(card.io_base.unwrap_or(0x388), 48000, s);
+                        add_io_device!(self, adlib, IoDeviceType::Sound);
+                        self.adlib = Some(adlib);
+                    }
+                    _ => {}
                 }
             }
         }

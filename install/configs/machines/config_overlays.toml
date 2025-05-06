@@ -2,8 +2,8 @@
 # Main Machine Configuration Overlay file for MartyPC.
 
 
-# Upgrade the CPU of the system to an NECV20. 
-# Base machine type must have a compatible CPU (Intel 8088)
+# This overlay upgrades the CPU of the system to an NECV20.
+# The base machine being upgraded must have a compatible CPU (Intel 8088)
 [[overlay]]
 name = "cpu_v20"
     [overlay.cpu]
@@ -29,6 +29,10 @@ name = "lotech_ems"
     # Memory size = 2MB. Do not modify.
     size = 0x200000
 
+
+# The AdLib sound card hosts a Yamaha OPL2 chip and was a popular early option
+# for FM synthesis sound on the PC before the SoundBlaster became the de facto
+# standard.
 [[overlay]]
 name = "adlib"
     [[overlay.sound]]
@@ -36,12 +40,31 @@ name = "adlib"
     # Don't modify. All AdLib cards are at 0x388.
     io_base = 0x388
 
+# The Disney Sound Source was an inexpensive digital sound device that connected
+# to the PC's parallel port. It was capable of playing back 8-bit PCM sound samples
+# but was never terribly popular.
+# If you use this overlay, you must also have a parallel port installed or no
+# sound will be played.
 [[overlay]]
-name = "pcxt_640k_conventional"
-    [overlay.memory]
-    # A0000 = 640K of conventional memory
-    conventional.size = 0xA0000
-    conventional.wait_states = 0
+name = "sound_source"
+    [[overlay.sound]]
+    type = "SoundSource"
+    # Which parallel port to use.
+    # Currently only 1 parallel port is supported.
+    lpt_port = 0
+
+# Add both an Adlib and Sound Source.
+[[overlay]]
+name = "adlib_and_sound_source"
+    [[overlay.sound]]
+    type = "AdLib"
+    # Don't modify. All AdLib cards are at 0x388.
+    io_base = 0x388
+    [[overlay.sound]]
+    type = "SoundSource"
+    # Which parallel port to use.
+    # Currently only 1 parallel port is supported.
+    lpt_port = 0
 
 [[overlay]]
 name = "us_modelf_keyboard"

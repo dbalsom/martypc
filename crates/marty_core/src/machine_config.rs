@@ -196,7 +196,8 @@ pub struct VideoCardConfig {
 pub struct SoundDeviceConfig {
     #[serde(rename = "type")]
     pub sound_type: SoundType,
-    pub io_base:    u16,
+    pub io_base:    Option<u16>,
+    pub lpt_port:   Option<usize>,
 }
 
 #[derive(Clone, Debug, Deserialize)]
