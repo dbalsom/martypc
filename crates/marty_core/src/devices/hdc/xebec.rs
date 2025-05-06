@@ -431,6 +431,19 @@ impl HardDiskController {
         Ok(())
     }
 
+    pub fn unload_vhd(&mut self, device_id: usize) -> Result<(), ControllerError> {
+        if device_id < self.drive_ct {
+            self.drives[device_id].vhd = None;
+            self.drives[device_id].max_cylinders = 0;
+            self.drives[device_id].max_heads = 0;
+            self.drives[device_id].max_sectors = 0;
+            Ok(())
+        }
+        else {
+            Err(ControllerError::InvalidDevice)
+        }
+    }
+
     pub fn set_command(&mut self, command: Command, n_bytes: u32, command_fn: CommandDispatchFn) {
         self.state = State::ReceivingCommand;
         self.receiving_dcb = true;

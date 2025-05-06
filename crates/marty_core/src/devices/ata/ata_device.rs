@@ -296,6 +296,12 @@ impl AtaDevice {
         Ok(())
     }
 
+    pub fn unload_vhd(&mut self) {
+        if let Some(disk) = &mut self.disk {
+            disk.unload_vhd();
+        }
+    }
+
     pub fn disk(&self) -> Option<&Disk> {
         self.disk.as_ref()
     }

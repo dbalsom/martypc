@@ -323,6 +323,56 @@ pub fn handle_egui_event(
                 emu.gui.toasts().error(err_str).duration(Some(LONG_NOTIFICATION_TIME));
             }
         }
+        GuiEvent::DetachVHD(drive_idx) => {
+            // User requested to detach a VHD from the indicated drive.
+            log::debug!("Detaching VHD from drive: {}", drive_idx);
+
+            let unload_success = if let Some(hdc) = emu.machine.hdc_mut() {
+                match hdc.unload_vhd(*drive_idx) {
+                    Ok(_) => {
+                        log::info!("VHD image successfully detached from virtual drive: {}", *drive_idx);
+                        true
+                    }
+                    Err(err) => {
+                        log::error!("Error detaching VHD: {}", err);
+                        emu.gui
+                            .toasts()
+                            .error(format!("Error detaching VHD: {}", err))
+                            .duration(Some(LONG_NOTIFICATION_TIME));
+                        false
+                    }
+                }
+            }
+            else if let Some(hdc) = emu.machine.xtide_mut() {
+                match hdc.unload_vhd(*drive_idx) {
+                    Ok(_) => {
+                        log::info!("VHD image successfully detached from virtual drive: {}", *drive_idx);
+                        true
+                    }
+                    Err(err) => {
+                        log::error!("Error detaching VHD: {}", err);
+                        emu.gui
+                            .toasts()
+                            .error(format!("Error detaching VHD: {}", err))
+                            .duration(Some(LONG_NOTIFICATION_TIME));
+                        false
+                    }
+                }
+            }
+            else {
+                log::error!("No Hard Disk Controller present!");
+                false
+            };
+
+            if unload_success {
+                // Update the GUI to show that the VHD is no longer attached.
+                emu.gui.set_hdd_selection(*drive_idx, None, None);
+                emu.gui
+                    .toasts()
+                    .info(format!("VHD detached from drive: {}", drive_idx))
+                    .duration(Some(NORMAL_NOTIFICATION_TIME));
+            }
+        }
         GuiEvent::CreateVHD(filename, fmt) => {
             // The user requested that a new VHD be created, with the given filename and format.
             log::info!("Got CreateVHD event: {:?}, {:?}", filename, fmt);

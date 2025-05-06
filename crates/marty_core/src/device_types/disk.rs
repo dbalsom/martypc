@@ -72,6 +72,11 @@ impl Disk {
         self.vhd = Some(vhd);
     }
 
+    pub fn unload_vhd(&mut self) {
+        self.geometry = DriveGeometry::default();
+        self.vhd = None;
+    }
+
     pub fn vhd(&self) -> Option<&VirtualHardDisk> {
         self.vhd.as_ref()
     }

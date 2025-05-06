@@ -372,6 +372,16 @@ impl XtIdeController {
         Ok(())
     }
 
+    pub fn unload_vhd(&mut self, device_id: usize) -> Result<(), ControllerError> {
+        if device_id < self.drive_ct {
+            self.drives[device_id].unload_vhd();
+            Ok(())
+        }
+        else {
+            Err(ControllerError::InvalidDevice)
+        }
+    }
+
     fn drive_head_register_write(&mut self, data: u8) {
         self.drive_head_register = data;
         let new_drive_select = ((data & 0x10) >> 4) as usize;
