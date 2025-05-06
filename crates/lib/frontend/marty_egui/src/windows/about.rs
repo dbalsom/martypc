@@ -29,12 +29,62 @@
     Implements the About dialog box for the emulator.
 
 */
+use crate::{widgets::greets::GreetsWidget, *};
+use egui::FontId;
 
-use crate::*;
+const GREETS: &[&str] = &[
+    "VileR",
+    "Trixter",
+    "UtterChaos",
+    "phoenix",
+    "n0p",
+    "640KB",
+    "BigBass",
+    "Folkert",
+    "Scali",
+    "raphnet",
+    "twvd",
+    "Smartest Blob",
+    "sqpat",
+    "modem7",
+    "DigitalSkunk",
+    "foone",
+    "Mamoru",
+    "fuel",
+    "TubeTime",
+    "howprice",
+    "DutchMagic",
+    "Digitoxin",
+    "Disk Blitz",
+    "RobSmithDev",
+    "eientei",
+    "electroly",
+    "MicroCoreLabs",
+    "google0101",
+    "Tape_Worm",
+    "DDX",
+    "Tom Harte",
+    "John Novak",
+    "joncampbell123",
+    "Ian Scott",
+    "Mike Brutman",
+    "Lord Nightmare",
+    "DonKale",
+    "NewRisingSun",
+    "VOGONS",
+    "VCF",
+    "r/emudev",
+    "...and all of you!",
+    "Thank you for your support!",
+    "💾",
+    "💾",
+    "💾",
+];
 
 pub struct AboutDialog {
     //texture: Option<egui::TextureHandle>,
     _params: bool,
+    greets:  GreetsWidget,
 }
 
 impl AboutDialog {
@@ -42,6 +92,7 @@ impl AboutDialog {
         Self {
             //texture: None,
             _params: Default::default(),
+            greets:  GreetsWidget::new(GREETS, FontId::monospace(20.0), 0.5),
         }
     }
 
@@ -77,18 +128,19 @@ impl AboutDialog {
         ui.vertical(|ui| {
             ui.label("Made possible by the work of:");
             ui.label(
-                egui::RichText::new("reenigne, Ken Shirriff, modem7, phix")
+                egui::RichText::new("reenigne, Ken Shirriff, phix")
                     .color(ui.visuals().strong_text_color())
                     .font(egui::FontId::proportional(16.0)),
             );
-            ui.label("Special thanks to:");
-            ui.label(
-                egui::RichText::new(
-                    "640KB, BigBass, VileR, Scali, Trixter, UtterChaos, n0p, raphnet, everyone on VOGONS and /r/emudev",
-                )
-                .color(ui.visuals().strong_text_color())
-                .font(egui::FontId::proportional(16.0)),
-            );
+            ui.label("Greets to:");
+            self.greets.show(ui);
+            // ui.label(
+            //     egui::RichText::new(
+            //         "VileR, Scali, Trixter, UtterChaos, modem7, 640KB, BigBass, n0p, raphnet, everyone on VOGONS and /r/emudev",
+            //     )
+            //     .color(ui.visuals().strong_text_color())
+            //     .font(egui::FontId::proportional(16.0)),
+            // );
             ui.label("Dedicated to:");
             ui.label(
                 egui::RichText::new("Near")

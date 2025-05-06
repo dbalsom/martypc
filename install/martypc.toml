@@ -596,6 +596,47 @@ gamepad_auto_connect = true
 debug_keyboard = false
 
 # ----------------------------------------------------------------------------
+# Serial Bridge Options
+# ----------------------------------------------------------------------------
+[emulator.serial_bridge]
+
+# Define one or more connetions to host serial ports. This is not required, but
+# if defined will attempt to create the connection on startup.
+# [[emulator.serial_bridge.connection]]
+# # Specify the guest port ID. Typically,
+# # 0 = COM1
+# # 1 = COM2
+# guest_port = 0
+# # Specify the host port name. A 'port' configuration should be present for this
+# # port name, or the 'default' configuration will be used.
+# host_port_name = "COM11"
+
+# Define one or more port definitions. The name should match the enumerated
+# port name by the OS. "default" will apply to all other ports if no name is
+# matched.
+[[emulator.serial_bridge.port]]
+host_port_name = "default"
+# Specify the baud rate at which to open the host port.
+baud_rate = 9600
+# Specify the stop bits to use. Valid values are 1 or 2.
+stop_bits = 1
+# Specify the data bits to use. Valid values are 7 or 8.
+data_bits = 8
+# Specify the parity to use. valid values are "Odd", "Even", or "None"
+parity = "None"
+# Specify what type of flow control to use. Valid values are "Hardware", "Software" or "None"
+flow_control = "None"
+
+# An example configuration for using a Microsoft Serial Mouse
+# [[emulator.serial_bridge.port]]
+# host_port_name = "COM11"
+# baud_rate = 1200
+# stop_bits = 1
+# data_bits = 7
+# parity = "None"
+# flow_control = "None"
+
+# ----------------------------------------------------------------------------
 # Benchmarking (not yet implemented - configs are placeholder)
 # ----------------------------------------------------------------------------
 [emulator.benchmark]

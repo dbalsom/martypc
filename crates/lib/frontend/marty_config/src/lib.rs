@@ -75,6 +75,7 @@ use web_config::{parse_query_params, CmdLineArgs};
 use crate::mount::MountableDeviceType;
 use cfg_if::cfg_if;
 use marty_common::types::joystick::ControllerLayout;
+use marty_core::devices::serial::SerialBridgePortConfiguration;
 use serde_derive::Deserialize;
 
 const fn _default_true() -> bool {
@@ -218,6 +219,7 @@ pub struct Emulator {
     #[cfg(feature = "use_display")]
     pub scaler_preset: Vec<ScalerPreset>,
     pub input: EmulatorInput,
+    pub serial_bridge: Option<SerialBridge>,
     pub benchmark: Benchmark,
 }
 
@@ -340,6 +342,20 @@ pub struct EmulatorInput {
     #[serde(default)]
     pub gamepad_auto_connect: bool,
     pub gamepad_dead_zone: Option<f32>,
+}
+
+#[derive(Clone, Debug, Deserialize)]
+pub struct SerialBridgeConnection {
+    pub guest_port: usize,
+    pub host_port_name: String,
+}
+
+#[derive(Clone, Debug, Deserialize)]
+pub struct SerialBridge {
+    #[serde(default)]
+    pub connection: Vec<SerialBridgeConnection>,
+    #[serde(default)]
+    pub port: Vec<SerialBridgePortConfiguration>,
 }
 
 #[derive(Debug, Deserialize)]

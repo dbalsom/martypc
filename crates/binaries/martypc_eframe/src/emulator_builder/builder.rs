@@ -73,6 +73,8 @@ use marty_frontend_common::{
 };
 
 use anyhow::{anyhow, Error};
+use marty_egui::{GuiEnum, GuiVariableContext};
+use marty_frontend_common::marty_common::MartyHashMap;
 use url::Url;
 
 #[derive(thiserror::Error, Debug)]
@@ -699,7 +701,7 @@ impl EmulatorBuilder {
 
         // Build the Machine instance
         log::debug!("Building Machine...");
-        let machine = machine_builder.build()?;
+        let mut machine = machine_builder.build()?;
 
         // Now that we have a Machine, we can query it for sound sources (devices that produce sound)
         // For each sound source we will create a source in the SoundInterface, to give it
@@ -753,7 +755,82 @@ impl EmulatorBuilder {
         }
 
         #[cfg(feature = "use_serialport")]
-        gui.set_host_serial_ports(serial_ports);
+        {
+            // Set the list of host serial ports.
+            gui.set_host_serial_ports(serial_ports.clone());
+
+            let mut port_map: MartyHashMap<String, usize> = MartyHashMap::default();
+            for (pi, port) in serial_ports.iter().enumerate() {
+                // Add the port to the map
+                port_map.insert(port.port_name.clone(), pi);
+            }
+
+            // Set the defined serial port bridge configurations from config.
+            if let Some(mut serial_bridge) = config.emulator.serial_bridge.clone() {
+                for port in serial_bridge.port.iter_mut() {
+                    // Resolve port name to index.
+                    if let Some(index) = serial_ports.iter().position(|p| p.port_name == *port.host_port_name) {
+                        // Set the host port id to the resolved index.
+                        port.host_port_id = Some(index);
+                    }
+                    else if port.host_port_name != "default" {
+                        // Print a warning if the port name was not found - user may have typo'd or the configuration has changed
+                        log::warn!(
+                            "Serial port name '{}' not found in host serial ports. Bridge configuration not set.",
+                            port.host_port_name
+                        );
+                    }
+                }
+
+                // Filter ports without a resolved host_port_id
+                serial_bridge
+                    .port
+                    .retain(|p| p.host_port_id.is_some() || p.host_port_name == "default".to_string());
+
+                // Set the serial bridge port configuration.
+                if let Some(serial_controller) = machine.bus_mut().serial_mut() {
+                    log::debug!("Setting {} serial port bridge configurations", serial_bridge.port.len());
+                    serial_controller.set_bridge_port_cfg(&serial_bridge.port);
+                }
+
+                // Attempt to make bridge ports specified in connections.
+                for connection in serial_bridge.connection.iter() {
+                    // Look up name in map
+                    if let Some(host_port_id) = port_map.get(&connection.host_port_name) {
+                        // Set the connection
+                        if let Some(serial_controller) = machine.bus_mut().serial_mut() {
+                            match serial_controller.bridge_port(
+                                connection.guest_port,
+                                connection.host_port_name.clone(),
+                                *host_port_id,
+                            ) {
+                                Ok(_) => {
+                                    log::debug!(
+                                        "Serial port bridge created: {} -> {}",
+                                        connection.guest_port,
+                                        connection.host_port_name
+                                    );
+
+                                    gui.set_option_enum(
+                                        GuiEnum::SerialPortBridge(*host_port_id),
+                                        Some(GuiVariableContext::SerialPort(connection.guest_port)),
+                                    );
+                                }
+                                Err(e) => {
+                                    log::error!("Failed to create serial port bridge: {}", e);
+                                }
+                            }
+                        }
+                    }
+                    else {
+                        log::warn!(
+                            "Serial port name '{}' not found in host serial ports. Bridge connection not created.",
+                            connection.host_port_name
+                        );
+                    }
+                }
+            }
+        }
 
         gui.set_floppy_drives(drive_types);
 
