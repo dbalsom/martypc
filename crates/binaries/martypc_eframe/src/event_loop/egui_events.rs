@@ -267,48 +267,45 @@ pub fn handle_egui_event(
             match emu.vhd_manager.load_vhd_file(*drive_idx, *image_idx) {
                 Ok(vhd_file) => match VirtualHardDisk::parse(Box::new(vhd_file), false) {
                     Ok(vhd) => {
-                        if let Some(hdc) = emu.machine.hdc_mut() {
+                        let vhd_name = emu.vhd_manager.get_vhd_name(*image_idx).unwrap();
+                        let mount_success = if let Some(hdc) = emu.machine.hdc_mut() {
                             match hdc.set_vhd(*drive_idx, vhd) {
-                                Ok(_) => {
-                                    let vhd_name = emu.vhd_manager.get_vhd_name(*image_idx).unwrap();
-                                    log::info!(
-                                        "VHD image {:?} successfully loaded into virtual drive: {}",
-                                        vhd_name,
-                                        *drive_idx
-                                    );
-
-                                    emu.gui
-                                        .toasts()
-                                        .info(format!("VHD loaded: {:?}", vhd_name))
-                                        .duration(Some(NORMAL_NOTIFICATION_TIME));
-                                }
+                                Ok(_) => true,
                                 Err(err) => {
                                     error_str = Some(format!("Error mounting VHD: {}", err));
+                                    false
                                 }
                             }
                         }
                         else if let Some(hdc) = emu.machine.xtide_mut() {
                             match hdc.set_vhd(*drive_idx, vhd) {
-                                Ok(_) => {
-                                    let vhd_name = emu.vhd_manager.get_vhd_name(*image_idx).unwrap();
-                                    log::info!(
-                                        "VHD image {:?} successfully loaded into virtual drive: {}",
-                                        vhd_name,
-                                        *drive_idx
-                                    );
-
-                                    emu.gui
-                                        .toasts()
-                                        .info(format!("VHD loaded: {:?}", vhd_name))
-                                        .duration(Some(NORMAL_NOTIFICATION_TIME));
-                                }
+                                Ok(_) => true,
                                 Err(err) => {
                                     error_str = Some(format!("Error mounting VHD: {}", err));
+                                    false
                                 }
                             }
                         }
                         else {
                             error_str = Some("No Hard Disk Controller present!".to_string());
+                            false
+                        };
+
+                        if mount_success {
+                            let vhd_name = emu.vhd_manager.get_vhd_name(*image_idx).unwrap();
+                            log::info!(
+                                "VHD image {:?} successfully loaded into virtual drive: {}",
+                                vhd_name,
+                                *drive_idx
+                            );
+
+                            emu.gui
+                                .set_hdd_selection(*drive_idx, Some(*image_idx), Some(vhd_name.clone().into()));
+
+                            emu.gui
+                                .toasts()
+                                .info(format!("VHD loaded: {:?}", vhd_name))
+                                .duration(Some(NORMAL_NOTIFICATION_TIME));
                         }
                     }
                     Err(err) => {
@@ -353,6 +350,10 @@ pub fn handle_egui_event(
                     if let Err(e) = emu.vhd_manager.scan_resource(&mut emu.rm) {
                         log::error!("Error scanning hdd directory: {}", e);
                     };
+                    // Update VHD Image tree
+                    if let Ok(hdd_tree) = emu.vhd_manager.make_tree(&mut emu.rm) {
+                        emu.gui.set_hdd_tree(hdd_tree);
+                    }
                 }
                 Err(err) => {
                     log::error!("Error creating VHD: {}", err);
