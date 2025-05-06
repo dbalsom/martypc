@@ -52,6 +52,7 @@ impl GuiState {
                     ui.separator();
                 }
 
+                #[cfg(not(target_arch = "wasm32"))]
                 if ui.button("⎆ Quit").clicked() {
                     self.event_queue.send(GuiEvent::Exit);
                     ui.close_menu();
@@ -63,101 +64,7 @@ impl GuiState {
                 return;
             }
 
-            ui.menu_button("Machine", |ui| {
-                ui.menu_button("Emulation Speed", |ui| {
-                    ui.horizontal(|ui| {
-                        let mut speed = self.option_floats.get_mut(&GuiFloat::EmulationSpeed).unwrap();
-
-                        ui.label("Factor:");
-                        if ui
-                            .add(
-                                egui::Slider::new(speed, 0.1..=2.0)
-                                    .show_value(true)
-                                    .min_decimals(2)
-                                    .max_decimals(2)
-                                    .suffix("x"),
-                            )
-                            .changed()
-                        {
-                            self.event_queue.send(GuiEvent::VariableChanged(
-                                GuiVariableContext::Global,
-                                GuiVariable::Float(GuiFloat::EmulationSpeed, *speed),
-                            ));
-                        }
-                    });
-                });
-
-                ui.menu_button("Input/Output", |ui| {
-                    self.show_input_menu(ui);
-                });
-
-                ui.separator();
-
-                let (is_on, is_paused) = match self.machine_state {
-                    MachineState::On => (true, false),
-                    MachineState::Paused => (true, true),
-                    MachineState::Off => (false, false),
-                    _ => (false, false),
-                };
-
-                ui.add_enabled_ui(!is_on, |ui| {
-                    if ui.button("⚡ Power on").clicked() {
-                        self.event_queue.send(GuiEvent::MachineStateChange(MachineState::On));
-                        ui.close_menu();
-                    }
-                });
-
-                if ui
-                    .checkbox(&mut self.get_option_mut(GuiBoolean::TurboButton), "Turbo Button")
-                    .clicked()
-                {
-                    let new_opt = self.get_option(GuiBoolean::TurboButton).unwrap();
-
-                    self.event_queue.send(GuiEvent::VariableChanged(
-                        GuiVariableContext::Global,
-                        GuiVariable::Bool(GuiBoolean::TurboButton, new_opt),
-                    ));
-                    ui.close_menu();
-                }
-
-                ui.add_enabled_ui(is_on && !is_paused, |ui| {
-                    if ui.button("⏸ Pause").clicked() {
-                        self.event_queue
-                            .send(GuiEvent::MachineStateChange(MachineState::Paused));
-                        ui.close_menu();
-                    }
-                });
-
-                ui.add_enabled_ui(is_on && is_paused, |ui| {
-                    if ui.button("▶ Resume").clicked() {
-                        self.event_queue
-                            .send(GuiEvent::MachineStateChange(MachineState::Resuming));
-                        ui.close_menu();
-                    }
-                });
-
-                ui.add_enabled_ui(is_on, |ui| {
-                    if ui.button("⟲ Reboot").clicked() {
-                        self.event_queue
-                            .send(GuiEvent::MachineStateChange(MachineState::Rebooting));
-                        ui.close_menu();
-                    }
-                });
-
-                ui.add_enabled_ui(is_on, |ui| {
-                    if ui.button("⟲ CTRL-ALT-DEL").clicked() {
-                        self.event_queue.send(GuiEvent::CtrlAltDel);
-                        ui.close_menu();
-                    }
-                });
-
-                ui.add_enabled_ui(is_on, |ui| {
-                    if ui.button("🔌 Power off").clicked() {
-                        self.event_queue.send(GuiEvent::MachineStateChange(MachineState::Off));
-                        ui.close_menu();
-                    }
-                });
-            });
+            self.show_machine_menu(ui);
 
             let _media_response = ui.menu_button("Media", |ui| {
                 //ui.set_min_size(egui::vec2(240.0, 0.0));

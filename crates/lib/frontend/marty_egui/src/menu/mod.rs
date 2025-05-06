@@ -31,5 +31,6 @@ mod debug;
 mod display;
 mod floppy;
 mod input;
+mod machine;
 pub mod show;
 mod sound;
