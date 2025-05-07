@@ -143,7 +143,7 @@ impl GamepadInterface {
         events
     }
 
-    fn is_real_gamepad(gamepad: &Gamepad) -> bool {
+    fn is_real_gamepad(gamepad: &Gamepad<'_>) -> bool {
         //let name = gamepad.name().to_lowercase();
         //let product = gamepad.product_id();
 

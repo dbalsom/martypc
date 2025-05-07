@@ -29,7 +29,7 @@
     Implement modal contexts, mostly for handling save/open dialogs.
 
 */
-use crate::{GuiEvent, GuiEventQueue, PathBuf};
+use crate::{GuiEventQueue, PathBuf};
 
 use fluxfox::DiskImageFileFormat;
 
@@ -98,9 +98,7 @@ impl ModalState {
         self.extensions.clear();
     }
 
-    pub fn show(&mut self, ctx: &egui::Context, events: &mut GuiEventQueue) {
-        let mut dialog_resolved = false;
-
+    pub fn show(&mut self, ctx: &egui::Context, _events: &mut GuiEventQueue) {
         match &mut self.dialog {
             // Some(ModalDialog::Save(dialog)) | Some(ModalDialog::Open(dialog)) => {
             //     if dialog.show(ctx).selected() {
@@ -130,7 +128,7 @@ impl ModalState {
             // }
             Some(ModalDialog::Notice(msg)) => {
                 let id = egui::Id::new("modal_notice");
-                let mut modal = egui::Modal::new(id);
+                let modal = egui::Modal::new(id);
 
                 modal.show(ctx, |ui| {
                     let label_text = msg.clone();
@@ -151,6 +149,7 @@ impl ModalState {
         }
     }
 
+    /*
     fn resolve(&mut self, event_queue: &mut GuiEventQueue) {
         if let Some(context) = &self.context {
             match context {
@@ -182,5 +181,5 @@ impl ModalState {
         self.context = None;
         self.dialog = None;
         self.extensions.clear();
-    }
+    }*/
 }

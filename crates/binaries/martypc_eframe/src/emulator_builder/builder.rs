@@ -30,13 +30,6 @@
 //! that need flexibility in how they configure and build their emulator
 //! instances.
 
-use std::{
-    cell::RefCell,
-    io::Write,
-    path::{Path, PathBuf},
-    rc::Rc,
-};
-
 use crate::{
     counter::Counter,
     emulator::{
@@ -48,6 +41,14 @@ use crate::{
     },
     input,
     input::HotkeyManager,
+    PlatformRenderCallback,
+};
+use std::{
+    cell::RefCell,
+    io::Write,
+    path::{Path, PathBuf},
+    rc::Rc,
+    sync::Arc,
 };
 
 use marty_config::ConfigFileParams;
@@ -72,7 +73,6 @@ use marty_frontend_common::{
     vhd_manager::VhdManager,
 };
 
-use anyhow::{anyhow, Error};
 use marty_egui::{GuiEnum, GuiVariableContext};
 use marty_frontend_common::marty_common::MartyHashMap;
 use url::Url;
@@ -739,8 +739,12 @@ impl EmulatorBuilder {
         // Create a channel for receiving thread events (File open requests, etc.)
         let (sender, receiver) = crossbeam_channel::unbounded();
 
+        // Create a render callback for the GUI. This is primarily used to allow fluxfox_egui to perform background rendering.
+        // It simply uses spawn on native, but on web we use web workers instead via an obscene hack.
+        let render_callback = Arc::new(PlatformRenderCallback::default());
+
         // Create a GUI state object
-        let mut gui = GuiState::new(exec_control.clone(), sender.clone());
+        let mut gui = GuiState::new(exec_control.clone(), sender.clone(), render_callback);
 
         // Set list of virtual serial ports
         gui.set_serial_ports(machine.bus().enumerate_serial_ports());

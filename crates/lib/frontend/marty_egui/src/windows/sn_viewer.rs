@@ -39,7 +39,7 @@ use egui::plot::{
     //PlotBounds
 };*/
 
-use crate::{color::*, constants::*, widgets::vu_meter::VuMeter, *};
+use crate::{constants::*, widgets::vu_meter::VuMeter, *};
 
 pub const COL_SPACING: f32 = 60.0;
 pub const ROW_SPACING: f32 = 4.0;

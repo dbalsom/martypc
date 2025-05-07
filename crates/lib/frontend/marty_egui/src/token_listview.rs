@@ -369,7 +369,7 @@ impl TokenListView {
                             drawn = true;
                         }
                         SyntaxToken::MemoryByteHexValue(addr, _, s, cursor, age) => {
-                            let response = match self.edit_mode {
+                            let _response = match self.edit_mode {
                                 true if *addr as usize == self.edit_cursor => {
                                     // Initialize the edit buffer with the current byte value.
                                     // We need to do this to support moving from cell to cell.

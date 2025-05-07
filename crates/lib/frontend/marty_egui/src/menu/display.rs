@@ -40,7 +40,7 @@ impl GuiState {
 
         #[cfg(feature = "scaler_ui")]
         {
-            let mut dtype_opt = self
+            let dtype_opt = self
                 .get_option_enum_mut(GuiEnum::DisplayType(Default::default()), Some(vctx))
                 .and_then(|oe| {
                     if let GuiEnum::DisplayType(dt) = *oe {

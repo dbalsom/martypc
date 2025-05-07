@@ -33,7 +33,6 @@ pub mod keyboard_state;
 pub mod mouse_state;
 
 use anyhow::Error;
-use display_manager_eframe::EFrameDisplayManager;
 use fluxfox::DiskImage;
 use marty_config::ConfigFileParams;
 use std::{
@@ -48,7 +47,6 @@ use crate::wasm::file_open;
 use crate::{
     counter::Counter,
     emulator::{joystick_state::JoystickData, keyboard_state::KeyboardData, mouse_state::MouseData},
-    floppy::load_floppy::handle_load_floppy,
     input::{GamepadInterface, HotkeyManager},
     sound::SoundInterface,
 };
@@ -62,10 +60,9 @@ use marty_egui::{state::GuiState, GuiBoolean, GuiWindow};
 use marty_frontend_common::{
     cartridge_manager::CartridgeManager,
     floppy_manager::FloppyManager,
-    marty_common::types::ui::MouseCaptureMode,
     resource_manager::ResourceManager,
     rom_manager::RomManager,
-    thread_events::{FileOpenContext, FileSelectionContext, FrontendThreadEvent},
+    thread_events::FrontendThreadEvent,
     timestep_manager::PerfSnapshot,
     types::floppy::FloppyImageSource,
     vhd_manager::VhdManager,
@@ -299,7 +296,7 @@ impl Emulator {
     /// Insert floppy disks into floppy drives.
     pub fn mount_floppies(
         &mut self,
-        sender: crossbeam_channel::Sender<FrontendThreadEvent<Arc<DiskImage>>>,
+        _sender: crossbeam_channel::Sender<FrontendThreadEvent<Arc<DiskImage>>>,
     ) -> Result<Vec<MountInfo>, Error> {
         let floppy_max = self.machine.bus().floppy_drive_ct();
         let mut image_names: Vec<Option<String>> = vec![None; floppy_max];
@@ -330,7 +327,7 @@ impl Emulator {
                 log::debug!("Loading floppy disk image: {:?}", floppy_path);
                 let fsc = FileSelectionContext::Path(floppy_path);
                 let context = FileOpenContext::FloppyDiskImage { drive_select: idx, fsc };
-                file_open::open_file(context, sender.clone());
+                file_open::open_file(context, _sender.clone());
             }
             return Ok(Vec::new());
         }

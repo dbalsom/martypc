@@ -24,17 +24,7 @@
 
     --------------------------------------------------------------------------
 */
-use crate::{
-    file_dialogs::FileDialogFilter,
-    modal::ModalContext,
-    state::GuiState,
-    GuiBoolean,
-    GuiEvent,
-    GuiFloat,
-    GuiVariable,
-    GuiVariableContext,
-    GuiWindow,
-};
+use crate::{file_dialogs::FileDialogFilter, modal::ModalContext, state::GuiState, GuiEvent, GuiWindow};
 use fluxfox::ImageFormatParser;
 use marty_frontend_common::thread_events::{FileOpenContext, FileSaveContext, FileSelectionContext};
 

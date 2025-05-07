@@ -26,7 +26,6 @@
 */
 use crate::{state::GuiState, GuiEnum, GuiEvent, GuiFloat, GuiVariable, GuiVariableContext};
 use marty_common::types::{joystick::ControllerLayout, ui::MouseCaptureMode};
-use marty_core::devices::serial::SerialPortDescriptor;
 use strum::IntoEnumIterator;
 
 impl GuiState {
@@ -98,7 +97,7 @@ impl GuiState {
             ui.menu_button("Speed", |ui| {
                 ui.vertical(|ui| {
                     ui.horizontal(|ui| {
-                        let mut speed = self.option_floats.get_mut(&GuiFloat::MouseSpeed).unwrap();
+                        let speed = self.option_floats.get_mut(&GuiFloat::MouseSpeed).unwrap();
                         if ui
                             .add(
                                 egui::Slider::new(speed, 0.1..=2.0)
@@ -143,11 +142,11 @@ impl GuiState {
                                 let mut clicked_id = None;
 
                                 ui.vertical(|ui| {
-                                    let mut no_joystick = self.selected_gamepad[i].is_none();
+                                    let no_joystick = self.selected_gamepad[i].is_none();
                                     if ui.radio(no_joystick, "None").clicked() {
                                         log::debug!("Selected no joystick");
                                         self.selected_gamepad[i] = None;
-                                        let mut mapping_enum_mut = self
+                                        let mapping_enum_mut = self
                                             .get_option_enum_mut(GuiEnum::GamepadMapping((None, None)), None)
                                             .unwrap();
 
@@ -184,7 +183,7 @@ impl GuiState {
 
                                     if let Some(clicked_id) = clicked_id {
                                         self.selected_gamepad[i] = Some(clicked_id);
-                                        let mut mapping_enum_mut = self
+                                        let mapping_enum_mut = self
                                             .get_option_enum_mut(GuiEnum::GamepadMapping((None, None)), None)
                                             .unwrap();
 
@@ -210,7 +209,7 @@ impl GuiState {
                     }
                     ControllerLayout::OneJoystickFourButtons => {
                         for gamepad in &self.gamepads {
-                            let mut gamepad_selected = Some(gamepad.internal_id) == self.selected_gamepad[0];
+                            let gamepad_selected = Some(gamepad.internal_id) == self.selected_gamepad[0];
                             let mut clicked_id = None;
 
                             ui.vertical(|ui| {

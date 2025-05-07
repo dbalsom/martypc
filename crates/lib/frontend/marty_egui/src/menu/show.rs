@@ -27,8 +27,7 @@
 
 //! Implement the main emulator menu.
 
-use crate::{state::GuiState, GuiBoolean, GuiEvent, GuiFloat, GuiVariable, GuiVariableContext, GuiWindow};
-use marty_core::machine::MachineState;
+use crate::{state::GuiState, GuiEvent, GuiWindow};
 use marty_display_common::display_manager::DtHandle;
 
 use egui::RichText;

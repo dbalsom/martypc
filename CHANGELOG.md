@@ -1,5 +1,5 @@
 
-## [0.4.0](https://github.com/dbalsom/martypc/releases/tag/0.4.0) (2025-04-XX)
+## [0.4.0](https://github.com/dbalsom/martypc/releases/tag/0.4.0) (2025-05-XX)
 
 This update brings a massive list of new features, so here's a quick summary:
  - New sound system and sound devices including Adlib, Disney Sound Source, and SN76489 3-voice sound
@@ -14,23 +14,9 @@ This update brings a massive list of new features, so here's a quick summary:
 Some dependency API changes prompted me to switch window frameworks. The active Desktop frontend for MartyPC is now
 based on a customized fork of [eframe](https://github.com/emilk/egui/tree/master/crates/eframe).
 
-This provides a few nice things:
- - Alternate backend support. We can now compile MartyPC for either:
-   - [wgpu](https://github.com/gfx-rs/wgpu) - (the old default)
-   - [glow](https://github.com/grovesNL/glow) - OpenGL bindings for Rust
-
-   It is my hope that the`glow` backend may be more performant on older machines. We'll see, I suppose. Unfortunately,
-   the glow backend will not support MartyPC's scaler or shaders until I rewrite them for OpenGL.
-
-
- - WASM support. The full MartyPC GUI and debugger can now be hosted in a browser, and you can try that out right now
-   at [martypc.net](https://martypc.net)!
- - App state serialization.  This means parts of MartyPC's internal state can be persisted between sessions - things 
-   like which windows you had open and their positions, for example. This feature will be expanded upon.
-
 ## Native File Dialogs
  - The RFD crate provides access to native file dialogs for your particular OS, including File Open and Save dialogs.
- - Initialization errors are now reported via an error MessageBox. You should no longer 
+ - Startup errors are now reported via a system MessageBox. You should no longer 
    have to rely on the command line output to tell why MartyPC didn't start.
 
 ## New Devices
@@ -74,7 +60,63 @@ This provides a few nice things:
     to have non-contiguous memory regions if you decide to do so, but caveat emptor.
   - An overlay for the IBM PCjr called 'pcjr_memory_sidecar' will provide an extra 512k to bring your PCjr up to 640k.
 
-### Frontend Bug Fixes / Improvements
+## Bitstream-level Disk Image Emulation
+
+The inclusion of the [fluxfox](https://github.com/dbalsom/fluxfox) disk image library has greatly expanded MartyPC's
+floppy disk image support, and enabled support for several copy protection schemes.
+
+### Disk Image Support
+
+Fluxfox supports reading a wide array of disk image formats:
+* TD0 (TeleDisk)
+* IMD (ImageDisk)
+* PSI (PCE Sector Image)
+* TC (TransCopy Image)
+* PRI (PCE Bitstream Image)
+* MFM (HxC/MFM Bitstream Image)
+* HFE (v1) (HxC Bitstream Image)
+* 86f (86Box Disk Image)
+* MFI (Mame Floppy Image)
+* SCP (SuperCardPro Image)
+* RAW (Kryoflux stream file set)
+
+Disk image loading is multithreaded so large disk images can be loaded without pausing the emulator.
+
+### Bitstream Image Writing
+
+Fluxfox can write bitstream images to 86f and PRI formats.
+
+### Disk Image Visualization
+
+fluxfox also enables a new Floppy Image info window, including a Disk View that shows a graphical visualization of the
+disk surface.
+
+### Directory & Zip Floppy Mounting
+
+* Thanks to [rust-fatfs](https://github.com/rafalh/rust-fatfs), we can now dynamically build FAT12 images. This enables
+  mounting both directories and ZIP archives as floppy images. Of course the contents must fit! By default, an image of
+  the largest supported size for the applicable drive will be created. There are a few options as well to enable
+  creation of bootable diskettes.
+    * See the Wiki for more information.
+* Added a basic file browser for opening and saving files, so you can do so outside MartyPC's /media/ directory.
+
+## Memory Visualizer
+
+* Using the new Memory Visualizer window, you can now view the contents of memory graphically, interpreting raw
+  bytes as rendered text mode, or 1,2,4 or 8bpp pixels. This is a good way to explore the contents of memory, and when
+  investigating a running game one can find things like the game's back buffer as well as sprites loaded into memory.
+
+## New Debugger Features
+- A floppy controller debug window shows operational state and command logs.
+- A debug window for the SN76489 shows channel state with optional UV meters and oscilloscope displays.
+- The memory viewer will now resolve memory-mapped addresses, although what is shown in those regions is device-specific.
+- The memory viewer now supports memory editing.
+- The CPU state viewer now supports editing registers and flags when the CPU is paused.
+- The Disassembly viewer will now disassemble instructions in memory-mapped regions, such as PCjr cartridges.
+- Display interrupt numbers as hex in the IVT viewer
+- Show both source and return address in the Call Stack
+
+## Frontend Bug Fixes / Improvements
  - Mouse capture is even easier, with double-click to capture and middle-click to release implemented by default.
  - The new Sound menu has been improved with the ability to mute and adjust the volume of sound sources.
  - Toggle the display between the window background and a GUI widget window. Shaders are also available
@@ -89,106 +131,47 @@ This provides a few nice things:
    - The Keyboard menu allows for resetting the keyboard (clearing any stuck keys).
    - Mouse capture mode can toggle between emulating Mouse or Light Pen
    - Game port joysticks can be mapped to host controllers
+ - Performance Viewer: Show stats for Audio sources
+ - File tree browser:
+   - Refactored floppy media menu
+   - Added support for creating new disk images, formatted or unformatted
+   - Display directories before files
+   - Display correct icons for different file types
 
-## New Debugger Features
- 
- - A floppy controller debug window shows operational state and command logs.
- - A debug window for the SN76489 shows channel state with optional UV meters and oscilloscope displays.
- - The memory viewer will now resolve memory-mapped addresses, although what is shown in those regions is device-specific.
- - The memory viewer now supports memory editing. 
- - The CPU state viewer now supports editing registers and flags when the CPU is paused.
- - The Disassembly viewer will now disassemble instructions in memory-mapped regions, such as PCjr cartridges.
-
-### Core Bug Fixes / Improvements
+## Core Bug Fixes / Improvements
  - Improvements to TGA/PCjr video emulation
    - Support for hi-res 2bpp mode (ColorPaint)  
    - Palette lookups in 2bpp modes
    - Framerate fixes in low resolution (160x200) modes.
    - Support for 256k TGA apertures (1000HX)
-  
  - Added 8086 subtype of 8088 CPU for 16-bit data bus support
  - Improved accuracy of the Programmable Interrupt Timer (PIT)
  - Reworked wait state calculations
  - Improved DRAM refresh DMA emulation
    - Removed timer hack for Area 5150 end credits as DMA accuracy is now sufficient.
    - Many tests in Acid88 now pass
+ - BUS/PPI: Improve PCjr keyboard handling
+ - PPI: Fixed memory bank DIP switch masks for memory configurations less than <64K.
  - Emulation speed improved overall by approximately 10%.
- 
 
-## Bitstream-level Disk Image Emulation
+## Distribution Changes
 
-The inclusion of the [fluxfox](https://github.com/dbalsom/fluxfox) disk image library has greatly expanded MartyPC's 
-floppy disk image support, and enabled support for several copy protection schemes.
+ - Added new definition for an alternate 64K PCjr ROM dump (Thanks ImperatorBanana)
+ - Added new definition for an alternate 32K BASIC C1.0 ROM (thanks Torinde)
+ - Added XUB and jr-IDE BIOS images 
+ - Added BOCHS VGA BIOS build for 8088 (thanks phix)
 
-### Disk Image Support
+## Dependency Updates
+ - Too many to list
 
-Fluxfox supports reading a wide array of disk image formats:
- * TD0 (TeleDisk)
- * IMD (ImageDisk)
- * PSI (PCE Sector Image)
- * TC (TransCopy Image)
- * PRI (PCE Bitstream Image)
- * MFM (HxC/MFM Bitstream Image)
- * HFE (v1) (HxC Bitstream Image)
- * 86f (86Box Disk Image)
- * MFI (Mame Floppy Image)
- * SCP (SuperCardPro Image)
- * RAW (Kryoflux stream file set)
+## Known Issues
+ - Multi-window support (and thereby multi-video-card support) is current unimplemented under `eframe`. 
+   I hope to return this feature in 0.4.1.
 
-Disk image loading is multithreaded so large disk images can be loaded without pausing the emulator.
+ - VGA is still a bit of a work in progress, and you may see display glitches in certain situations, especially 
+   if scrolling is involved. Please report any issues you encounter.
 
-### Bitstream Image Writing
-
-Fluxfox can write bitstream images to 86f and PRI formats.
-
-### Disk Image Visualization
-
-fluxfox also enables a new Floppy Image info window, including a Disk View that shows a graphical visualization of the 
-disk surface.
-
-### Directory & Zip Floppy Mounting
-
-* Thanks to [rust-fatfs](https://github.com/rafalh/rust-fatfs), we can now dynamically build FAT12 images. This enables
-  mounting both directories and ZIP archives as floppy images. Of course the contents must fit! By default, an image of 
-  the largest supported size for the applicable drive will be created. There are a few options as well to enable
-  creation of bootable diskettes.
-    * See the Wiki for more information.
-* Added a basic file browser for opening and saving files, so you can do so outside MartyPC's /media/ directory.
-
-## Memory Visualizer
-
-* Using the new Memory Visualizer window, you can now view the contents of memory graphically, interpreting raw 
-  bytes as rendered text mode, or 1,2,4 or 8bpp pixels. This is a good way to explore the contents of memory, and when 
-  investigating a running game one can find things like the game's back buffer as well as sprites loaded into memory.
-
- 
-### Frontend Bug Fixes / Improvements 
-  * Added basic debug window for floppy disk controller
-  * Performance Viewer:
-    * Show stats for Audio sources 
-  * File tree browser: 
-    * Refactored floppy media menu
-    * Added support for creating new disk images, formatted or unformatted
-    * Display directories before files
-    * Display correct icons for different file types
-  * IVT viewer: Display interrupt numbers as hex
-
-### Core Bug Fixes / Improvements
-
-* FDC: Fix PCjr keyboard watchdog timer handling
-* BUS/PPI: Improve PCjr keyboard handling
-* PPI: Fixed memory bank DIP switch masks for memory configurations less than <64K.
-
-### Debugger Bug Fixes / Improvements
-
-* Disassembly Viewer: Now displays disassembly from MMIO regions.
-
-### Distribution Changes
-
-* Added new definition for an alternate 64K PCjr ROM dump (Thanks ImperatorBanana)
-* Added new definition for an alternate 32K BASIC C1.0 ROM (thanks Torinde)
-
-### Dependency Updates
+ - PCjr floppy disk support is incomplete, and floppy disk operation in general is much slower than real hardware.
 
 
 ## [0.2.2](https://github.com/dbalsom/martypc/releases/tag/0.2.2) (2024-06-22)

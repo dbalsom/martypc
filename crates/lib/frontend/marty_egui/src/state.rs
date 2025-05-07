@@ -107,6 +107,7 @@ use marty_frontend_common::{
 use egui::ColorImage;
 use egui_notify::{Anchor, Toasts};
 use fluxfox::{DiskImage, DiskImageFileFormat, StandardFormat};
+use fluxfox_egui::RenderCallback;
 use marty_common::types::{joystick::ControllerLayout, ui::MouseCaptureMode};
 use marty_frontend_common::types::gamepad::{GamepadId, GamepadInfo};
 use serde::{Deserialize, Serialize};
@@ -347,6 +348,8 @@ pub struct GuiState {
 
     //pub(crate) global_zoom: f32,
     pub modal: ModalState,
+
+    pub fluxfox_render_callback: Arc<dyn RenderCallback>,
 }
 
 impl GuiState {
@@ -354,6 +357,7 @@ impl GuiState {
     pub fn new(
         exec_control: Rc<RefCell<ExecutionControl>>,
         thread_sender: crossbeam_channel::Sender<FrontendThreadEvent<Arc<DiskImage>>>,
+        render_callback: Arc<dyn RenderCallback>,
     ) -> Self {
         // Set default values for window open flags
 
@@ -485,6 +489,7 @@ impl GuiState {
             cart_tree_menu: FileTreeMenu::new(),
             //global_zoom: 1.0,
             modal: ModalState::new(),
+            fluxfox_render_callback: render_callback,
         }
     }
 

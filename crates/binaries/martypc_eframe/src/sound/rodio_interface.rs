@@ -54,6 +54,7 @@ pub struct SoundSource {
     pub receiver: Receiver<AudioSample>,
     pub sample_ct: u64,
     pub latency_ms: f32,
+    #[allow(unused)]
     pub buffer_ct: u64,
     pub first_buffer: Option<Instant>,
     pub muted: bool,
@@ -78,7 +79,8 @@ impl SoundSource {
     }
 }
 
-struct AudioLatencyController {
+#[allow(unused)]
+pub struct AudioLatencyController {
     target_latency: f32, // Target latency in milliseconds
     tolerance: f32,      // Tolerance in milliseconds
     playback_speed: f32, // Current playback speed (1.0 = normal)
@@ -116,6 +118,7 @@ impl AudioLatencyController {
         }
     }
 
+    #[allow(dead_code)]
     fn speed(&self) -> f32 {
         self.playback_speed
     }
@@ -255,7 +258,7 @@ impl SoundInterface {
 
     pub fn add_source(&mut self, source: &SoundSourceDescriptor) -> Result<(), Error> {
         let stream_handle = self.stream_handle.as_ref().unwrap();
-        let mut sink = Sink::try_new(stream_handle)?;
+        let sink = Sink::try_new(stream_handle)?;
         let volume = DEFAULT_VOLUME;
         sink.set_volume(volume);
 
@@ -278,7 +281,7 @@ impl SoundInterface {
         Ok(())
     }
 
-    pub fn run(&mut self, duration: Duration) {
+    pub fn run(&mut self, _duration: Duration) {
         for source in self.sources.iter_mut() {
             let samples_in = source.receiver.try_iter().collect::<Vec<f32>>();
             //log::debug!("received {} samples from channel {}", samples_in.len(), source.name);
@@ -346,7 +349,7 @@ impl SoundInterface {
     pub fn set_volume(&mut self, s_idx: usize, volume: Option<f32>, muted: Option<bool>) {
         if s_idx < self.sources.len() {
             let source = &mut self.sources[s_idx];
-            let mut new_volume = volume.unwrap_or(source.volume);
+            let new_volume = volume.unwrap_or(source.volume);
             let mut new_sink_volume = new_volume;
 
             if let Some(mute_state) = muted {

@@ -35,6 +35,7 @@ marty_web_helpers = { path = "../../lib/frontend/marty_web_helpers" }
 # External crates
 # ----------------
 fluxfox = { workspace = true, features = ["core", "viz", "tiny_skia", "fat", "ibm_pc"] }
+fluxfox_egui = { workspace = true }
 # We need winit separately from eframe for raw input support
 winit = { workspace = true }
 #winit = { version = "0.30", default-features = false }

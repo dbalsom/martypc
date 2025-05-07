@@ -206,7 +206,7 @@ impl PerformanceViewerControl {
                 .allow_scroll(false)
                 .allow_drag(false)
                 .allow_zoom(false)
-                .y_axis_width(2)
+                .y_axis_min_width(2.0)
                 .y_grid_spacer(|_spacer| {
                     vec![
                         // 100s

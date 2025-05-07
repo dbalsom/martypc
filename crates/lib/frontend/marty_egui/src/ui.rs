@@ -37,7 +37,8 @@ impl GuiState {
         // Init things that need the context
         self.toasts.show(ctx);
         self.data_visualizer.init(ctx.clone());
-        self.floppy_viewer.init(ctx.clone());
+        self.floppy_viewer
+            .init(ctx.clone(), self.fluxfox_render_callback.clone());
 
         // Do file dialogs
         self.modal.show(ctx, &mut self.event_queue);

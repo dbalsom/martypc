@@ -166,6 +166,7 @@ impl GuiRenderContext {
         }
 
         self.ctx.set_visuals(self.main_theme.visuals());
+
         state.show_windows(&self.ctx);
 
         let old_margin = self.ctx.style().spacing.window_margin;

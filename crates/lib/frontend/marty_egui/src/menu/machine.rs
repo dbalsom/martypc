@@ -32,7 +32,7 @@ impl GuiState {
         ui.menu_button("Machine", |ui| {
             ui.menu_button("Emulation Speed", |ui| {
                 ui.horizontal(|ui| {
-                    let mut speed = self.option_floats.get_mut(&GuiFloat::EmulationSpeed).unwrap();
+                    let speed = self.option_floats.get_mut(&GuiFloat::EmulationSpeed).unwrap();
 
                     ui.label("Factor:");
                     if ui

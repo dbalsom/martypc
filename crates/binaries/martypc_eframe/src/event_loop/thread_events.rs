@@ -45,7 +45,7 @@ pub fn handle_thread_event(emu: &mut Emulator, ctx: &egui::Context) {
             FrontendThreadEvent::FileDialogCancelled => {
                 emu.gui.modal.close();
             }
-            FrontendThreadEvent::FileOpenError(context, error) => {
+            FrontendThreadEvent::FileOpenError(_context, error) => {
                 log::error!("File open error: {}", error);
                 emu.gui
                     .toasts()

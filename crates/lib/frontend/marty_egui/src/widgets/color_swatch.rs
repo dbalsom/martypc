@@ -75,12 +75,6 @@ pub fn color_swatch(ui: &mut Ui, color: Color32, open: bool) -> Response {
     response
 }
 
-impl ColorSwatch {
-    pub fn new(color: Color32, open: bool) -> Self {
-        Self { color, open }
-    }
-}
-
 impl Widget for ColorSwatch {
     fn ui(self, ui: &mut Ui) -> Response {
         color_swatch(ui, self.color, self.open)

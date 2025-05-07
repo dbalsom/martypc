@@ -41,7 +41,7 @@ use crate::app::GRAB_MODE;
 use winit::{
     event::{ElementState, KeyEvent, Modifiers, WindowEvent},
     keyboard::{KeyCode, PhysicalKey},
-    window::{CursorGrabMode, WindowId},
+    window::WindowId,
 };
 
 pub fn handle_modifiers(emu: &mut Emulator, _wid: WindowId, _event: &WindowEvent, modifiers: &Modifiers) {
