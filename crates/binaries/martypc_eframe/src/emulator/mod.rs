@@ -44,9 +44,12 @@ use std::{
 
 #[cfg(target_arch = "wasm32")]
 use crate::wasm::file_open;
+#[cfg(target_arch = "wasm32")]
+use marty_frontend_common::thread_events::{FileOpenContext, FileSelectionContext};
+
 use crate::{
     counter::Counter,
-    emulator::{joystick_state::JoystickData, keyboard_state::KeyboardData, mouse_state::MouseData},
+    emulator::{joystick_state::JoystickState, keyboard_state::KeyboardData, mouse_state::MouseState},
     input::{GamepadInterface, HotkeyManager},
     sound::SoundInterface,
 };
@@ -92,8 +95,8 @@ pub struct Emulator {
     pub machine: Machine,
     pub machine_events: Vec<MachineEvent>,
     pub exec_control: Rc<RefCell<ExecutionControl>>,
-    pub mouse_data: MouseData,
-    pub joy_data: JoystickData,
+    pub mouse_data: MouseState,
+    pub joy_data: JoystickState,
     pub kb_data: KeyboardData,
     pub stat_counter: Counter,
     pub gui: GuiState,

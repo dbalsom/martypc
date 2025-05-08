@@ -24,13 +24,14 @@
 
     --------------------------------------------------------------------------
 */
-
+#![allow(dead_code)]
 //! Define a [ResourceManifest], a file used for wasm builds to inform the emulator of what
 //! resources it has available to fetch. This implements a crude virtual file system.
 
+use std::path::PathBuf;
+
 use marty_common::MartyHashMap;
 use serde_derive::Deserialize;
-use std::path::PathBuf;
 
 #[derive(Copy, Clone, Debug, Deserialize)]
 pub enum ManifestFileType {

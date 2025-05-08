@@ -35,9 +35,14 @@ use egui::{CursorGrab, ViewportCommand};
 use display_manager_eframe::{DisplayManager, EFrameDisplayManager};
 use marty_core::machine::{ExecutionOperation, MachineState};
 use marty_display_common::display_manager::DtHandle;
-use marty_frontend_common::{constants::LONG_NOTIFICATION_TIME, types::joykeys::JoyKeyInput, HotkeyEvent};
+use marty_frontend_common::{
+    constants::{LONG_NOTIFICATION_TIME, NORMAL_NOTIFICATION_TIME},
+    types::joykeys::JoyKeyInput,
+    HotkeyEvent,
+};
 
 use crate::app::GRAB_MODE;
+
 use winit::{
     event::{ElementState, KeyEvent, Modifiers, WindowEvent},
     keyboard::{KeyCode, PhysicalKey},
@@ -101,14 +106,11 @@ pub fn handle_winit_key_event(
                 gui_focus,
             );
 
-            if process_joykeys(
-                emu,
-                *keycode,
-                matches!(state, ElementState::Pressed),
-                window_id,
-                gui_focus,
-            ) {
-                return true;
+            if let Some(controller_slot) = emu.gi.joykey_mapping() {
+                log::debug!("Got joykey mapping: {:?}", controller_slot);
+                if process_joykeys(emu, *keycode, matches!(state, ElementState::Pressed), controller_slot) {
+                    return true;
+                }
             }
 
             // Get the window for this event.
@@ -255,7 +257,17 @@ pub fn process_hotkeys(
             }
             HotkeyEvent::JoyToggle => {
                 log::debug!("JoyToggle hotkey triggered. Toggling joystick keyboard emulation.");
-                emu.joy_data.enabled = !emu.joy_data.enabled;
+                let state = emu.gi.toggle_joykeys(0);
+                emu.gui
+                    .toasts()
+                    .error(format!(
+                        "Keyboard to Joystick emulation {}",
+                        match state {
+                            true => "enabled",
+                            false => "disabled",
+                        }
+                    ))
+                    .duration(Some(NORMAL_NOTIFICATION_TIME));
             }
             HotkeyEvent::Quit => {
                 log::debug!("Quit hotkey pressed. Exiting immediately...");
@@ -271,16 +283,7 @@ pub fn process_hotkeys(
 /// Process keys for joystick emulation, if enabled. Returns true if the key was processed.
 /// Processed keys should not be sent on to the emulator.
 #[allow(unreachable_patterns)]
-pub fn process_joykeys(
-    emu: &mut Emulator,
-    keycode: KeyCode,
-    pressed: bool,
-    _window_id: WindowId,
-    _gui_focus: bool,
-) -> bool {
-    if !emu.joy_data.enabled {
-        return false;
-    }
+pub fn process_joykeys(emu: &mut Emulator, keycode: KeyCode, pressed: bool, controller: usize) -> bool {
     let martykey = keycode.to_internal();
 
     let mut joykey = None;
@@ -296,15 +299,18 @@ pub fn process_joykeys(
         if let Some(gameport) = emu.machine.bus_mut().game_port_mut() {
             match key {
                 JoyKeyInput::JoyButton1 => {
-                    gameport.set_button(0, 0, pressed);
+                    log::debug!("process_joykeys(): JoyButton1 pressed");
+                    gameport.set_button(controller, 0, pressed);
                 }
                 JoyKeyInput::JoyButton2 => {
-                    gameport.set_button(0, 1, pressed);
+                    log::debug!("process_joykeys(): JoyButton2 pressed");
+                    gameport.set_button(controller, 1, pressed);
                 }
                 _ => {
                     // Update the stick position
+                    log::debug!("process_joykeys(): Stick input");
                     let (x, y) = emu.joy_data.get_xy();
-                    gameport.set_stick_pos(0, 0, Some(x), Some(y));
+                    gameport.set_stick_pos(controller, 0, Some(x), Some(y));
                 }
             }
         }

@@ -66,6 +66,8 @@ use crate::wasm::file_open;
 use crate::wasm::worker::spawn_closure_worker as spawn;
 use marty_display_common::display_manager::{DisplayManager, DtHandle};
 use marty_frontend_common::timestep_manager::{TimestepManager, TimestepUpdate};
+#[cfg(target_arch = "wasm32")]
+use std::path::PathBuf;
 
 //noinspection RsBorrowChecker
 pub fn handle_egui_event(

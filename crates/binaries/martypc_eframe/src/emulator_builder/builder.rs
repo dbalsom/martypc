@@ -33,9 +33,9 @@
 use crate::{
     counter::Counter,
     emulator::{
-        joystick_state::JoystickData,
+        joystick_state::JoystickState,
         keyboard_state::KeyboardData,
-        mouse_state::MouseData,
+        mouse_state::MouseState,
         EmuFlags,
         Emulator,
     },
@@ -619,15 +619,12 @@ impl EmulatorBuilder {
 
         // Initialize input device state.
         let kb_data = KeyboardData::new();
-        let mouse_data = MouseData::new(config.emulator.input.reverse_mouse_buttons);
+        let mouse_data = MouseState::new(config.emulator.input.reverse_mouse_buttons);
         log::debug!(
             "Reverse mouse buttons is: {}",
             config.emulator.input.reverse_mouse_buttons
         );
-        let joy_data = JoystickData::new(
-            config.emulator.input.joystick_keys.clone(),
-            config.emulator.input.keyboard_joystick,
-        );
+        let joy_data = JoystickState::new(config.emulator.input.joystick_keys.clone());
 
         // Make a statistics counter
         let stat_counter = Counter::new();
@@ -728,10 +725,16 @@ impl EmulatorBuilder {
 
         // Create a gamepad interface. If a gamepad backend feature is not enabled, this will be
         // a stub interface.
-        let gi = input::GamepadInterface::new(
+        let mut gi = input::GamepadInterface::new(
             config.emulator.input.gamepad_auto_connect,
             config.emulator.input.gamepad_dead_zone.unwrap_or(0.0),
         );
+
+        // Toggle joykey emulation if enabled in config.
+        if config.emulator.input.keyboard_joystick {
+            log::debug!("Enabling joykey emulation for joystick slot 0");
+            gi.toggle_joykeys(0);
+        }
 
         // A DisplayManager is front-end specific, so we'll expect the front-end to create one
         // after we have built the emulator.

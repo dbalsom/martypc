@@ -109,7 +109,7 @@ use egui_notify::{Anchor, Toasts};
 use fluxfox::{DiskImage, DiskImageFileFormat, StandardFormat};
 use fluxfox_egui::RenderCallback;
 use marty_common::types::{joystick::ControllerLayout, ui::MouseCaptureMode};
-use marty_frontend_common::types::gamepad::{GamepadId, GamepadInfo};
+use marty_frontend_common::types::gamepad::{GamepadId, GamepadInfo, JoystickMapping};
 use serde::{Deserialize, Serialize};
 #[cfg(feature = "use_serialport")]
 use serialport::SerialPortInfo;
@@ -294,7 +294,7 @@ pub struct GuiState {
     pub(crate) gamepads: Vec<GamepadInfo>,
     pub(crate) gameport: bool,
     pub(crate) controller_layout: ControllerLayout,
-    pub(crate) selected_gamepad: [Option<GamepadId>; 2],
+    pub(crate) selected_joystick_mapping: [Option<JoystickMapping>; 2],
 
     // Serial ports
     pub(crate) serial_ports: Vec<SerialPortDescriptor>,
@@ -439,7 +439,7 @@ impl GuiState {
             gamepads: Vec::new(),
             gameport: false,
             controller_layout: Default::default(),
-            selected_gamepad: [None, None],
+            selected_joystick_mapping: [None, None],
 
             serial_ports: Vec::new(),
             #[cfg(feature = "use_serialport")]
@@ -747,8 +747,8 @@ impl GuiState {
     pub fn set_gamepads(&mut self, gamepads: Vec<GamepadInfo>) {
         self.gamepads = gamepads;
 
-        for mapping in &mut self.selected_gamepad {
-            if let Some(gamepad) = mapping {
+        for mapping in &mut self.selected_joystick_mapping {
+            if let Some(JoystickMapping::Gamepad(gamepad)) = mapping {
                 if self.gamepads.iter().find(|g| g.internal_id == *gamepad).is_none() {
                     // Gamepad is no longer available, so clear the mapping.
                     log::debug!("Gamepad id {} is no longer valid. Clearing mapping.", gamepad);
@@ -758,20 +758,23 @@ impl GuiState {
         }
     }
 
-    pub fn set_gamepad_mapping(&mut self, mapping: (Option<GamepadId>, Option<GamepadId>)) {
-        if let Some(id) = mapping.0 {
-            self.selected_gamepad[0] = Some(id);
-        }
-        else {
-            self.selected_gamepad[0] = None;
-        }
+    pub fn set_gamepad_mapping(&mut self, mapping: (Option<JoystickMapping>, Option<JoystickMapping>)) {
+        self.selected_joystick_mapping[0] = mapping.0;
+        self.selected_joystick_mapping[1] = mapping.1;
 
-        if let Some(id) = mapping.1 {
-            self.selected_gamepad[1] = Some(id);
-        }
-        else {
-            self.selected_gamepad[1] = None;
-        }
+        // if let Some(JoystickMapping::Gamepad(id)) = mapping.0 {
+        //     self.selected_joystick_mapping[0] = Some(id);
+        // }
+        // else {
+        //     self.selected_joystick_mapping[0] = None;
+        // }
+        //
+        // if let Some(JoystickMapping::Gamepad(id)) = mapping.1 {
+        //     self.selected_joystick_mapping[1] = Some(id);
+        // }
+        // else {
+        //     self.selected_joystick_mapping[1] = None;
+        // }
 
         let gamepad_mapping = GuiEnum::GamepadMapping(mapping);
         self.set_option_enum(gamepad_mapping, Some(GuiVariableContext::default()));

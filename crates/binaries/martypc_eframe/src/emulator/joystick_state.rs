@@ -6,20 +6,18 @@ use std::collections::HashMap;
 /// Actual joysticks will be read directly via a controller input library.
 #[allow(dead_code)]
 #[derive(Default)]
-pub struct JoystickData {
-    pub enabled:   bool,
+pub struct JoystickState {
     pub key_state: HashMap<MartyKey, (JoyKeyInput, bool)>,
     pub joy_state: HashMap<JoyKeyInput, bool>,
 }
-impl JoystickData {
-    pub fn new(keys: Vec<JoyKeyEntry>, enabled: bool) -> Self {
-        let mut jd = JoystickData::default();
+impl JoystickState {
+    pub fn new(keys: Vec<JoyKeyEntry>) -> Self {
+        let mut jd = JoystickState::default();
 
         for key in keys {
             jd.key_state.insert(key.key, (key.input, false));
             jd.joy_state.insert(key.input, false);
         }
-        jd.enabled = enabled;
         jd
     }
 

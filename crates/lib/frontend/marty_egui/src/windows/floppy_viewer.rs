@@ -42,7 +42,7 @@ use crate::{
 use fluxfox::{prelude::*, track_schema::GenericTrackElement, visualization::prelude::*};
 use fluxfox_egui::controls::disk_visualization::{DiskVisualization, VizEvent};
 
-use fluxfox_egui::controls::track_list::TrackListWidget;
+use fluxfox_egui::controls::track_list::{TrackListControl, TrackListControlBuilder};
 use marty_core::devices::floppy_drive::FloppyImageState;
 
 pub const VIZ_RESOLUTION: u32 = 512;
@@ -84,7 +84,7 @@ pub struct FloppyViewerControl {
     resolution: FloppyViewerResolution,
 
     disks: [Option<Arc<RwLock<DiskImage>>>; 4],
-    track_widgets: [TrackListWidget; 4],
+    track_widgets: [TrackListControl; 4],
     viz: [DiskVisualization; 4],
 
     palette:   HashMap<GenericTrackElement, VizColor>,
@@ -108,6 +108,17 @@ impl FloppyViewerControl {
         let pal_light_blue = VizColor::from_rgba8(0x41, 0xa6, 0xf6, 0xff);
         let pal_orange = VizColor::from_rgba8(0xef, 0x7d, 0x57, 0xff);
 
+        let track_list_control = TrackListControlBuilder::default()
+            .with_header_text(false)
+            .with_track_menu(false)
+            .with_view_sectors(false)
+            .with_track_type_colors(
+                Color32::from_rgb(0x38, 0xb7, 0x64),
+                Color32::from_rgb(0x25, 0x71, 0x79),
+                Color32::from_rgb(0x3b, 0x5d, 0xc9),
+            )
+            .build();
+
         Self {
             init: false,
             drive_idx: 0,
@@ -119,10 +130,10 @@ impl FloppyViewerControl {
             resolution: FloppyViewerResolution::Track,
             disks: [None, None, None, None],
             track_widgets: [
-                TrackListWidget::new(),
-                TrackListWidget::new(),
-                TrackListWidget::new(),
-                TrackListWidget::new(),
+                track_list_control.clone(),
+                track_list_control.clone(),
+                track_list_control.clone(),
+                track_list_control.clone(),
             ],
             viz: [
                 DiskVisualization::default(),
@@ -130,7 +141,6 @@ impl FloppyViewerControl {
                 DiskVisualization::default(),
                 DiskVisualization::default(),
             ],
-
             palette: HashMap::from([
                 (GenericTrackElement::SectorData, pal_medium_green),
                 (GenericTrackElement::SectorBadData, pal_orange),
@@ -140,9 +150,7 @@ impl FloppyViewerControl {
                 (GenericTrackElement::SectorBadHeader, pal_medium_blue),
                 (GenericTrackElement::Marker, vis_purple),
             ]),
-
             viz_state: vec![VizState::default(); 4],
-
             rendered_disk: 0,
         }
     }

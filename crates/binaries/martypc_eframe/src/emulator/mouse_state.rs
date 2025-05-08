@@ -3,7 +3,7 @@ use crate::input::get_mouse_buttons;
 use marty_frontend_common::marty_common::types::ui::MouseCaptureMode;
 
 #[allow(dead_code)]
-pub struct MouseData {
+pub struct MouseState {
     pub reverse_buttons: bool,
     pub l_button_id: u32,
     pub r_button_id: u32,
@@ -20,7 +20,7 @@ pub struct MouseData {
     pub frame_delta_y: f32,
 }
 
-impl MouseData {
+impl MouseState {
     pub fn new(reverse_buttons: bool) -> Self {
         Self {
             reverse_buttons,

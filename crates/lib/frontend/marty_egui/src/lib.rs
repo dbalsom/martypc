@@ -75,7 +75,7 @@ use marty_core::{
 use marty_common::types::ui::MouseCaptureMode;
 use marty_core::cpu_common::Register16;
 use marty_display_common::display_manager::{DisplayTargetType, DtHandle};
-use marty_frontend_common::types::gamepad::GamepadId;
+use marty_frontend_common::types::gamepad::{GamepadId, JoystickMapping};
 use marty_videocard_renderer::CompositeParams;
 use serde::{Deserialize, Serialize};
 use strum_macros::EnumIter;
@@ -187,7 +187,7 @@ pub enum GuiEnum {
     AudioMuted(bool),
     AudioVolume(f32),
     MouseCaptureMode(MouseCaptureMode),
-    GamepadMapping((Option<GamepadId>, Option<GamepadId>)),
+    GamepadMapping((Option<JoystickMapping>, Option<JoystickMapping>)),
 }
 
 fn create_default_variant(ge: GuiEnum) -> GuiEnum {
