@@ -152,6 +152,10 @@ impl Display for Instruction {
         // Size overrides. Certain instructions have byte operands with no apparent indication
         // in the GDR. We override the operand size here to avoid unwanted sign-extension.
         use Mnemonic::*;
+        if matches!(self.mnemonic, NOP) {
+            // NOP is a special case. It has no operands, so we don't need to do anything.
+            return write!(f, "{instruction_string}");
+        }
         let op_size = match self.mnemonic {
             IN | OUT | ENTER | INT | AAD => OperandSize::Operand8,
             _ => OperandSize::from(&self.width),
@@ -198,6 +202,11 @@ impl SyntaxTokenize for Instruction {
             i_vec.0.push(SyntaxToken::Formatter(SyntaxFormatType::Space));
         }
 
+        use Mnemonic::*;
+        if matches!(self.mnemonic, NOP) {
+            // NOP is a special case. It has no operands, so we don't need to do anything.
+            return i_vec.0;
+        }
         let mnemonic = mnemonic_to_str(self.mnemonic).to_string().to_lowercase();
         i_vec.0.push(SyntaxToken::Mnemonic(mnemonic));
 
