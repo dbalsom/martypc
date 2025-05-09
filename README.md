@@ -122,4 +122,4 @@ For more, check out the [Screenshot Gallery section of the Wiki](https://github.
 
 ## Special Thanks
 
-I have a long list of people to thank (See the About box!) but I would especially like to mention the contributions made by [reenigne](https://www.reenigne.org/blog/). Without his work reverse-engineering the 8088 microcode, this emulator would never have been possible. I would also like to thank Ken Shirriff and [his excellent blog]((https://www.righto.com/), covering much of the silicon logic of the 8086 (and 8088 by extension).
+I have a long list of people to thank (See the About box!) but I would especially like to mention the contributions made by [reenigne](https://www.reenigne.org/blog/). Without his work reverse-engineering the 8088 microcode, this emulator would never have been possible. I would also like to thank Ken Shirriff and [his excellent blog](https://www.righto.com/), covering much of the silicon logic of the 8086 (and 8088 by extension).
