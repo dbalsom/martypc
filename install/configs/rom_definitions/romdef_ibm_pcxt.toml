@@ -286,14 +286,3 @@ rom = [
 ]
 
 
-[[romset]]
-alias = "ibm5140"
-datestr = "1985/09/13"
-desc = "IBM 5140 BIOS Sept 13 1985"
-priority = 100
-provides = ["bios", "ibm5160", "ibm_basic", "expansion"]
-oem = true
-rom = [
-    { md5 = "94e5face7ede2c1c57b26ed6d83e3a09", addr = 0xF0000, size = 32768, chip = "1" },
-    { md5 = "c13217469282f444e218d466d0ce2c70", addr = 0xF8000, size = 32768, chip = "2" },
-]
