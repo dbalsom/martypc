@@ -13,8 +13,6 @@ crate-type = ["lib"]
 [dependencies]
 marty_common = { path = "../../../marty_common" }
 marty_web_helpers = { path = "../marty_web_helpers" }
-
-marty_videocard_renderer = { path = "../marty_videocard_renderer", optional = true }
 marty_core = { path = "../../../marty_core", default-features = false }
 fluxfox = { workspace = true, default-features = false }
 anyhow.workspace = true
@@ -45,6 +43,10 @@ zip = { workspace = true, default-features = false, features = ["bzip2", "deflat
 zip = { workspace = true, default-features = false, features = ["deflate", "deflate64", "lzma"] }
 wasm-bindgen-futures.workspace = true
 
+# Optional dependencies
+# ---------------------------------------------------------------------------------------------------------------------
+marty_videocard_renderer = { path = "../marty_videocard_renderer", optional = true }
+
 [dependencies.fatfs]
 git = "https://github.com/dbalsom/fatfs_martypc.git"
 branch = "master"
@@ -56,8 +58,9 @@ default = []
 ega = []
 vga = []
 use_url = ["dep:url"]
-use_wgpu = ["dep:wgpu", "dep:marty_videocard_renderer", "marty_videocard_renderer/use_wgpu"]
-use_glow = ["dep:marty_videocard_renderer", "marty_videocard_renderer/use_glow"]
+use_wgpu_display = ["use_wgpu", "dep:marty_videocard_renderer", "marty_videocard_renderer/use_wgpu"]
+use_glow_display = ["use_glow", "dep:marty_videocard_renderer", "marty_videocard_renderer/use_glow"]
+use_wgpu = ["dep:wgpu"]
+use_glow = []
 use_egui = ["dep:egui"]
 use_gilrs = ["dep:gilrs"]
-use_display = []

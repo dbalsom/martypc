@@ -11,11 +11,11 @@ path = "src/lib.rs"
 crate-type = ["lib"]
 
 [dependencies]
+marty_egui_common = { path = "../marty_egui_common" }
 marty_frontend_common = { path = "../marty_frontend_common" }
-marty_display_common = { path = "../marty_display_common", features = ["use_display"] }
 marty_common = { path = "../../../marty_common" }
 marty_core = { path = "../../../marty_core", default-features = false }
-marty_videocard_renderer = { path = "../marty_videocard_renderer" }
+
 bytemuck = { workspace=true, features = ["derive"] }
 image = { workspace = true, default-features = false, features = ["png"] }
 web-time.workspace = true
@@ -37,19 +37,20 @@ egui_commonmark = { workspace = true, optional = true }
 egui = { workspace = true, default-features = false, features = ["serde"] }
 egui_extras.workspace = true
 egui_plot.workspace = true
-
-#egui-file-dialog = "0.6.1"
-egui-notify = "0.18"
+egui-notify.workspace = true
 
 # Optional dependencies
 # ---------------------------------------------------------------------------------------------------------------------
-#wgpu = {  workspace = true, optional = true }
+marty_display_common = { path = "../marty_display_common", optional = true }
+marty_videocard_renderer = { path = "../marty_videocard_renderer", optional = true }
 serialport = { workspace = true, optional = true }
 rfd = { workspace = true, optional = true }
 
 [features]
-default = ["use_rfd"]
+default = ["use_rfd", "use_fluxfox"]
+use_fluxfox = ["marty_egui_common/use_fluxfox"]
 devtools = []
+use_display = ["dep:marty_display_common", "marty_videocard_renderer", "marty_display_common/use_display"]
 scaler_ui = []
 scaler_params = []
 use_rfd = ["dep:rfd"]

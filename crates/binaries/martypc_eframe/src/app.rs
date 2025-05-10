@@ -31,7 +31,7 @@ use crate::{
     timestep_update::process_update,
     MARTY_ICON,
 };
-use std::path::PathBuf;
+use std::{ffi::OsString, path::PathBuf};
 
 use display_manager_eframe::{
     builder::EFrameDisplayManagerBuilder,
@@ -508,8 +508,14 @@ impl MartyApp {
 
         // Attach VHD images specified in config.
         match emu.mount_vhds() {
-            Ok(_) => {
+            Ok(mounted_vhds) => {
                 log::debug!("Mounted VHDs from config");
+                for vhd in mounted_vhds {
+                    log::debug!("Mounted VHD: {} in drive {}", vhd.name, vhd.index);
+                    let pathbuf = PathBuf::from(vhd.name);
+                    let filename_pathbuf = PathBuf::from(pathbuf.file_name().unwrap_or(&*OsString::new()));
+                    emu.gui.set_hdd_selection(vhd.index, None, Some(filename_pathbuf));
+                }
             }
             Err(e) => {
                 log::error!("Failed to mount VHDs from config: {}", e);

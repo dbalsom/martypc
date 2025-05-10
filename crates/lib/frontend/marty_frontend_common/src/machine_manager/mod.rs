@@ -272,6 +272,9 @@ impl MachineManager {
         let mut total_overlays = config.overlays.as_ref().unwrap_or(&Vec::new()).clone();
         total_overlays.extend(additional_overlays.clone());
 
+        // Filter empty strings
+        total_overlays.retain(|overlay| !overlay.is_empty());
+
         for overlay_name in total_overlays {
             let overlay = self.overlays.get(&overlay_name).ok_or(anyhow::anyhow!(
                 "Machine configuration overlay not found: {}",

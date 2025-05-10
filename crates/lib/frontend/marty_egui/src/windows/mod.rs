@@ -28,7 +28,7 @@
 
     Various gui windows
 */
-
+#[cfg(feature = "use_display")]
 pub mod composite_adjust;
 pub mod cpu_control;
 pub mod disassembly_viewer;
@@ -53,6 +53,7 @@ pub mod performance_viewer;
 pub mod pic_viewer;
 pub mod pit_viewer;
 pub mod ppi_viewer;
+#[cfg(feature = "use_display")]
 pub mod scaler_adjust;
 pub mod serial_viewer;
 pub mod sn_viewer;

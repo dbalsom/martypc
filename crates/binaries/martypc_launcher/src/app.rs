@@ -28,11 +28,9 @@ use crate::{
     emulator::{mouse_state::MouseData, Emulator},
     emulator_builder::EmulatorBuilder,
     event_loop::thread_events::handle_thread_event,
-    timestep_update::process_update,
     MARTY_ICON,
 };
 
-use marty_egui_eframe::{context::GuiRenderContext, EGUI_MENU_BAR_HEIGHT};
 use marty_frontend_common::{
     color::MartyColor,
     constants::NORMAL_NOTIFICATION_TIME,
@@ -80,8 +78,6 @@ pub struct MartyApp {
     hide_menu: bool,
     menu_height: f32,
     #[serde(skip)]
-    gui: GuiRenderContext,
-    #[serde(skip)]
     emu_loading: bool,
     #[serde(skip)]
     emu_receiver: Receiver<FetchResult>,
@@ -109,8 +105,6 @@ impl Default for MartyApp {
             last_size: egui::Vec2::INFINITY,
             focused: false,
             menu_height: 22.0,
-            // Example stuff:
-            gui: GuiRenderContext::default(),
             emu_loading: false,
             emu_receiver: receiver,
             emu_sender: sender,
@@ -140,30 +134,8 @@ impl MartyApp {
         let emu_result;
 
         // Create the emulator immediately on native as we don't need to await anything
-        #[cfg(not(target_arch = "wasm32"))]
-        {
-            emu_builder = emu_builder.with_toml_config_path("./martypc.toml");
-            emu_result = emu_builder.build(&mut std::io::stdout(), &mut std::io::stderr()).await;
-        }
-        #[cfg(target_arch = "wasm32")]
-        {
-            let base_url = get_base_url();
-            let relative_config_url = base_url
-                .join("/configs/martypc.toml")
-                .expect("Failed to create relative config URL");
-
-            let relative_manifest_url = base_url
-                .join("/configs/file_manifest.toml")
-                .expect("Failed to create relative manifest URL");
-
-            log::debug!("Attemping to build emulator with config and manifest urls...");
-            emu_builder = emu_builder
-                .with_toml_config_url(&relative_config_url)
-                .with_toml_manifest_url(&relative_manifest_url)
-                .with_base_url(&base_url);
-
-            emu_result = emu_builder.build(&mut std::io::stdout(), &mut std::io::stderr()).await;
-        }
+        emu_builder = emu_builder.with_toml_config_path("./martypc.toml");
+        emu_result = emu_builder.build(&mut std::io::stdout(), &mut std::io::stderr()).await;
 
         // When the user runs our eframe app from a file browser, they typically will not get a
         // console window. So use rfd here to show some message boxes to tell them what failed.
@@ -339,20 +311,20 @@ impl MartyApp {
             web_receiver
         };
 
-        let gui_options = GuiContextOptions {
-            enabled: !emu.config.gui.disabled,
-            theme: emu.config.gui.theme,
-            menu_theme: emu.config.gui.menu_theme,
-            menubar_h: EGUI_MENU_BAR_HEIGHT, // ignored on eframe
-            zoom: emu.config.gui.zoom.unwrap_or(1.0),
-            debug_drawing: false,
-        };
+        // let gui_options = GuiContextOptions {
+        //     enabled: !emu.config.gui.disabled,
+        //     theme: emu.config.gui.theme,
+        //     menu_theme: emu.config.gui.menu_theme,
+        //     menubar_h: EGUI_MENU_BAR_HEIGHT, // ignored on eframe
+        //     zoom: emu.config.gui.zoom.unwrap_or(1.0),
+        //     debug_drawing: false,
+        // };
 
         // Create our GUI rendering context.
-        let gui = GuiRenderContext::new(cc.egui_ctx.clone(), 0, 640, 480, 1.0, &gui_options);
+        //let gui = GuiRenderContext::new(cc.egui_ctx.clone(), 0, 640, 480, 1.0, &gui_options);
 
         Self {
-            gui,
+            //gui,
             emu: Some(emu),
 
             #[cfg(feature = "use_winit")]

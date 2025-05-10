@@ -28,6 +28,8 @@
 //! Implement the main emulator menu.
 
 use crate::{state::GuiState, GuiEvent, GuiWindow};
+
+#[cfg(feature = "use_display")]
 use marty_display_common::display_manager::DtHandle;
 
 use egui::RichText;
@@ -77,23 +79,26 @@ impl GuiState {
                 }
             });
 
-            ui.menu_button("Display", |ui| {
-                ui.set_min_size(egui::vec2(240.0, 0.0));
+            #[cfg(feature = "use_display")]
+            {
+                ui.menu_button("Display", |ui| {
+                    ui.set_min_size(egui::vec2(240.0, 0.0));
 
-                // If there is only one display, emit the display menu directly.
-                // Otherwise, emit named menus for each display.
-                if self.display_info.len() == 1 {
-                    self.draw_display_menu(ui, DtHandle::default());
-                }
-                else if self.display_info.len() > 1 {
-                    // Use index here to avoid borrowing issues.
-                    for i in 0..self.display_info.len() {
-                        ui.menu_button(format!("Display {}: {}", i, &self.display_info[i].name), |ui| {
-                            self.draw_display_menu(ui, self.display_info[i].handle);
-                        });
+                    // If there is only one display, emit the display menu directly.
+                    // Otherwise, emit named menus for each display.
+                    if self.display_info.len() == 1 {
+                        self.draw_display_menu(ui, DtHandle::default());
                     }
-                }
-            });
+                    else if self.display_info.len() > 1 {
+                        // Use index here to avoid borrowing issues.
+                        for i in 0..self.display_info.len() {
+                            ui.menu_button(format!("Display {}: {}", i, &self.display_info[i].name), |ui| {
+                                self.draw_display_menu(ui, self.display_info[i].handle);
+                            });
+                        }
+                    }
+                });
+            }
 
             self.draw_debug_menu(ui);
 

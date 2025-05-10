@@ -55,6 +55,9 @@ pub struct CmdLineArgs {
     #[bpaf(long, switch)]
     pub benchmark_mode: bool,
 
+    #[bpaf(long, switch)]
+    pub prefer_oem: bool,
+
     #[bpaf(long("no_sound"), long("nosound"), long("noaudio"), switch)]
     pub no_sound: bool,
 
@@ -72,7 +75,7 @@ pub struct CmdLineArgs {
     pub fuzzer: bool,
 
     // Emulator options
-    #[bpaf(long, switch)]
+    #[bpaf(long("rom_scan"), long("romscan"), switch)]
     pub romscan: bool,
 
     #[bpaf(long("machine_scan"), long("machinescan"), switch)]
@@ -80,9 +83,6 @@ pub struct CmdLineArgs {
 
     #[bpaf(long, switch)]
     pub auto_poweron: bool,
-
-    #[bpaf(long, switch)]
-    pub warpspeed: bool,
 
     #[bpaf(long, switch)]
     pub title_hacks: bool,

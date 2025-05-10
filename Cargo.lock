@@ -3772,6 +3772,7 @@ dependencies = [
  "marty_common",
  "marty_core",
  "marty_display_common",
+ "marty_egui_common",
  "marty_frontend_common",
  "marty_videocard_renderer",
  "regex",
@@ -3785,17 +3786,26 @@ dependencies = [
 ]
 
 [[package]]
+name = "marty_egui_common"
+version = "0.4.0"
+dependencies = [
+ "egui 0.30.0",
+ "egui_extras 0.30.0 (git+https://github.com/dbalsom/egui_martypc.git?branch=0.30.0_raw_winit_hook)",
+ "fluxfox",
+ "log",
+ "marty_frontend_common",
+]
+
+[[package]]
 name = "marty_egui_eframe"
 version = "0.4.0"
 dependencies = [
  "egui 0.30.0",
  "egui_extras 0.30.0 (git+https://github.com/dbalsom/egui_martypc.git?branch=0.30.0_raw_winit_hook)",
  "log",
- "marty_display_common",
  "marty_egui",
  "marty_frontend_common",
  "serialport 4.3.1-alpha.0",
- "web-time 1.1.0",
  "wgpu 23.0.1",
 ]
 
@@ -4082,6 +4092,7 @@ dependencies = [
  "crossbeam-channel",
  "eframe",
  "egui 0.30.0",
+ "egui-notify",
  "egui-winit 0.30.0",
  "egui_commonmark",
  "egui_extras 0.30.0 (git+https://github.com/dbalsom/egui_martypc.git?branch=0.30.0_raw_winit_hook)",
@@ -4092,8 +4103,7 @@ dependencies = [
  "log",
  "marty_config",
  "marty_core",
- "marty_egui",
- "marty_egui_eframe",
+ "marty_egui_common",
  "marty_frontend_common",
  "marty_web_helpers",
  "rfd",

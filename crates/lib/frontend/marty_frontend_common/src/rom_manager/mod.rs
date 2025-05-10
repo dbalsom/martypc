@@ -477,7 +477,7 @@ impl RomManager {
                     // Store the candidate by md5
                     match self.rom_candidates.entry(file_digest_str.clone()) {
                         Entry::Occupied(prev_entry) => {
-                            eprintln!(
+                            log::warn!(
                                 "Hash collision! Rom #1: {:?} Rom #2 {:?} both have hash {}. Rom #2 will be ignored.",
                                 prev_entry.get().path,
                                 new_candidate.path,
@@ -492,7 +492,7 @@ impl RomManager {
                     // Store the candidate by filename
                     match self.rom_candidate_name_map.entry(map_filename) {
                         Entry::Occupied(prev_entry) => {
-                            eprintln!(
+                            log::warn!(
                                 "Name collision! Rom #1: {:?} Rom #2 {:?} have the same name. Rom #2 will be ignored when referenced by name.",
                                 prev_entry.get().1,
                                 map_path,

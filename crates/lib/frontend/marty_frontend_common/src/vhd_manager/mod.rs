@@ -38,14 +38,18 @@
     to know whether it is operating on an in-memory image or file.
 */
 
-use crate::resource_manager::{PathTreeNode, ResourceItem, ResourceManager};
+use crate::{
+    floppy_manager::{ArchiveType, FloppyError},
+    resource_manager::{PathTreeNode, ResourceItem, ResourceManager},
+    types::floppy::FloppyImageSource,
+};
 use anyhow::Error;
 use std::{
     collections::{BTreeMap, BTreeSet, HashMap},
     ffi::OsString,
     fmt::Display,
     fs::File,
-    path::PathBuf,
+    path::{Path, PathBuf},
 };
 
 #[derive(Debug)]
@@ -181,7 +185,7 @@ impl VhdManager {
         false
     }
 
-    pub fn is_vhd_loaded(&self, name: &PathBuf) -> bool {
+    pub fn is_vhd_loaded(&self, name: &Path) -> bool {
         if self.images_loaded.contains(name) {
             log::debug!("is_vhd_loaded(): confirming entry {}", name.to_string_lossy());
             return true;
@@ -190,11 +194,11 @@ impl VhdManager {
         false
     }
 
-    pub fn is_drive_loaded(&self, drive: usize) -> bool {
-        if let Some(_entry) = self.drives_loaded.get(&drive) {
-            return true;
+    pub fn is_drive_loaded(&self, drive: usize) -> (bool, Option<PathBuf>) {
+        if let Some(entry) = self.drives_loaded.get(&drive) {
+            return (true, Some(entry.clone()));
         }
-        false
+        (false, None)
     }
 
     // pub fn load_vhd_file_by_name(&mut self, drive: usize, name: &OsString) -> Result<(File, usize), VhdManagerError> {
@@ -214,6 +218,44 @@ impl VhdManager {
     //     Err(VhdManagerError::FileNotFound)
     // }
 
+    #[cfg(not(target_arch = "wasm32"))]
+    pub fn load_vhd_file_by_path(&mut self, drive: usize, vhd_path: &Path) -> Result<File, VhdManagerError> {
+        let vhd_file_result = File::options().read(true).write(true).open(vhd_path);
+
+        match vhd_file_result {
+            Ok(file) => {
+                log::debug!(
+                    "load_vhd_file_by_path(): Associating vhd: {} to drive: {}",
+                    vhd_path.to_string_lossy(),
+                    drive
+                );
+
+                let (drive_loaded, loaded_path) = self.is_drive_loaded(drive);
+                if drive_loaded {
+                    log::error!(
+                        "VHD drive slot {} not empty: VHD {:?} already mounted!",
+                        drive,
+                        loaded_path
+                    );
+                    return Err(VhdManagerError::DriveAlreadyLoaded);
+                }
+
+                if self.is_vhd_loaded(vhd_path) {
+                    log::error!("VHD already associated with drive! Release drive first.");
+                    return Err(VhdManagerError::DriveAlreadyLoaded);
+                }
+
+                self.drives_loaded.insert(drive, vhd_path.to_path_buf());
+                self.images_loaded.insert(vhd_path.to_path_buf());
+                Ok(file)
+            }
+            Err(e) => {
+                log::error!("load_vhd_file(): error opening file: {}", e);
+                Err(VhdManagerError::FileReadError)
+            }
+        }
+    }
+
     /// Load a VHD file by its resource name and return a rust File handle.
     #[cfg(not(target_arch = "wasm32"))]
     pub fn load_vhd_file_by_name(&mut self, drive: usize, name: &OsString) -> Result<(File, usize), VhdManagerError> {
@@ -227,15 +269,13 @@ impl VhdManager {
                 return Err(VhdManagerError::IndexNotFound);
             }
 
-            match self.load_vhd_file(drive, img_idx) {
-                Ok(file) => {
-                    return Ok((file, img_idx));
-                }
+            return match self.load_vhd_file_by_idx(drive, img_idx) {
+                Ok(file) => Ok((file, img_idx)),
                 Err(e) => {
                     log::error!("Error loading VHD file: {}", e);
-                    return Err(e);
+                    Err(e)
                 }
-            }
+            };
         }
         Err(VhdManagerError::FileNotFound)
     }
@@ -287,7 +327,7 @@ impl VhdManager {
         None
     }
 
-    pub fn load_vhd_file(&mut self, drive: usize, idx: usize) -> Result<File, VhdManagerError> {
+    pub fn load_vhd_file_by_idx(&mut self, drive: usize, idx: usize) -> Result<File, VhdManagerError> {
         if let Some(vhd) = self.image_vec.get(idx) {
             let vhd_file_result = File::options().read(true).write(true).open(&vhd.path);
 
@@ -295,7 +335,8 @@ impl VhdManager {
                 Ok(file) => {
                     log::debug!("Associating vhd: {} to drive: {}", vhd.name.to_string_lossy(), drive);
 
-                    if self.is_drive_loaded(drive) {
+                    let (drive_loaded, _loaded_path) = self.is_drive_loaded(drive);
+                    if drive_loaded {
                         log::error!("VHD drive slot {} not empty!", drive);
                         return Err(VhdManagerError::DriveAlreadyLoaded);
                     }

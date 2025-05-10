@@ -30,7 +30,6 @@
 
 */
 use crate::{GuiEventQueue, PathBuf};
-
 use fluxfox::DiskImageFileFormat;
 
 pub enum ModalContext {

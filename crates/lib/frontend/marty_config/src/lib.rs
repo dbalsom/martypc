@@ -189,8 +189,6 @@ pub struct Emulator {
     #[serde(default)]
     pub fuzzer: bool,
     #[serde(default)]
-    pub warpspeed: bool,
-    #[serde(default)]
     pub title_hacks: bool,
     #[serde(default)]
     pub debug_mode: bool,
@@ -391,12 +389,12 @@ impl ConfigFileParams {
             self.emulator.basedir = basedir;
         }
 
+        self.machine.prefer_oem |= shell_args.prefer_oem;
         self.emulator.demo_mode |= shell_args.demo_mode;
         self.emulator.benchmark_mode |= shell_args.benchmark_mode;
         self.emulator.headless |= shell_args.headless;
         self.emulator.fuzzer |= shell_args.fuzzer;
         self.emulator.auto_poweron |= shell_args.auto_poweron;
-        self.emulator.warpspeed |= shell_args.warpspeed;
         self.emulator.title_hacks |= shell_args.title_hacks;
         self.emulator.audio.enabled &= !shell_args.no_sound;
 
@@ -457,6 +455,11 @@ impl ConfigFileParams {
         // Handle mount arguments
 
         for mount in shell_args.mounts.iter() {
+            if mount.path.to_string_lossy().is_empty() {
+                log::warn!("Got empty path in MountSpec!");
+                continue;
+            }
+
             match mount.device {
                 MountableDeviceType::HardDisk => {
                     // Ignore any existing vector. Command line arguments override.

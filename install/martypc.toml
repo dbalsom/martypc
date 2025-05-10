@@ -46,7 +46,7 @@ config_name = "ibm5160_xtide"
 #config_overlays = ["ega"]
 
 # Prefer OEM ROMs over other compatible ROMs, if present. Default: true.
-prefer_oem = true
+prefer_oem = false
 
 # Reload ROMs from disk when system is hard-rebooted (not ctrl-alt-del)
 reload_roms = true

@@ -149,9 +149,11 @@ impl GuiState {
                 GuiWindow::MemoryViewer => {
                     self.memory_viewer.draw(ui, &mut self.event_queue);
                 }
+                #[cfg(feature = "use_display")]
                 GuiWindow::CompositeAdjust => {
                     self.composite_adjust.draw(ui, &mut self.event_queue);
                 }
+                #[cfg(feature = "use_display")]
                 GuiWindow::ScalerAdjust => {
                     self.scaler_adjust.draw(ui, &mut self.event_queue);
                 }
@@ -217,6 +219,9 @@ impl GuiState {
                 }
                 GuiWindow::SnViewer => {
                     self.sn_viewer.show(ui, &mut self.event_queue);
+                }
+                _ => {
+                    log::warn!("Window {:?} not implemented", win_enum);
                 }
             });
 

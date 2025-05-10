@@ -30,27 +30,16 @@
 */
 use crate::{emulator::Emulator, event_loop::egui_events::handle_egui_event};
 
-use marty_core::{
-    bytequeue::ByteQueue,
-    cpu_808x::Cpu,
-    cpu_common,
-    cpu_common::{CpuAddress, CpuOption, TraceMode},
-    machine,
-    syntax_token::SyntaxToken,
-    util,
-};
-use marty_egui::GuiWindow;
 use marty_frontend_common::timestep_manager::{TimestepManager, TimestepUpdate};
 
 pub fn update_egui(emu: &mut Emulator, tm: &TimestepManager, tmu: &mut TimestepUpdate) {
     // Is the machine in an error state? If so, display an error dialog.
     if let Some(err) = emu.machine.get_error_str() {
-        emu.gui.show_error(err);
-        emu.gui.show_window(GuiWindow::DisassemblyViewer);
+        //emu.gui.show_error(err);
     }
     else {
         // No error? Make sure we close the error dialog.
-        emu.gui.clear_error();
+        //emu.gui.clear_error();
     }
 
     // Handle custom events received from our GUI

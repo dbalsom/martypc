@@ -39,13 +39,15 @@ use std::{
     sync::Arc,
 };
 
+#[cfg(feature = "use_display")]
+use crate::windows::{composite_adjust::CompositeAdjustControl, scaler_adjust::ScalerAdjustControl};
+
 use crate::{
     modal::ModalState,
     widgets::file_tree_menu::FileTreeMenu,
     windows::{
         about::AboutDialog,
         call_stack_viewer::CallStackViewer,
-        composite_adjust::CompositeAdjustControl,
         cpu_control::{BreakpointSet, CpuControl},
         cpu_state_viewer::CpuViewerControl,
         cycle_trace_viewer::CycleTraceViewerControl,
@@ -64,7 +66,6 @@ use crate::{
         pic_viewer::PicViewerControl,
         pit_viewer::PitViewerControl,
         ppi_viewer::PpiViewerControl,
-        scaler_adjust::ScalerAdjustControl,
         serial_viewer::SerialViewerControl,
         sn_viewer::SnViewerControl,
         text_mode_viewer::TextModeViewer,
@@ -93,6 +94,8 @@ use marty_core::{
     machine::{ExecutionControl, MachineState},
     machine_types::FloppyDriveType,
 };
+
+#[cfg(feature = "use_display")]
 use marty_display_common::{
     display_manager::{DisplayTargetInfo, DtHandle},
     display_scaler::{ScalerMode, ScalerPreset},
@@ -278,6 +281,7 @@ pub struct GuiState {
 
     // Display stuff
     pub(crate) display_apertures: HashMap<usize, Vec<DisplayApertureDesc>>,
+    #[cfg(feature = "use_display")]
     pub(crate) scaler_modes: Vec<ScalerMode>,
     pub(crate) scaler_presets: Vec<String>,
 
@@ -323,12 +327,15 @@ pub struct GuiState {
     pub ppi_viewer:    PpiViewerControl,
 
     pub videocard_state: VideoCardState,
+    #[cfg(feature = "use_display")]
     pub display_info:    Vec<DisplayTargetInfo>,
 
     pub disassembly_viewer: DisassemblyControl,
     pub dma_viewer: DmaViewerControl,
     pub trace_viewer: InstructionHistoryControl,
+    #[cfg(feature = "use_display")]
     pub composite_adjust: CompositeAdjustControl,
+    #[cfg(feature = "use_display")]
     pub scaler_adjust: ScalerAdjustControl,
     pub ivt_viewer: IvtViewerControl,
     pub io_stats_viewer: IoStatsViewerControl,
@@ -427,6 +434,7 @@ impl GuiState {
             sound_sources: Vec::new(),
 
             display_apertures: Default::default(),
+            #[cfg(feature = "use_display")]
             scaler_modes: Vec::new(),
             scaler_presets: Vec::new(),
 
@@ -466,11 +474,14 @@ impl GuiState {
             ppi_viewer: PpiViewerControl::new(),
 
             videocard_state: Default::default(),
+            #[cfg(feature = "use_display")]
             display_info: Vec::new(),
             disassembly_viewer: DisassemblyControl::new(),
             dma_viewer: DmaViewerControl::new(),
             trace_viewer: InstructionHistoryControl::new(),
+            #[cfg(feature = "use_display")]
             composite_adjust: CompositeAdjustControl::new(),
+            #[cfg(feature = "use_display")]
             scaler_adjust: ScalerAdjustControl::new(),
             ivt_viewer: IvtViewerControl::new(),
             io_stats_viewer: IoStatsViewerControl::new(),
@@ -715,6 +726,7 @@ impl GuiState {
     }
 
     /// Set list of available scaler modes
+    #[cfg(feature = "use_display")]
     pub fn set_scaler_modes(&mut self, modes: Vec<ScalerMode>) {
         log::debug!("set_scaler_modes(): Installed {} scaler modes", modes.len());
         self.scaler_modes = modes;
@@ -726,6 +738,7 @@ impl GuiState {
         self.text_mode_viewer.set_cards(cards.clone());
     }
 
+    #[cfg(feature = "use_display")]
     pub fn set_scaler_presets(&mut self, presets: &Vec<ScalerPreset>) {
         self.scaler_presets = presets.iter().map(|p| p.name.clone()).collect();
         log::debug!("installed scaler presets: {:?}", self.scaler_presets);
@@ -846,7 +859,8 @@ impl GuiState {
         self.sound_sources.iter().any(|source| source.name.contains("SN76489"))
     }
 
-    /// Initialize GUI Display enum state given a vector of DisplayInfo fields.  
+    /// Initialize GUI Display enum state given a vector of DisplayInfo fields.
+    #[cfg(feature = "use_display")]
     pub fn init_display_info(&mut self, vci: Vec<DisplayTargetInfo>) {
         self.display_info = vci;
 
@@ -919,6 +933,7 @@ impl GuiState {
     }
 
     // This is a hack interface - figure out where to better expose this state
+    #[cfg(feature = "use_display")]
     pub fn primary_video_has_bezel(&mut self) -> bool {
         let vctx = GuiVariableContext::Display(DtHandle::MAIN);
         if !self.display_info.is_empty() {
@@ -928,6 +943,10 @@ impl GuiState {
                 return checked;
             }
         }
+        false
+    }
+    #[cfg(not(feature = "use_display"))]
+    pub fn primary_video_has_bezel(&mut self) -> bool {
         false
     }
 

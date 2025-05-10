@@ -28,6 +28,7 @@
 //! The main menu logic for MartyPC's egui user interface.
 
 mod debug;
+#[cfg(feature = "use_display")]
 mod display;
 mod input;
 mod machine;

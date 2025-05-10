@@ -31,7 +31,7 @@
 use crate::emulator::Emulator;
 
 use marty_core::{device_traits::videocard::BufferSelect, machine::ExecutionState};
-use marty_egui::GuiBoolean;
+//use marty_egui::GuiBoolean;
 
 pub fn render_frame(emu: &mut Emulator) {
     // // First, run each renderer to resolve all videocard views.

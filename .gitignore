@@ -37,6 +37,7 @@ icon.png
 !/tests/tools
 
 # Ignore most files in /install directory unless specified
+/install/*.json
 /install/*.zip
 /install/roms/*
 /install/rom/parking/*
@@ -65,6 +66,7 @@ icon.png
 
 
 # Files to include for distribution
+!/install/gui_definition.json
 !/install/media/roms/readme.md
 /install/media/roms/XUB/*
 !/install/media/roms/XUB/ide_xtl.bin
@@ -86,6 +88,7 @@ icon.png
 /install/configs/rom_definitions/romdef_s100.toml
 /install/configs/rom_definitions/romdef_ast.toml
 /install/configs/rom_definitions/romdef_ibm_ps2.toml
+/install/configs/rom_definitions/romdef_ibm_misc.toml
 /install/configs/rom_definitions/romdef_custom.toml
 
 # Miscellaneous GlaBIOS ROMs

@@ -171,7 +171,7 @@ pub fn handle_egui_event(emu: &mut Emulator, elwt: &EventLoopWindowTarget<()>, g
 
             let mut error_str = None;
 
-            match emu.vhd_manager.load_vhd_file(*drive_idx, *image_idx) {
+            match emu.vhd_manager.load_vhd_file_by_idx(*drive_idx, *image_idx) {
                 Ok(vhd_file) => match VirtualHardDisk::from_file(vhd_file) {
                     Ok(vhd) => {
                         if let Some(hdc) = emu.machine.hdc() {

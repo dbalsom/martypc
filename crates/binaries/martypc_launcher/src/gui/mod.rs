@@ -24,24 +24,7 @@
 
     --------------------------------------------------------------------------
 */
-#![warn(clippy::all, rust_2018_idioms)]
-#![feature(duration_millis_float)]
 
-pub mod app;
-pub mod counter;
-pub mod emulator;
-pub mod emulator_builder;
-pub mod event_loop;
-//pub mod floppy;
-pub mod gui;
-pub mod input;
-pub mod sound;
-pub mod timestep_update;
+pub mod state;
 
-pub mod native;
-pub use native::worker;
-
-pub use app::MartyApp;
-
-// Embed default icon
-pub const MARTY_ICON: &[u8] = include_bytes!("../../../../assets/martypc_icon_small.png");
+pub use state::GuiState;

@@ -45,7 +45,7 @@ use marty_frontend_common::{
     Emulator,
 };*/
 
-pub fn process_update(emu: &mut Emulator, tm: &mut TimestepManager) {
+/*pub fn process_update(emu: &mut Emulator, tm: &mut TimestepManager) {
     tm.wm_update(
         emu,
         |emuc| {
@@ -71,8 +71,8 @@ pub fn process_update(emu: &mut Emulator, tm: &mut TimestepManager) {
             }
         },
         |emuc, cycles| {
-            // Per emu update freq
-            emuc.machine.run(cycles, &mut emuc.exec_control.borrow_mut());
+            // nothing to run
+            ()
         },
         |emuc, tmc, &perf, duration, tmu| {
             emuc.perf = perf;
@@ -259,4 +259,4 @@ pub fn process_update(emu: &mut Emulator, tm: &mut TimestepManager) {
             // });
         },
     );
-}
+}*/

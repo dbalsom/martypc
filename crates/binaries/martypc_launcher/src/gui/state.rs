@@ -24,24 +24,31 @@
 
     --------------------------------------------------------------------------
 */
-#![warn(clippy::all, rust_2018_idioms)]
-#![feature(duration_millis_float)]
+use egui_notify::{Anchor, Toasts};
+use marty_egui_common::GuiCommonEvent;
 
-pub mod app;
-pub mod counter;
-pub mod emulator;
-pub mod emulator_builder;
-pub mod event_loop;
-//pub mod floppy;
-pub mod gui;
-pub mod input;
-pub mod sound;
-pub mod timestep_update;
+pub struct GuiState {
+    pub ctx:    Option<egui::Context>,
+    pub toasts: Toasts,
+}
 
-pub mod native;
-pub use native::worker;
+impl GuiState {
+    pub fn new() -> Self {
+        Self {
+            ctx:    None,
+            toasts: Toasts::new().with_anchor(Anchor::BottomRight),
+        }
+    }
 
-pub use app::MartyApp;
+    pub fn init(&mut self, ctx: egui::Context) {
+        self.ctx = Some(ctx);
+    }
 
-// Embed default icon
-pub const MARTY_ICON: &[u8] = include_bytes!("../../../../assets/martypc_icon_small.png");
+    pub fn get_event(&self) -> Option<GuiCommonEvent> {
+        None
+    }
+
+    pub fn toasts(&mut self) -> &mut Toasts {
+        &mut self.toasts
+    }
+}

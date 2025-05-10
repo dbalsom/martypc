@@ -291,6 +291,14 @@ name = "pcjr_memory_sidecar"
     size = 0x80000
     wait_states = 0
 
+
+[[overlay]]
+name = "xtide"
+# Hard disk controller
+    [overlay.hdc]
+    bus_type = "Isa8"
+    type = "XtIde"
+
 [[overlay]]
 name = "jride"
     # Hard disk controller

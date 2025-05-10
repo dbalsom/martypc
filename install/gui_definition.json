@@ -1,0 +1,235 @@
+{
+    "gui": [
+        {
+            "window_name": "MartyPC Launcher 0.1.0",
+            "command": "martypc %prefer_oem% --mount=\"fd:0:%floppy0%\" --mount=\"fd:0:%floppy1%\" --mount=\"hd:0:%hdd0%\" --mount=\"hd:1:%hdd1%\" --configfile %config_file% --machine-config-name=%machine_config_name% --machine-config-overlays=%v20%%ems%%hdc_overlay%%sound_overlay%%video_overlay%",
+            "components": [
+                {
+                    "type": "static_text",
+                    "label": "Main Options",
+                },
+                {
+                    "type": "file",
+                    "id": "config_file",
+                    "label": "MartyPC Configuration File",
+                    "default": "martypc.toml",
+                    "extension": "toml (toml)|*",
+                    "placeholder": "Drop a file here!"
+                },
+                {
+                    "type": "combo",
+                    "default": 2,
+                    "label": "Machine Configuration",
+                    "id": "machine_config_name",
+                    "items": [
+                        {   
+                            "label": "IBM PC 5150 (64K Motherboard)",
+                            "value": "ibm5150_64k"
+                        },
+                        {
+                            "label": "IBM PC 5150 (256K Motherboard)",
+                            "value": "ibm5150_256k"
+                        },
+                        {
+                            "label": "IBM XT 5160",
+                            "value": "ibm5160"
+                        },
+                        {
+                            "label": "IBM PCjr (Requires ROMs)",
+                            "value": "ibm_pcjr"
+                        },
+                        {
+                            "label": "Tandy 1000/A/HD (Requires ROMs)",
+                            "value": "tandy1000"
+                        },
+                        {
+                            "label": "Tandy 1000SX (Requires ROMSs)",
+                            "value": "tandy1000sx"
+                        },                        
+                        {
+                            "label": "Tandy 1000HX (Requires ROMs)",
+                            "value": "tandy1000hx"
+                        }
+          
+                    ]
+                },
+                {
+                    "type": "check",
+                    "id": "prefer_oem",
+                    "label": "Prefer OEM ROMS over GLaBIOS",
+                    "value": "--prefer-oem"
+                },
+                {
+                    "type": "check",
+                    "id": "v20",
+                    "label": "Upgrade 8088 to V20",
+                    "value": "cpu_v20,"
+                },
+                {
+                    "type": "check",
+                    "id": "ems",
+                    "label": "Add Lo-tech EMS Card",
+                    "value": "lotech_ems,"
+                },
+                {
+                    "type": "combo",
+                    "default": 1,
+                    "label": "Hard Disk Controller Overlay",
+                    "id": "hdc_overlay",
+                    "items": [
+                        {   
+                            "label": "None",
+                            "value": ""
+                        },
+                        {
+                            "label": "XT-IDE (Recommended)",
+                            "value": "xtide,"
+                        },
+                        {
+                            "label": "IBM/Xebec (Requires ROM)",
+                            "value": "ibm_xebec,"
+                        },
+                        {
+                            "label": "jr-IDE (PCjr only)",
+                            "value": "jride,"
+                        },
+          
+                    ]
+                },
+                {
+                    "type": "combo",
+                    "default": 0,
+                    "label": "Sound Card Overlay",
+                    "id": "sound_overlay",
+                    "items": [
+                        {   
+                            "label": "None",
+                            "value": ""
+                        },
+                        {
+                            "label": "Adlib Music Card",
+                            "value": "adlib,"
+                        },
+                        {
+                            "label": "Disney Sound Source",
+                            "value": "sound_source,"
+                        },
+                        {
+                            "label": "Adlib + Sound Source",
+                            "value": "adlib_and_sound_source,"
+                        }
+                    ]
+                },
+                {
+                    "type": "combo",
+                    "default": 0,
+                    "label": "Video Card Overlay",
+                    "id": "video_overlay",
+                    "items": [
+                        {   
+                            "label": "None (Use for PCjr and Tandy)",
+                            "value": ""
+                        },
+                        {
+                            "label": "MDA",
+                            "value": "ibm_mda",
+                        },
+                        {
+                            "label": "Hercules",
+                            "value": "hercules,"
+                        },
+                        {
+                            "label": "CGA",
+                            "value": "ibm_vga,"
+                        },  
+                        {
+                            "label": "EGA (Requires ROM)",
+                            "value": "ibm_ega,"
+                        },
+                        {
+                            "label": "VGA",
+                            "value": "ibm_vga,"
+                        }
+                    ]
+                },
+                {
+                    "type": "static_text",
+                    "label": "Media Mounting",
+                },
+                {
+                    "type": "file",
+                    "id": "floppy0",
+                    "label": "Floppy Disk 0 (A:)",
+                    "extension": "any (*)|*",
+                    "placeholder": "Drop a file here!"
+                },
+                {
+                    "type": "file",
+                    "id": "floppy1",
+                    "label": "Floppy Disk 1 (B:)",
+                    "extension": "any (*)|*",
+                    "placeholder": "Drop a file here!"
+                },
+                {
+                    "type": "file",
+                    "id": "hdd0",
+                    "label": "Hard Disk 0 (Usually C:)",
+                    "extension": "vhd (vhd)",
+                    "placeholder": "Drop a file here!"
+                },
+                {
+                    "type": "file",
+                    "id": "hdd1",
+                    "label": "Hard Disk 1 (Usually D:)",
+                    "extension": "vhd (vhd)",
+                    "placeholder": "Drop a file here!"
+                },
+            ]
+            
+        },
+        {
+            "window_name": "MartyPC Tools",
+            "command": "martypc %tool_opt%",
+            "components": [
+                {
+                    "type": "radio",
+                    "default": 0,
+                    "label": "Run Tool",
+                    "id": "tool_opt",
+                    "items": [
+                        {   
+                            "label": "Scan Roms",
+                            "value": "--romscan"
+                        },
+                        {
+                            "label": "Scan Machines",
+                            "value": "--machine_scan"
+                        },
+                    ]
+                }
+            ]
+        }
+    ],
+    "help": [
+        {
+            "type": "url",
+            "label": "MartyPC Github",
+            "url": "https://github.com/dbalsom/martypc"
+        },
+        {
+            "type": "url",
+            "label": "MartyPC User's Guide",
+            "url": "https://github.com/dbalsom/martypc/wiki/MartyPC-User-Guide"
+        },
+        {
+            "type": "url",
+            "label": "ROM FAQ",
+            "url": "https://github.com/dbalsom/martypc/wiki/ROMs"
+        },
+        {
+            "type": "file",
+            "label": "Open MartyPC Config File",
+            "path": "./martypc.toml"
+        }
+    ]
+}

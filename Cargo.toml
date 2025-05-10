@@ -9,6 +9,7 @@ members = [
     "crates/lib/frontend/marty_scaler_glow",
     "crates/lib/frontend/display_manager_wgpu",
     "crates/lib/frontend/marty_egui",
+    "crates/lib/frontend/marty_egui_common",
     "crates/lib/frontend/marty_egui_wgpu",
     "crates/lib/frontend/marty_config",
     "crates/lib/frontend/marty_web_helpers",
@@ -130,6 +131,9 @@ features = ["image"]
 [workspace.dependencies.egui_plot]
 version = "0.30.0"
 #default-features = false
+
+[workspace.dependencies.egui-notify]
+version = "0.18"
 
 [workspace.dependencies.image]
 version = "0.25"

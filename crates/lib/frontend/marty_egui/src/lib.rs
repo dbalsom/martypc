@@ -43,6 +43,7 @@ use std::{
     time::Duration,
 };
 
+#[cfg(feature = "use_display")]
 use marty_display_common::{
     display_manager::DisplayTargetInfo,
     display_scaler::{ScalerMode, ScalerParams},
@@ -74,8 +75,10 @@ use marty_core::{
 
 use marty_common::types::ui::MouseCaptureMode;
 use marty_core::cpu_common::Register16;
+#[cfg(feature = "use_display")]
 use marty_display_common::display_manager::{DisplayTargetType, DtHandle};
 use marty_frontend_common::types::gamepad::{GamepadId, JoystickMapping};
+#[cfg(feature = "use_display")]
 use marty_videocard_renderer::CompositeParams;
 use serde::{Deserialize, Serialize};
 use strum_macros::EnumIter;
@@ -164,6 +167,7 @@ pub enum GuiFloat {
 #[derive(Copy, Clone, Debug, Hash, PartialEq, Eq)]
 pub enum GuiVariableContext {
     Global,
+    #[cfg(feature = "use_display")]
     Display(DtHandle),
     SoundSource(usize),
     SerialPort(usize),
@@ -176,9 +180,11 @@ impl Default for GuiVariableContext {
 
 #[derive(Clone, Debug, PartialEq)]
 pub enum GuiEnum {
+    #[cfg(feature = "use_display")]
     DisplayType(DisplayTargetType),
     DisplayAspectCorrect(bool),
     DisplayAperture(DisplayApertureType),
+    #[cfg(feature = "use_display")]
     DisplayScalerMode(ScalerMode),
     DisplayScalerPreset(String),
     DisplayComposite(bool),
@@ -192,9 +198,11 @@ pub enum GuiEnum {
 
 fn create_default_variant(ge: GuiEnum) -> GuiEnum {
     match ge {
+        #[cfg(feature = "use_display")]
         GuiEnum::DisplayType(_) => GuiEnum::DisplayType(Default::default()),
         GuiEnum::DisplayAspectCorrect(_) => GuiEnum::DisplayAspectCorrect(Default::default()),
         GuiEnum::DisplayAperture(_) => GuiEnum::DisplayAperture(Default::default()),
+        #[cfg(feature = "use_display")]
         GuiEnum::DisplayScalerMode(_) => GuiEnum::DisplayAperture(Default::default()),
         GuiEnum::DisplayScalerPreset(_) => GuiEnum::DisplayScalerPreset(String::new()),
         GuiEnum::DisplayComposite(_) => GuiEnum::DisplayComposite(Default::default()),
@@ -237,7 +245,9 @@ pub enum GuiEvent {
     Register16Update(Register16, u16),
     TokenHover(usize),
     VariableChanged(GuiVariableContext, GuiVariable),
+    #[cfg(feature = "use_display")]
     CompositeAdjust(DtHandle, CompositeParams),
+    #[cfg(feature = "use_display")]
     ScalerAdjust(usize, ScalerParams),
     FlushLogs,
     DelayAdjust,
@@ -268,6 +278,7 @@ pub enum DeviceSelection {
 pub struct PerformanceStats {
     pub adapter: String,
     pub backend: String,
+    #[cfg(feature = "use_display")]
     pub dti: Vec<DisplayTargetInfo>,
     pub current_ups: u32,
     pub current_fps: u32,

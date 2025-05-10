@@ -247,7 +247,7 @@ pub fn handle_egui_event(
 
             let mut error_str = None;
 
-            match emu.vhd_manager.load_vhd_file(*drive_idx, *image_idx) {
+            match emu.vhd_manager.load_vhd_file_by_idx(*drive_idx, *image_idx) {
                 Ok(vhd_file) => match VirtualHardDisk::parse(Box::new(vhd_file), false) {
                     Ok(vhd) => {
                         let vhd_name = emu.vhd_manager.get_vhd_name(*image_idx).unwrap();
