@@ -202,8 +202,7 @@ impl SyntaxTokenize for Instruction {
             i_vec.0.push(SyntaxToken::Formatter(SyntaxFormatType::Space));
         }
 
-        use Mnemonic::*;
-        if matches!(self.mnemonic, NOP) {
+        if matches!(self.mnemonic, Mnemonic::NOP) {
             // NOP is a special case. It has no operands, so we don't need to do anything.
             return i_vec.0;
         }
