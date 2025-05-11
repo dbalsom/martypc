@@ -547,11 +547,11 @@ impl AtaDevice {
 
     /// Handle a write to the command register
     pub fn handle_command_register_write(&mut self, byte: u8, bus: Option<&mut BusInterface>) {
-        log::warn!("Got command byte: {:02X}", byte);
+        log::debug!("command_register_write(): {:02X}", byte);
         // Transition from other states. It's possible that we don't check the error code
         // after an operation
         if let AtaState::HaveCommandStatus = self.state {
-            log::warn!("Received command with pending unread status register");
+            //log::warn!("Received command with pending unread status register");
             self.state = AtaState::WaitingForCommand;
         }
 
@@ -705,6 +705,12 @@ impl AtaDevice {
         self.status_register.set_drq(false);
     }
 
+    pub fn sector_buffer_mark_written(&mut self) {
+        // Mark the sector buffer as written
+        self.sector_buffer.seek(SeekFrom::End(1)).unwrap();
+        self.status_register.set_drq(false);
+    }
+
     pub fn sector_buffer_end(&mut self) -> bool {
         let pos = self.sector_buffer.stream_position().unwrap();
         pos > (DEFAULT_SECTOR_SIZE as u64 - 1)
@@ -719,8 +725,8 @@ impl AtaDevice {
         self.sector_buffer.get_ref()
     }
 
-    pub fn sector_buffer_mut(&mut self) -> &mut Vec<u8> {
-        self.sector_buffer.get_mut()
+    pub fn sector_buffer_mut(&mut self) -> &mut [u8] {
+        self.sector_buffer.get_mut().as_mut_slice()
     }
 
     /// ATA command: Identify Drive
@@ -835,7 +841,7 @@ impl AtaDevice {
 
     /// ATA command 0x40: Read Verify Sector(s)
     fn command_read_verify_sectors(&mut self, _bus: Option<&mut BusInterface>) -> Continuation {
-        self.set_command_chs();
+        self.set_command_address();
         log::debug!(
             "command_read_sectors_verify(): sector_count: {} chs: {}",
             self.sector_count_register,
@@ -863,7 +869,7 @@ impl AtaDevice {
 
     /// ATA command: Read Multiple
     fn command_read_multiple(&mut self, _bus: Option<&mut BusInterface>) -> Continuation {
-        self.set_command_chs();
+        self.set_command_address();
         log::debug!(
             "command_read_multiple(): sectors: {} lba: {} chs: {}",
             self.sector_count_register,
@@ -892,7 +898,7 @@ impl AtaDevice {
 
     /// ATA command 0x30: Write Sector(s)
     fn command_write_sectors(&mut self, _bus: Option<&mut BusInterface>) -> Continuation {
-        self.set_command_chs();
+        self.set_command_address();
         log::debug!(
             "command_write_sectors(): sector_count: {} chs: {}",
             self.sector_count_register,
@@ -913,7 +919,7 @@ impl AtaDevice {
 
     /// ATA command 0xC5 Write Multiple
     fn command_write_multiple(&mut self, _bus: Option<&mut BusInterface>) -> Continuation {
-        self.set_command_chs();
+        self.set_command_address();
         log::debug!(
             "command_write_multiple(): sector_count: {} chs: {}",
             self.sector_count_register,
