@@ -32,6 +32,8 @@
 const MAX_BUFFER_SIZE: u32 = 100;
 const DEFAULT_VOLUME: f32 = 0.25;
 
+const MAX_LATENCY: f32 = 150.0; // Maximum latency in milliseconds
+
 use anyhow::{anyhow, Error};
 use crossbeam_channel::Receiver;
 use marty_core::{
@@ -324,9 +326,13 @@ impl SoundInterface {
                 //     new_speed,
                 // );
 
-                source.sample_ct += block_len as u64;
-                let sink_buffer = rodio::buffer::SamplesBuffer::new(source.channels, source.sample_rate, samples_in);
-                source.sink.append(sink_buffer);
+                // Only push more samples if the latency is below the maximum. Latency can "run away" if the window is minimized
+                if source.latency_ms < MAX_LATENCY {
+                    source.sample_ct += block_len as u64;
+                    let sink_buffer =
+                        rodio::buffer::SamplesBuffer::new(source.channels, source.sample_rate, samples_in);
+                    source.sink.append(sink_buffer);
+                }
                 source.sink.set_speed(new_speed * self.master_speed);
             }
         }
