@@ -1,5 +1,5 @@
 
-## [0.4.0](https://github.com/dbalsom/martypc/releases/tag/0.4.0) (2025-05-XX)
+## [0.4.0](https://github.com/dbalsom/martypc/releases/tag/0.4.0) (2025-05-11)
 
 This update brings a massive list of new features, so here's a quick summary:
  - New sound system and sound devices including Adlib, Disney Sound Source, and SN76489 3-voice sound
