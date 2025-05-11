@@ -79,7 +79,7 @@ icon.png
 !/install/media/roms/VGA/BOCHS-LICENSE
 !/install/media/hdds/default_xtide.vhd
 !/install/martypc.toml
-
+!/install/martypc_launcher.exe
 
 # Files to include as wasm assets
 !/frontends/martypc_eframe/assets/martypc.toml

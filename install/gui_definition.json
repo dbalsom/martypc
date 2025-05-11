@@ -2,11 +2,11 @@
     "gui": [
         {
             "window_name": "MartyPC Launcher 0.1.0",
-            "command": "martypc %prefer_oem% --mount=\"fd:0:%floppy0%\" --mount=\"fd:0:%floppy1%\" --mount=\"hd:0:%hdd0%\" --mount=\"hd:1:%hdd1%\" --configfile %config_file% --machine-config-name=%machine_config_name% --machine-config-overlays=%v20%%ems%%hdc_overlay%%sound_overlay%%video_overlay%",
+            "command": "martypc %prefer_oem% --mount=\"fd:0:%floppy0%\" --mount=\"fd:0:%floppy1%\" --mount=\"hd:0:%hdd0%\" --mount=\"hd:1:%hdd1%\" --configfile %config_file% --machine-config-name=%machine_config_name% --machine-config-overlays=%v20%%ems%%hdc_overlay%%sound_overlay%%video_overlay% %extra_cmds%",
             "components": [
                 {
                     "type": "static_text",
-                    "label": "Main Options",
+                    "label": "Main Options"
                 },
                 {
                     "type": "file",
@@ -17,12 +17,18 @@
                     "placeholder": "Drop a file here!"
                 },
                 {
+                    "type": "text",
+                    "id": "extra_cmds",
+                    "label": "Extra cmdline options",
+                    "placeholder": "Type any extra parameters here!"
+                },
+                {
                     "type": "combo",
                     "default": 2,
                     "label": "Machine Configuration",
                     "id": "machine_config_name",
                     "items": [
-                        {   
+                        {
                             "label": "IBM PC 5150 (64K Motherboard)",
                             "value": "ibm5150_64k"
                         },
@@ -45,12 +51,11 @@
                         {
                             "label": "Tandy 1000SX (Requires ROMSs)",
                             "value": "tandy1000sx"
-                        },                        
+                        },
                         {
                             "label": "Tandy 1000HX (Requires ROMs)",
                             "value": "tandy1000hx"
                         }
-          
                     ]
                 },
                 {
@@ -77,7 +82,7 @@
                     "label": "Hard Disk Controller Overlay",
                     "id": "hdc_overlay",
                     "items": [
-                        {   
+                        {
                             "label": "None",
                             "value": ""
                         },
@@ -92,8 +97,7 @@
                         {
                             "label": "jr-IDE (PCjr only)",
                             "value": "jride,"
-                        },
-          
+                        }
                     ]
                 },
                 {
@@ -102,7 +106,7 @@
                     "label": "Sound Card Overlay",
                     "id": "sound_overlay",
                     "items": [
-                        {   
+                        {
                             "label": "None",
                             "value": ""
                         },
@@ -126,13 +130,13 @@
                     "label": "Video Card Overlay",
                     "id": "video_overlay",
                     "items": [
-                        {   
+                        {
                             "label": "None (Use for PCjr and Tandy)",
                             "value": ""
                         },
                         {
                             "label": "MDA",
-                            "value": "ibm_mda",
+                            "value": "ibm_mda"
                         },
                         {
                             "label": "Hercules",
@@ -141,7 +145,7 @@
                         {
                             "label": "CGA",
                             "value": "ibm_vga,"
-                        },  
+                        },
                         {
                             "label": "EGA (Requires ROM)",
                             "value": "ibm_ega,"
@@ -154,7 +158,7 @@
                 },
                 {
                     "type": "static_text",
-                    "label": "Media Mounting",
+                    "label": "Media Mounting"
                 },
                 {
                     "type": "file",
@@ -174,6 +178,7 @@
                     "type": "file",
                     "id": "hdd0",
                     "label": "Hard Disk 0 (Usually C:)",
+                    "default": "default_xtide.vhd",
                     "extension": "vhd (vhd)",
                     "placeholder": "Drop a file here!"
                 },
@@ -183,9 +188,8 @@
                     "label": "Hard Disk 1 (Usually D:)",
                     "extension": "vhd (vhd)",
                     "placeholder": "Drop a file here!"
-                },
+                }
             ]
-            
         },
         {
             "window_name": "MartyPC Tools",
@@ -197,14 +201,14 @@
                     "label": "Run Tool",
                     "id": "tool_opt",
                     "items": [
-                        {   
+                        {
                             "label": "Scan Roms",
                             "value": "--romscan"
                         },
                         {
                             "label": "Scan Machines",
                             "value": "--machine_scan"
-                        },
+                        }
                     ]
                 }
             ]
