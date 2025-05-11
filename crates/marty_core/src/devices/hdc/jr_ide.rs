@@ -596,8 +596,22 @@ impl MemoryMappedDevice for JrIdeController {
         match offset {
             ..DATA_WINDOW_OFFSET => 0,
             DATA_WINDOW_OFFSET..CS0_REGISTER_FILE_OFFSET => {
-                log::debug!("Write to data window: {offset:04X}");
-                0
+                log::trace!("Write to sector buffer: {offset:04X}");
+
+                let buffer_offset = offset - DATA_WINDOW_OFFSET;
+                if buffer_offset < DATA_WINDOW_SIZE {
+                    self.drives[0].sector_buffer_mut()[buffer_offset] = data;
+                    log::trace!("Write to sector buffer: {offset:04X} [{data:02X}]");
+                    if buffer_offset == (DATA_WINDOW_SIZE - 1) {
+                        log::debug!("Sector buffer write complete!");
+                        self.drives[0].sector_buffer_mark_written();
+                    }
+                    0
+                }
+                else {
+                    log::error!("Write to sector buffer out of range: {offset:04X}");
+                    0
+                }
             }
             CS0_REGISTER_FILE_OFFSET..CS1_REGISTER_FILE_OFFSET => {
                 let reg = offset & 0x07;
