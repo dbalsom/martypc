@@ -695,8 +695,10 @@ impl GuiState {
     }
 
     pub fn set_hdd_selection(&mut self, drive: usize, idx: Option<usize>, name: Option<PathBuf>) {
-        self.hdds[drive].selected_idx = idx;
-        self.hdds[drive].selected_path = name;
+        if drive < self.hdds.len() {
+            self.hdds[drive].selected_idx = idx;
+            self.hdds[drive].selected_path = name;
+        }
     }
 
     pub fn set_cart_slots(&mut self, slotct: usize) {
