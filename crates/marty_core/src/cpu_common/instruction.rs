@@ -202,12 +202,13 @@ impl SyntaxTokenize for Instruction {
             i_vec.0.push(SyntaxToken::Formatter(SyntaxFormatType::Space));
         }
 
+        let mnemonic = mnemonic_to_str(self.mnemonic).to_string().to_lowercase();
+        i_vec.0.push(SyntaxToken::Mnemonic(mnemonic));
+
         if matches!(self.mnemonic, Mnemonic::NOP) {
             // NOP is a special case. It has no operands, so we don't need to do anything.
             return i_vec.0;
         }
-        let mnemonic = mnemonic_to_str(self.mnemonic).to_string().to_lowercase();
-        i_vec.0.push(SyntaxToken::Mnemonic(mnemonic));
 
         let op1_vec = tokenize_operand(self, OperandSelect::FirstOperand, op_size);
         i_vec.append(op1_vec, Some(SyntaxToken::Formatter(SyntaxFormatType::Space)), None);
