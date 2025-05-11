@@ -684,6 +684,7 @@ impl BusInterface {
         for (dst, src) in self.memory[patch_start..patch_end].iter_mut().zip(patch.bytes.iter()) {
             *dst = *src;
         }
+        log::debug!("install_patch(): Patch of {} bytes installed!", patch_size);
         patch.installed = true;
     }
 
