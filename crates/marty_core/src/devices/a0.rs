@@ -68,7 +68,7 @@ impl IoDevice for A0Register {
 
         match self.a0type {
             A0Type::PCJr => {
-                log::debug!("flagging nmi latch to be cleared.");
+                log::trace!("Flagging nmi latch to be cleared.");
                 self.clear_nmi_latch = true;
                 // Value returned not important?
                 0xFF
@@ -179,7 +179,7 @@ impl A0Register {
         // Otherwise, return the value of the latch.
 
         if self.clear_nmi_latch {
-            log::warn!("Clearing NMI latch");
+            log::debug!("Clearing NMI latch");
             self.clear_nmi_latch = false;
             self.nmi_latch = false;
         }

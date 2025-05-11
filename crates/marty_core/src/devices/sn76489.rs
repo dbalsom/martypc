@@ -299,7 +299,7 @@ impl SoundChannel {
         else if self.period == 1 {
             self.period_one = true;
         }
-        log::debug!(
+        log::trace!(
             "[{}]: Setting frequency 1st byte: {:02X}, new period {}",
             self.idx,
             data,
@@ -318,7 +318,7 @@ impl SoundChannel {
         else if self.period == 1 {
             self.period_one = true;
         }
-        log::debug!(
+        log::trace!(
             "[{}]: Setting frequency 2st byte: {:02X}, new period {}",
             self.idx,
             data,
@@ -382,7 +382,7 @@ impl NoiseChannel {
             _ => FeedbackType::WhiteNoise,
         };
         self.shift_rate = data & 0x03;
-        log::debug!(
+        log::trace!(
             "[Noise]: Setting parameter byte: {:02X}, feedback {:?}, shift rate {}",
             data,
             self.feedback,
