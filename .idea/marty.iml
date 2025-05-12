@@ -40,6 +40,7 @@
       <sourceFolder url="file://$MODULE_DIR$/crates/binaries/martypc_launcher/src" isTestSource="false" />
       <sourceFolder url="file://$MODULE_DIR$/crates/lib/backend/display_backend_eframe_glow/src" isTestSource="false" />
       <sourceFolder url="file://$MODULE_DIR$/crates/lib/frontend/marty_scaler_glow/src" isTestSource="false" />
+      <sourceFolder url="file://$MODULE_DIR$/crates/lib/frontend/marty_egui_common/src" isTestSource="false" />
       <excludeFolder url="file://$MODULE_DIR$/target" />
     </content>
     <orderEntry type="inheritedJdk" />

@@ -46,6 +46,21 @@ checkpoint = [
     { addr = 0xFEE64, lvl = 3, desc = "Disk OP_END" },
 ]
 
+    [[romset.patch]]
+    desc = "Patch RAM Check Routine for faster boot"
+    trigger = 0xF0552
+    addr = 0xF0B6C
+    # Do warm boot routine replacing the jump to the RAM check with a zero flag set
+    bytes = [0x30, 0xC0]
+
+    [[romset.patch]]
+    desc = "Cleanup after"
+    # Address of next test after the RAM check - keyboard check
+    trigger = 0xF00640
+    addr = 0xF0B6C
+    # Restore the original bytes
+    bytes = [0x75, 0x0B]
+
 # ----------------------------------------------------------------------------
 # System BIOS for IBM PCjr
 # Alternate 64K single-file ROM definition
@@ -59,6 +74,21 @@ oem_for = ["ibm_pcjr"]
 rom = [
     { md5 = "6338a9808445de12109a2389b71ee2eb", addr = 0xF0000, size = 65536, chip = "u33" }
 ]
+
+    [[romset.patch]]
+    desc = "Patch RAM Check Routine for faster boot"
+    trigger = 0xF0552
+    addr = 0xF0B6C
+    # Do warm boot routine replacing the jump to the RAM check with a zero flag set
+    bytes = [0x30, 0xC0]
+
+    [[romset.patch]]
+    desc = "Cleanup after"
+    # Address of next test after the RAM check - keyboard check
+    trigger = 0xF00640
+    addr = 0xF0B6C
+    # Restore the original bytes
+    bytes = [0x75, 0x0B]
 
 # ----------------------------------------------------------------------------
 # Cartridge ROMs
@@ -159,3 +189,9 @@ provides = ["jride"]
 rom = [
     { md5 = "00c6b11cf56dfd7187a98e154778e1e0", addr = 0xC0000, size = 0x2000, chip = "jride" },
 ]
+
+    [[romset.patch]]
+    desc = "Patch menu timeout"
+    trigger = 0xC0864
+    addr = 0xC0867
+    bytes = [0x90, 0x90]

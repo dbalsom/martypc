@@ -79,8 +79,14 @@ impl GdrEntry {
         if self.w_valid() && (opcode & 1 == 0) {
             InstructionWidth::Byte
         }
+        else if self.force_byte() {
+            InstructionWidth::Byte
+        }
         else {
-            InstructionWidth::Word
+            match opcode {
+                0xB0..=0xB7 => InstructionWidth::Byte,
+                _ => InstructionWidth::Word,
+            }
         }
     }
     #[inline(always)]

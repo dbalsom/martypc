@@ -331,14 +331,14 @@ impl GraphicsController {
                 match self.graphics_mode.odd_even() {
                     OddEvenModeComplement::Sequential => {
                         let plane = self.graphics_read_map_select as usize;
-                        
+
                         seq.read_u8(plane, offset, a0)
                     }
                     OddEvenModeComplement::OddEven => {
                         // If selected plane is 0 or 1, choose 0 or 1 based on a0.
                         // If selected plane is 2 or 3, choose 2 or 3 based on a0.
                         let plane = (self.graphics_read_map_select as usize & !0x01) | a0;
-                        
+
                         seq.read_u8(plane, offset, a0)
                     }
                 }
@@ -347,7 +347,7 @@ impl GraphicsController {
                 // In Read Mode 1, the processor reads the result of a comparison with the value in the
                 // Color Compare register, from the set of enabled planes in the Color Don't Care register
                 self.get_pixels(seq, offset);
-                
+
                 self.pixel_op_compare()
             }
         }
@@ -483,35 +483,21 @@ impl GraphicsController {
 
     /// Compare the pixels in pixel_buf with the Color Compare and Color Don't Care registers.
     fn pixel_op_compare(&self) -> u8 {
-        let mut comparison = 0;
+        let cmp = self.graphics_color_compare & self.graphics_color_dont_care;
+        let dc = self.graphics_color_dont_care;
+        let mut mask = 0xFF;
 
-        for i in 0..8 {
-            let mut plane_comp = 0;
-
-            plane_comp |= match self.latches[0] & (0x01 << i) != 0 {
-                true => 0x01,
-                false => 0x00,
-            };
-            plane_comp |= match self.latches[1] & (0x01 << i) != 0 {
-                true => 0x02,
-                false => 0x00,
-            };
-            plane_comp |= match self.latches[2] & (0x01 << i) != 0 {
-                true => 0x04,
-                false => 0x00,
-            };
-            plane_comp |= match self.latches[3] & (0x01 << i) != 0 {
-                true => 0x08,
-                false => 0x00,
-            };
-
-            let masked_cmp = self.graphics_color_compare & self.graphics_color_dont_care;
-
-            if (plane_comp & self.graphics_color_dont_care) == masked_cmp {
-                comparison |= 0x01 << i
+        for plane in 0..4 {
+            if (dc >> plane) & 1 != 0 {
+                let bit = (cmp >> plane) & 1;
+                // avoid multiply by 0xFF
+                let cmpbit = 0u8.wrapping_sub(bit);
+                let plane_match = !(self.latches[plane] ^ cmpbit);
+                mask &= plane_match;
             }
         }
-        comparison
+
+        mask
     }
 
     pub fn map_address(&self, address: usize, page_select: PageSelect) -> Option<(usize, usize)> {
@@ -606,5 +592,68 @@ impl GraphicsController {
         graphics_vec.push((format!("{:?}", GraphicsRegister::BitMask), VideoCardStateEntry::String(format!("{:08b}", self.graphics_bitmask))));
 
         graphics_vec
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    /// Exact translation of your original, per-bit loop implementation.
+    fn naive_pixel_compare(latches: [u8; 4], graphics_color_compare: u8, graphics_color_dont_care: u8) -> u8 {
+        let mut comparison = 0u8;
+        for i in 0..8 {
+            let mut plane_comp = 0;
+            if latches[0] & (1 << i) != 0 {
+                plane_comp |= 0x01;
+            }
+            if latches[1] & (1 << i) != 0 {
+                plane_comp |= 0x02;
+            }
+            if latches[2] & (1 << i) != 0 {
+                plane_comp |= 0x04;
+            }
+            if latches[3] & (1 << i) != 0 {
+                plane_comp |= 0x08;
+            }
+
+            let masked_cmp = graphics_color_compare & graphics_color_dont_care;
+            if (plane_comp & graphics_color_dont_care) == masked_cmp {
+                comparison |= 1 << i;
+            }
+        }
+        comparison
+    }
+
+    #[test]
+    fn pixel_op_compare_equivalence() {
+        // A small set of interesting latch‐patterns:
+        let samples = [
+            [0x00, 0x00, 0x00, 0x00],
+            [0xFF, 0xFF, 0xFF, 0xFF],
+            [0b1010_1010, 0b0101_0101, 0b1111_0000, 0b0000_1111],
+            [0x12, 0x34, 0x56, 0x78],
+        ];
+
+        for &latches in &samples {
+            for cc in 0..=0x0F {
+                for dc in 0..=0x0F {
+                    // Build a VGA state with these registers:
+                    let mut ega = EGACard::default();
+                    ega.gc.latches = latches;
+                    ega.gc.graphics_color_compare = cc;
+                    ega.gc.graphics_color_dont_care = dc;
+
+                    let fast = ega.gc.pixel_op_compare();
+                    let slow = naive_pixel_compare(latches, cc, dc);
+
+                    assert_eq!(
+                        fast, slow,
+                        "Mismatch: latches={:?}, compare=0x{:X}, dont_care=0x{:X} => fast=0x{:02X}, naive=0x{:02X}",
+                        latches, cc, dc, fast, slow
+                    );
+                }
+            }
+        }
     }
 }

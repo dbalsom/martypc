@@ -25,14 +25,17 @@
     --------------------------------------------------------------------------
 */
 
-use marty_frontend_common::types::gamepad::{GamepadId, GamepadInfo};
+//! Provide a [GamepadInterface] implementation that uses the `gilrs` crate
+//! for gamepad input.
+
+use marty_frontend_common::types::gamepad::{GamepadId, GamepadInfo, JoystickMapping};
 
 use gilrs::{Axis, Event, Gamepad, Gilrs};
 use marty_frontend_common::marty_common::MartyHashMap;
 
 pub struct GamepadInterface {
     gilrs: Gilrs,
-    mapping: (Option<GamepadId>, Option<GamepadId>),
+    mapping: (Option<JoystickMapping>, Option<JoystickMapping>),
     gamepads: MartyHashMap<GamepadId, GamepadInfo>,
     auto_connect: bool,
     deadzone: f32,
@@ -78,6 +81,7 @@ impl GamepadInterface {
         self.deadzone
     }
 
+    #[inline]
     pub fn next_event(&mut self) -> Option<Event> {
         self.gilrs.next_event()
     }
@@ -105,12 +109,7 @@ impl GamepadInterface {
                     self.gamepads.insert(id, info.clone());
 
                     if self.auto_connect {
-                        if self.mapping.0.is_none() {
-                            self.mapping.0 = Some(id);
-                        }
-                        else if self.mapping.1.is_none() {
-                            self.mapping.1 = Some(id);
-                        }
+                        self.auto_connect(ev.id);
                     }
 
                     events.push(GamepadEvent::Connected(info));
@@ -119,21 +118,16 @@ impl GamepadInterface {
                     if self.gamepads.remove(&ev.id).is_some() {
                         events.push(GamepadEvent::Disconnected(ev.id));
                     }
-                    if self.mapping.0 == Some(ev.id) {
+                    if self.mapping.0 == Some(JoystickMapping::Gamepad(ev.id)) {
                         self.mapping.0 = None;
                     }
-                    if self.mapping.1 == Some(ev.id) {
+                    if self.mapping.1 == Some(JoystickMapping::Gamepad(ev.id)) {
                         self.mapping.1 = None;
                     }
                 }
                 _ => {
                     if self.auto_connect {
-                        if self.mapping.0.is_none() {
-                            self.mapping.0 = Some(ev.id);
-                        }
-                        else if self.mapping.1.is_none() {
-                            self.mapping.1 = Some(ev.id);
-                        }
+                        self.auto_connect(ev.id);
                     }
                     events.push(GamepadEvent::Event(ev));
                 }
@@ -143,7 +137,23 @@ impl GamepadInterface {
         events
     }
 
-    fn is_real_gamepad(gamepad: &Gamepad) -> bool {
+    /// Connect the specified gamepad into the first available mapping slot.
+    /// This will be slot 0 if it is empty, or slot 1 if slot 1 is empty and the id is not already
+    /// mapped to slot 0.
+    fn auto_connect(&mut self, id: GamepadId) {
+        if self.mapping.0.is_none() {
+            log::debug!("Auto-connecting gamepad {} to joystick slot 0", id);
+            self.mapping.0 = Some(JoystickMapping::Gamepad(id));
+        }
+        else if let Some(JoystickMapping::Gamepad(id_0)) = self.mapping.0 {
+            if id != id_0 && self.mapping.1.is_none() {
+                log::debug!("Auto-connecting gamepad {} to joystick slot 1", id);
+                self.mapping.1 = Some(JoystickMapping::Gamepad(id));
+            }
+        }
+    }
+
+    fn is_real_gamepad(gamepad: &Gamepad<'_>) -> bool {
         //let name = gamepad.name().to_lowercase();
         //let product = gamepad.product_id();
 
@@ -158,25 +168,89 @@ impl GamepadInterface {
     }
 
     #[inline]
-    pub fn mapping(&self) -> (Option<GamepadId>, Option<GamepadId>) {
+    pub fn mapping(&self) -> (Option<JoystickMapping>, Option<JoystickMapping>) {
         self.mapping
     }
 
     #[inline]
-    pub fn set_mapping(&mut self, mapping: (Option<GamepadId>, Option<GamepadId>)) {
+    pub fn set_mapping(&mut self, mapping: (Option<JoystickMapping>, Option<JoystickMapping>)) {
         self.mapping = mapping;
     }
 
     #[inline]
     pub fn select_id(&self, id: GamepadId) -> Option<usize> {
-        if Some(id) == self.mapping.0 {
+        if Some(JoystickMapping::Gamepad(id)) == self.mapping.0 {
             Some(0)
         }
-        else if Some(id) == self.mapping.1 {
+        else if Some(JoystickMapping::Gamepad(id)) == self.mapping.1 {
             Some(1)
         }
         else {
             None
+        }
+    }
+
+    /// Return whether the mapping for the given joystick slot is a joykey mapping.
+    /// This can be used to control dispatch to the joykey interface.
+    #[inline]
+    pub fn is_joykey(&self, slot: usize) -> bool {
+        if slot == 0 {
+            matches!(self.mapping.0, Some(JoystickMapping::JoyKeys))
+        }
+        else if slot == 1 {
+            matches!(self.mapping.1, Some(JoystickMapping::JoyKeys))
+        }
+        else {
+            false
+        }
+    }
+
+    /// Return which joystick slot is mapped to a joykey mapping, or None
+    /// if no joykey mapping is set.
+    #[inline]
+    pub fn joykey_mapping(&self) -> Option<usize> {
+        //log::debug!("joykey_mapping(): mapping: {:?}", self.mapping);
+        if let Some(JoystickMapping::JoyKeys) = self.mapping.0 {
+            //log::debug!("Joykey mapping found in slot 0");
+            Some(0)
+        }
+        else if let Some(JoystickMapping::JoyKeys) = self.mapping.1 {
+            Some(1)
+        }
+        else {
+            None
+        }
+    }
+
+    pub fn toggle_joykeys(&mut self, slot: usize) -> bool {
+        if slot == 0 {
+            if self.mapping.0 == Some(JoystickMapping::JoyKeys) {
+                self.mapping.0 = None;
+                false
+            }
+            else {
+                self.mapping.0 = Some(JoystickMapping::JoyKeys);
+                if self.mapping.1 == Some(JoystickMapping::JoyKeys) {
+                    self.mapping.1 = None;
+                }
+                true
+            }
+        }
+        else if slot == 1 {
+            if self.mapping.1 == Some(JoystickMapping::JoyKeys) {
+                self.mapping.1 = None;
+                false
+            }
+            else {
+                self.mapping.1 = Some(JoystickMapping::JoyKeys);
+                if self.mapping.0 == Some(JoystickMapping::JoyKeys) {
+                    self.mapping.0 = None;
+                }
+                true
+            }
+        }
+        else {
+            false
         }
     }
 }

@@ -26,7 +26,7 @@
 */
 #![warn(clippy::all, rust_2018_idioms)]
 #![feature(duration_millis_float)]
-
+#![feature(os_str_display)]
 pub mod app;
 pub mod counter;
 pub mod emulator;
@@ -40,13 +40,13 @@ pub mod timestep_update;
 #[cfg(not(target_arch = "wasm32"))]
 pub mod native;
 #[cfg(not(target_arch = "wasm32"))]
-pub use native::worker;
+pub use native::worker::{self, PlatformRenderCallback};
 #[cfg(target_arch = "wasm32")]
 pub mod wasm;
 #[cfg(target_arch = "wasm32")]
-pub use wasm::worker;
-
 pub use app::MartyApp;
+#[cfg(target_arch = "wasm32")]
+pub use wasm::worker::{self, PlatformRenderCallback};
 
 // Embed default icon
 pub const MARTY_ICON: &[u8] = include_bytes!("../../../../assets/martypc_icon_small.png");

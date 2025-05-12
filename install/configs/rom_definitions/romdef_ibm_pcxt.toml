@@ -6,11 +6,11 @@
 # ----------------------------------------------------------------------------
 [[romset]]
 alias = "ibm5150_81_v1"
-desc = "IBM 5150 BIOS v1 04/24/81"
+desc = "IBM 5150 BIOS Apr 24 1981"
 priority = 1
 provides = ["bios", "ibm5150v64k"]
 oem = true
-datestr = "04/24/81"
+datestr = "1981/04/24"
 rom = [
     { md5 = "6338a9808445de12109a2389b71ee2eb", addr = 0xFE000, size = 8192, chip = "u33" }
 ]
@@ -41,24 +41,37 @@ checkpoint = [
 
 [[romset]]
 alias = "ibm5150_81_v2"
+desc = "IBM 5150 BIOS Oct 19 1981"
+datestr = "1981/10/19"
 priority = 2
 provides = ["bios", "ibm5150v64k"]
 oem = true
-desc = "IBM 5150 BIOS v2 10/19/81"
-datestr = "10/19/81"
 rom = [
     { md5 = "6a1ed4e3f500d785a01ff4d3e000d79c", addr = 0xFE000, size = 8192, chip = "u33" }
 ]
 
 [[romset]]
-alias = "ibm5150_82_v3"
+alias = "ibm5150_81_v3"
+desc = "IBM 5150 BIOS Aug 16 1981"
+datestr = "1981/08/16"
+priority = 2
+provides = ["bios", "ibm5150v64k"]
+oem = true
+rom = [
+    { md5 = "63506f5c13029f12dcc6db53e7f3d8ac", addr = 0xFE000, size = 8192, chip = "u33" }
+]
+
+[[romset]]
+alias = "ibm5150_82_v4"
+desc = "IBM 5150 BIOS Oct 27 1982"
+datestr = "1982/10/27"
 priority = 3
 provides = ["bios", "ibm5150v64k", "ibm5150v256k", "expansion"]
 oem = true
-desc = "IBM 5150 BIOS v3 10/27/82"
-datestr = "10/27/82"
 rom = [
-    { md5 = "f453eb2df6daf21ec644d33663d85434", addr = 0xFE000, size = 8192, chip = "u33" }
+    { md5 = "f453eb2df6daf21ec644d33663d85434", addr = 0xFE000, size = 8192, chip = "u33" },
+    # Alternate 1981 copyright date but otherwise identical
+    { md5 = "0b2373ff8ce894ba638c05445262a503", addr = 0xFE000, size = 8192, chip = "u33" }
 ]
 
 # ----------------------------------------------------------------------------
@@ -66,53 +79,33 @@ rom = [
 # ----------------------------------------------------------------------------
 
 [[romset]]
-alias = "ibm5160_82_v1_wbasic"
-datestr = "11/08/82"
-priority = 1
-provides = ["bios", "ibm5160", "ibm_basic", "expansion"]
-oem = true
-rom = [
-    { md5 = "e816a89768a1bf4b8d52b454d5c9d1e1", addr = 0xF0000, size = 32768, chip = "basic+u19" },
-    { md5 = "1a2ac1ae0fe0f7783197e78da8b3126c", addr = 0xF8000, size = 32768, chip = "u18" },
-]
-checkpoint = [
-    { addr = 0xFE01A, lvl = 3, desc = "RAM Check Routine" },
-    { addr = 0xFE05B, lvl = 3, desc = "8088 Processor Test" },
-    { addr = 0xFE0AE, lvl = 3, desc = "ROS Checksum Test I" },
-    { addr = 0xFE0D9, lvl = 3, desc = "8237 DMA Initialization Test" },
-    { addr = 0xFE135, lvl = 3, desc = "Start DRAM Refresh" },
-    { addr = 0xFE166, lvl = 3, desc = "Base 16K RAM Test" },
-    { addr = 0xFE242, lvl = 3, desc = "Initialize CRTC Controller" },
-    { addr = 0xFE329, lvl = 3, desc = "8259 Interrupt Controller Test" },
-    { addr = 0xFE35D, lvl = 3, desc = "8253 Timer Checkout" },
-    { addr = 0xFE3A2, lvl = 3, desc = "Keyboard Test" },
-    { addr = 0xFE3DE, lvl = 3, desc = "Setup Interrupt Vector Table" },
-    { addr = 0xFE418, lvl = 3, desc = "Expansion I/O Box Test" },
-    { addr = 0xFE46A, lvl = 3, desc = "Additional R/W Storage Test" },
-]
-    [[romset.patch]]
-    desc = "Patch ROS checksum routine"
-    trigger = 0xFE0AE
-    addr = 0xFE0D7
-    bytes = [ 0xEB, 0x00 ]
-
-    [[romset.patch]]
-    desc = "Patch RAM Check Routine for faster boot"
-    trigger = 0xFE46A
-    addr = 0xFE49D
-    bytes = [0x90, 0x90, 0x90, 0x90, 0x90]
-
-# ----------------------------------------------------------------------------
-
-[[romset]]
 alias = "ibm5160_82_v1"
-datestr = "11/08/82"
+datestr = "1982/08/16"
+desc = "IBM 5160 BIOS Aug 16 1982"
 priority = 2
 provides = ["bios", "ibm5160", "expansion"]
 oem = true
 rom = [
-    { md5 = "69e2bd1d08c893cbf841607c8749d5bd", addr = 0xFE000, size = 8192,  chip = "u19" },
+    { md5 = "c25bf18a021f7c5fd17f2c3968590c51", addr = 0xF8000, size = 32768, chip = "u18" },
+    { md5 = "69e2bd1d08c893cbf841607c8749d5bd", addr = 0xF0000, size = 8192,  chip = "u19a" },
+    { md5 = "69e2bd1d08c893cbf841607c8749d5bd", addr = 0xF2000, size = 8192,  chip = "u19b" },
+    { md5 = "69e2bd1d08c893cbf841607c8749d5bd", addr = 0xF4000, size = 8192,  chip = "u19c" },
+    { md5 = "69e2bd1d08c893cbf841607c8749d5bd", addr = 0xF6000, size = 8192,  chip = "u19d" },
+]
+
+[[romset]]
+alias = "ibm5160_82_v2_32k"
+datestr = "1982/11/08"
+desc = "IBM 5160 BIOS Nov 8 1982"
+priority = 1
+provides = ["bios", "ibm5160", "ibm_basic", "expansion"]
+oem = true
+rom = [
     { md5 = "1a2ac1ae0fe0f7783197e78da8b3126c", addr = 0xF8000, size = 32768, chip = "u18" },
+    # Alternate 1982 copyright date but otherwise identical
+    { md5 = "4ba8c5febc328c04e983fa52e6d08cdf", addr = 0xF8000, size = 32768, chip = "u18" },
+    # 32K version of u19 (Repeated 4x)
+    { md5 = "e816a89768a1bf4b8d52b454d5c9d1e1", addr = 0xF0000, size = 32768, chip = "u19" },
 ]
 checkpoint = [
     { addr = 0xFE01A, lvl = 3, desc = "RAM Check Routine" },
@@ -144,7 +137,53 @@ checkpoint = [
 # ----------------------------------------------------------------------------
 
 [[romset]]
-alias = "ibm5160_86_v1_wbasic"
+alias = "ibm5160_82_v2"
+datestr = "1982/11/08"
+desc = "IBM 5160 BIOS Nov 8 1982"
+priority = 2
+provides = ["bios", "ibm5160", "expansion"]
+oem = true
+rom = [
+    { md5 = "1a2ac1ae0fe0f7783197e78da8b3126c", addr = 0xF8000, size = 32768, chip = "u18" },
+    # Alternate 1982 copyright date but otherwise identical
+    { md5 = "4ba8c5febc328c04e983fa52e6d08cdf", addr = 0xF8000, size = 32768, chip = "u18" },
+    # The u19 ROM is 8K, but repeated 4x due to decoding
+    { md5 = "69e2bd1d08c893cbf841607c8749d5bd", addr = 0xF0000, size = 8192,  chip = "u19a" },
+    { md5 = "69e2bd1d08c893cbf841607c8749d5bd", addr = 0xF2000, size = 8192,  chip = "u19b" },
+    { md5 = "69e2bd1d08c893cbf841607c8749d5bd", addr = 0xF4000, size = 8192,  chip = "u19c" },
+    { md5 = "69e2bd1d08c893cbf841607c8749d5bd", addr = 0xF6000, size = 8192,  chip = "u19d" },
+]
+checkpoint = [
+    { addr = 0xFE01A, lvl = 3, desc = "RAM Check Routine" },
+    { addr = 0xFE05B, lvl = 3, desc = "8088 Processor Test" },
+    { addr = 0xFE0AE, lvl = 3, desc = "ROS Checksum Test I" },
+    { addr = 0xFE0D9, lvl = 3, desc = "8237 DMA Initialization Test" },
+    { addr = 0xFE135, lvl = 3, desc = "Start DRAM Refresh" },
+    { addr = 0xFE166, lvl = 3, desc = "Base 16K RAM Test" },
+    { addr = 0xFE242, lvl = 3, desc = "Initialize CRTC Controller" },
+    { addr = 0xFE329, lvl = 3, desc = "8259 Interrupt Controller Test" },
+    { addr = 0xFE35D, lvl = 3, desc = "8253 Timer Checkout" },
+    { addr = 0xFE3A2, lvl = 3, desc = "Keyboard Test" },
+    { addr = 0xFE3DE, lvl = 3, desc = "Setup Interrupt Vector Table" },
+    { addr = 0xFE418, lvl = 3, desc = "Expansion I/O Box Test" },
+    { addr = 0xFE46A, lvl = 3, desc = "Additional R/W Storage Test" },
+]
+    [[romset.patch]]
+    desc = "Patch ROS checksum routine"
+    trigger = 0xFE0AE
+    addr = 0xFE0D7
+    bytes = [ 0xEB, 0x00 ]
+
+    [[romset.patch]]
+    desc = "Patch RAM Check Routine for faster boot"
+    trigger = 0xFE46A
+    addr = 0xFE49D
+    bytes = [0x90, 0x90, 0x90, 0x90, 0x90]
+
+# ----------------------------------------------------------------------------
+
+[[romset]]
+alias = "ibm5160_86_v2"
 datestr = "01/10/86"
 priority = 3
 provides = ["bios", "ibm5160", "expansion", "ibm_basic"]
@@ -154,7 +193,7 @@ rom = [
 ]
 
 [[romset]]
-alias = "ibm5160_86_v2_wbasic"
+alias = "ibm5160_86_v3"
 datestr = "05/09/86"
 priority = 4
 provides = ["bios", "ibm5160", "expansion", "ibm_basic"]
@@ -196,36 +235,10 @@ checkpoint = [
     bytes = [ 0x90, 0x90, 0x90, 0x90, 0x90]
 
 # ----------------------------------------------------------------------------
-# Device ROMS
-# ----------------------------------------------------------------------------
-
-[[romset]]
-alias = "ibm_ega"
-priority = 1
-provides = ["ibm_ega"]
-oem = true
-requires = ["expansion"]
-rom = [
-    { md5 = "528455ed0b701722c166c6536ba4ff46", addr = 0xC0000, size = 16384, chip = "1", org = "Normal" },
-    { md5 = "0636f46316f3e15cb287ce3da6ba43a1", addr = 0xC0000, size = 16384, chip = "1", org = "Reversed" }
-]
-checkpoint = [
-    { addr = 0xC0003, lvl = 3, desc = "EGA Expansion Init" },
-    { addr = 0xC009B, lvl = 3, desc = "EGA DIP Switch Sense" },
-    { addr = 0xC0205, lvl = 3, desc = "EGA CD Presence Test" },
-    { addr = 0xC037C, lvl = 3, desc = "EGA VBlank Bit Test" },
-    { addr = 0xC0D20, lvl = 3, desc = "EGA Error Beep" },
-    { addr = 0xC03F6, lvl = 3, desc = "EGA Diagnostic Dot Test" },
-    { addr = 0xC0480, lvl = 3, desc = "EGA Mem Test" },
-    { addr = 0xC068F, lvl = 3, desc = "EGA How Big Test" },
-]
-
-# ----------------------------------------------------------------------------
 # BASIC ROMS - IBM 5150 & 5160
 # BASIC can be loaded seperately if you aren't using system ROMS that have it
 # built in.
 # ----------------------------------------------------------------------------
-
 [[romset]]
 alias = "ibmbasic_v1_32k"
 desc = "IBM Cassette Basic C1.0"
@@ -243,10 +256,10 @@ priority = 1
 provides = ["ibm_basic"]
 oem = true
 rom = [
-    { md5 = "2ac2e97eddb3f344641cdd9dc3747f8e", addr = 0xF6000, size = 8192 }, 
-    { md5 = "8b2a0f2ea97d0adb9c1c834387aad5d9", addr = 0xF8000, size = 8192 }, 
-    { md5 = "9a3253ad9f1d8213d33e04476e3ed482", addr = 0xFA000, size = 8192 }, 
-    { md5 = "2686dbc7f261f10d54553c4c5f93a3d5", addr = 0xFC000, size = 8192 },
+    { md5 = "2ac2e97eddb3f344641cdd9dc3747f8e", addr = 0xF6000, size = 8192, chip = "u29" },
+    { md5 = "8b2a0f2ea97d0adb9c1c834387aad5d9", addr = 0xF8000, size = 8192, chip = "u30" },
+    { md5 = "9a3253ad9f1d8213d33e04476e3ed482", addr = 0xFA000, size = 8192, chip = "u31" },
+    { md5 = "2686dbc7f261f10d54553c4c5f93a3d5", addr = 0xFC000, size = 8192, chip = "u32"},
 ]
 
 [[romset]]
@@ -256,7 +269,6 @@ priority = 2
 provides = ["ibm_basic"]
 oem = true
 rom = [
-    { md5 = "2ad31da203a49b504fad3a34af0c719f", addr = 0xF6000, size = 32768, chip = "c" },
     { md5 = "eb28f0e8d3f641f2b58a3677b3b998cc", addr = 0xF6000, size = 32768, chip = "c" },
 ]
 
@@ -267,8 +279,10 @@ priority = 1
 provides = ["ibm_basic"]
 oem = true
 rom = [
-    { md5 = "69e2bd1d08c893cbf841607c8749d5bd", addr = 0xF6000, size = 8192 }, 
-    { md5 = "5f85ff5ea352c1ec11b084043fbb549e", addr = 0xF8000, size = 8192 }, 
-    { md5 = "04a285d5dc8d86c60679e8f3c779dcc4", addr = 0xFA000, size = 8192 }, 
-    { md5 = "b086a6980fc5736098269e62b59726ef", addr = 0xFC000, size = 8192 },
+    { md5 = "69e2bd1d08c893cbf841607c8749d5bd", addr = 0xF6000, size = 8192, chip = "u29" },
+    { md5 = "5f85ff5ea352c1ec11b084043fbb549e", addr = 0xF8000, size = 8192, chip = "u30" },
+    { md5 = "04a285d5dc8d86c60679e8f3c779dcc4", addr = 0xFA000, size = 8192, chip = "u31" },
+    { md5 = "b086a6980fc5736098269e62b59726ef", addr = 0xFC000, size = 8192, chip = "u32" },
 ]
+
+

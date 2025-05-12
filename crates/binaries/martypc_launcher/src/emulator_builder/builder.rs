@@ -30,6 +30,7 @@
 //! that need flexibility in how they configure and build their emulator
 //! instances.
 
+use crate::gui::GuiState;
 use std::{
     cell::RefCell,
     io::Write,
@@ -60,7 +61,7 @@ use marty_core::{
     machine::{ExecutionControl, ExecutionState, MachineBuilder},
     supported_floppy_extensions,
 };
-use marty_egui::state::GuiState;
+
 use marty_frontend_common::{
     cartridge_manager::CartridgeManager,
     floppy_manager::FloppyManager,
@@ -721,50 +722,15 @@ impl EmulatorBuilder {
             }
         }
 
-        // A DisplayManager is front-end specific, so we'll expect the front-end to create one
-        // after we have built the emulator.
-
         // Create a channel for receiving thread events (File open requests, etc.)
         let (sender, receiver) = crossbeam_channel::unbounded();
-
-        // Create a GUI state object
-        let mut gui = GuiState::new(exec_control.clone(), sender.clone());
-
-        // Set list of virtual serial ports
-        gui.set_serial_ports(machine.bus().enumerate_serial_ports());
-
-        // Set floppy drives.
-        let drive_ct = machine.bus().floppy_drive_ct();
-        let mut drive_types = Vec::new();
-        for i in 0..drive_ct {
-            if let Some(fdc) = machine.bus().fdc() {
-                drive_types.push(fdc.drive(i).get_type());
-            }
-        }
-
-        gui.set_floppy_drives(drive_types);
-
-        // Set default floppy path. This is used to set the default path for Save As dialogs.
-        gui.set_paths(resource_manager.resource_path("floppy").unwrap());
-
-        // Set hard drives.
-        gui.set_hdds(machine.bus().hdd_ct());
-
-        // Set cartridge slots
-        gui.set_cart_slots(machine.bus().cart_ct());
-
-        // Set autofloppy paths
-        #[cfg(not(target_arch = "wasm32"))]
-        {
-            gui.set_autofloppy_paths(floppy_manager.get_autofloppy_paths());
-        }
-
-        // Request initial events from GUI.
-        gui.initialize();
 
         // Create a queue for machine events.
         // TODO: This should probably be converted into a channel
         let machine_events = Vec::new();
+
+        // Create a GUI state
+        let gui = GuiState::new();
 
         Ok(Emulator {
             rm: resource_manager,

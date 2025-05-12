@@ -1,0 +1,24 @@
+# romdef_ega.toml
+# EGA Video BIOS ROM definitions for MartyPC.
+
+# This is the ROM from the original IBM EGA card.
+[[romset]]
+alias = "ibm_ega"
+priority = 1
+provides = ["ibm_ega"]
+oem = true
+requires = ["expansion"]
+rom = [
+    { md5 = "528455ed0b701722c166c6536ba4ff46", addr = 0xC0000, size = 16384, chip = "1", org = "Normal" },
+    { md5 = "0636f46316f3e15cb287ce3da6ba43a1", addr = 0xC0000, size = 16384, chip = "1", org = "Reversed" }
+]
+checkpoint = [
+    { addr = 0xC0003, lvl = 3, desc = "EGA Expansion Init" },
+    { addr = 0xC009B, lvl = 3, desc = "EGA DIP Switch Sense" },
+    { addr = 0xC0205, lvl = 3, desc = "EGA CD Presence Test" },
+    { addr = 0xC037C, lvl = 3, desc = "EGA VBlank Bit Test" },
+    { addr = 0xC0D20, lvl = 3, desc = "EGA Error Beep" },
+    { addr = 0xC03F6, lvl = 3, desc = "EGA Diagnostic Dot Test" },
+    { addr = 0xC0480, lvl = 3, desc = "EGA Mem Test" },
+    { addr = 0xC068F, lvl = 3, desc = "EGA How Big Test" },
+]

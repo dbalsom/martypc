@@ -31,6 +31,12 @@ pub type GamepadId = gilrs::GamepadId;
 #[cfg(not(feature = "use_gilrs"))]
 pub type GamepadId = usize;
 
+#[derive(Copy, Clone, Debug, PartialEq, Eq)]
+pub enum JoystickMapping {
+    JoyKeys,
+    Gamepad(GamepadId),
+}
+
 #[derive(Clone, Debug)]
 pub struct GamepadInfo {
     pub name: String,

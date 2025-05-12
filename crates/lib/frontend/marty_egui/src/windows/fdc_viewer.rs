@@ -33,7 +33,7 @@
 
 */
 
-use crate::{layouts::MartyLayout, *};
+use crate::GuiEventQueue;
 #[allow(dead_code)]
 use marty_core::devices::fdc::FdcDebugState;
 

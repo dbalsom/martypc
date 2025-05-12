@@ -382,7 +382,7 @@ fn run_tests(
     // Create the cpu trace file, if specified
     let mut trace_logger = TraceLogger::None;
     if let Some(trace_filename) = &config.machine.cpu.trace_file {
-        log::warn!("Using CPU trace log: {:?}", trace_filename);
+        log::debug!("Using CPU trace log: {:?}", trace_filename);
         trace_logger = TraceLogger::from_filename(&trace_filename);
     }
 
@@ -448,7 +448,7 @@ fn run_tests(
         // End if we are over the specified test run limit.
         if let Some(limit) = config.tests.test_run_limit {
             if n >= limit {
-                log::warn!("Test run limit reached. Stopping.");
+                println!("Test run limit reached. Stopping.");
                 break;
             }
         }

@@ -46,8 +46,6 @@ impl GuiState {
                 false => IconType::Speaker,
             };
 
-            let mut volume = source.volume;
-
             let sctx = GuiVariableContext::SoundSource(snd_idx);
 
             ui.group(|ui| {

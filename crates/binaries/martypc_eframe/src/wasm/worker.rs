@@ -35,6 +35,17 @@ use eframe::{
     wasm_bindgen::{closure::Closure, prelude::wasm_bindgen, JsCast, JsValue},
 };
 
+use fluxfox_egui::RenderCallback;
+
+#[derive(Default)]
+pub struct PlatformRenderCallback {}
+
+impl RenderCallback for PlatformRenderCallback {
+    fn spawn(&self, f: Box<dyn FnOnce() + Send + 'static>) {
+        spawn_closure_worker(f);
+    }
+}
+
 pub fn spawn(f: impl FnOnce() + Send + 'static) {
     match spawn_closure_worker(f) {
         Ok(worker) => {

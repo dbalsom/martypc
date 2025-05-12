@@ -97,16 +97,6 @@ pub fn handle_winit_key_event(
                 gui_focus,
             );
 
-            if process_joykeys(
-                emu,
-                *keycode,
-                matches!(state, ElementState::Pressed),
-                window_id,
-                gui_focus,
-            ) {
-                return true;
-            }
-
             // Get the window for this event.
             // let _event_window = emu
             //     .dm
@@ -177,43 +167,6 @@ pub fn process_hotkeys(emu: &mut Emulator, ctx: egui::Context, keycode: KeyCode,
 
     for hotkey in event_opt.unwrap_or_default().iter() {
         match hotkey {
-            HotkeyEvent::ToggleGui => {
-                log::debug!("ToggleGui hotkey triggered. Toggling GUI visibility.");
-                emu.flags.render_gui = !emu.flags.render_gui;
-            }
-            HotkeyEvent::CaptureMouse => {
-                log::debug!("CaptureMouse hotkey triggered. Toggling mouse capture.");
-                // let dtc = dm.main_display_target();
-                // match dtc.try_write() {
-                //     Ok(mut dtc_lock) => {
-                //         if !dtc_lock.grabbed() {
-                //             // Mouse cursor is not grabbed, grab it.
-                //             dtc_lock.set_grabbed(true, emu.mouse_data.capture_mode);
-                //             emu.mouse_data.is_captured = true;
-                //             ctx.send_viewport_cmd(ViewportCommand::CursorGrab(GRAB_MODE));
-                //             ctx.send_viewport_cmd(ViewportCommand::CursorVisible(false));
-                //         }
-                //         else {
-                //             // Mouse cursor is grabbed, un-grab it.
-                //             dtc_lock.set_grabbed(false, emu.mouse_data.capture_mode);
-                //             emu.mouse_data.is_captured = false;
-                //             ctx.send_viewport_cmd(ViewportCommand::CursorGrab(CursorGrab::None));
-                //             ctx.send_viewport_cmd(ViewportCommand::CursorVisible(true));
-                //         }
-                //     }
-                //     Err(_e) => {
-                //         log::error!("Couldn't get lock on display target.");
-                //     }
-                // };
-            }
-            HotkeyEvent::CtrlAltDel => {
-                log::debug!("CtrlAltDel hotkey triggered. Sending Ctrl-Alt-Del to machine.");
-                emu.machine.emit_ctrl_alt_del();
-            }
-            HotkeyEvent::Reboot => {
-                log::debug!("Reboot hotkey triggered. Restarting machine.");
-                emu.machine.change_state(MachineState::Rebooting);
-            }
             HotkeyEvent::ToggleFullscreen => {
                 log::debug!("ToggleFullscreen hotkey triggered.");
                 let mut fullscreen_state = false;
@@ -236,16 +189,6 @@ pub fn process_hotkeys(emu: &mut Emulator, ctx: egui::Context, keycode: KeyCode,
                 //         .duration(Some(LONG_NOTIFICATION_TIME));
                 // }
             }
-            HotkeyEvent::DebugStep => {
-                emu.exec_control.borrow_mut().set_op(ExecutionOperation::Step);
-            }
-            HotkeyEvent::DebugStepOver => {
-                emu.exec_control.borrow_mut().set_op(ExecutionOperation::StepOver);
-            }
-            HotkeyEvent::JoyToggle => {
-                log::debug!("JoyToggle hotkey triggered. Toggling joystick keyboard emulation.");
-                emu.joy_data.enabled = !emu.joy_data.enabled;
-            }
             HotkeyEvent::Quit => {
                 log::debug!("Quit hotkey pressed. Exiting immediately...");
                 ctx.send_viewport_cmd(ViewportCommand::Close);
@@ -255,49 +198,4 @@ pub fn process_hotkeys(emu: &mut Emulator, ctx: egui::Context, keycode: KeyCode,
             }
         }
     }
-}
-
-/// Process keys for joystick emulation, if enabled. Returns true if the key was processed.
-/// Processed keys should not be sent on to the emulator.
-#[allow(unreachable_patterns)]
-pub fn process_joykeys(
-    emu: &mut Emulator,
-    keycode: KeyCode,
-    pressed: bool,
-    _window_id: WindowId,
-    _gui_focus: bool,
-) -> bool {
-    if !emu.joy_data.enabled {
-        return false;
-    }
-    let martykey = keycode.to_internal();
-
-    let mut joykey = None;
-    emu.joy_data.key_state.entry(martykey).and_modify(|v| {
-        joykey = Some(v.0);
-        emu.joy_data.joy_state.entry(v.0).and_modify(|k| {
-            *k = pressed;
-        });
-        v.1 = pressed
-    });
-
-    if let Some(key) = joykey {
-        if let Some(gameport) = emu.machine.bus_mut().game_port_mut() {
-            match key {
-                JoyKeyInput::JoyButton1 => {
-                    gameport.set_button(0, 0, pressed);
-                }
-                JoyKeyInput::JoyButton2 => {
-                    gameport.set_button(0, 1, pressed);
-                }
-                _ => {
-                    // Update the stick position
-                    let (x, y) = emu.joy_data.get_xy();
-                    gameport.set_stick_pos(0, 0, Some(x), Some(y));
-                }
-            }
-        }
-    }
-
-    joykey.is_some()
 }

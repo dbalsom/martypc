@@ -29,10 +29,10 @@
     Handle events received from background threads spawned by the frontend.
 */
 
-use crate::{emulator::Emulator, floppy::load_floppy::load_floppy_image};
+use crate::emulator::Emulator;
 use egui::ViewportCommand;
 
-use marty_egui::{modal::ModalContext, state::FloppyDriveSelection};
+//use marty_egui::{modal::ModalContext, state::FloppyDriveSelection};
 use marty_frontend_common::{
     constants::{LONG_NOTIFICATION_TIME, NORMAL_NOTIFICATION_TIME},
     thread_events::{FileOpenContext, FileSaveContext, FileSelectionContext, FrontendThreadEvent},
@@ -41,7 +41,7 @@ use std::{path::PathBuf, sync::Arc};
 
 pub fn handle_thread_event(emu: &mut Emulator, ctx: &egui::Context) {
     while let Ok(event) = emu.receiver.try_recv() {
-        match event {
+        /*        match event {
             FrontendThreadEvent::FileDialogCancelled => {
                 emu.gui.modal.close();
             }
@@ -243,6 +243,6 @@ pub fn handle_thread_event(emu: &mut Emulator, ctx: &egui::Context) {
                 });
                 ctx.send_viewport_cmd(ViewportCommand::Fullscreen(!fullscreen_state));
             }
-        }
+        }*/
     }
 }

@@ -116,7 +116,7 @@ pub const DOR_JRFDC_RESET: u8 = 0b1000_0000;
 pub const DOR_JRFDC_WATCHDOG_ENABLE: u8 = 0b0010_0000;
 pub const DOR_JRFDC_WATCHDOG_TRIGGER: u8 = 0b0100_0000;
 
-pub const WATCHDOG_TIMEOUT: f64 = 3_000_000.0; // 3 seconds in microseconds
+pub const WATCHDOG_TIMEOUT: f64 = 1_000_000.0; // microseconds
 
 pub const COMMAND_MASK: u8 = 0b0001_1111;
 pub const COMMAND_SKIP_BIT: u8 = 0b0010_0000;
@@ -349,6 +349,7 @@ pub struct FloppyController {
 
     data_register: u8,
     dor: u8,
+    last_dor: u8,
     dor_dma: bool,
     dor_disabled: bool,
     dma: bool,
@@ -480,6 +481,7 @@ impl Default for FloppyController {
             data_register: 0,
             dor_dma: true,
             dor: 0,
+            last_dor: 0,
             dor_disabled: false,
             dma: true,
             busy: false,
@@ -801,11 +803,11 @@ impl FloppyController {
         let disk_n = data & 0x03;
         self.drive_select = disk_n as usize;
         if self.drives[disk_n as usize].motor_on {
-            log::debug!("Drive {} selected, motor on", disk_n);
+            log::trace!("Drive {} selected, motor on", disk_n);
             self.drives[disk_n as usize].motor_on = true;
         }
         else {
-            log::debug!("Drive {} selected, motor off", disk_n);
+            log::trace!("Drive {} selected, motor off", disk_n);
         }
 
         self.dor = data;
@@ -838,7 +840,7 @@ impl FloppyController {
             self.motor_off(0);
         }
 
-        if data & DOR_DMA_ENABLED != 0 {
+        if (data & DOR_DMA_ENABLED != 0) && !self.dor_dma {
             log::error!("PCJr FDC DMA was erroneously enabled");
             self.dor_dma = true;
         }
@@ -846,11 +848,12 @@ impl FloppyController {
             self.dor_dma = false;
         }
 
-        if data & DOR_JRFDC_WATCHDOG_ENABLE != 0 {
-            log::debug!("PCJr FDC Watchdog enabled");
+        if (data & DOR_JRFDC_WATCHDOG_ENABLE != 0) && !self.watchdog_enabled {
+            log::debug!("PCJr FDC watchdog enabled");
             self.watchdog_enabled = true;
         }
-        else {
+        else if (data & DOR_JRFDC_WATCHDOG_ENABLE == 0) && self.watchdog_enabled {
+            log::debug!("PCJr FDC watchdog disabled");
             self.watchdog_enabled = false;
             self.watchdog_triggered = false;
             self.watchdog_accumulator = 0.0;
@@ -863,12 +866,13 @@ impl FloppyController {
         }
         else {
             if self.watchdog_trigger_bit {
-                log::debug!("PCJr FDC Watchdog triggered");
+                log::debug!("PCJr FDC watchdog trigger set");
                 self.watchdog_triggered = true;
             }
             self.watchdog_trigger_bit = false;
         }
 
+        self.last_dor = self.dor;
         self.dor = data;
     }
 
@@ -1021,7 +1025,7 @@ impl FloppyController {
 
         if !self.data_register_out.is_empty() {
             out_byte = self.data_register_out.pop_front().unwrap();
-            if self.data_register_out.is_empty() {
+            if self.data_register_out.is_empty() && self.pio_bytes_left == 0 {
                 log::trace!("handle_data_register_read(): Popped last byte, clearing busy flag");
                 // CPU has read all available bytes
                 self.busy = false;
@@ -1810,12 +1814,12 @@ impl FloppyController {
 
             if self.data_register_out.is_empty() {
                 let byte = self.drives[self.drive_select].read_operation_buf();
-                log::trace!(
-                    "Read byte: {:02X}, bytes remaining: {} DR: {}",
-                    byte,
-                    self.pio_bytes_left,
-                    self.data_register_out.len()
-                );
+                // log::trace!(
+                //     "Read byte: {:02X}, bytes remaining: {} DR: {}",
+                //     byte,
+                //     self.pio_bytes_left,
+                //     self.data_register_out.len()
+                // );
 
                 self.data_register_out.push_back(byte);
                 self.pio_byte_count += 1;

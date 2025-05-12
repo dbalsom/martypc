@@ -32,6 +32,7 @@ pub mod joystick_state;
 pub mod keyboard_state;
 pub mod mouse_state;
 
+use crate::gui::GuiState;
 use anyhow::Error;
 
 #[cfg(target_arch = "wasm32")]
@@ -39,7 +40,7 @@ use crate::wasm::file_open;
 use crate::{
     counter::Counter,
     emulator::{joystick_state::JoystickData, keyboard_state::KeyboardData, mouse_state::MouseData},
-    floppy::load_floppy::handle_load_floppy,
+    //floppy::load_floppy::handle_load_floppy,
     input::HotkeyManager,
     sound::SoundInterface,
 };
@@ -57,7 +58,6 @@ use std::{
     sync::Arc,
 };
 
-use marty_egui::{state::GuiState, GuiBoolean, GuiWindow};
 use marty_frontend_common::{
     cartridge_manager::CartridgeManager,
     floppy_manager::FloppyManager,
@@ -113,153 +113,6 @@ impl Emulator {
     /// Apply settings from configuration to machine, gui, and display manager state.
     /// Should only be called after such are constructed.
     pub fn apply_config(&mut self) -> Result<(), Error> {
-        log::debug!("Applying configuration to emulator state...");
-
-        // Set the initial power-on state.
-        if self.config.emulator.auto_poweron {
-            self.machine.change_state(MachineState::On);
-        }
-        else {
-            self.machine.change_state(MachineState::Off);
-        }
-
-        self.flags.debug_keyboard = self.config.emulator.input.debug_keyboard;
-
-        // Do PIT phase offset option
-        self.machine
-            .pit_adjust(self.config.machine.pit_phase.unwrap_or(0) & 0x03);
-
-        // Set options from config. We do this now so that we can set the same state for both GUI and machine
-
-        // TODO: Add GUI for these two options?
-        self.machine.set_cpu_option(CpuOption::OffRailsDetection(
-            self.config.machine.cpu.off_rails_detection.unwrap_or(false),
-        ));
-        self.machine.set_cpu_option(CpuOption::EnableServiceInterrupt(
-            self.config.machine.cpu.service_interrupt.unwrap_or(false),
-        ));
-
-        // TODO: Re-enable these
-        //gui.set_option(GuiBoolean::EnableSnow, config.machine.cga_snow.unwrap_or(false));
-        //machine.set_video_option(VideoOption::EnableSnow(config.machine.cga_snow.unwrap_or(false)));
-        //gui.set_option(GuiBoolean::CorrectAspect, config.emulator.scaler_aspect_correction);
-
-        //if config.emulator.scaler_aspect_correction {
-        // Default to hardware aspect correction.
-        //video.set_aspect_mode(AspectCorrectionMode::Hardware);
-
-        // Load program binary if one was specified in config options
-        if let Some(prog_bin) = self.config.emulator.run_bin.clone() {
-            if let Some(prog_seg) = self.config.emulator.run_bin_seg {
-                if let Some(prog_ofs) = self.config.emulator.run_bin_ofs {
-                    if let Some(vreset_seg) = self.config.emulator.vreset_bin_seg {
-                        if let Some(vreset_ofs) = self.config.emulator.vreset_bin_ofs {
-                            let prog_vec = match std::fs::read(prog_bin.clone()) {
-                                Ok(vec) => vec,
-                                Err(e) => {
-                                    eprintln!("Error opening filename {:?}: {}", prog_bin, e);
-                                    std::process::exit(1);
-                                }
-                            };
-
-                            if let Err(_) = self
-                                .machine
-                                .load_program(&prog_vec, prog_seg, prog_ofs, vreset_seg, vreset_ofs)
-                            {
-                                eprintln!(
-                                    "Error loading program into memory at {:04X}:{:04X}.",
-                                    prog_seg, prog_ofs
-                                );
-                                std::process::exit(1);
-                            };
-                        }
-                        else {
-                            eprintln!("Must specify program start offset.");
-                            std::process::exit(1);
-                        }
-                    }
-                    else {
-                        eprintln!("Must specify program start segment.");
-                        std::process::exit(1);
-                    }
-                }
-                else {
-                    eprintln!("Must specify program load offset.");
-                    std::process::exit(1);
-                }
-            }
-            else {
-                eprintln!("Must specify program load segment.");
-                std::process::exit(1);
-            }
-        }
-
-        self.gui.set_option(
-            GuiBoolean::CpuEnableWaitStates,
-            self.config.machine.cpu.wait_states.unwrap_or(true),
-        );
-        self.machine.set_cpu_option(CpuOption::EnableWaitStates(
-            self.config.machine.cpu.wait_states.unwrap_or(true),
-        ));
-
-        self.gui.set_option(
-            GuiBoolean::CpuInstructionHistory,
-            self.config.machine.cpu.instruction_history.unwrap_or(false),
-        );
-
-        self.machine.set_cpu_option(CpuOption::InstructionHistory(
-            self.config.machine.cpu.instruction_history.unwrap_or(false),
-        ));
-
-        self.gui
-            .set_option(GuiBoolean::CpuTraceLoggingEnabled, self.config.machine.cpu.trace_on);
-        self.machine
-            .set_cpu_option(CpuOption::TraceLoggingEnabled(self.config.machine.cpu.trace_on));
-
-        self.gui.set_option(GuiBoolean::TurboButton, self.config.machine.turbo);
-
-        //self.gui.set_scaler_presets(&self.config.emulator.scaler_preset);
-
-        // Disable warpspeed feature if 'devtools' flag not on.
-        #[cfg(not(feature = "devtools"))]
-        {
-            self.config.emulator.warpspeed = false;
-        }
-
-        // Set up cycle trace viewer
-        self.gui
-            .cycle_trace_viewer
-            .set_mode(self.config.machine.cpu.trace_mode.unwrap_or_default());
-        self.gui
-            .cycle_trace_viewer
-            .set_header(self.machine.cpu().cycle_table_header());
-
-        // Debug mode on?
-        if self.config.emulator.debug_mode {
-            // Open default debug windows
-            self.gui.set_window_open(GuiWindow::CpuControl, true);
-            self.gui.set_window_open(GuiWindow::DisassemblyViewer, true);
-            self.gui.set_window_open(GuiWindow::CpuStateViewer, true);
-
-            // Override CpuInstructionHistory
-            self.gui.set_option(GuiBoolean::CpuInstructionHistory, true);
-            self.machine.set_cpu_option(CpuOption::InstructionHistory(true));
-
-            // Disable autostart
-            self.config.emulator.cpu_autostart = false;
-        }
-
-        #[cfg(debug_assertions)]
-        if self.config.emulator.debug_warn {
-            // User compiled MartyPC in debug mode, let them know...
-            self.gui.show_warning(
-                &"MartyPC has been compiled in debug mode and will be extremely slow.\n \
-                    To compile in release mode, use 'cargo build -r'\n \
-                    To disable this error, set debug_warn=false in martypc.toml."
-                    .to_string(),
-            );
-        }
-
         Ok(())
     }
 
@@ -435,146 +288,10 @@ impl Emulator {
         vhd_os_name: &OsStr,
         vhd_idx: Option<usize>,
     ) -> Result<(), Error> {
-        match VirtualHardDisk::parse(Box::new(vhd_file), false) {
-            Ok(vhd) => {
-                if let Some(hdc) = self.machine.hdc_mut() {
-                    match hdc.set_vhd(drive_idx, vhd) {
-                        Ok(_) => {
-                            log::info!(
-                                "VHD image {:?} successfully loaded into virtual drive: {}",
-                                vhd_os_name,
-                                drive_idx
-                            );
-
-                            if let Some(idx) = vhd_idx {
-                                if let Some(selection) = self.vhd_manager.get_vhd_path(idx) {
-                                    self.gui.set_hdd_selection(drive_idx, Some(idx), Some(selection));
-                                }
-                            }
-                        }
-                        Err(err) => {
-                            log::error!("Error mounting VHD: {}", err);
-                        }
-                    }
-                }
-                else if let Some(hdc) = self.machine.xtide_mut() {
-                    match hdc.set_vhd(drive_idx, vhd) {
-                        Ok(_) => {
-                            log::info!(
-                                "VHD image {:?} successfully loaded into virtual drive: {}",
-                                vhd_os_name,
-                                drive_idx
-                            );
-
-                            if let Some(idx) = vhd_idx {
-                                if let Some(selection) = self.vhd_manager.get_vhd_path(idx) {
-                                    self.gui.set_hdd_selection(drive_idx, Some(idx), Some(selection));
-                                }
-                            }
-                        }
-                        Err(err) => {
-                            log::error!("Error mounting VHD: {}", err);
-                        }
-                    }
-                }
-                else if let Some(jride) = self.machine.jride_mut() {
-                    match jride.set_vhd(drive_idx, vhd) {
-                        Ok(_) => {
-                            log::info!(
-                                "VHD image {:?} successfully loaded into virtual drive: {}",
-                                vhd_os_name,
-                                drive_idx
-                            );
-
-                            if let Some(idx) = vhd_idx {
-                                if let Some(selection) = self.vhd_manager.get_vhd_path(idx) {
-                                    self.gui.set_hdd_selection(drive_idx, Some(idx), Some(selection));
-                                }
-                            }
-                        }
-                        Err(err) => {
-                            log::error!("Error mounting VHD: {}", err);
-                        }
-                    }
-                }
-                else {
-                    log::error!("Couldn't load VHD: No Hard Disk Controller present!");
-                }
-            }
-            Err(err) => {
-                log::error!("Error loading VHD: {}", err);
-            }
-        }
         Ok(())
     }
 
-    pub fn post_dm_build_init(&mut self) {
-        // // Set all DisplayTargets to hardware aspect correction
-        // self.dm.for_each_target(|dtc, _idx| {
-        //     dtc.set_aspect_mode(AspectCorrectionMode::Hardware);
-        // });
-        //
-        // let mut vid_list = Vec::new();
-        // // Get a list of all cards as we can't nest dm closures
-        // self.dm.for_each_card(|vid| {
-        //     vid_list.push(vid.clone());
-        // });
-        //
-        // for vid in vid_list.iter() {
-        //     if let Some(card) = self.machine.bus().video(vid) {
-        //         let extents = card.get_display_extents();
-        //
-        //         //assert_eq!(extents.double_scan, true);
-        //         if let Err(_e) = self.dm.on_card_resized(vid, extents) {
-        //             log::error!("Failed to resize videocard!");
-        //         }
-        //     }
-        // }
+    pub fn post_dm_build_init(&mut self) {}
 
-        // // Sort vid_list by index
-        // vid_list.sort_by(|a, b| a.idx.cmp(&b.idx));
-        //
-        // // Build list of cards to set in UI.
-        // let mut card_strs = Vec::new();
-        // for vid in vid_list.iter() {
-        //     let card_str = format!("Card: {} ({:?})", vid.idx, vid.vtype);
-        //     card_strs.push(card_str);
-        // }
-
-        // Set list of video cards
-        //self.gui.set_card_list(card_strs);
-
-        // Set list of virtual serial ports
-        self.gui.set_serial_ports(self.machine.bus().enumerate_serial_ports());
-
-        // Set floppy drives.
-        let drive_ct = self.machine.bus().floppy_drive_ct();
-        let mut drive_types = Vec::new();
-        for i in 0..drive_ct {
-            if let Some(fdc) = self.machine.bus().fdc() {
-                drive_types.push(fdc.drive(i).get_type());
-            }
-        }
-        self.gui.set_floppy_drives(drive_types);
-
-        // Set default floppy path. This is used to set the default path for Save As dialogs.
-        self.gui.set_paths(self.rm.resource_path("floppy").unwrap());
-
-        // Set hard drives.
-        self.gui.set_hdds(self.machine.bus().hdd_ct());
-
-        // Set cartridge slots
-        self.gui.set_cart_slots(self.machine.bus().cart_ct());
-
-        // Set autofloppy paths
-        self.gui
-            .set_autofloppy_paths(self.floppy_manager.get_autofloppy_paths());
-
-        // Request initial events from GUI.
-        self.gui.initialize();
-    }
-
-    pub fn start(&mut self) {
-        //self.machine.play_sound_buffer();
-    }
+    pub fn start(&mut self) {}
 }

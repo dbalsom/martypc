@@ -39,13 +39,15 @@ use std::{
     sync::Arc,
 };
 
+#[cfg(feature = "use_display")]
+use crate::windows::{composite_adjust::CompositeAdjustControl, scaler_adjust::ScalerAdjustControl};
+
 use crate::{
     modal::ModalState,
     widgets::file_tree_menu::FileTreeMenu,
     windows::{
         about::AboutDialog,
         call_stack_viewer::CallStackViewer,
-        composite_adjust::CompositeAdjustControl,
         cpu_control::{BreakpointSet, CpuControl},
         cpu_state_viewer::CpuViewerControl,
         cycle_trace_viewer::CycleTraceViewerControl,
@@ -64,7 +66,6 @@ use crate::{
         pic_viewer::PicViewerControl,
         pit_viewer::PitViewerControl,
         ppi_viewer::PpiViewerControl,
-        scaler_adjust::ScalerAdjustControl,
         serial_viewer::SerialViewerControl,
         sn_viewer::SnViewerControl,
         text_mode_viewer::TextModeViewer,
@@ -93,6 +94,8 @@ use marty_core::{
     machine::{ExecutionControl, MachineState},
     machine_types::FloppyDriveType,
 };
+
+#[cfg(feature = "use_display")]
 use marty_display_common::{
     display_manager::{DisplayTargetInfo, DtHandle},
     display_scaler::{ScalerMode, ScalerPreset},
@@ -107,8 +110,9 @@ use marty_frontend_common::{
 use egui::ColorImage;
 use egui_notify::{Anchor, Toasts};
 use fluxfox::{DiskImage, DiskImageFileFormat, StandardFormat};
+use fluxfox_egui::RenderCallback;
 use marty_common::types::{joystick::ControllerLayout, ui::MouseCaptureMode};
-use marty_frontend_common::types::gamepad::{GamepadId, GamepadInfo};
+use marty_frontend_common::types::gamepad::{GamepadId, GamepadInfo, JoystickMapping};
 use serde::{Deserialize, Serialize};
 #[cfg(feature = "use_serialport")]
 use serialport::SerialPortInfo;
@@ -277,6 +281,7 @@ pub struct GuiState {
 
     // Display stuff
     pub(crate) display_apertures: HashMap<usize, Vec<DisplayApertureDesc>>,
+    #[cfg(feature = "use_display")]
     pub(crate) scaler_modes: Vec<ScalerMode>,
     pub(crate) scaler_presets: Vec<String>,
 
@@ -293,7 +298,7 @@ pub struct GuiState {
     pub(crate) gamepads: Vec<GamepadInfo>,
     pub(crate) gameport: bool,
     pub(crate) controller_layout: ControllerLayout,
-    pub(crate) selected_gamepad: [Option<GamepadId>; 2],
+    pub(crate) selected_joystick_mapping: [Option<JoystickMapping>; 2],
 
     // Serial ports
     pub(crate) serial_ports: Vec<SerialPortDescriptor>,
@@ -322,12 +327,15 @@ pub struct GuiState {
     pub ppi_viewer:    PpiViewerControl,
 
     pub videocard_state: VideoCardState,
+    #[cfg(feature = "use_display")]
     pub display_info:    Vec<DisplayTargetInfo>,
 
     pub disassembly_viewer: DisassemblyControl,
     pub dma_viewer: DmaViewerControl,
     pub trace_viewer: InstructionHistoryControl,
+    #[cfg(feature = "use_display")]
     pub composite_adjust: CompositeAdjustControl,
+    #[cfg(feature = "use_display")]
     pub scaler_adjust: ScalerAdjustControl,
     pub ivt_viewer: IvtViewerControl,
     pub io_stats_viewer: IoStatsViewerControl,
@@ -347,6 +355,8 @@ pub struct GuiState {
 
     //pub(crate) global_zoom: f32,
     pub modal: ModalState,
+
+    pub fluxfox_render_callback: Arc<dyn RenderCallback>,
 }
 
 impl GuiState {
@@ -354,6 +364,7 @@ impl GuiState {
     pub fn new(
         exec_control: Rc<RefCell<ExecutionControl>>,
         thread_sender: crossbeam_channel::Sender<FrontendThreadEvent<Arc<DiskImage>>>,
+        render_callback: Arc<dyn RenderCallback>,
     ) -> Self {
         // Set default values for window open flags
 
@@ -423,6 +434,7 @@ impl GuiState {
             sound_sources: Vec::new(),
 
             display_apertures: Default::default(),
+            #[cfg(feature = "use_display")]
             scaler_modes: Vec::new(),
             scaler_presets: Vec::new(),
 
@@ -435,7 +447,7 @@ impl GuiState {
             gamepads: Vec::new(),
             gameport: false,
             controller_layout: Default::default(),
-            selected_gamepad: [None, None],
+            selected_joystick_mapping: [None, None],
 
             serial_ports: Vec::new(),
             #[cfg(feature = "use_serialport")]
@@ -462,11 +474,14 @@ impl GuiState {
             ppi_viewer: PpiViewerControl::new(),
 
             videocard_state: Default::default(),
+            #[cfg(feature = "use_display")]
             display_info: Vec::new(),
             disassembly_viewer: DisassemblyControl::new(),
             dma_viewer: DmaViewerControl::new(),
             trace_viewer: InstructionHistoryControl::new(),
+            #[cfg(feature = "use_display")]
             composite_adjust: CompositeAdjustControl::new(),
+            #[cfg(feature = "use_display")]
             scaler_adjust: ScalerAdjustControl::new(),
             ivt_viewer: IvtViewerControl::new(),
             io_stats_viewer: IoStatsViewerControl::new(),
@@ -485,6 +500,7 @@ impl GuiState {
             cart_tree_menu: FileTreeMenu::new(),
             //global_zoom: 1.0,
             modal: ModalState::new(),
+            fluxfox_render_callback: render_callback,
         }
     }
 
@@ -679,8 +695,10 @@ impl GuiState {
     }
 
     pub fn set_hdd_selection(&mut self, drive: usize, idx: Option<usize>, name: Option<PathBuf>) {
-        self.hdds[drive].selected_idx = idx;
-        self.hdds[drive].selected_path = name;
+        if drive < self.hdds.len() {
+            self.hdds[drive].selected_idx = idx;
+            self.hdds[drive].selected_path = name;
+        }
     }
 
     pub fn set_cart_slots(&mut self, slotct: usize) {
@@ -710,6 +728,7 @@ impl GuiState {
     }
 
     /// Set list of available scaler modes
+    #[cfg(feature = "use_display")]
     pub fn set_scaler_modes(&mut self, modes: Vec<ScalerMode>) {
         log::debug!("set_scaler_modes(): Installed {} scaler modes", modes.len());
         self.scaler_modes = modes;
@@ -721,6 +740,7 @@ impl GuiState {
         self.text_mode_viewer.set_cards(cards.clone());
     }
 
+    #[cfg(feature = "use_display")]
     pub fn set_scaler_presets(&mut self, presets: &Vec<ScalerPreset>) {
         self.scaler_presets = presets.iter().map(|p| p.name.clone()).collect();
         log::debug!("installed scaler presets: {:?}", self.scaler_presets);
@@ -742,8 +762,8 @@ impl GuiState {
     pub fn set_gamepads(&mut self, gamepads: Vec<GamepadInfo>) {
         self.gamepads = gamepads;
 
-        for mapping in &mut self.selected_gamepad {
-            if let Some(gamepad) = mapping {
+        for mapping in &mut self.selected_joystick_mapping {
+            if let Some(JoystickMapping::Gamepad(gamepad)) = mapping {
                 if self.gamepads.iter().find(|g| g.internal_id == *gamepad).is_none() {
                     // Gamepad is no longer available, so clear the mapping.
                     log::debug!("Gamepad id {} is no longer valid. Clearing mapping.", gamepad);
@@ -753,20 +773,23 @@ impl GuiState {
         }
     }
 
-    pub fn set_gamepad_mapping(&mut self, mapping: (Option<GamepadId>, Option<GamepadId>)) {
-        if let Some(id) = mapping.0 {
-            self.selected_gamepad[0] = Some(id);
-        }
-        else {
-            self.selected_gamepad[0] = None;
-        }
+    pub fn set_gamepad_mapping(&mut self, mapping: (Option<JoystickMapping>, Option<JoystickMapping>)) {
+        self.selected_joystick_mapping[0] = mapping.0;
+        self.selected_joystick_mapping[1] = mapping.1;
 
-        if let Some(id) = mapping.1 {
-            self.selected_gamepad[1] = Some(id);
-        }
-        else {
-            self.selected_gamepad[1] = None;
-        }
+        // if let Some(JoystickMapping::Gamepad(id)) = mapping.0 {
+        //     self.selected_joystick_mapping[0] = Some(id);
+        // }
+        // else {
+        //     self.selected_joystick_mapping[0] = None;
+        // }
+        //
+        // if let Some(JoystickMapping::Gamepad(id)) = mapping.1 {
+        //     self.selected_joystick_mapping[1] = Some(id);
+        // }
+        // else {
+        //     self.selected_joystick_mapping[1] = None;
+        // }
 
         let gamepad_mapping = GuiEnum::GamepadMapping(mapping);
         self.set_option_enum(gamepad_mapping, Some(GuiVariableContext::default()));
@@ -838,7 +861,8 @@ impl GuiState {
         self.sound_sources.iter().any(|source| source.name.contains("SN76489"))
     }
 
-    /// Initialize GUI Display enum state given a vector of DisplayInfo fields.  
+    /// Initialize GUI Display enum state given a vector of DisplayInfo fields.
+    #[cfg(feature = "use_display")]
     pub fn init_display_info(&mut self, vci: Vec<DisplayTargetInfo>) {
         self.display_info = vci;
 
@@ -911,6 +935,7 @@ impl GuiState {
     }
 
     // This is a hack interface - figure out where to better expose this state
+    #[cfg(feature = "use_display")]
     pub fn primary_video_has_bezel(&mut self) -> bool {
         let vctx = GuiVariableContext::Display(DtHandle::MAIN);
         if !self.display_info.is_empty() {
@@ -920,6 +945,10 @@ impl GuiState {
                 return checked;
             }
         }
+        false
+    }
+    #[cfg(not(feature = "use_display"))]
+    pub fn primary_video_has_bezel(&mut self) -> bool {
         false
     }
 

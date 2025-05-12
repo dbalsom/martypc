@@ -30,22 +30,21 @@
 
 */
 
+use fluxfox_egui::RenderCallback;
 use std::sync::{Arc, RwLock};
 
 use crate::{
     layouts::{Layout::KeyValue, MartyLayout},
-    widgets::{sector_status::sector_status, tab_group::MartyTabGroup},
+    widgets::tab_group::MartyTabGroup,
     *,
 };
 
 use fluxfox::{prelude::*, track_schema::GenericTrackElement, visualization::prelude::*};
 use fluxfox_egui::controls::disk_visualization::{DiskVisualization, VizEvent};
 
+use fluxfox_egui::controls::track_list::{TrackListControl, TrackListControlBuilder};
 use marty_core::devices::floppy_drive::FloppyImageState;
 
-use crossbeam_channel;
-
-pub const SECTOR_ROW_SIZE: usize = 9;
 pub const VIZ_RESOLUTION: u32 = 512;
 
 #[repr(u8)]
@@ -84,6 +83,8 @@ pub struct FloppyViewerControl {
     tab_group: MartyTabGroup,
     resolution: FloppyViewerResolution,
 
+    disks: [Option<Arc<RwLock<DiskImage>>>; 4],
+    track_widgets: [TrackListControl; 4],
     viz: [DiskVisualization; 4],
 
     palette:   HashMap<GenericTrackElement, VizColor>,
@@ -95,9 +96,9 @@ pub struct FloppyViewerControl {
 impl FloppyViewerControl {
     pub fn new() -> Self {
         let mut tab_group = MartyTabGroup::new();
-        tab_group.add_tab("Track Layout");
-        tab_group.add_tab("Sector Data");
         tab_group.add_tab("Disk View");
+        tab_group.add_tab("Sector Data");
+        tab_group.add_tab("Track Layout");
 
         let viz_light_red: VizColor = VizColor::from_rgba8(180, 0, 0, 255);
         let vis_purple: VizColor = VizColor::from_rgba8(180, 0, 180, 255);
@@ -106,6 +107,17 @@ impl FloppyViewerControl {
         let pal_medium_blue = VizColor::from_rgba8(0x3b, 0x5d, 0xc9, 0xff);
         let pal_light_blue = VizColor::from_rgba8(0x41, 0xa6, 0xf6, 0xff);
         let pal_orange = VizColor::from_rgba8(0xef, 0x7d, 0x57, 0xff);
+
+        let track_list_control = TrackListControlBuilder::default()
+            .with_header_text(false)
+            .with_track_menu(false)
+            .with_view_sectors(false)
+            .with_track_type_colors(
+                Color32::from_rgb(0x38, 0xb7, 0x64),
+                Color32::from_rgb(0x25, 0x71, 0x79),
+                Color32::from_rgb(0x3b, 0x5d, 0xc9),
+            )
+            .build();
 
         Self {
             init: false,
@@ -116,14 +128,19 @@ impl FloppyViewerControl {
             image_state: Vec::new(),
             tab_group,
             resolution: FloppyViewerResolution::Track,
-
+            disks: [None, None, None, None],
+            track_widgets: [
+                track_list_control.clone(),
+                track_list_control.clone(),
+                track_list_control.clone(),
+                track_list_control.clone(),
+            ],
             viz: [
                 DiskVisualization::default(),
                 DiskVisualization::default(),
                 DiskVisualization::default(),
                 DiskVisualization::default(),
             ],
-
             palette: HashMap::from([
                 (GenericTrackElement::SectorData, pal_medium_green),
                 (GenericTrackElement::SectorBadData, pal_orange),
@@ -133,20 +150,18 @@ impl FloppyViewerControl {
                 (GenericTrackElement::SectorBadHeader, pal_medium_blue),
                 (GenericTrackElement::Marker, vis_purple),
             ]),
-
             viz_state: vec![VizState::default(); 4],
-
             rendered_disk: 0,
         }
     }
 
-    pub fn init(&mut self, ctx: egui::Context) {
+    pub fn init(&mut self, ctx: egui::Context, render_callback: Arc<dyn RenderCallback>) {
         if !self.init {
             self.viz = [
-                DiskVisualization::new(ctx.clone(), VIZ_RESOLUTION),
-                DiskVisualization::new(ctx.clone(), VIZ_RESOLUTION),
-                DiskVisualization::new(ctx.clone(), VIZ_RESOLUTION),
-                DiskVisualization::new(ctx.clone(), VIZ_RESOLUTION),
+                DiskVisualization::new(ctx.clone(), VIZ_RESOLUTION, render_callback.clone()),
+                DiskVisualization::new(ctx.clone(), VIZ_RESOLUTION, render_callback.clone()),
+                DiskVisualization::new(ctx.clone(), VIZ_RESOLUTION, render_callback.clone()),
+                DiskVisualization::new(ctx.clone(), VIZ_RESOLUTION, render_callback.clone()),
             ];
             self.init = true;
         }
@@ -165,7 +180,7 @@ impl FloppyViewerControl {
 
         let tab = self.tab_group.selected_tab();
         self.resolution = match tab {
-            0 => FloppyViewerResolution::Track,
+            0 => FloppyViewerResolution::Disk,
             1 => FloppyViewerResolution::Sector,
             _ => FloppyViewerResolution::Disk,
         };
@@ -176,9 +191,9 @@ impl FloppyViewerControl {
             self.draw_selectors(self.resolution, ui, _events);
 
             match tab {
-                0 => self.draw_track_layout(ui, _events),
+                0 => self.draw_disk_data(ui, _events),
                 1 => self.draw_sector_data(ui, _events),
-                _ => self.draw_disk_data(ui, _events),
+                _ => self.draw_track_layout(ui, _events),
             }
         }
     }
@@ -244,15 +259,12 @@ impl FloppyViewerControl {
                 if resolution > FloppyViewerResolution::Track {
                     MartyLayout::kv_row(ui, "Sector:", None, |ui| {
                         // Sectors are 1-indexed
+                        let sector_ct = state.get_sector_ct(self.head_idx, self.track_idx);
                         egui::ComboBox::from_id_salt("sector-idx-select")
-                            .selected_text(format!(
-                                "{}/{}",
-                                self.sector_idx,
-                                state.get_sector_ct(self.head_idx, self.track_idx)
-                            ))
+                            .selected_text(format!("{}/{}", self.sector_idx, sector_ct))
                             .show_ui(ui, |ui| {
-                                for i in 0..state.get_sector_ct(self.head_idx, self.track_idx) {
-                                    ui.selectable_value(&mut self.sector_idx, i + 1, format!("{}", i + i));
+                                for i in 0..sector_ct {
+                                    ui.selectable_value(&mut self.sector_idx, i + 1, format!("{}", i + 1));
                                 }
                             });
                     });
@@ -262,45 +274,46 @@ impl FloppyViewerControl {
     }
 
     pub fn draw_track_layout(&mut self, ui: &mut egui::Ui, _events: &mut GuiEventQueue) {
-        if let Some(state) = &self.image_state[self.drive_idx] {
-            let track_opt = state
-                .sector_map
-                .get(self.head_idx)
-                .and_then(|map| map.get(self.track_idx));
-
-            if let Some(track) = track_opt {
-                ui.group(|ui| {
-                    if track.len() == 0 {
-                        ui.horizontal(|ui| {
-                            ui.label("No sectors found on this track.");
-                        });
-                        return;
-                    }
-
-                    let rows = (track.len() + (SECTOR_ROW_SIZE - 1)) / SECTOR_ROW_SIZE;
-
-                    egui::Grid::new("floppy-sector-grid")
-                        .striped(false)
-                        .spacing([10.0, 10.0])
-                        .show(ui, |ui| {
-                            for row in 0..rows {
-                                for col in 0..SECTOR_ROW_SIZE {
-                                    let idx = row * SECTOR_ROW_SIZE + col;
-                                    if idx < track.len() {
-                                        ui.horizontal(|ui| {
-                                            ui.label(
-                                                egui::RichText::new(format!("s:{:02X}", track[idx].chsn.s()))
-                                                    .monospace(),
-                                            );
-                                            sector_status(ui, &track[idx], true);
-                                        });
-                                    }
-                                }
-                                ui.end_row();
-                            }
-                        });
-                });
-            }
+        if let Some(_state) = &self.image_state[self.drive_idx] {
+            self.track_widgets[self.drive_idx].show(ui);
+            // let track_opt = state
+            //     .sector_map
+            //     .get(self.head_idx)
+            //     .and_then(|map| map.get(self.track_idx));
+            //
+            // if let Some(track) = track_opt {
+            //     ui.group(|ui| {
+            //         if track.len() == 0 {
+            //             ui.horizontal(|ui| {
+            //                 ui.label("No sectors found on this track.");
+            //             });
+            //             return;
+            //         }
+            //
+            //         let rows = (track.len() + (SECTOR_ROW_SIZE - 1)) / SECTOR_ROW_SIZE;
+            //
+            //         egui::Grid::new("floppy-sector-grid")
+            //             .striped(false)
+            //             .spacing([10.0, 10.0])
+            //             .show(ui, |ui| {
+            //                 for row in 0..rows {
+            //                     for col in 0..SECTOR_ROW_SIZE {
+            //                         let idx = row * SECTOR_ROW_SIZE + col;
+            //                         if idx < track.len() {
+            //                             ui.horizontal(|ui| {
+            //                                 ui.label(
+            //                                     egui::RichText::new(format!("s:{:02X}", track[idx].chsn.s()))
+            //                                         .monospace(),
+            //                                 );
+            //                                 sector_status(ui, &track[idx], true);
+            //                             });
+            //                         }
+            //                     }
+            //                     ui.end_row();
+            //                 }
+            //             });
+            //     });
+            // }
         }
         else {
             ui.horizontal(|ui| {
@@ -309,7 +322,7 @@ impl FloppyViewerControl {
         }
     }
 
-    fn draw_sector_data(&mut self, ui: &mut egui::Ui, _events: &mut GuiEventQueue) {}
+    fn draw_sector_data(&mut self, _ui: &mut egui::Ui, _events: &mut GuiEventQueue) {}
 
     fn draw_disk_data(&mut self, ui: &mut egui::Ui, _events: &mut GuiEventQueue) {
         // Render the visualization if it hasn't been rendered yet
@@ -349,9 +362,25 @@ impl FloppyViewerControl {
 
     pub fn set_disk(&mut self, drive: usize, disk_lock: Arc<RwLock<DiskImage>>) {
         let drive = drive % 4;
+        self.disks[drive] = Some(disk_lock.clone());
+
+        if let Some(disk) = disk_lock.read().ok() {
+            self.track_widgets[drive].update(&disk);
+        }
+        else {
+            log::error!("Failed to lock disk image");
+        }
+
         self.viz[drive].update_disk(disk_lock);
         log::warn!("set_disk: drive: {}, setting pending update", drive);
         self.viz_state[drive].update_pending = true;
+    }
+
+    pub fn remove_disk(&mut self, drive: usize) {
+        let drive = drive % 4;
+        self.disks[drive] = None;
+        //self.viz[drive].remove_disk();
+        self.viz_state[drive] = VizState::default();
     }
 
     fn render(&mut self, drive: usize) {

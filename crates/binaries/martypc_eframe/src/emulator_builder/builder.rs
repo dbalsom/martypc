@@ -30,24 +30,25 @@
 //! that need flexibility in how they configure and build their emulator
 //! instances.
 
-use std::{
-    cell::RefCell,
-    io::Write,
-    path::{Path, PathBuf},
-    rc::Rc,
-};
-
 use crate::{
     counter::Counter,
     emulator::{
-        joystick_state::JoystickData,
+        joystick_state::JoystickState,
         keyboard_state::KeyboardData,
-        mouse_state::MouseData,
+        mouse_state::MouseState,
         EmuFlags,
         Emulator,
     },
     input,
     input::HotkeyManager,
+    PlatformRenderCallback,
+};
+use std::{
+    cell::RefCell,
+    io::Write,
+    path::{Path, PathBuf},
+    rc::Rc,
+    sync::Arc,
 };
 
 use marty_config::ConfigFileParams;
@@ -72,7 +73,6 @@ use marty_frontend_common::{
     vhd_manager::VhdManager,
 };
 
-use anyhow::{anyhow, Error};
 use marty_egui::{GuiEnum, GuiVariableContext};
 use marty_frontend_common::marty_common::MartyHashMap;
 use url::Url;
@@ -619,15 +619,12 @@ impl EmulatorBuilder {
 
         // Initialize input device state.
         let kb_data = KeyboardData::new();
-        let mouse_data = MouseData::new(config.emulator.input.reverse_mouse_buttons);
+        let mouse_data = MouseState::new(config.emulator.input.reverse_mouse_buttons);
         log::debug!(
             "Reverse mouse buttons is: {}",
             config.emulator.input.reverse_mouse_buttons
         );
-        let joy_data = JoystickData::new(
-            config.emulator.input.joystick_keys.clone(),
-            config.emulator.input.keyboard_joystick,
-        );
+        let joy_data = JoystickState::new(config.emulator.input.joystick_keys.clone());
 
         // Make a statistics counter
         let stat_counter = Counter::new();
@@ -728,10 +725,16 @@ impl EmulatorBuilder {
 
         // Create a gamepad interface. If a gamepad backend feature is not enabled, this will be
         // a stub interface.
-        let gi = input::GamepadInterface::new(
+        let mut gi = input::GamepadInterface::new(
             config.emulator.input.gamepad_auto_connect,
             config.emulator.input.gamepad_dead_zone.unwrap_or(0.0),
         );
+
+        // Toggle joykey emulation if enabled in config.
+        if config.emulator.input.keyboard_joystick {
+            log::debug!("Enabling joykey emulation for joystick slot 0");
+            gi.toggle_joykeys(0);
+        }
 
         // A DisplayManager is front-end specific, so we'll expect the front-end to create one
         // after we have built the emulator.
@@ -739,8 +742,12 @@ impl EmulatorBuilder {
         // Create a channel for receiving thread events (File open requests, etc.)
         let (sender, receiver) = crossbeam_channel::unbounded();
 
+        // Create a render callback for the GUI. This is primarily used to allow fluxfox_egui to perform background rendering.
+        // It simply uses spawn on native, but on web we use web workers instead via an obscene hack.
+        let render_callback = Arc::new(PlatformRenderCallback::default());
+
         // Create a GUI state object
-        let mut gui = GuiState::new(exec_control.clone(), sender.clone());
+        let mut gui = GuiState::new(exec_control.clone(), sender.clone(), render_callback);
 
         // Set list of virtual serial ports
         gui.set_serial_ports(machine.bus().enumerate_serial_ports());

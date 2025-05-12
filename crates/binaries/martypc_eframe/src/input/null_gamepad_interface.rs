@@ -25,10 +25,13 @@
     --------------------------------------------------------------------------
 */
 
-use marty_frontend_common::types::gamepad::{GamepadId, GamepadInfo};
+//! Provide a [GamepadInterface] implementation that does not use any gamepad
+//! input library. `Joykey` mappings are still supported.
+
+use marty_frontend_common::types::gamepad::{GamepadId, GamepadInfo, JoystickMapping};
 
 pub struct GamepadInterface {
-    dummy: bool,
+    mapping: (Option<JoystickMapping>, Option<JoystickMapping>),
 }
 
 pub enum GamepadEvent {
@@ -42,24 +45,93 @@ impl GamepadInterface {
         Self { dummy: false }
     }
 
+    #[inline]
     pub fn gamepads(&self) -> impl Iterator<Item = GamepadInfo> + '_ {
         std::iter::empty()
     }
 
+    #[inline]
     pub fn next_event(&mut self) -> Option<()> {
         None
     }
 
+    #[inline]
     pub fn poll(&mut self) -> Vec<GamepadEvent> {
         Vec::new()
     }
 
-    pub fn mapping(&self) -> (Option<GamepadId>, Option<GamepadId>) {
-        (None, None)
+    #[inline]
+    pub fn mapping(&self) -> (Option<JoystickMapping>, Option<JoystickMapping>) {
+        self.mapping
     }
-    pub fn set_mapping(&mut self, mapping: (Option<GamepadId>, Option<GamepadId>)) {}
 
+    #[inline]
+    pub fn set_mapping(&mut self, mapping: (Option<JoystickMapping>, Option<JoystickMapping>)) {
+        self.mapping = mapping;
+    }
+
+    #[inline]
     pub fn select_id(&self, id: GamepadId) -> Option<usize> {
         None
+    }
+
+    #[inline]
+    pub fn is_joykey(&self, slot: usize) -> bool {
+        if slot == 0 {
+            matches!(self.mapping.0, Some(JoystickMapping::JoyKeys))
+        }
+        else if slot == 1 {
+            matches!(self.mapping.1, Some(JoystickMapping::JoyKeys))
+        }
+        else {
+            false
+        }
+    }
+
+    /// Return which joystick slot is mapped to a joykey mapping, or None
+    /// if no joykey mapping is set.
+    #[inline]
+    pub fn joykey_mapping(&self) -> Option<usize> {
+        if let Some(JoystickMapping::JoyKeys) = self.mapping.0 {
+            Some(0)
+        }
+        else if let Some(JoystickMapping::JoyKeys) = self.mapping.1 {
+            Some(1)
+        }
+        else {
+            None
+        }
+    }
+
+    pub fn toggle_joykeys(&mut self, slot: usize) -> bool {
+        if slot == 0 {
+            if self.mapping.0 == Some(JoystickMapping::JoyKeys) {
+                self.mapping.0 = None;
+                false
+            }
+            else {
+                self.mapping.0 = Some(JoystickMapping::JoyKeys);
+                if self.mapping.1 == Some(JoystickMapping::JoyKeys) {
+                    self.mapping.1 = None;
+                }
+                true
+            }
+        }
+        else if slot == 1 {
+            if self.mapping.1 == Some(JoystickMapping::JoyKeys) {
+                self.mapping.1 = None;
+                false
+            }
+            else {
+                self.mapping.1 = Some(JoystickMapping::JoyKeys);
+                if self.mapping.0 == Some(JoystickMapping::JoyKeys) {
+                    self.mapping.0 = None;
+                }
+                true
+            }
+        }
+        else {
+            false
+        }
     }
 }

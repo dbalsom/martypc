@@ -117,12 +117,10 @@ impl ByteQueue for BusInterface {
 
     fn q_peek_farptr16(&mut self) -> (u16, u16) {
         if self.cursor < self.memory.len() - 3 {
-            let offset: u16 = (self.peek_u8(self.cursor).unwrap_or(0xFF) as u16
-                | self.peek_u8(self.cursor + 1).unwrap_or(0xFF) as u16)
-                << 8;
-            let segment: u16 = (self.peek_u8(self.cursor + 2).unwrap_or(0xFF) as u16
-                | self.peek_u8(self.cursor + 3).unwrap_or(0xFF) as u16)
-                << 8;
+            let offset: u16 = self.peek_u8(self.cursor).unwrap_or(0xFF) as u16
+                | (self.peek_u8(self.cursor + 1).unwrap_or(0xFF) as u16) << 8;
+            let segment: u16 = self.peek_u8(self.cursor + 2).unwrap_or(0xFF) as u16
+                | (self.peek_u8(self.cursor + 3).unwrap_or(0xFF) as u16) << 8;
             return (segment, offset);
         }
         (0xffffu16, 0xffffu16)

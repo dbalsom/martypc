@@ -25,25 +25,24 @@
     --------------------------------------------------------------------------
 */
 use crate::{
-    emulator::{mouse_state::MouseData, Emulator},
+    emulator::Emulator,
     emulator_builder::EmulatorBuilder,
     event_loop::thread_events::handle_thread_event,
     timestep_update::process_update,
     MARTY_ICON,
 };
-use std::path::PathBuf;
+use std::{ffi::OsString, path::PathBuf};
 
 use display_manager_eframe::{
     builder::EFrameDisplayManagerBuilder,
     BufferDimensions,
-    DisplayTargetContext,
     EFrameBackend,
     EFrameDisplayManager,
     TextureDimensions,
 };
 use marty_display_common::display_manager::{DisplayManager, DmGuiOptions};
 use marty_egui_eframe::{context::GuiRenderContext, EGUI_MENU_BAR_HEIGHT};
-use marty_frontend_common::{thread_events::*, timestep_manager::TimestepManager};
+use marty_frontend_common::timestep_manager::TimestepManager;
 use marty_web_helpers::FetchResult;
 
 #[cfg(feature = "use_winit")]
@@ -62,8 +61,6 @@ use crate::emulator_builder::builder::EmuBuilderError;
 use crate::wasm::*;
 use egui::{Context, CursorGrab, RawInput, Sense, ViewportCommand, ViewportId};
 
-#[cfg(feature = "use_gilrs")]
-use gilrs::Gilrs;
 use marty_display_common::display_manager::{DisplayTargetType, DtHandle};
 use marty_egui::state::FloppyDriveSelection;
 use marty_frontend_common::{color::MartyColor, constants::NORMAL_NOTIFICATION_TIME};
@@ -188,7 +185,7 @@ impl MartyApp {
             Ok(emu) => emu,
             Err(e) => {
                 log::error!("Failed to build emulator: {}", e);
-                let mut dialog = rfd::MessageDialog::new()
+                let dialog = rfd::MessageDialog::new()
                     .set_title("Error initializing MartyPC!")
                     .set_level(rfd::MessageLevel::Error);
 
@@ -511,8 +508,14 @@ impl MartyApp {
 
         // Attach VHD images specified in config.
         match emu.mount_vhds() {
-            Ok(_) => {
+            Ok(mounted_vhds) => {
                 log::debug!("Mounted VHDs from config");
+                for vhd in mounted_vhds {
+                    log::debug!("Mounted VHD: {} in drive {}", vhd.name, vhd.index);
+                    let pathbuf = PathBuf::from(vhd.name);
+                    let filename_pathbuf = PathBuf::from(pathbuf.file_name().unwrap_or(&*OsString::new()));
+                    emu.gui.set_hdd_selection(vhd.index, None, Some(filename_pathbuf));
+                }
             }
             Err(e) => {
                 log::error!("Failed to mount VHDs from config: {}", e);
@@ -582,7 +585,7 @@ impl eframe::App for MartyApp {
         // }
 
         // Get current viewport focus state.
-        let vi = ctx.input(|i| {
+        ctx.input(|i| {
             let vi = i.viewport();
 
             self.ppp = vi.native_pixels_per_point;
@@ -685,9 +688,9 @@ impl eframe::App for MartyApp {
             ctx.input(|i| {
                 let dtc = dm.main_display_target();
                 match dtc.try_read() {
-                    Ok(mut dtc_ref) => {
+                    Ok(dtc_ref) => {
                         if dtc_ref.grabbed() {
-                            /// Handle mouse movement
+                            // Handle mouse movement
                             if let Some(motion) = i.pointer.motion() {
                                 let (dx, dy) = motion.into();
                                 emu.mouse_data.frame_delta_x += dx;
@@ -697,7 +700,7 @@ impl eframe::App for MartyApp {
                                     emu.mouse_data.have_update = true;
                                 }
                             }
-                            /// Handle mouse buttons
+                            // Handle mouse buttons
                             if i.pointer.button_pressed(egui::PointerButton::Primary) {
                                 emu.mouse_data.l_button_was_pressed = true;
                                 emu.mouse_data.l_button_is_pressed = true;

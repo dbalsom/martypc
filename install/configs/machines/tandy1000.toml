@@ -124,6 +124,7 @@ overlays = [
 # The Tandy SL was a refresh of the Tandy 1000SX. It features a 8086 CPU (upgraded from the 8088)
 # that runs at either 4.77 or 8Mhz.
 # The Tandy SL BIOS revision bumped to 02.01.00 over the HX.
+# NOTE: This is a placeholder configuration. The Tandy SL is not yet supported in MartyPC.
 name = "tandy1000sl"
 type = "Tandy1000SL"
 rom_set = "auto"

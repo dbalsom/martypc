@@ -12,10 +12,8 @@ crate-type = ["lib"]
 
 [dependencies]
 marty_frontend_common =  { path = "../marty_frontend_common" }
-marty_display_common =  { path = "../marty_display_common" }
 marty_egui = { path = "../marty_egui" }
 log.workspace = true
-web-time.workspace = true
 
 # EGUI dependencies
 # ---------------------------------------------------------------------------------------------------------------------

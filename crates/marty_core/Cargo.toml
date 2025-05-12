@@ -63,6 +63,8 @@ identity_op = "allow"
 wildcard_in_or_patterns = "allow"
 needless_update = "allow"
 comparison_chain = "allow"
+uninlined_format_args = "allow"
+bool_assert_comparison = "allow"
 
 [[bench]]
 name = "cga_bench"

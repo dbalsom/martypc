@@ -53,15 +53,9 @@ pub use gilrs_gamepad_interface::GamepadInterface;
 #[cfg(not(feature = "use_gilrs"))]
 pub use null_gamepad_interface::GamepadInterface;
 
-use std::{
-    collections::{HashMap, HashSet},
-    env::consts::OS,
-};
+use std::env::consts::OS;
 
 use marty_core::keys::MartyKey;
-use marty_frontend_common::{HotkeyConfigEntry, HotkeyEvent, HotkeyScope};
-
-use strum::IntoEnumIterator;
 
 #[cfg(feature = "use_winit")]
 use winit::keyboard::KeyCode;

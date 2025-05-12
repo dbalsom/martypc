@@ -38,6 +38,8 @@ pub fn render_frame(emu: &mut Emulator, dm: &mut EFrameDisplayManager) {
     // First, run each renderer to resolve all videocard views.
     // Every renderer will have an associated card and backend.
     dm.for_each_renderer(|renderer, vid, backend_buf| {
+        // Clippy false positive - we need a mutable videocard
+        #[allow(unused_mut)]
         if let Some(mut videocard) = emu.machine.bus_mut().video_mut(&vid) {
             // Check if the emulator is paused - if paused, optionally select the back buffer
             // so we can watch the raster beam draw

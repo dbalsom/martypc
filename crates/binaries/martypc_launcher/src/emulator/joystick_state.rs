@@ -7,7 +7,7 @@ use std::collections::HashMap;
 #[allow(dead_code)]
 #[derive(Default)]
 pub struct JoystickData {
-    pub enabled:   bool,
+    pub joykeys_enabled: bool,
     pub key_state: HashMap<MartyKey, (JoyKeyInput, bool)>,
     pub joy_state: HashMap<JoyKeyInput, bool>,
 }
@@ -19,7 +19,7 @@ impl JoystickData {
             jd.key_state.insert(key.key, (key.input, false));
             jd.joy_state.insert(key.input, false);
         }
-        jd.enabled = enabled;
+        jd.joykeys_enabled = enabled;
         jd
     }
 

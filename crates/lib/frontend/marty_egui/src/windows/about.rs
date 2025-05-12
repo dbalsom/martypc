@@ -97,17 +97,6 @@ impl AboutDialog {
     }
 
     pub fn draw(&mut self, ui: &mut egui::Ui, _ctx: &Context, _events: &mut GuiEventQueue) {
-        /*
-        let about_texture: &egui::TextureHandle = self.texture.get_or_insert_with(|| {
-            ctx.load_texture(
-                "logo",
-                get_ui_image(UiImage::Logo),
-                Default::default()
-            )
-        });
-        */
-
-        //ui.image(about_texture, about_texture.size_vec2());
         ui.add(
             egui::Image::new(egui::include_image!("../../../../../../assets/marty_logo_about.png")), //        .fit_to_original_size(1.0),
         );

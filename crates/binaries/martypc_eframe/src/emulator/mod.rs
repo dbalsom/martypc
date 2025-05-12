@@ -33,7 +33,6 @@ pub mod keyboard_state;
 pub mod mouse_state;
 
 use anyhow::Error;
-use display_manager_eframe::EFrameDisplayManager;
 use fluxfox::DiskImage;
 use marty_config::ConfigFileParams;
 use std::{
@@ -45,10 +44,12 @@ use std::{
 
 #[cfg(target_arch = "wasm32")]
 use crate::wasm::file_open;
+#[cfg(target_arch = "wasm32")]
+use marty_frontend_common::thread_events::{FileOpenContext, FileSelectionContext};
+
 use crate::{
     counter::Counter,
-    emulator::{joystick_state::JoystickData, keyboard_state::KeyboardData, mouse_state::MouseData},
-    floppy::load_floppy::handle_load_floppy,
+    emulator::{joystick_state::JoystickState, keyboard_state::KeyboardData, mouse_state::MouseState},
     input::{GamepadInterface, HotkeyManager},
     sound::SoundInterface,
 };
@@ -62,10 +63,9 @@ use marty_egui::{state::GuiState, GuiBoolean, GuiWindow};
 use marty_frontend_common::{
     cartridge_manager::CartridgeManager,
     floppy_manager::FloppyManager,
-    marty_common::types::ui::MouseCaptureMode,
     resource_manager::ResourceManager,
     rom_manager::RomManager,
-    thread_events::{FileOpenContext, FileSelectionContext, FrontendThreadEvent},
+    thread_events::FrontendThreadEvent,
     timestep_manager::PerfSnapshot,
     types::floppy::FloppyImageSource,
     vhd_manager::VhdManager,
@@ -95,8 +95,8 @@ pub struct Emulator {
     pub machine: Machine,
     pub machine_events: Vec<MachineEvent>,
     pub exec_control: Rc<RefCell<ExecutionControl>>,
-    pub mouse_data: MouseData,
-    pub joy_data: JoystickData,
+    pub mouse_data: MouseState,
+    pub joy_data: JoystickState,
     pub kb_data: KeyboardData,
     pub stat_counter: Counter,
     pub gui: GuiState,
@@ -231,12 +231,6 @@ impl Emulator {
         // Populate the list of scaler modes, defined by display_scaler trait module
         self.gui.set_scaler_modes(SCALER_MODES.to_vec());
 
-        // Disable warpspeed feature if 'devtools' flag not on.
-        #[cfg(not(feature = "devtools"))]
-        {
-            self.config.emulator.warpspeed = false;
-        }
-
         // Set up cycle trace viewer
         self.gui
             .cycle_trace_viewer
@@ -299,7 +293,7 @@ impl Emulator {
     /// Insert floppy disks into floppy drives.
     pub fn mount_floppies(
         &mut self,
-        sender: crossbeam_channel::Sender<FrontendThreadEvent<Arc<DiskImage>>>,
+        _sender: crossbeam_channel::Sender<FrontendThreadEvent<Arc<DiskImage>>>,
     ) -> Result<Vec<MountInfo>, Error> {
         let floppy_max = self.machine.bus().floppy_drive_ct();
         let mut image_names: Vec<Option<String>> = vec![None; floppy_max];
@@ -330,7 +324,7 @@ impl Emulator {
                 log::debug!("Loading floppy disk image: {:?}", floppy_path);
                 let fsc = FileSelectionContext::Path(floppy_path);
                 let context = FileOpenContext::FloppyDiskImage { drive_select: idx, fsc };
-                file_open::open_file(context, sender.clone());
+                file_open::open_file(context, _sender.clone());
             }
             return Ok(Vec::new());
         }
@@ -396,11 +390,12 @@ impl Emulator {
     /// Images specified in the main configuration will override images specified in a machine configuration.
     /// Images are mounted in the order they are specified, starting with the first hard disk controller, and first
     /// hard disk, and continuing until all images are mounted, or there are no more hard disks.
-    pub fn mount_vhds(&mut self) -> Result<(), Error> {
+    pub fn mount_vhds(&mut self) -> Result<Vec<MountInfo>, Error> {
         // First, retrieve the list of VHD images specified in the machine configuration.
         let mut vhd_names: Vec<Option<String>> = self.get_vhds_from_machine();
         let machine_max = vhd_names.len();
 
+        let mut mount_info_vec = Vec::new();
         for (drive_i, vhd) in self
             .config
             .emulator
@@ -413,27 +408,54 @@ impl Emulator {
         {
             if drive_i >= machine_max {
                 // Add new drive
+                println!("Adding VHD image {:?} to drive index {}", vhd.filename, drive_i);
                 vhd_names.push(Some(vhd.filename.clone()));
             }
             else {
                 // Replace existing drive
+                println!("Replacing VHD image in machine configuration with {:?}", vhd.filename);
                 vhd_names[drive_i] = Some(vhd.filename.clone());
             }
         }
 
         let mut drive_idx: usize = 0;
+
         for vhd_name in vhd_names.into_iter().filter_map(|x| x) {
             let vhd_os_name: OsString = vhd_name.into();
 
+            println!("Loading VHD image: {:?}", vhd_os_name);
+
             #[cfg(not(target_arch = "wasm32"))]
-            match self.vhd_manager.load_vhd_file_by_name(drive_idx, &vhd_os_name) {
-                Ok((vhd_file, vhd_idx)) => {
-                    self.load_vhd(Box::new(vhd_file), drive_idx, &vhd_os_name, Some(vhd_idx))?;
-                }
-                Err(err) => {
-                    log::error!("Failed to load VHD image {:?}: {}", vhd_os_name, err);
+            {
+                match self
+                    .vhd_manager
+                    .load_vhd_file_by_path(drive_idx, (&vhd_os_name).as_ref())
+                {
+                    Ok(vhd_file) => {
+                        self.load_vhd(Box::new(vhd_file), drive_idx, &vhd_os_name, None)?;
+                        mount_info_vec.push(MountInfo {
+                            index: drive_idx,
+                            name:  vhd_os_name.to_string_lossy().to_string(),
+                        })
+                    }
+                    Err(err) => {
+                        log::error!("Couldn't load VHD image {:?} by path, trying by name...", vhd_os_name);
+                        match self.vhd_manager.load_vhd_file_by_name(drive_idx, &vhd_os_name) {
+                            Ok((vhd_file, vhd_idx)) => {
+                                self.load_vhd(Box::new(vhd_file), drive_idx, &vhd_os_name, Some(vhd_idx))?;
+                                mount_info_vec.push(MountInfo {
+                                    index: drive_idx,
+                                    name:  vhd_os_name.to_string_lossy().to_string(),
+                                })
+                            }
+                            Err(err) => {
+                                log::error!("Failed to load VHD image {:?}: {}", vhd_os_name, err);
+                            }
+                        }
+                    }
                 }
             }
+
             #[cfg(target_arch = "wasm32")]
             match self
                 .vhd_manager
@@ -448,7 +470,7 @@ impl Emulator {
             }
             drive_idx += 1;
         }
-        Ok(())
+        Ok(mount_info_vec)
     }
 
     pub fn load_vhd(

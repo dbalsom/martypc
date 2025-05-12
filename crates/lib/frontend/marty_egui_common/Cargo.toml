@@ -1,0 +1,31 @@
+[package]
+name = "marty_egui_common"
+description = "Common egui components shared between MartyPC frontends and the MartyPC launcher."
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+authors.workspace = true
+
+[lib]
+name = "marty_egui_common"
+path = "src/lib.rs"
+crate-type = ["lib"]
+
+[dependencies]
+marty_frontend_common =  { path = "../marty_frontend_common" }
+log.workspace = true
+
+# Optional dependencies
+# ---------------------------------------------------------------------------------------------------------------------
+fluxfox = { workspace = true, optional = true }
+
+# EGUI dependencies
+# ---------------------------------------------------------------------------------------------------------------------
+egui = { workspace = true, default-features = false, features = ["serde"] }
+egui_extras.workspace = true
+
+# Feautres
+# ---------------------------------------------------------------------------------------------------------------------
+[features]
+default = []
+use_fluxfox = ["dep:fluxfox"]

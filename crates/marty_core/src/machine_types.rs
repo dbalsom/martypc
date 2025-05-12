@@ -92,6 +92,31 @@ impl MachineType {
 #[derive(Copy, Clone, Debug, Deserialize, Hash, Eq, PartialEq)]
 pub enum SoundType {
     AdLib,
+    SoundSource,
+}
+
+#[derive(Copy, Clone, Debug, Deserialize, Hash, Eq, PartialEq)]
+pub enum SoundConnectionType {
+    Card,
+    Parallel,
+}
+
+impl From<SoundType> for SoundConnectionType {
+    fn from(val: SoundType) -> Self {
+        match val {
+            SoundType::AdLib => SoundConnectionType::Card,
+            SoundType::SoundSource => SoundConnectionType::Parallel,
+        }
+    }
+}
+
+impl SoundType {
+    pub fn is_parallel(&self) -> bool {
+        match SoundConnectionType::from(self.clone()) {
+            SoundConnectionType::Parallel => true,
+            SoundConnectionType::Card => false,
+        }
+    }
 }
 
 impl FromStr for SoundType {
@@ -102,6 +127,7 @@ impl FromStr for SoundType {
     {
         match s.to_lowercase().as_str() {
             "adlib" => Ok(SoundType::AdLib),
+            "sound_source" => Ok(SoundType::SoundSource),
             _ => Err("Bad value for SoundType".to_string()),
         }
     }

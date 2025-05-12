@@ -32,19 +32,14 @@ pub mod counter;
 pub mod emulator;
 pub mod emulator_builder;
 pub mod event_loop;
-pub mod floppy;
+//pub mod floppy;
+pub mod gui;
 pub mod input;
 pub mod sound;
 pub mod timestep_update;
 
-#[cfg(not(target_arch = "wasm32"))]
 pub mod native;
-#[cfg(not(target_arch = "wasm32"))]
 pub use native::worker;
-#[cfg(target_arch = "wasm32")]
-pub mod wasm;
-#[cfg(target_arch = "wasm32")]
-pub use wasm::worker;
 
 pub use app::MartyApp;
 

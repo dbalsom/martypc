@@ -45,6 +45,7 @@ pub struct CmdLineArgs {
     pub base_dir: Option<PathBuf>,
     // Ignored on wasm
     pub benchmark_mode: bool,
+    pub prefer_oem: bool,
     pub no_sound: bool,
     pub demo_mode: bool,
     // Ignored on wasm

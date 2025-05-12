@@ -1250,7 +1250,7 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "117725a109d387c937a1533ce01b450cbde6b88abceea8473c4d7a85853cda3c"
 dependencies = [
  "lazy_static",
- "windows-sys 0.59.0",
+ "windows-sys 0.48.0",
 ]
 
 [[package]]
@@ -1259,7 +1259,7 @@ version = "3.0.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "fde0e0ec90c9dfb3b4b1a0891a7dcd0e2bffde2f7efed5fe7c9bb00e5bfb915e"
 dependencies = [
- "windows-sys 0.59.0",
+ "windows-sys 0.48.0",
 ]
 
 [[package]]
@@ -2326,7 +2326,7 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "33d852cb9b869c2a9b3df2f71a3074817f01e1844f839a144f5fcef059a4eb5d"
 dependencies = [
  "libc",
- "windows-sys 0.59.0",
+ "windows-sys 0.52.0",
 ]
 
 [[package]]
@@ -2446,7 +2446,7 @@ dependencies = [
 [[package]]
 name = "fluxfox"
 version = "0.2.0"
-source = "git+https://github.com/dbalsom/fluxfox.git?branch=martypc_consumer#3d976291e5a9a9a7c9e5241c97a89eb86cd85d97"
+source = "git+https://github.com/dbalsom/fluxfox.git?branch=martypc_consumer#e048e3f60a69f632605a517b6430749c00750e94"
 dependencies = [
  "binrw",
  "bit-vec 0.8.0",
@@ -2478,7 +2478,7 @@ dependencies = [
 [[package]]
 name = "fluxfox_egui"
 version = "0.3.3"
-source = "git+https://github.com/dbalsom/fluxfox.git?branch=martypc_consumer#3d976291e5a9a9a7c9e5241c97a89eb86cd85d97"
+source = "git+https://github.com/dbalsom/fluxfox.git?branch=martypc_consumer#e048e3f60a69f632605a517b6430749c00750e94"
 dependencies = [
  "egui 0.30.0",
  "egui_extras 0.30.0 (registry+https://github.com/rust-lang/crates.io-index)",
@@ -2500,7 +2500,7 @@ dependencies = [
 [[package]]
 name = "fluxfox_tiny_skia"
 version = "0.2.0"
-source = "git+https://github.com/dbalsom/fluxfox.git?branch=martypc_consumer#3d976291e5a9a9a7c9e5241c97a89eb86cd85d97"
+source = "git+https://github.com/dbalsom/fluxfox.git?branch=martypc_consumer#e048e3f60a69f632605a517b6430749c00750e94"
 dependencies = [
  "fluxfox",
  "log",
@@ -3376,7 +3376,7 @@ checksum = "e19b23d53f35ce9f56aebc7d1bb4e6ac1e9c0db7ac85c8d1760c04379edced37"
 dependencies = [
  "hermit-abi",
  "libc",
- "windows-sys 0.59.0",
+ "windows-sys 0.52.0",
 ]
 
 [[package]]
@@ -3547,7 +3547,7 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "fc2f4eb4bc735547cfed7c0a4922cbd04a4655978c09b54f1f7b228750664c34"
 dependencies = [
  "cfg-if",
- "windows-targets 0.52.6",
+ "windows-targets 0.48.5",
 ]
 
 [[package]]
@@ -3772,6 +3772,7 @@ dependencies = [
  "marty_common",
  "marty_core",
  "marty_display_common",
+ "marty_egui_common",
  "marty_frontend_common",
  "marty_videocard_renderer",
  "regex",
@@ -3785,17 +3786,26 @@ dependencies = [
 ]
 
 [[package]]
+name = "marty_egui_common"
+version = "0.4.0"
+dependencies = [
+ "egui 0.30.0",
+ "egui_extras 0.30.0 (git+https://github.com/dbalsom/egui_martypc.git?branch=0.30.0_raw_winit_hook)",
+ "fluxfox",
+ "log",
+ "marty_frontend_common",
+]
+
+[[package]]
 name = "marty_egui_eframe"
 version = "0.4.0"
 dependencies = [
  "egui 0.30.0",
  "egui_extras 0.30.0 (git+https://github.com/dbalsom/egui_martypc.git?branch=0.30.0_raw_winit_hook)",
  "log",
- "marty_display_common",
  "marty_egui",
  "marty_frontend_common",
  "serialport 4.3.1-alpha.0",
- "web-time 1.1.0",
  "wgpu 23.0.1",
 ]
 
@@ -4015,6 +4025,7 @@ dependencies = [
  "egui_extras 0.30.0 (git+https://github.com/dbalsom/egui_martypc.git?branch=0.30.0_raw_winit_hook)",
  "env_logger 0.11.6",
  "fluxfox",
+ "fluxfox_egui",
  "getrandom 0.3.1",
  "gilrs",
  "glow 0.16.0",
@@ -4081,6 +4092,7 @@ dependencies = [
  "crossbeam-channel",
  "eframe",
  "egui 0.30.0",
+ "egui-notify",
  "egui-winit 0.30.0",
  "egui_commonmark",
  "egui_extras 0.30.0 (git+https://github.com/dbalsom/egui_martypc.git?branch=0.30.0_raw_winit_hook)",
@@ -4091,8 +4103,7 @@ dependencies = [
  "log",
  "marty_config",
  "marty_core",
- "marty_egui",
- "marty_egui_eframe",
+ "marty_egui_common",
  "marty_frontend_common",
  "marty_web_helpers",
  "rfd",
@@ -5510,7 +5521,7 @@ dependencies = [
  "errno",
  "libc",
  "linux-raw-sys",
- "windows-sys 0.59.0",
+ "windows-sys 0.52.0",
 ]
 
 [[package]]
@@ -6033,7 +6044,7 @@ dependencies = [
  "getrandom 0.2.15",
  "once_cell",
  "rustix",
- "windows-sys 0.59.0",
+ "windows-sys 0.52.0",
 ]
 
 [[package]]
@@ -6787,7 +6798,7 @@ dependencies = [
  "js-sys",
  "log",
  "naga 0.12.3",
- "parking_lot 0.12.3",
+ "parking_lot 0.11.2",
  "profiling",
  "raw-window-handle 0.5.2",
  "smallvec",
@@ -6837,7 +6848,7 @@ dependencies = [
  "codespan-reporting",
  "log",
  "naga 0.12.3",
- "parking_lot 0.12.3",
+ "parking_lot 0.11.2",
  "profiling",
  "raw-window-handle 0.5.2",
  "rustc-hash",
@@ -6901,7 +6912,7 @@ dependencies = [
  "metal 0.24.0",
  "naga 0.12.3",
  "objc",
- "parking_lot 0.12.3",
+ "parking_lot 0.11.2",
  "profiling",
  "range-alloc",
  "raw-window-handle 0.5.2",
@@ -7045,7 +7056,7 @@ version = "0.1.9"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "cf221c93e13a30d793f7645a0e7762c55d169dbb0a49671918a2319d289b10bb"
 dependencies = [
- "windows-sys 0.59.0",
+ "windows-sys 0.48.0",
 ]
 
 [[package]]

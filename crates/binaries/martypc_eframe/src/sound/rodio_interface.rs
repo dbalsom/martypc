@@ -32,6 +32,8 @@
 const MAX_BUFFER_SIZE: u32 = 100;
 const DEFAULT_VOLUME: f32 = 0.25;
 
+const MAX_LATENCY: f32 = 150.0; // Maximum latency in milliseconds
+
 use anyhow::{anyhow, Error};
 use crossbeam_channel::Receiver;
 use marty_core::{
@@ -54,6 +56,7 @@ pub struct SoundSource {
     pub receiver: Receiver<AudioSample>,
     pub sample_ct: u64,
     pub latency_ms: f32,
+    #[allow(unused)]
     pub buffer_ct: u64,
     pub first_buffer: Option<Instant>,
     pub muted: bool,
@@ -78,7 +81,8 @@ impl SoundSource {
     }
 }
 
-struct AudioLatencyController {
+#[allow(unused)]
+pub struct AudioLatencyController {
     target_latency: f32, // Target latency in milliseconds
     tolerance: f32,      // Tolerance in milliseconds
     playback_speed: f32, // Current playback speed (1.0 = normal)
@@ -116,6 +120,7 @@ impl AudioLatencyController {
         }
     }
 
+    #[allow(dead_code)]
     fn speed(&self) -> f32 {
         self.playback_speed
     }
@@ -255,7 +260,7 @@ impl SoundInterface {
 
     pub fn add_source(&mut self, source: &SoundSourceDescriptor) -> Result<(), Error> {
         let stream_handle = self.stream_handle.as_ref().unwrap();
-        let mut sink = Sink::try_new(stream_handle)?;
+        let sink = Sink::try_new(stream_handle)?;
         let volume = DEFAULT_VOLUME;
         sink.set_volume(volume);
 
@@ -278,7 +283,7 @@ impl SoundInterface {
         Ok(())
     }
 
-    pub fn run(&mut self, duration: Duration) {
+    pub fn run(&mut self, _duration: Duration) {
         for source in self.sources.iter_mut() {
             let samples_in = source.receiver.try_iter().collect::<Vec<f32>>();
             //log::debug!("received {} samples from channel {}", samples_in.len(), source.name);
@@ -321,9 +326,13 @@ impl SoundInterface {
                 //     new_speed,
                 // );
 
-                source.sample_ct += block_len as u64;
-                let sink_buffer = rodio::buffer::SamplesBuffer::new(source.channels, source.sample_rate, samples_in);
-                source.sink.append(sink_buffer);
+                // Only push more samples if the latency is below the maximum. Latency can "run away" if the window is minimized
+                if source.latency_ms < MAX_LATENCY {
+                    source.sample_ct += block_len as u64;
+                    let sink_buffer =
+                        rodio::buffer::SamplesBuffer::new(source.channels, source.sample_rate, samples_in);
+                    source.sink.append(sink_buffer);
+                }
                 source.sink.set_speed(new_speed * self.master_speed);
             }
         }
@@ -346,7 +355,7 @@ impl SoundInterface {
     pub fn set_volume(&mut self, s_idx: usize, volume: Option<f32>, muted: Option<bool>) {
         if s_idx < self.sources.len() {
             let source = &mut self.sources[s_idx];
-            let mut new_volume = volume.unwrap_or(source.volume);
+            let new_volume = volume.unwrap_or(source.volume);
             let mut new_sink_volume = new_volume;
 
             if let Some(mute_state) = muted {

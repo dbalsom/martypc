@@ -27,8 +27,6 @@
 
 use std::collections::{HashMap, HashSet};
 
-use super::*;
-
 use marty_core::keys::MartyKey;
 use marty_frontend_common::{HotkeyConfigEntry, HotkeyEvent, HotkeyScope};
 

@@ -28,23 +28,14 @@
 //! Process events received from the emulator GUI.
 //! Typically, the GUI is implemented by the `marty_egui` crate.
 
-use std::{
-    ffi::OsString,
-    io::Cursor,
-    mem::discriminant,
-    path::{Path, PathBuf},
-    sync::Arc,
-    time::Duration,
-};
+use std::{mem::discriminant, time::Duration};
 
-use crate::{emulator, emulator::Emulator, floppy::load_floppy::handle_load_floppy};
+use crate::{emulator::Emulator, floppy::load_floppy::handle_load_floppy};
 use display_manager_eframe::EFrameDisplayManager;
 
 use marty_frontend_common::{
     constants::{LONG_NOTIFICATION_TIME, NORMAL_NOTIFICATION_TIME, SHORT_NOTIFICATION_TIME},
-    floppy_manager::FloppyError,
     thread_events::{FileSelectionContext, FrontendThreadEvent},
-    types::floppy::FloppyImageSource,
 };
 
 use marty_core::{
@@ -52,13 +43,11 @@ use marty_core::{
     cpu_common,
     cpu_common::{Cpu, CpuOption, Register16},
     device_traits::videocard::ClockingMode,
-    device_types::fdc::FloppyImageType,
     machine::{MachineOption, MachineState},
     vhd,
     vhd::VirtualHardDisk,
 };
 use marty_egui::{
-    modal::ModalContext,
     state::FloppyDriveSelection,
     DeviceSelection,
     GuiBoolean,
@@ -71,30 +60,24 @@ use marty_egui::{
 };
 use marty_videocard_renderer::AspectCorrectionMode;
 
-use fluxfox::{DiskImage, LoadingStatus};
-
-use anyhow::Error;
-use winit::event_loop::ActiveEventLoop;
-
 #[cfg(target_arch = "wasm32")]
 use crate::wasm::file_open;
 #[cfg(target_arch = "wasm32")]
 use crate::wasm::worker::spawn_closure_worker as spawn;
 use marty_display_common::display_manager::{DisplayManager, DtHandle};
 use marty_frontend_common::timestep_manager::{TimestepManager, TimestepUpdate};
-#[cfg(not(target_arch = "wasm32"))]
-use std::thread::spawn;
-
-use marty_frontend_common::marty_common::types::ui::MouseCaptureMode;
+#[cfg(target_arch = "wasm32")]
+use std::path::PathBuf;
 
 //noinspection RsBorrowChecker
 pub fn handle_egui_event(
     emu: &mut Emulator,
     dm: &mut EFrameDisplayManager,
-    tm: &TimestepManager,
+    _tm: &TimestepManager,
     tmu: &mut TimestepUpdate,
     gui_event: &GuiEvent,
 ) {
+    #[allow(unreachable_patterns)]
     match gui_event {
         GuiEvent::Exit => {
             // User chose exit option from menu. Shut down.
@@ -264,51 +247,47 @@ pub fn handle_egui_event(
 
             let mut error_str = None;
 
-            match emu.vhd_manager.load_vhd_file(*drive_idx, *image_idx) {
+            match emu.vhd_manager.load_vhd_file_by_idx(*drive_idx, *image_idx) {
                 Ok(vhd_file) => match VirtualHardDisk::parse(Box::new(vhd_file), false) {
                     Ok(vhd) => {
-                        if let Some(hdc) = emu.machine.hdc_mut() {
+                        let vhd_name = emu.vhd_manager.get_vhd_name(*image_idx).unwrap();
+                        let mount_success = if let Some(hdc) = emu.machine.hdc_mut() {
                             match hdc.set_vhd(*drive_idx, vhd) {
-                                Ok(_) => {
-                                    let vhd_name = emu.vhd_manager.get_vhd_name(*image_idx).unwrap();
-                                    log::info!(
-                                        "VHD image {:?} successfully loaded into virtual drive: {}",
-                                        vhd_name,
-                                        *drive_idx
-                                    );
-
-                                    emu.gui
-                                        .toasts()
-                                        .info(format!("VHD loaded: {:?}", vhd_name))
-                                        .duration(Some(NORMAL_NOTIFICATION_TIME));
-                                }
+                                Ok(_) => true,
                                 Err(err) => {
-                                    error_str = Some(format!("Error mounting VHD: {}", err));
+                                    error_str = Some(format!("Error mounting VHD '{}': {}", vhd_name.display(), err));
+                                    false
                                 }
                             }
                         }
                         else if let Some(hdc) = emu.machine.xtide_mut() {
                             match hdc.set_vhd(*drive_idx, vhd) {
-                                Ok(_) => {
-                                    let vhd_name = emu.vhd_manager.get_vhd_name(*image_idx).unwrap();
-                                    log::info!(
-                                        "VHD image {:?} successfully loaded into virtual drive: {}",
-                                        vhd_name,
-                                        *drive_idx
-                                    );
-
-                                    emu.gui
-                                        .toasts()
-                                        .info(format!("VHD loaded: {:?}", vhd_name))
-                                        .duration(Some(NORMAL_NOTIFICATION_TIME));
-                                }
+                                Ok(_) => true,
                                 Err(err) => {
-                                    error_str = Some(format!("Error mounting VHD: {}", err));
+                                    error_str = Some(format!("Error mounting VHD '{}': {}", vhd_name.display(), err));
+                                    false
                                 }
                             }
                         }
                         else {
                             error_str = Some("No Hard Disk Controller present!".to_string());
+                            false
+                        };
+
+                        if mount_success {
+                            log::info!(
+                                "VHD image {} successfully loaded into virtual drive: {}",
+                                vhd_name.display(),
+                                *drive_idx
+                            );
+
+                            emu.gui
+                                .set_hdd_selection(*drive_idx, Some(*image_idx), Some(vhd_name.clone().into()));
+
+                            emu.gui
+                                .toasts()
+                                .info(format!("VHD loaded: {:?}", vhd_name))
+                                .duration(Some(NORMAL_NOTIFICATION_TIME));
                         }
                     }
                     Err(err) => {
@@ -324,6 +303,56 @@ pub fn handle_egui_event(
             if let Some(err_str) = error_str {
                 log::error!("{}", err_str);
                 emu.gui.toasts().error(err_str).duration(Some(LONG_NOTIFICATION_TIME));
+            }
+        }
+        GuiEvent::DetachVHD(drive_idx) => {
+            // User requested to detach a VHD from the indicated drive.
+            log::debug!("Detaching VHD from drive: {}", drive_idx);
+
+            let unload_success = if let Some(hdc) = emu.machine.hdc_mut() {
+                match hdc.unload_vhd(*drive_idx) {
+                    Ok(_) => {
+                        log::info!("VHD image successfully detached from virtual drive: {}", *drive_idx);
+                        true
+                    }
+                    Err(err) => {
+                        log::error!("Error detaching VHD: {}", err);
+                        emu.gui
+                            .toasts()
+                            .error(format!("Error detaching VHD: {}", err))
+                            .duration(Some(LONG_NOTIFICATION_TIME));
+                        false
+                    }
+                }
+            }
+            else if let Some(hdc) = emu.machine.xtide_mut() {
+                match hdc.unload_vhd(*drive_idx) {
+                    Ok(_) => {
+                        log::info!("VHD image successfully detached from virtual drive: {}", *drive_idx);
+                        true
+                    }
+                    Err(err) => {
+                        log::error!("Error detaching VHD: {}", err);
+                        emu.gui
+                            .toasts()
+                            .error(format!("Error detaching VHD: {}", err))
+                            .duration(Some(LONG_NOTIFICATION_TIME));
+                        false
+                    }
+                }
+            }
+            else {
+                log::error!("No Hard Disk Controller present!");
+                false
+            };
+
+            if unload_success {
+                // Update the GUI to show that the VHD is no longer attached.
+                emu.gui.set_hdd_selection(*drive_idx, None, None);
+                emu.gui
+                    .toasts()
+                    .info(format!("VHD detached from drive: {}", drive_idx))
+                    .duration(Some(NORMAL_NOTIFICATION_TIME));
             }
         }
         GuiEvent::CreateVHD(filename, fmt) => {
@@ -353,6 +382,10 @@ pub fn handle_egui_event(
                     if let Err(e) = emu.vhd_manager.scan_resource(&mut emu.rm) {
                         log::error!("Error scanning hdd directory: {}", e);
                     };
+                    // Update VHD Image tree
+                    if let Ok(hdd_tree) = emu.vhd_manager.make_tree(&mut emu.rm) {
+                        emu.gui.set_hdd_tree(hdd_tree);
+                    }
                 }
                 Err(err) => {
                     log::error!("Error creating VHD: {}", err);
@@ -648,7 +681,7 @@ pub fn handle_egui_event(
 
             if let Some(fdc) = emu.machine.fdc() {
                 let floppy = fdc.get_image(*drive_select);
-                if let Some(floppy_image) = floppy.0 {
+                if let Some(_floppy_image) = floppy.0 {
                     // match emu.floppy_manager.save_floppy_data(floppy_image, *image_idx, &emu.rm) {
                     //     Ok(path) => {
                     //         log::info!("Floppy image successfully saved: {:?}", path);
@@ -1067,7 +1100,7 @@ pub fn handle_egui_event(
                 log::error!("Failed to apply scaler params: {}", err);
             }
         }
-        GuiEvent::ZoomChanged(zoom) => {
+        GuiEvent::ZoomChanged(_zoom) => {
             // User changed the global zoom level
 
             // emu.dm.for_each_gui(|gui, _window| {

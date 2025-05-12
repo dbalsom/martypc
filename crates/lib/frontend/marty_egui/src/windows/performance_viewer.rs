@@ -41,15 +41,18 @@ use marty_frontend_common::{
     timestep_manager::{FrameEntry, PerfSnapshot},
     types::sound::SoundSourceInfo,
 };
+#[cfg(feature = "use_display")]
 use marty_videocard_renderer::VideoParams;
 
 use egui::CollapsingHeader;
 use egui_plot::{GridMark, Line, Plot, PlotPoints};
 
 pub struct PerformanceViewerControl {
+    #[cfg(feature = "use_display")]
     dti: Vec<DisplayTargetInfo>,
     sound_stats: Vec<SoundSourceInfo>,
     perf: PerfSnapshot,
+    #[cfg(feature = "use_display")]
     video_data: VideoParams,
     frame_history: Vec<FrameEntry>,
 }
@@ -85,9 +88,11 @@ pub fn format_freq_counter(ct: u32) -> String {
 impl PerformanceViewerControl {
     pub fn new() -> Self {
         Self {
+            #[cfg(feature = "use_display")]
             dti: Vec::new(),
             sound_stats: Vec::new(),
             perf: Default::default(),
+            #[cfg(feature = "use_display")]
             video_data: Default::default(),
             frame_history: Vec::new(),
         }
@@ -98,31 +103,34 @@ impl PerformanceViewerControl {
             .striped(true)
             .min_col_width(100.0)
             .show(ui, |ui| {
-                for (i, dt) in self.dti.iter().enumerate() {
-                    CollapsingHeader::new(&format!("Display {}: {} ({})", i, dt.name, dt.dtype))
-                        .default_open(true)
-                        .show(ui, |ui| {
-                            egui::Grid::new("displays").striped(false).show(ui, |ui| {
-                                ui.label("Backend: ");
-                                ui.label(egui::RichText::new(dt.backend_name.clone()));
-                                ui.end_row();
-                                if let Some(geom) = dt.scaler_geometry {
-                                    ui.label("Scaler source resolution: ");
-                                    ui.label(format!("{}, {}", geom.texture_w, geom.texture_h));
+                #[cfg(feature = "use_display")]
+                {
+                    for (i, dt) in self.dti.iter().enumerate() {
+                        CollapsingHeader::new(&format!("Display {}: {} ({})", i, dt.name, dt.dtype))
+                            .default_open(true)
+                            .show(ui, |ui| {
+                                egui::Grid::new("displays").striped(false).show(ui, |ui| {
+                                    ui.label("Backend: ");
+                                    ui.label(egui::RichText::new(dt.backend_name.clone()));
                                     ui.end_row();
-                                    ui.label("Scaler target resolution: ");
-                                    ui.label(format!("{}, {}", geom.surface_w, geom.surface_h));
+                                    if let Some(geom) = dt.scaler_geometry {
+                                        ui.label("Scaler source resolution: ");
+                                        ui.label(format!("{}, {}", geom.texture_w, geom.texture_h));
+                                        ui.end_row();
+                                        ui.label("Scaler target resolution: ");
+                                        ui.label(format!("{}, {}", geom.surface_w, geom.surface_h));
+                                        ui.end_row();
+                                    }
+                                    ui.label("SW Render Time: ");
+                                    ui.label(egui::RichText::new(format_duration(dt.render_time)));
                                     ui.end_row();
-                                }
-                                ui.label("SW Render Time: ");
-                                ui.label(egui::RichText::new(format_duration(dt.render_time)));
-                                ui.end_row();
-                                ui.label("GUI Render Time: ");
-                                ui.label(egui::RichText::new(format_duration(dt.gui_render_time)));
-                                ui.end_row();
-                            })
-                        });
-                    ui.end_row();
+                                    ui.label("GUI Render Time: ");
+                                    ui.label(egui::RichText::new(format_duration(dt.gui_render_time)));
+                                    ui.end_row();
+                                })
+                            });
+                        ui.end_row();
+                    }
                 }
 
                 for (i, ss) in self.sound_stats.iter().enumerate() {
@@ -145,18 +153,21 @@ impl PerformanceViewerControl {
                 ui.label(egui::RichText::new("Release".to_string()));
                 ui.end_row();
 
-                ui.label("Internal resolution: ");
-                ui.label(egui::RichText::new(format!(
-                    "{}, {}",
-                    self.video_data.render.w, self.video_data.render.h
-                )));
-                ui.end_row();
-                ui.label("Target resolution: ");
-                ui.label(egui::RichText::new(format!(
-                    "{}, {}",
-                    self.video_data.aspect_corrected.w, self.video_data.aspect_corrected.h
-                )));
-                ui.end_row();
+                #[cfg(feature = "use_display")]
+                {
+                    ui.label("Internal resolution: ");
+                    ui.label(egui::RichText::new(format!(
+                        "{}, {}",
+                        self.video_data.render.w, self.video_data.render.h
+                    )));
+                    ui.end_row();
+                    ui.label("Target resolution: ");
+                    ui.label(egui::RichText::new(format!(
+                        "{}, {}",
+                        self.video_data.aspect_corrected.w, self.video_data.aspect_corrected.h
+                    )));
+                    ui.end_row();
+                }
 
                 ui.label("Window Manager UPS: ");
                 ui.label(egui::RichText::new(format!("{}", self.perf.wm_ups)));
@@ -206,7 +217,7 @@ impl PerformanceViewerControl {
                 .allow_scroll(false)
                 .allow_drag(false)
                 .allow_zoom(false)
-                .y_axis_width(2)
+                .y_axis_min_width(2.0)
                 .y_grid_spacer(|_spacer| {
                     vec![
                         // 100s
@@ -226,18 +237,22 @@ impl PerformanceViewerControl {
         });
     }
 
+    #[cfg(feature = "use_display")]
     pub fn update_video_data(&mut self, video_data: &VideoParams) {
         self.video_data = video_data.clone();
     }
 
     pub fn update(
         &mut self,
-        dti: Vec<DisplayTargetInfo>,
+        #[cfg(feature = "use_display")] dti: Vec<DisplayTargetInfo>,
         sound_stats: Vec<SoundSourceInfo>,
         perf: &PerfSnapshot,
         frame_history: Vec<FrameEntry>,
     ) {
-        self.dti = dti;
+        #[cfg(feature = "use_display")]
+        {
+            self.dti = dti;
+        }
         self.sound_stats = sound_stats;
         self.perf = *perf;
         self.frame_history = frame_history;

@@ -24,11 +24,8 @@ bench = false
 # --------------
 marty_core = { path = "../../marty_core", default-features = false, features = ["sound"] }
 marty_config = { path = "../../lib/frontend/marty_config", default-features = false, features = []}
-
-marty_egui = { path = "../../lib/frontend/marty_egui", default-features = false }
-marty_egui_eframe = { path = "../../lib/frontend/marty_egui_eframe" }
 marty_frontend_common =  { path = "../../lib/frontend/marty_frontend_common", features = ["use_url", "use_egui"]}
-
+marty_egui_common = { path = "../../lib/frontend/marty_egui_common"}
 marty_web_helpers = { path = "../../lib/frontend/marty_web_helpers" }
 
 # External crates
@@ -73,6 +70,7 @@ eframe = { workspace = true, default-features = false, features = [
     "persistence",   # Enable restoring app state when restarting the app.
     "wayland",       # Add wayland support for Linux/CI
 ]}
+egui-notify.workspace = true
 serialport  = { workspace = true }
 # enable bpaf since we have a command line
 marty_config = { path = "../../lib/frontend/marty_config", features = ["use_bpaf"] }
@@ -108,27 +106,27 @@ marty_config = { path = "../../lib/frontend/marty_config", default-features = fa
 winres = "0.1"
 
 [features]
-default = ["use_winit", "use_gilrs", "use_glow", "sound"]
-sound = ["dep:rodio", "marty_core/sound"]
-# Enable markdown support. This is used to show disk image metadata and documentation.
-markdown = ["dep:egui_commonmark", "marty_egui/markdown"]
+default = ["use_winit", "use_gilrs", "sound"]
+
+sound = ["dep:rodio", "rodio/wasm-bindgen", "marty_core/sound"]
 # Use winit (disabled for wasm builds)
 use_winit = ["dep:egui-winit"]
 # Use the wgpu backend
-use_wgpu = ["eframe/wgpu"]
+use_wgpu = [
+    "eframe/wgpu",
+    "marty_frontend_common/use_wgpu",
+    #"marty_display_common/use_wgpu",
+    #"display_manager_eframe/use_wgpu",
+    #"marty_egui/scaler_ui",
+    #"marty_egui/scaler_params"
+]
 # Use the glow backend
 use_glow = ["eframe/glow"]
-# Use serialport
-use_serialport = ["marty_egui/use_serialport", "marty_egui_eframe/use_serialport"]
 # Use gilrs for gamepads
-use_gilrs = ["dep:gilrs"]
-# Enable UI for internal development tooling. This is not intended for end-users. No support!
-devtools = ["marty_egui/devtools"]
+use_gilrs = ["dep:gilrs", "marty_frontend_common/use_gilrs"]
+
 arduino_validator = ["marty_core/arduino_validator"]
 cpu_validator = ["marty_core/cpu_validator"]
-ega = ["marty_core/ega"]
-vga = ["marty_core/vga"]
-opl = ["marty_core/opl"]
 # enable dev stuff, including logging in release.
 # !! Warning, may be unstable or completely broken !!
 devmode = ["marty_core/cpu_trace_comments"]
