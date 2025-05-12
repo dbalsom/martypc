@@ -1726,7 +1726,7 @@ checksum = "bd0c93bb4b0c6d9b77f4435b0ae98c24d17f1c45b2ff844c6151a07256ca923b"
 
 [[package]]
 name = "display_backend_eframe_glow"
-version = "0.4.0"
+version = "0.4.1"
 dependencies = [
  "anyhow",
  "display_backend_trait",
@@ -1738,7 +1738,7 @@ dependencies = [
 
 [[package]]
 name = "display_backend_eframe_wgpu"
-version = "0.4.0"
+version = "0.4.1"
 dependencies = [
  "anyhow",
  "display_backend_trait",
@@ -1751,7 +1751,7 @@ dependencies = [
 
 [[package]]
 name = "display_backend_trait"
-version = "0.4.0"
+version = "0.4.1"
 dependencies = [
  "anyhow",
  "egui 0.30.0",
@@ -1762,7 +1762,7 @@ dependencies = [
 
 [[package]]
 name = "display_backend_wgpu"
-version = "0.4.0"
+version = "0.4.1"
 dependencies = [
  "anyhow",
  "display_backend_trait",
@@ -1777,7 +1777,7 @@ dependencies = [
 
 [[package]]
 name = "display_manager_eframe"
-version = "0.4.0"
+version = "0.4.1"
 dependencies = [
  "anyhow",
  "display_backend_eframe_glow",
@@ -1802,7 +1802,7 @@ dependencies = [
 
 [[package]]
 name = "display_manager_wgpu"
-version = "0.4.0"
+version = "0.4.1"
 dependencies = [
  "anyhow",
  "display_backend_wgpu",
@@ -3663,7 +3663,7 @@ dependencies = [
 
 [[package]]
 name = "marty_common"
-version = "0.4.0"
+version = "0.4.1"
 dependencies = [
  "fxhash",
  "serde",
@@ -3674,7 +3674,7 @@ dependencies = [
 
 [[package]]
 name = "marty_config"
-version = "0.4.0"
+version = "0.4.1"
 dependencies = [
  "anyhow",
  "bpaf",
@@ -3695,7 +3695,7 @@ dependencies = [
 
 [[package]]
 name = "marty_core"
-version = "0.4.0"
+version = "0.4.1"
 dependencies = [
  "anyhow",
  "arraydeque",
@@ -3733,7 +3733,7 @@ dependencies = [
 
 [[package]]
 name = "marty_display_common"
-version = "0.4.0"
+version = "0.4.1"
 dependencies = [
  "anyhow",
  "cfg-if",
@@ -3754,7 +3754,7 @@ dependencies = [
 
 [[package]]
 name = "marty_egui"
-version = "0.4.0"
+version = "0.4.1"
 dependencies = [
  "anyhow",
  "bytemuck",
@@ -3787,7 +3787,7 @@ dependencies = [
 
 [[package]]
 name = "marty_egui_common"
-version = "0.4.0"
+version = "0.4.1"
 dependencies = [
  "egui 0.30.0",
  "egui_extras 0.30.0 (git+https://github.com/dbalsom/egui_martypc.git?branch=0.30.0_raw_winit_hook)",
@@ -3798,7 +3798,7 @@ dependencies = [
 
 [[package]]
 name = "marty_egui_eframe"
-version = "0.4.0"
+version = "0.4.1"
 dependencies = [
  "egui 0.30.0",
  "egui_extras 0.30.0 (git+https://github.com/dbalsom/egui_martypc.git?branch=0.30.0_raw_winit_hook)",
@@ -3811,7 +3811,7 @@ dependencies = [
 
 [[package]]
 name = "marty_egui_wgpu"
-version = "0.4.0"
+version = "0.4.1"
 dependencies = [
  "egui 0.30.0",
  "egui-wgpu 0.30.0",
@@ -3829,7 +3829,7 @@ dependencies = [
 
 [[package]]
 name = "marty_frontend_common"
-version = "0.4.0"
+version = "0.4.1"
 dependencies = [
  "anyhow",
  "cfg-if",
@@ -3896,7 +3896,7 @@ dependencies = [
 
 [[package]]
 name = "marty_scaler_glow"
-version = "0.4.0"
+version = "0.4.1"
 dependencies = [
  "bytemuck",
  "eframe",
@@ -3907,7 +3907,7 @@ dependencies = [
 
 [[package]]
 name = "marty_scaler_null"
-version = "0.4.0"
+version = "0.4.1"
 dependencies = [
  "egui 0.30.0",
  "marty_display_common",
@@ -3916,7 +3916,7 @@ dependencies = [
 
 [[package]]
 name = "marty_scaler_wgpu"
-version = "0.4.0"
+version = "0.4.1"
 dependencies = [
  "bytemuck",
  "marty_display_common",
@@ -3927,7 +3927,7 @@ dependencies = [
 
 [[package]]
 name = "marty_videocard_renderer"
-version = "0.4.0"
+version = "0.4.1"
 dependencies = [
  "bytemuck",
  "criterion",
@@ -3945,7 +3945,7 @@ dependencies = [
 
 [[package]]
 name = "marty_web_helpers"
-version = "0.4.0"
+version = "0.4.1"
 dependencies = [
  "crossbeam-channel",
  "gloo-timers",
@@ -3960,7 +3960,7 @@ dependencies = [
 
 [[package]]
 name = "martypc_desktop_wgpu"
-version = "0.4.0"
+version = "0.4.1"
 dependencies = [
  "anyhow",
  "bytemuck",
@@ -4012,7 +4012,7 @@ dependencies = [
 
 [[package]]
 name = "martypc_eframe"
-version = "0.4.0"
+version = "0.4.1"
 dependencies = [
  "anyhow",
  "async-std",
@@ -4056,7 +4056,7 @@ dependencies = [
 
 [[package]]
 name = "martypc_headless"
-version = "0.4.0"
+version = "0.4.1"
 dependencies = [
  "anyhow",
  "colored 3.0.0",
@@ -4085,7 +4085,7 @@ dependencies = [
 
 [[package]]
 name = "martypc_launcher"
-version = "0.4.0"
+version = "0.4.1"
 dependencies = [
  "anyhow",
  "async-std",
@@ -6995,7 +6995,7 @@ dependencies = [
 
 [[package]]
 name = "wgpu_wrapper"
-version = "0.4.0"
+version = "0.4.1"
 dependencies = [
  "bytemuck",
  "pollster 0.3.0",

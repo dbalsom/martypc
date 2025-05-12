@@ -23,7 +23,7 @@ resolver = "2"
 default-members = ["crates/binaries/martypc_eframe"]
 
 [workspace.package]
-version = "0.4.0"
+version = "0.4.1"
 edition = "2021"
 rust-version = "1.76"
 license = "MIT"

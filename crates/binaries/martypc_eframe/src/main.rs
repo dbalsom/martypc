@@ -55,7 +55,11 @@ async fn main() -> eframe::Result {
 
     let app = MartyApp::new(&mut native_options).await;
 
-    eframe::run_native("MartyPC", native_options, Box::new(|cc| Ok(Box::new(app.init(cc)))))
+    eframe::run_native(
+        &format!("MartyPC {}", env!("CARGO_PKG_VERSION")),
+        native_options,
+        Box::new(|cc| Ok(Box::new(app.init(cc)))),
+    )
 }
 
 // #[cfg(not(target_arch = "wasm32"))]
