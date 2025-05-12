@@ -30,7 +30,7 @@
 
 */
 
-use crate::cpu_common::calc_linear_address;
+use crate::cpu_common::{calc_linear_address, Register16};
 use std::{fmt, fmt::Display};
 
 #[derive(Copy, Clone, Debug)]
@@ -69,6 +69,7 @@ pub enum AddressingMode {
     BpDisp16(Displacement),
     BxDisp16(Displacement),
     RegisterMode,
+    RegisterIndirect(Register16),
 }
 
 pub(crate) struct SignedHex<T>(pub T);

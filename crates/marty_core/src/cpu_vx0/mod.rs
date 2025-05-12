@@ -41,6 +41,7 @@ mod biu;
 mod cpu;
 mod cycle;
 mod decode;
+mod decode_8080;
 mod display;
 mod execute;
 mod execute_extended;
@@ -272,8 +273,7 @@ pub const REGISTER16_LUT: [Register16; 8] = [
 
 pub const SEGMENT_REGISTER16_LUT: [Register16; 4] = [Register16::ES, Register16::CS, Register16::SS, Register16::DS];
 
-#[derive(Debug, Copy, Clone, PartialEq)]
-#[derive(Default)]
+#[derive(Debug, Copy, Clone, PartialEq, Default)]
 pub enum CpuState {
     #[default]
     Normal,
@@ -435,14 +435,12 @@ impl Default for InterruptDescriptor {
     }
 }
 
-#[derive(Copy, Clone, Debug)]
-#[derive(Default)]
+#[derive(Copy, Clone, Debug, Default)]
 pub enum TransferSize {
     #[default]
     Byte,
     Word,
 }
-
 
 #[derive(Default)]
 pub struct I8288 {
@@ -798,7 +796,7 @@ impl NecVx0 {
         let mut cpu: NecVx0 = Default::default();
 
         match cpu_type {
-            CpuType::NecV20 => {
+            CpuType::NecV20(_) => {
                 cpu.queue.set_size(4, 1);
                 cpu.fetch_size = TransferSize::Byte;
             }
@@ -906,9 +904,7 @@ impl NecVx0 {
     #[inline]
     pub fn is_last_wait(&self) -> bool {
         match self.t_cycle {
-            TCycle::T3 | TCycle::Tw => {
-                self.wait_states == 0 && self.dma_wait_states == 0
-            }
+            TCycle::T3 | TCycle::Tw => self.wait_states == 0 && self.dma_wait_states == 0,
             _ => false,
         }
     }
@@ -917,9 +913,7 @@ impl NecVx0 {
     pub fn is_before_last_wait(&self) -> bool {
         match self.t_cycle {
             TCycle::T1 | TCycle::T2 => true,
-            TCycle::T3 | TCycle::Tw => {
-                self.wait_states > 0 || self.dma_wait_states > 0
-            }
+            TCycle::T3 | TCycle::Tw => self.wait_states > 0 || self.dma_wait_states > 0,
             _ => false,
         }
     }
@@ -1692,13 +1686,14 @@ impl NecVx0 {
 
         for i in &self.instruction_history {
             if let HistoryEntry::InstructionEntry {
-                    cs,
-                    ip,
-                    cycles: _,
-                    interrupt,
-                    jump: _,
-                    i,
-                } = i {
+                cs,
+                ip,
+                cycles: _,
+                interrupt,
+                jump: _,
+                i,
+            } = i
+            {
                 let i_string = format!(
                     "{:05X}{} [{:04X}:{:04X}] {}\n",
                     i.address,

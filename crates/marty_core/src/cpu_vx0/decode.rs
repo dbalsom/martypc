@@ -611,7 +611,7 @@ pub static DECODE: [InstTemplate; TOTAL_OPS_LEN] = {
 
 impl NecVx0 {
     #[rustfmt::skip]
-    pub fn decode(bytes: &mut impl ByteQueue, peek: bool) -> Result<Instruction, Box<dyn std::error::Error>> {
+    pub fn decode_8080(bytes: &mut impl ByteQueue, peek: bool) -> Result<Instruction, Box<dyn std::error::Error>> {
         let mut operand1_type: OperandType = OperandType::NoOperand;
         let mut operand2_type: OperandType = OperandType::NoOperand;
         

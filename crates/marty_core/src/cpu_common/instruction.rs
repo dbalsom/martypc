@@ -449,6 +449,21 @@ fn operand_to_string(i: &Instruction, op: OperandSelect, lvalue: OperandSize) ->
                 AddressingMode::BxDisp16(disp) => {
                     format!("{}[{}:bx{}]", ptr_prefix, segment1, WithPlusSign(disp))
                 }
+                AddressingMode::RegisterIndirect(reg) => match reg {
+                    Register16::AX => "[ax]".to_string(),
+                    Register16::BX => "[bx]".to_string(),
+                    Register16::CX => "[cx]".to_string(),
+                    Register16::DX => "[dx]".to_string(),
+                    Register16::SI => "[si]".to_string(),
+                    Register16::DI => "[di]".to_string(),
+                    Register16::SP => "[sp]".to_string(),
+                    Register16::BP => "[bp]".to_string(),
+                    Register16::ES => "[es]".to_string(),
+                    Register16::CS => "[cs]".to_string(),
+                    Register16::SS => "[ss]".to_string(),
+                    Register16::DS => "[ds]".to_string(),
+                    _ => "".to_string(),
+                },
                 AddressingMode::RegisterMode => "".to_string(),
             }
         }
@@ -637,7 +652,7 @@ fn tokenize_operand(i: &Instruction, op: OperandSelect, lvalue: OperandSize) -> 
                 AddressingMode::DiDisp16(disp) => (segment1_token, Some(disp), ["di", ""]),
                 AddressingMode::BpDisp16(disp) => (segment2_token, Some(disp), ["bp", ""]),
                 AddressingMode::BxDisp16(disp) => (segment1_token, Some(disp), ["bx", ""]),
-                AddressingMode::RegisterMode => {
+                _ => {
                     have_addr_mode = false;
                     (segment1_token, None, ["", ""])
                 }

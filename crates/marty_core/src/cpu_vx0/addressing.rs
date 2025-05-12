@@ -113,7 +113,7 @@ impl NecVx0 {
 
             // The instruction decoder should convert ModRM operands that specify Registers to Register type operands, so
             // in theory this shouldn't happen
-            AddressingMode::RegisterMode => panic!("Can't calculate EA for register")
+            _ => panic!("Can't calculate EA for register")
         };
 
         self.last_ea = offset; // Save last EA to do voodoo when LEA is called with reg, reg operands

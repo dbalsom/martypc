@@ -340,8 +340,8 @@ lazy_static! {
     /// This hashmap is used to permit certain CPUs to be swapped out in place of others.
     static ref COMPATIBLE_CPUS: HashMap<CpuType, Vec<CpuType>> = {
         let mut m = HashMap::new();
-        m.insert(CpuType::Intel8088, vec![CpuType::NecV20]);
-        m.insert(CpuType::NecV20, vec![CpuType::Intel8088]);
+        m.insert(CpuType::Intel8088, vec![CpuType::NecV20(Default::default())]);
+        m.insert(CpuType::NecV20(Default::default()), vec![CpuType::Intel8088]);
         m
     };
 }

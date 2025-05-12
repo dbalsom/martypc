@@ -85,6 +85,13 @@ pub const OPCODE_PREFIX_REPMASK: u32 = 0b1111_0000_0000;
 // The first two bits of the prefixes field stores the number of prefixes to restore from 0-3.
 pub const OPCODE_PREFIX_CT_MASK: u32 = 0b0000_0000_0011;
 
+#[derive(Copy, Clone, Debug, Default, Deserialize, Eq, PartialEq, Hash)]
+pub enum CpuArch {
+    #[default]
+    I86,
+    I8080,
+}
+
 #[derive(Debug, Default, PartialEq)]
 pub enum ExecutionResult {
     #[default]
@@ -105,6 +112,60 @@ pub enum CpuException {
     BoundsException,
 }
 
+pub enum Register16_8080 {
+    BC,
+    DE,
+    HL,
+}
+
+impl From<Register16_8080> for Register16 {
+    fn from(reg: Register16_8080) -> Self {
+        match reg {
+            Register16_8080::BC => Register16::CX,
+            Register16_8080::DE => Register16::DX,
+            Register16_8080::HL => Register16::BX,
+        }
+    }
+}
+
+pub enum Register8_8080 {
+    AC,
+    B,
+    C,
+    D,
+    E,
+    H,
+    L,
+}
+
+impl From<Register8_8080> for Register8 {
+    fn from(reg: Register8_8080) -> Self {
+        match reg {
+            Register8_8080::AC => Register8::AL,
+            Register8_8080::B => Register8::CH,
+            Register8_8080::C => Register8::CL,
+            Register8_8080::D => Register8::DH,
+            Register8_8080::E => Register8::DL,
+            Register8_8080::H => Register8::BH,
+            Register8_8080::L => Register8::BL,
+        }
+    }
+}
+
+impl From<Register8_8080> for Register16 {
+    fn from(reg: Register8_8080) -> Self {
+        match reg {
+            Register8_8080::AC => Register16::AX,
+            Register8_8080::H => Register16::BX,
+            Register8_8080::L => Register16::BX,
+            Register8_8080::B => Register16::CX,
+            Register8_8080::C => Register16::CX,
+            Register8_8080::D => Register16::DX,
+            Register8_8080::E => Register16::DX,
+        }
+    }
+}
+
 #[derive(Copy, Clone, Debug, PartialEq)]
 pub enum Register8 {
     AL,
@@ -115,6 +176,20 @@ pub enum Register8 {
     CH,
     DH,
     BH,
+}
+
+impl Register8 {
+    pub const fn from_r8_8080(reg: Register8_8080) -> Self {
+        match reg {
+            Register8_8080::AC => Register8::AL,
+            Register8_8080::B => Register8::CH,
+            Register8_8080::C => Register8::CL,
+            Register8_8080::D => Register8::DH,
+            Register8_8080::E => Register8::DL,
+            Register8_8080::H => Register8::BH,
+            Register8_8080::L => Register8::BL,
+        }
+    }
 }
 
 #[derive(Copy, Clone, Debug, PartialEq)]
@@ -133,6 +208,16 @@ pub enum Register16 {
     DS,
     PC,
     InvalidRegister,
+}
+
+impl Register16 {
+    pub const fn from_r16_8080(reg: Register16_8080) -> Self {
+        match reg {
+            Register16_8080::BC => Register16::CX,
+            Register16_8080::DE => Register16::DX,
+            Register16_8080::HL => Register16::BX,
+        }
+    }
 }
 
 #[derive(Copy, Clone, Default, Debug)]
@@ -187,14 +272,13 @@ pub struct CpuStringState {
     pub dram_refresh_cycle_num: String,
 }
 
-#[derive(Copy, Clone, Debug, Deserialize, Eq, PartialEq, Hash)]
-#[derive(Default)]
+#[derive(Copy, Clone, Debug, Deserialize, Eq, PartialEq, Hash, Default)]
 pub enum CpuType {
     #[default]
     Intel8088,
     Intel8086,
-    NecV20,
-    NecV30,
+    NecV20(CpuArch),
+    NecV30(CpuArch),
 }
 
 impl FromStr for CpuType {
@@ -206,8 +290,8 @@ impl FromStr for CpuType {
         match s.to_lowercase().as_str() {
             "intel8088" => Ok(CpuType::Intel8088),
             "intel8086" => Ok(CpuType::Intel8086),
-            "necv20" => Ok(CpuType::NecV20),
-            "necv30" => Ok(CpuType::NecV30),
+            "necv20" => Ok(CpuType::NecV20(Default::default())),
+            "necv30" => Ok(CpuType::NecV30(Default::default())),
             _ => Err("Bad value for cputype".to_string()),
         }
     }
@@ -217,13 +301,19 @@ impl CpuType {
     pub fn decode(&self, bytes: &mut impl ByteQueue, peek: bool) -> Result<Instruction, Box<dyn std::error::Error>> {
         match self {
             CpuType::Intel8088 | CpuType::Intel8086 => Intel808x::decode(bytes, peek),
-            CpuType::NecV20 | CpuType::NecV30 => NecVx0::decode(bytes, peek),
+            CpuType::NecV20(arch) | CpuType::NecV30(arch) => match arch {
+                CpuArch::I86 => NecVx0::decode(bytes, peek),
+                CpuArch::I8080 => NecVx0::decode(bytes, peek),
+            },
         }
     }
     pub fn tokenize_instruction(&self, instruction: &Instruction) -> Vec<SyntaxToken> {
         match self {
             CpuType::Intel8088 | CpuType::Intel8086 => instruction.tokenize(),
-            CpuType::NecV20 | CpuType::NecV30 => instruction.tokenize(),
+            CpuType::NecV20(arch) | CpuType::NecV30(arch) => match arch {
+                CpuArch::I86 => instruction.tokenize(),
+                CpuArch::I8080 => instruction.tokenize(),
+            },
         }
     }
 }
@@ -243,8 +333,7 @@ pub enum CycleTraceMode {
     Sigrok,
 }
 
-#[derive(Copy, Clone, Debug, Deserialize, PartialEq)]
-#[derive(Default)]
+#[derive(Copy, Clone, Debug, Deserialize, PartialEq, Default)]
 pub enum TraceMode {
     #[default]
     None,
@@ -270,7 +359,6 @@ impl FromStr for TraceMode {
         }
     }
 }
-
 
 #[derive(Debug)]
 pub enum CpuOption {
@@ -333,7 +421,6 @@ pub fn format_instruction_bytes(bytes: &[u8]) -> String {
 #[enum_dispatch]
 pub enum CpuDispatch {
     Intel808x,
-
     NecVx0,
 }
 

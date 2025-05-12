@@ -308,8 +308,8 @@ impl NecVx0 {
 
     pub fn biu_queue_has_room(&mut self) -> bool {
         match self.cpu_type {
-            CpuType::NecV20 => self.queue.len() < QUEUE_SIZE,
-            CpuType::NecV30 => {
+            CpuType::NecV20(_) => self.queue.len() < QUEUE_SIZE,
+            CpuType::NecV30(_) => {
                 // 8086 fetches two bytes at a time, so must be two free bytes in queue
                 self.queue.len() < QUEUE_SIZE - 1
             }
