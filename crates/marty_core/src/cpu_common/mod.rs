@@ -42,7 +42,7 @@ pub mod mnemonic;
 pub mod operands;
 pub mod services;
 
-use std::str::FromStr;
+use std::{fmt, str::FromStr};
 
 pub use addressing::{AddressingMode, CpuAddress, Displacement};
 pub use analyzer::{AnalyzerEntry, LogicAnalyzer};
@@ -66,7 +66,7 @@ use crate::{
 };
 
 use enum_dispatch::enum_dispatch;
-use serde::Deserialize;
+use serde::{Deserialize, Deserializer};
 
 // Instruction prefixes
 pub const OPCODE_PREFIX_0F: u32 = 0b_1000_0000_0000_0000;
@@ -272,13 +272,47 @@ pub struct CpuStringState {
     pub dram_refresh_cycle_num: String,
 }
 
-#[derive(Copy, Clone, Debug, Deserialize, Eq, PartialEq, Hash, Default)]
+#[derive(Copy, Clone, Debug, Eq, PartialEq, Hash, Default)]
 pub enum CpuType {
     #[default]
     Intel8088,
     Intel8086,
     NecV20(CpuArch),
     NecV30(CpuArch),
+}
+
+/// We need a custom deserializer due to the fact that the NEC CPU types have non-unit variants
+/// that we wish to ignore when deserializing, populating the default value instead.
+impl<'de> Deserialize<'de> for CpuType {
+    fn deserialize<D>(deserializer: D) -> Result<Self, D::Error>
+    where
+        D: Deserializer<'de>,
+    {
+        struct CpuTypeVisitor;
+
+        impl<'de> serde::de::Visitor<'de> for CpuTypeVisitor {
+            type Value = CpuType;
+
+            fn expecting(&self, formatter: &mut fmt::Formatter) -> fmt::Result {
+                formatter.write_str("a CPU type string like 'Intel8088', 'NecV20'")
+            }
+
+            fn visit_str<E>(self, value: &str) -> Result<CpuType, E>
+            where
+                E: serde::de::Error,
+            {
+                match value.to_ascii_lowercase().as_str() {
+                    "intel8088" => Ok(CpuType::Intel8088),
+                    "intel8086" => Ok(CpuType::Intel8086),
+                    "necv20" => Ok(CpuType::NecV20(CpuArch::default())),
+                    "necv30" => Ok(CpuType::NecV30(CpuArch::default())),
+                    _ => Err(E::custom(format!("unknown CpuType '{}'", value))),
+                }
+            }
+        }
+
+        deserializer.deserialize_any(CpuTypeVisitor)
+    }
 }
 
 impl FromStr for CpuType {
