@@ -589,6 +589,11 @@ impl CpuViewerControl {
                     self.cpu_state = cpu_state;
                     self.paused_updates += 1;
                 }
+                else if cpu_state.cycle_count != self.cpu_state.cycle_count {
+                    // Incoming state is post-reset, or has a higher cycle count, accept it.
+                    self.cpu_state = cpu_state;
+                    self.reg_updated = false;
+                }
             }
         }
     }
