@@ -8,7 +8,7 @@
 
 ## Core Bug Fixes / Improvements
  - Preliminary support for the V20's 8080 emulation mode.
- 
+ - Fixed VGA cursor disable bit (Ferraro reference had it backwards)
 
 ## [0.4.0](https://github.com/dbalsom/martypc/releases/tag/0.4.0) (2025-05-11)
 
