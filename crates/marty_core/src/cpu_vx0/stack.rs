@@ -189,8 +189,8 @@ impl NecVx0 {
     // This also pops the accumulator.
     // The 8080 virtual stack pointer is BP, preserving SP for native return.
     pub fn pop_psw_8080(&mut self) {
-        let psw = self.biu_read_u8(Segment::DS, self.bp.wrapping_add(1)) as u16;
-        let acc = self.biu_read_u8(Segment::DS, self.bp);
+        let psw = self.biu_read_u8(Segment::DS, self.bp) as u16;
+        let acc = self.biu_read_u8(Segment::DS, self.bp.wrapping_add(1));
 
         self.set_flag_state(Flag::Carry, psw & CPU_FLAG_CARRY != 0);
         self.set_flag_state(Flag::Parity, psw & CPU_FLAG_PARITY != 0);
@@ -208,7 +208,10 @@ impl NecVx0 {
     #[inline]
     pub fn push_psw_8080(&mut self) {
         // 8080 PSW is lower byte of flags.
-        let word = (self.flags & 0xFF) << 8 | self.a.l() as u16;
+        // The resulting word pushed to the stack contains the flags in the lower byte and
+        // the accumulator in the upper byte, little-endian order (flags are written first)
+        //let word = (self.flags & 0xFF) | ((self.a.l() as u16) << 8);
+        let word = u16::from_le_bytes([self.flags as u8, self.a.l()]);
         self.bp = self.bp.wrapping_sub(2);
         self.biu_write_u16(Segment::DS, self.bp, word, ReadWriteFlag::RNI);
     }
