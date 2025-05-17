@@ -30,12 +30,17 @@
 
 */
 
+#[cfg(feature = "cpu_validator")]
+use crate::cpu_validator::CpuValidator;
+#[cfg(feature = "cpu_validator")]
+use crate::cpu_vx0::CpuValidatorState;
 use crate::{
     breakpoints::{BreakPointType, StopWatchData},
     bus::BusInterface,
     cpu_common::{
         Cpu,
         CpuAddress,
+        CpuArch,
         CpuError,
         CpuOption,
         CpuStringState,
@@ -62,13 +67,9 @@ use crate::{
     syntax_token::SyntaxToken,
 };
 
-#[cfg(feature = "cpu_validator")]
-use crate::cpu_validator::CpuValidator;
-#[cfg(feature = "cpu_validator")]
-use crate::cpu_vx0::CpuValidatorState;
-
 #[cfg(any(feature = "cpu_validator", feature = "cpu_collect_cycle_states"))]
 use crate::cpu_validator::{CycleState, VRegisters};
+use crate::cpu_vx0::CPU_FLAG_MODE;
 
 impl Cpu for NecVx0 {
     fn reset(&mut self) {
@@ -118,6 +119,11 @@ impl Cpu for NecVx0 {
         self.set_register16(Register16::DS, 0);
 
         self.flags = CPU_FLAGS_RESERVED_ON;
+        // Reset into native mode.
+        // Set the mode flag to native (set)
+        self.flags |= CPU_FLAG_MODE;
+        // Set the cpu type for native disassembly.
+        self.exit_emulation_mode();
 
         self.queue.flush();
 
@@ -281,7 +287,7 @@ impl Cpu for NecVx0 {
 
     fn flush_piq(&mut self) {
         // Rewind PC to the start of the instruction before flushing, so we will re-fetch it
-        self.pc = self.pc.wrapping_sub(self.queue.len() as u16);
+        self.pc = self.pc.wrapping_sub(self.queue.len_p() as u16);
         self.queue.flush();
     }
 

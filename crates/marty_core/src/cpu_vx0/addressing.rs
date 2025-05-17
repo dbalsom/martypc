@@ -32,7 +32,7 @@
 
 use crate::{
     cpu_common::{operands::OperandSize, AddressingMode, OperandType, Segment},
-    cpu_vx0::{biu::*, decode::DECODE, *},
+    cpu_vx0::{biu::*, decode_v20::DECODE, *},
 };
 
 #[derive(Copy, Clone, Debug)]
@@ -110,7 +110,18 @@ impl NecVx0 {
             AddressingMode::DiDisp16(disp16)    => (segment_base_ds, self.di.wrapping_add(disp16.get_u16())),
             AddressingMode::BpDisp16(disp16)    => (segment_base_ss, self.bp.wrapping_add(disp16.get_u16())),   // BP -> SS default reg
             AddressingMode::BxDisp16(disp16)    => (segment_base_ds, self.b.x().wrapping_add(disp16.get_u16())),
-
+            // Register indirect mode (8080)
+            AddressingMode::RegisterIndirect(reg) => (segment_base_ds, match reg {
+                Register16::AX => self.a.x(),
+                Register16::BX => self.b.x(),
+                Register16::CX => self.c.x(),
+                Register16::DX => self.d.x(),
+                Register16::SP => self.sp,
+                Register16::BP => self.bp,
+                Register16::SI => self.si,
+                Register16::DI => self.di,
+                _ => panic!("Invalid indirect register!")
+            }),
             // The instruction decoder should convert ModRM operands that specify Registers to Register type operands, so
             // in theory this shouldn't happen
             _ => panic!("Can't calculate EA for register")
@@ -132,9 +143,16 @@ impl NecVx0 {
     /// Load the EA operand for the current instruction, if applicable
     /// (not all instructions with a mod r/m will load, ie, write-only instructions)
     pub fn load_operand(&mut self) {
-        if DECODE[self.i.decode_idx].gdr.loads_ea() {
+        
+        if self.i.decode_idx >= self.decode.table.len() {
+            log::error!("load_operand(): Instruction decode index out of range: {}",
+                self.i.decode_idx);
+            log::error!("erroring instruction: {:?}", self.i);
+            log::error!("flags: {:16b}", self.flags);
+        }
+        
+        if self.decode.table[self.i.decode_idx].gdr.loads_ea() {
             // This instruction loads its EA operand. Load and save into OPR.
-
             let ea_mode: AddressingMode;
             let ea_size;
             if let OperandType::AddressingMode(mode, size) = self.i.operand1_type {
@@ -212,18 +230,35 @@ impl NecVx0 {
                 Register8::DH => Some(self.d.h()),
                 Register8::DL => Some(self.d.l()),
             }
-            OperandType::AddressingMode(_mode, _) => {
-                // EA operand was already fetched into ea_opr. Return masked byte.
-                if self.i.opcode & 0x01 != 0 {
-                    panic!("Reading byte operand for word size instruction");
+            OperandType::AddressingMode(mode, _) => {
+                match mode {
+                    AddressingMode::RegisterIndirect(reg) => {
+                        let offset = match reg {
+                            Register16::AX => self.a.x(),
+                            Register16::BX => self.b.x(),
+                            Register16::CX => self.c.x(),
+                            Register16::DX => self.d.x(),
+                            Register16::SP => self.sp,
+                            Register16::BP => self.bp,
+                            Register16::SI => self.si,
+                            Register16::DI => self.di,
+                            _ => panic!("Invalid indirect register!")
+                        };
+                        Some(self.biu_read_u8(Segment::DS, offset))
+                    }
+                    _ => {
+                        // EA operand was already fetched into ea_opr. Return masked byte.
+                        if self.i.opcode & 0x01 != 0 {
+                            panic!("Reading byte operand for word size instruction");
+                        }
+                        Some((self.ea_opr & 0xFF) as u8)
+                    }
                 }
-                Some((self.ea_opr & 0xFF) as u8)
             }
             _ => {
                 log::error!("Bad operand type: {:?}", operand);
                 None
             }
-                
         }
     }
 
@@ -273,7 +308,10 @@ impl NecVx0 {
                 // EA operand was already fetched into ea_opr. Return it.
                 Some(self.ea_opr)
             }
-            _ => None,
+            _ => {
+                log::error!("Bad operand type: {:?}", operand);
+                None
+            },
         }
     }
 

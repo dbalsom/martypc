@@ -35,8 +35,9 @@ use crate::{
     cpu_vx0::*,
 };
 
+use crate::cpu_common::CpuArch;
 #[cfg(feature = "cpu_validator")]
-use crate::{cpu_vx0::decode::DECODE, vgdr};
+use crate::{cpu_vx0::decode_v20::DECODE, vgdr};
 
 impl NecVx0 {
     /// Run a single instruction.
@@ -144,6 +145,8 @@ impl NecVx0 {
                 self.validate_init();
             }
 
+            let cpu_type = self.cpu_type;
+
             // If cycle tracing is enabled, we prefetch the current instruction directly from memory backend
             // to make the instruction disassembly available to the trace log on the first byte fetch of an
             // instruction.
@@ -151,7 +154,7 @@ impl NecVx0 {
             // anyway.
             if self.trace_mode == TraceMode::CycleText {
                 self.bus.seek(instruction_address as usize);
-                self.i = match NecVx0::decode(&mut self.bus, true) {
+                self.i = match cpu_type.decode(&mut self.bus, true) {
                     Ok(i) => i,
                     Err(_) => {
                         self.is_running = false;
@@ -166,7 +169,7 @@ impl NecVx0 {
             // Fetch and decode the current instruction. This uses the CPU's own ByteQueue trait
             // implementation, which fetches instruction bytes through the processor instruction queue.
             //log::warn!("decoding instruction...");
-            self.i = match NecVx0::decode(self, true) {
+            self.i = match cpu_type.decode(self, true) {
                 Ok(i) => i,
                 Err(_) => {
                     self.is_running = false;
@@ -200,12 +203,25 @@ impl NecVx0 {
             self.instr_slice = self.bus.get_vec_at(instruction_address as usize, self.i.size as usize);
         }
 
-        // Execute the current decoded instruction.
-        if self.i.prefixes & OPCODE_PREFIX_0F == 0 {
-            self.exec_result = self.execute_instruction();
-        }
-        else {
-            self.exec_result = self.execute_extended_instruction();
+        let arch = match self.cpu_type {
+            CpuType::NecV20(arch) => arch,
+            CpuType::NecV30(arch) => arch,
+            _ => CpuArch::I86,
+        };
+
+        match arch {
+            CpuArch::I86 => {
+                // Execute the current decoded instruction.
+                if self.i.prefixes & OPCODE_PREFIX_0F == 0 {
+                    self.exec_result = self.execute_instruction();
+                }
+                else {
+                    self.exec_result = self.execute_extended_instruction();
+                }
+            }
+            CpuArch::I8080 => {
+                self.exec_result = self.execute_8080_instruction();
+            }
         }
 
         let step_result = match &self.exec_result {

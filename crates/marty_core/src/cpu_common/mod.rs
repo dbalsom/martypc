@@ -42,14 +42,13 @@ pub mod mnemonic;
 pub mod operands;
 pub mod services;
 
-use std::{fmt, str::FromStr};
-
 pub use addressing::{AddressingMode, CpuAddress, Displacement};
 pub use analyzer::{AnalyzerEntry, LogicAnalyzer};
 pub use error::CpuError;
 pub use instruction::{Instruction, InstructionWidth};
 pub use mnemonic::Mnemonic;
 pub use operands::OperandType;
+use std::{fmt, fmt::Display, str::FromStr};
 
 #[cfg(feature = "cpu_validator")]
 use crate::cpu_validator::CpuValidator;
@@ -70,6 +69,7 @@ use serde::{Deserialize, Deserializer};
 
 // Instruction prefixes
 pub const OPCODE_PREFIX_0F: u32 = 0b_1000_0000_0000_0000;
+pub const OPCODE_PREFIX_ED: u32 = 0b_0100_0000_0000_0000;
 pub const OPCODE_PREFIX_ES_OVERRIDE: u32 = 0b_0000_0000_0100;
 pub const OPCODE_PREFIX_CS_OVERRIDE: u32 = 0b_0000_0000_1000;
 pub const OPCODE_PREFIX_SS_OVERRIDE: u32 = 0b_0000_0001_0000;
@@ -116,6 +116,7 @@ pub enum Register16_8080 {
     BC,
     DE,
     HL,
+    SP,
 }
 
 impl From<Register16_8080> for Register16 {
@@ -124,6 +125,7 @@ impl From<Register16_8080> for Register16 {
             Register16_8080::BC => Register16::CX,
             Register16_8080::DE => Register16::DX,
             Register16_8080::HL => Register16::BX,
+            Register16_8080::SP => Register16::SP,
         }
     }
 }
@@ -210,12 +212,35 @@ pub enum Register16 {
     InvalidRegister,
 }
 
+impl Display for Register16 {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        let s = match self {
+            Register16::AX => "ax",
+            Register16::BX => "bx",
+            Register16::CX => "cx",
+            Register16::DX => "dx",
+            Register16::SP => "sp",
+            Register16::BP => "bp",
+            Register16::SI => "si",
+            Register16::DI => "di",
+            Register16::ES => "es",
+            Register16::CS => "cs",
+            Register16::SS => "ss",
+            Register16::DS => "ds",
+            Register16::PC => "pc",
+            _ => "*invalid*",
+        };
+        write!(f, "{s}")
+    }
+}
+
 impl Register16 {
     pub const fn from_r16_8080(reg: Register16_8080) -> Self {
         match reg {
             Register16_8080::BC => Register16::CX,
             Register16_8080::DE => Register16::DX,
             Register16_8080::HL => Register16::BX,
+            Register16_8080::SP => Register16::BP,
         }
     }
 }
@@ -337,7 +362,7 @@ impl CpuType {
             CpuType::Intel8088 | CpuType::Intel8086 => Intel808x::decode(bytes, peek),
             CpuType::NecV20(arch) | CpuType::NecV30(arch) => match arch {
                 CpuArch::I86 => NecVx0::decode(bytes, peek),
-                CpuArch::I8080 => NecVx0::decode(bytes, peek),
+                CpuArch::I8080 => NecVx0::decode_8080(bytes, peek),
             },
         }
     }

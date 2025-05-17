@@ -108,7 +108,9 @@ impl NecVx0 {
     }
 
     /// Execute the FARRET microcode routine, including the jump into the procedure.
-    pub fn farret(&mut self, far: bool) {
+    /// FARRET can also perform a near return. Control which type of return is performed
+    /// by the far parameter.
+    pub fn ret(&mut self, far: bool) {
         self.cycle_i(MC_JUMP);
         //self.pop_register16(Register16::IP, ReadWriteFlag::RNI);
         self.pc = self.pop_u16();
@@ -130,5 +132,42 @@ impl NecVx0 {
             self.biu_queue_flush();
             self.cycles_i(2, &[0x0c5, MC_RTN]);
         }
+    }
+
+    /// Execute a CALL in 8080 emulation mode.
+    #[inline]
+    pub fn call_8080(&mut self, new_ip: u16) {
+        self.biu_fetch_suspend();
+        self.cycles(2);
+        self.corr();
+        let ret_ip = self.pc;
+        self.cycle_i(MC_JUMP);
+        self.pc = new_ip;
+        self.biu_queue_flush();
+        self.cycles(3);
+        self.push_u16_8080(ret_ip);
+    }
+
+    /// Execute a return in 8080 emulation mode.
+    #[inline]
+    pub fn ret_8080(&mut self) {
+        self.cycle_i(MC_JUMP);
+        let ret_ip = self.pop_u16_8080();
+        self.biu_fetch_suspend();
+        self.cycles(2);
+        self.biu_queue_flush();
+        self.pc = ret_ip;
+        self.cycles(2);
+    }
+
+    /// Execute PCHL (jump to HL) in 8080 emulation mode.
+    #[inline]
+    pub fn pchl_8080(&mut self) {
+        self.cycle_i(MC_JUMP);
+        self.biu_fetch_suspend();
+        self.cycles(2);
+        self.biu_queue_flush();
+        self.pc = self.hl_80();
+        self.cycles(2);
     }
 }

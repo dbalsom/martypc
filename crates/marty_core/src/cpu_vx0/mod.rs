@@ -42,8 +42,11 @@ mod cpu;
 mod cycle;
 mod decode;
 mod decode_8080;
+mod decode_v20;
 mod display;
+mod emulation_mode;
 mod execute;
+mod execute_8080;
 mod execute_extended;
 mod fuzzer;
 mod gdr;
@@ -60,7 +63,7 @@ mod stack;
 mod step;
 mod string;
 
-use crate::cpu_common::QueueOp;
+use crate::{cpu_common::QueueOp, cpu_vx0::decode::DecodeTable};
 use core::fmt::Display;
 use lazy_static::lazy_static;
 use regex::Regex;
@@ -130,7 +133,15 @@ macro_rules! vgdr {
     };
 }
 
-use crate::cpu_common::{operands::OperandSize, services::CPUDebugServices, Register16, Register8, ServiceEvent};
+use crate::{
+    cpu_common::{operands::OperandSize, services::CPUDebugServices, Register16, Register8, ServiceEvent},
+    cpu_vx0::{decode_8080::DECODE_8080, decode_v20::DECODE},
+};
+
+use crate::{
+    cpu_common::alu::Xi,
+    cpu_vx0::{decode_v20::OperandTemplate, gdr::GdrEntry},
+};
 use trace_print;
 
 const QUEUE_MAX: usize = 6;
@@ -154,18 +165,20 @@ pub const CPU_FLAG_TRAP: u16 = 0b0000_0001_0000_0000;
 pub const CPU_FLAG_INT_ENABLE: u16 = 0b0000_0010_0000_0000;
 pub const CPU_FLAG_DIRECTION: u16 = 0b0000_0100_0000_0000;
 pub const CPU_FLAG_OVERFLOW: u16 = 0b0000_1000_0000_0000;
+pub const CPU_FLAG_MODE: u16 = 0b1000_0000_0000_0000; // Vx0 emulation mode bit
 
 /*
 const CPU_FLAG_RESERVED12: u16 = 0b0001_0000_0000_0000;
 const CPU_FLAG_RESERVED13: u16 = 0b0010_0000_0000_0000;
 const CPU_FLAG_RESERVED14: u16 = 0b0100_0000_0000_0000;
-const CPU_FLAG_RESERVED15: u16 = 0b1000_0000_0000_0000;
 */
 
-const CPU_FLAGS_RESERVED_ON: u16 = 0b1111_0000_0000_0010;
+// Vx0 adds MD bit in position 15.
+const CPU_FLAGS_RESERVED_ON: u16 = 0b0111_0000_0000_0010;
 const CPU_FLAGS_RESERVED_OFF: u16 = !(CPU_FLAG_RESERVED3 | CPU_FLAG_RESERVED5);
 
-const FLAGS_POP_MASK: u16 = 0b0000_1111_1101_0101;
+// Vx0 adds MD bit in position 15.
+const FLAGS_POP_MASK: u16 = 0b1000_1111_1101_0101;
 
 const REGISTER_HI_MASK: u16 = 0b0000_0000_1111_1111;
 const REGISTER_LO_MASK: u16 = 0b1111_1111_0000_0000;
@@ -271,6 +284,24 @@ pub const REGISTER16_LUT: [Register16; 8] = [
     Register16::DI,
 ];
 
+pub const REGISTER8_8080_LUT: [Option<Register8>; 8] = [
+    Some(Register8::CH), // B
+    Some(Register8::CL), // C
+    Some(Register8::DH), // D
+    Some(Register8::DL), // E
+    Some(Register8::BH), // H
+    Some(Register8::BL), // L
+    None,                // MEM
+    Some(Register8::AL), // ACC
+];
+
+pub const REGISTER16_8080_LUT: [Register16; 4] = [
+    Register16::CX, // BC
+    Register16::DX, // DE
+    Register16::BX, // HL
+    Register16::BP, // SP
+];
+
 pub const SEGMENT_REGISTER16_LUT: [Register16; 4] = [Register16::ES, Register16::CS, Register16::SS, Register16::DS];
 
 #[derive(Debug, Copy, Clone, PartialEq, Default)]
@@ -315,6 +346,7 @@ pub enum Flag {
     Interrupt,
     Direction,
     Overflow,
+    Mode,
 }
 
 /*
@@ -463,6 +495,7 @@ pub struct I8288 {
 pub struct NecVx0 {
     cpu_type: CpuType,
     state:    CpuState,
+    decode:   DecodeTable,
 
     a: GeneralRegister,
     b: GeneralRegister,
@@ -478,6 +511,7 @@ pub struct NecVx0 {
     es: u16,
     //ip:    u16,
     flags: u16,
+    emulation_mode: bool,
 
     address_bus: u32,
     address_latch: u32,
@@ -862,6 +896,32 @@ impl NecVx0 {
         self.pc.wrapping_sub(self.queue.len() as u16)
     }
 
+    /// 8080 stuff
+    #[inline]
+    pub fn acc_80(&self) -> u8 {
+        self.a.l()
+    }
+
+    #[inline]
+    pub fn hl_80(&self) -> u16 {
+        self.b.x()
+    }
+
+    #[inline]
+    pub fn bc_80(&self) -> u16 {
+        self.c.x()
+    }
+
+    #[inline]
+    pub fn de_80(&self) -> u16 {
+        self.d.x()
+    }
+
+    #[inline]
+    pub fn sp_80(&self) -> u16 {
+        self.bp
+    }
+
     /// Return the IP value for disassembly purposes. We wish to adjust the real value of IP in
     /// certain circumstances, such as when a reentrant instruction is being executed. This is so
     /// that reentrant instructions stay in the disassembly viewer until completed.
@@ -1008,6 +1068,7 @@ impl NecVx0 {
             }
             Flag::Direction => CPU_FLAG_DIRECTION,
             Flag::Overflow => CPU_FLAG_OVERFLOW,
+            Flag::Mode => CPU_FLAG_MODE,
         };
     }
 
@@ -1023,6 +1084,7 @@ impl NecVx0 {
             Flag::Interrupt => !CPU_FLAG_INT_ENABLE,
             Flag::Direction => !CPU_FLAG_DIRECTION,
             Flag::Overflow => !CPU_FLAG_OVERFLOW,
+            Flag::Mode => !CPU_FLAG_MODE,
         };
     }
 
@@ -1072,6 +1134,7 @@ impl NecVx0 {
                 Flag::Interrupt => CPU_FLAG_INT_ENABLE,
                 Flag::Direction => CPU_FLAG_DIRECTION,
                 Flag::Overflow => CPU_FLAG_OVERFLOW,
+                Flag::Mode => CPU_FLAG_MODE,
             }
             != 0
     }

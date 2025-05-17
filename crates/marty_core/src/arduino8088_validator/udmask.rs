@@ -705,7 +705,7 @@ impl ArduinoValidator {
         let mut masked_flags = flags & IGNORE_MASK; // Ignore I, T and reserved flags
 
         match cputype {
-            CpuType::NecV20 => {
+            CpuType::NecV20(_) => {
                 let grp = FLAG_MASK_LOOKUP_V20[opcode as usize].group as usize;
 
                 if grp == 0 {
@@ -739,7 +739,7 @@ impl ArduinoValidator {
 
     pub fn is_group_opcode(cputype: CpuType, opcode: u8) -> bool {
         match cputype {
-            CpuType::NecV20 => FLAG_MASK_LOOKUP_V20[opcode as usize].group != 0,
+            CpuType::NecV20(_) => FLAG_MASK_LOOKUP_V20[opcode as usize].group != 0,
             CpuType::Intel8088 | CpuType::Intel8086 => FLAG_MASK_LOOKUP_8088[opcode as usize].group != 0,
             _ => panic!("No groups defined for CpuType"),
         }

@@ -1,3 +1,14 @@
+## [0.4.1](https://github.com/dbalsom/martypc/releases/tag/0.4.1) (2025-05-XX)
+
+
+## Frontend Bug Fixes / Improvements
+ - Removed bad IBM romdef file
+ - Fixed CPU Status window updating when paused/stepping.
+ - Fixed PIQ flush on V20 CPU.
+
+## Core Bug Fixes / Improvements
+ - Preliminary support for the V20's 8080 emulation mode.
+ 
 
 ## [0.4.0](https://github.com/dbalsom/martypc/releases/tag/0.4.0) (2025-05-11)
 

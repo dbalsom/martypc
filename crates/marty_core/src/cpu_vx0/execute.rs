@@ -1171,7 +1171,7 @@ impl NecVx0 {
                 // RETF imm16 - Far Return w/ release 
                 // 0xC8 undocumented alias for 0xCA
                 let stack_disp = self.read_operand16(self.i.operand1_type, None).unwrap();
-                self.farret(true);
+                self.ret(true);
                 self.release(stack_disp);
                 self.cycle_i(0x0ce);
                 jump = true;
@@ -1180,7 +1180,7 @@ impl NecVx0 {
                 // RETF - Far Return
                 // 0xC9 undocumented alias for 0xCB
                 cycles!(self, 1);
-                self.farret(true);
+                self.ret(true);
                 jump = true;
             }
             0xCC => {

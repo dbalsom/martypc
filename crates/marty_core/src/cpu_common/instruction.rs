@@ -95,7 +95,7 @@ impl From<&InstructionWidth> for OperandSize {
     }
 }
 
-#[derive(Clone)]
+#[derive(Clone, Debug)]
 pub struct Instruction {
     pub decode_idx: usize,
     pub opcode: u8,
@@ -652,6 +652,13 @@ fn tokenize_operand(i: &Instruction, op: OperandSelect, lvalue: OperandSize) -> 
                 AddressingMode::DiDisp16(disp) => (segment1_token, Some(disp), ["di", ""]),
                 AddressingMode::BpDisp16(disp) => (segment2_token, Some(disp), ["bp", ""]),
                 AddressingMode::BxDisp16(disp) => (segment1_token, Some(disp), ["bx", ""]),
+                AddressingMode::RegisterIndirect(reg) => {
+                    have_addr_mode = false;
+                    op_vec.push(SyntaxToken::OpenBracket);
+                    op_vec.push(SyntaxToken::Register(reg.to_string()));
+                    op_vec.push(SyntaxToken::CloseBracket);
+                    (segment1_token, None, ["", ""])
+                }
                 _ => {
                     have_addr_mode = false;
                     (segment1_token, None, ["", ""])

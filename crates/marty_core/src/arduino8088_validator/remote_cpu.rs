@@ -346,7 +346,7 @@ impl RemoteCpu {
     pub fn is_prefix(&self, opcode: u8) -> bool {
         match self.cpu_type {
             CpuType::Intel8088 | CpuType::Intel8086 => INTEL_PREFIXES.contains(&opcode),
-            CpuType::NecV20 | CpuType::NecV30 => NEC_PREFIXES.contains(&opcode),
+            CpuType::NecV20(_) | CpuType::NecV30(_) => NEC_PREFIXES.contains(&opcode),
         }
     }
 
@@ -973,7 +973,7 @@ impl RemoteCpu {
     pub fn get_preload_pgm(&self) -> &'static [u8] {
         match self.cpu_type {
             CpuType::Intel8088 | CpuType::Intel8086 => &INTEL808X_PRELOAD_PGM,
-            CpuType::NecV20 | CpuType::NecV30 => &NECVX0_PRELOAD_PGM,
+            CpuType::NecV20(_) | CpuType::NecV30(_) => &NECVX0_PRELOAD_PGM,
         }
     }
 

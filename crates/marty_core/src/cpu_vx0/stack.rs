@@ -31,23 +31,26 @@
 */
 
 use crate::{
-    cpu_common::Segment,
+    cpu_common::{Register16_8080, Segment},
     cpu_vx0::{biu::*, *},
 };
 
 impl NecVx0 {
+    #[inline]
     pub fn push_u8(&mut self, data: u8, flag: ReadWriteFlag) {
         // Stack pointer grows downwards
         self.sp = self.sp.wrapping_sub(2);
         self.biu_write_u8(Segment::SS, self.sp, data, flag);
     }
 
+    #[inline]
     pub fn push_u16(&mut self, data: u16, flag: ReadWriteFlag) {
         // Stack pointer grows downwards
         self.sp = self.sp.wrapping_sub(2);
         self.biu_write_u16(Segment::SS, self.sp, data, flag);
     }
 
+    #[inline]
     pub fn pop_u16(&mut self) -> u16 {
         let result = self.biu_read_u16(Segment::SS, self.sp, ReadWriteFlag::Normal);
 
@@ -133,6 +136,84 @@ impl NecVx0 {
         }
     }
 
+    /// Push a 16-bit register pair to the stack in 8080 emulation mode.
+    pub fn push_register16_8080(&mut self, reg: Register16_8080) {
+        // Stack pointer grows downwards
+        self.bp = self.bp.wrapping_sub(2);
+
+        let data = match reg {
+            Register16_8080::HL => self.b.x(),
+            Register16_8080::DE => self.d.x(),
+            Register16_8080::BC => self.c.x(),
+            _ => panic!("Invalid register"),
+        };
+
+        self.biu_write_u16(Segment::DS, self.bp, data, ReadWriteFlag::RNI);
+    }
+
+    /// Push a 16-bit value to the stack in 8080 emulation mode.
+    #[inline]
+    pub fn push_u16_8080(&mut self, data: u16) {
+        // Stack pointer grows downwards
+        self.bp = self.bp.wrapping_sub(2);
+        self.biu_write_u16(Segment::DS, self.bp, data, ReadWriteFlag::RNI);
+    }
+
+    /// Pop a 16-bit value from the stack in 8080 emulation mode.
+    #[inline]
+    pub fn pop_u16_8080(&mut self) -> u16 {
+        let result = self.biu_read_u16(Segment::DS, self.bp, ReadWriteFlag::Normal);
+
+        // Virtual stack pointer shrinks upwards
+        self.bp = self.bp.wrapping_add(2);
+        result
+    }
+
+    // Pop a 16-bit register pair from the stack in 8080 emulation mode.
+    // The 8080 virtual stack pointer is BP, preserving SP for native return.
+    #[inline]
+    pub fn pop_register16_8080(&mut self, reg: Register16_8080) {
+        let data = self.biu_read_u16(Segment::DS, self.bp, ReadWriteFlag::RNI);
+
+        match reg {
+            Register16_8080::HL => self.b.set_x(data),
+            Register16_8080::DE => self.d.set_x(data),
+            Register16_8080::BC => self.c.set_x(data),
+            _ => panic!("Invalid register"),
+        };
+        // Virtual stack pointer grows downwards
+        self.bp = self.bp.wrapping_add(2);
+    }
+
+    // Pop the 8080 PSW from the stack in 8080 emulation mode.
+    // This also pops the accumulator.
+    // The 8080 virtual stack pointer is BP, preserving SP for native return.
+    pub fn pop_psw_8080(&mut self) {
+        let psw = self.biu_read_u8(Segment::DS, self.bp.wrapping_add(1)) as u16;
+        let acc = self.biu_read_u8(Segment::DS, self.bp);
+
+        self.set_flag_state(Flag::Carry, psw & CPU_FLAG_CARRY != 0);
+        self.set_flag_state(Flag::Parity, psw & CPU_FLAG_PARITY != 0);
+        self.set_flag_state(Flag::AuxCarry, psw & CPU_FLAG_AUX_CARRY != 0);
+        self.set_flag_state(Flag::Zero, psw & CPU_FLAG_ZERO != 0);
+        self.set_flag_state(Flag::Sign, psw & CPU_FLAG_SIGN != 0);
+        self.a.set_l(acc);
+        // Virtual stack pointer grows downwards
+        self.bp = self.bp.wrapping_add(2);
+    }
+
+    // Push the 8080 PSW from the stack in 8080 emulation mode.
+    // This also pushes the accumulator.
+    // The 8080 virtual stack pointer is BP, preserving SP for native return.
+    #[inline]
+    pub fn push_psw_8080(&mut self) {
+        // 8080 PSW is lower byte of flags.
+        let word = (self.flags & 0xFF) << 8 | self.a.l() as u16;
+        self.bp = self.bp.wrapping_sub(2);
+        self.biu_write_u16(Segment::DS, self.bp, word, ReadWriteFlag::RNI);
+    }
+
+    #[inline]
     pub fn push_flags(&mut self, wflag: ReadWriteFlag) {
         // Stack pointer grows downwards
         self.sp = self.sp.wrapping_sub(2);
@@ -173,4 +254,12 @@ impl NecVx0 {
     pub fn release(&mut self, disp: u16) {
         self.sp = self.sp.wrapping_add(disp);
     }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn test_push_pop_psw_8080() {}
 }
