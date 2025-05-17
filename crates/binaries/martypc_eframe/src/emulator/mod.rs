@@ -438,7 +438,7 @@ impl Emulator {
                             name:  vhd_os_name.to_string_lossy().to_string(),
                         })
                     }
-                    Err(err) => {
+                    Err(_err) => {
                         log::error!("Couldn't load VHD image {:?} by path, trying by name...", vhd_os_name);
                         match self.vhd_manager.load_vhd_file_by_name(drive_idx, &vhd_os_name) {
                             Ok((vhd_file, vhd_idx)) => {
