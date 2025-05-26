@@ -31,8 +31,10 @@ cp -a "$INSTALL_DIR/." "$APP_RESOURCES/"
 echo "🐇 Creating launcher script..."
 cat > "$APP_MACOS/launcher.sh" <<'EOF'
 #!/bin/bash
-cd "$(dirname "$0")/../Resources"
-exec ../MacOS/martypc --configfile martypc.toml
+
+APPDIR="$(cd "$(dirname "$0")/../Resources" && pwd)"
+cd "$APPDIR"
+exec "$APPDIR/../MacOS/martypc" --configfile "$APPDIR/martypc.toml"
 EOF
 
 chmod +x "$APP_MACOS/launcher.sh"
