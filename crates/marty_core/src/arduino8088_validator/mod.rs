@@ -24,12 +24,16 @@
 */
 #![allow(dead_code)]
 
+mod code_stream;
 mod queue;
 pub mod remote_cpu;
+mod remote_program;
 mod udmask;
 
+pub use ard808x_client::BusState;
+use ard808x_client::*;
+
 use crate::{
-    arduino8088_client::*,
     cpu_808x::{
         CPU_FLAG_AUX_CARRY,
         CPU_FLAG_CARRY,
@@ -63,6 +67,7 @@ const DATA_PROGRAM: u8 = 0;
 const DATA_FINALIZE: u8 = 1;
 
 const OPCODE_NOP: u8 = 0x90;
+const OPCODE_NOPS: u16 = 0x9090;
 
 macro_rules! trace {
     ($self:ident, $($t:tt)*) => {{
@@ -188,12 +193,12 @@ pub struct ArduinoValidator {
 }
 
 impl ArduinoValidator {
-    pub fn new(cpu_type: CpuType, trace_logger: TraceLogger, baud_rate: u32) -> Self {
+    pub fn new(cpu_type: CpuType, trace_logger: TraceLogger, _baud_rate: u32) -> Self {
         // Trigger addr is address at which to start validation
         // if trigger_addr == V_INVALID_POINTER then validate
         let trigger_addr = V_INVALID_POINTER;
 
-        let cpu_client = match CpuClient::init(baud_rate) {
+        let cpu_client = match CpuClient::init(None) {
             Ok(client) => client,
             Err(e) => {
                 panic!("Failed to initialize ArduinoValidator: {}", e);
@@ -314,7 +319,7 @@ impl ArduinoValidator {
 
     pub fn validate_mem_ops(&mut self, discard: bool, flags: u8) -> bool {
         if discard {
-            if self.current_instr.emu_ops.len() > 0 {
+            if !self.current_instr.emu_ops.is_empty() {
                 if self.current_instr.emu_ops[0].op_type != BusOpType::CodeRead {
                     trace_error!(
                         self,
@@ -333,12 +338,7 @@ impl ArduinoValidator {
             }
         }
 
-        let ops_should_match = if flags & VAL_NO_READS == 0 && flags & VAL_NO_WRITES == 0 {
-            true
-        }
-        else {
-            false
-        };
+        let ops_should_match = (flags & VAL_NO_READS == 0) && (flags & VAL_NO_WRITES == 0);
 
         if ops_should_match && (self.current_instr.emu_ops.len() != self.current_instr.cpu_ops.len()) {
             trace_error!(
@@ -398,12 +398,12 @@ impl ArduinoValidator {
             }
         }
 
-        return true;
+        true
     }
 
     pub fn validate_registers(&mut self, regs: &VRegisters) -> RegisterValidationResult {
         let mut regs_validate = true;
-        let mut flags_validate = true;
+        let flags_validate = true;
 
         if self.current_instr.regs[1].ax != regs.ax {
             regs_validate = false;
@@ -618,29 +618,26 @@ impl ArduinoValidator {
         let max_lines = cmp::max(emu_states.len(), cpu_states.len());
 
         for i in 0..max_lines {
-            let cpu_str;
-            let emu_str;
-
-            if i < cpu_states.len() {
-                cpu_str = RemoteCpu::get_cycle_state_str(&cpu_states[i])
+            let cpu_str = if i < cpu_states.len() {
+                cpu_states[i].to_string()
             }
             else {
-                cpu_str = String::new();
-            }
+                String::new()
+            };
 
-            if i < emu_states.len() {
-                emu_str = RemoteCpu::get_cycle_state_str(&emu_states[i])
+            let emu_str = if i < emu_states.len() {
+                emu_states[i].to_string()
             }
             else {
-                emu_str = String::new();
-            }
+                String::new()
+            };
 
             trace!(self, "{:<80} | {:<80}", cpu_str, emu_str);
         }
     }
 
     fn reset_after_validation(&mut self, cpu_states: Option<Vec<CycleState>>) {
-        self.last_cpu_states = cpu_states.unwrap_or(Vec::new());
+        self.last_cpu_states = cpu_states.unwrap_or_default();
         self.last_cpu_ops = self.current_instr.cpu_ops.clone();
         self.last_emu_ops = self.current_instr.emu_ops.clone();
         self.last_cpu_queue = self.cpu.queue();
@@ -649,7 +646,7 @@ impl ArduinoValidator {
 }
 
 pub fn make_pointer(base: u16, offset: u16) -> u32 {
-    return (((base as u32) << 4) + offset as u32) & 0xFFFFF;
+    (((base as u32) << 4) + offset as u32) & 0xFFFFF
 }
 
 impl CpuValidator for ArduinoValidator {
@@ -668,17 +665,9 @@ impl CpuValidator for ArduinoValidator {
         self.current_instr.cpu_fetches.clear();
     }
 
-    /// Instruct the validator to fully prefetch the next instruction.
-    /// This is typically not called within CPU execution, but before calling step during CPU test
-    /// generation.
-    fn set_prefetch(&mut self, state: bool) {
-        trace_debug!(self, "Setting prefetch to {}", state);
-        self.current_instr.prefetch = state;
-    }
-
     fn begin_instruction(&mut self, regs: &VRegisters, end_instr: usize, end_program: usize) {
         self.current_instr.discard = false;
-        self.current_instr.regs[0] = regs.clone();
+        self.current_instr.regs[0] = *regs;
 
         //log::debug!(">>> printing regs!");
         //RemoteCpu::print_regs(&self.current_instr.regs[0]);
@@ -717,6 +706,14 @@ impl CpuValidator for ArduinoValidator {
         self.cpu.set_program_end_addr(end_program);
     }
 
+    /// Instruct the validator to fully prefetch the next instruction.
+    /// This is typically not called within CPU execution, but before calling step during CPU test
+    /// generation.
+    fn set_prefetch(&mut self, state: bool) {
+        trace_debug!(self, "Setting prefetch to {}", state);
+        self.current_instr.prefetch = state;
+    }
+
     /// Initialize the physical CPU with a provided register state.
     /// Can only be done after a reset or jump
     fn set_regs(&mut self) {
@@ -725,7 +722,7 @@ impl CpuValidator for ArduinoValidator {
 
         let mut reg_buf: [u8; 28] = [0; 28];
 
-        let mut adjusted_regs = self.current_instr.regs[0].clone();
+        let mut adjusted_regs = self.current_instr.regs[0];
 
         // If we are prefetching the next instruction, we need to adjust IP by the size of the
         // prefetch program.
@@ -756,7 +753,7 @@ impl CpuValidator for ArduinoValidator {
             }
         }
         else {
-            trace_debug!(self, "begin_instruction(): Not prefetching.");
+            trace!(self, "begin_instruction(): Not prefetching.");
         }
 
         ArduinoValidator::regs_to_buf(&mut reg_buf, &adjusted_regs);
@@ -801,7 +798,7 @@ impl CpuValidator for ArduinoValidator {
         }
         */
 
-        if instr.len() == 0 {
+        if instr.is_empty() {
             trace_error!(self, "Instruction length was 0");
             return Err(ValidatorError::ParameterError);
         }
@@ -829,7 +826,7 @@ impl CpuValidator for ArduinoValidator {
         self.current_instr.has_modrm = has_modrm;
         self.current_instr.initial_queue = Vec::new();
         self.current_instr.next_fetch = false;
-        self.current_instr.regs[1] = regs.clone();
+        self.current_instr.regs[1] = *regs;
 
         if self.current_instr.regs[1].flags == 0 {
             trace_error!(self, "Invalid emulator flags");
@@ -900,8 +897,8 @@ impl CpuValidator for ArduinoValidator {
             instr_addr,
             self.do_cycle_trace,
             peek_fetch,
-            &mut self.current_instr.emu_fetches,
-            &mut self.current_instr.emu_ops,
+            &self.current_instr.emu_fetches,
+            &self.current_instr.emu_ops,
             &mut self.current_instr.cpu_fetches,
             &mut self.current_instr.cpu_ops,
             &mut self.current_instr.initial_queue,
@@ -909,29 +906,31 @@ impl CpuValidator for ArduinoValidator {
             &mut self.trace_logger,
         ) {
             Ok(stepresult) => stepresult,
-            Err(_) => match self.cpu.get_error() {
-                Some(RemoteCpuError::BusOpUnderflow) => {
-                    // Handle the specific error
-                    trace_error!(self, "Memory validation failure. CPU bus op underflow.");
+            Err(_) => {
+                return match self.cpu.get_error() {
+                    Some(RemoteCpuError::BusOpUnderflow) => {
+                        // Handle the specific error
+                        trace_error!(self, "Memory validation failure. CPU bus op underflow.");
 
-                    let states = self.cpu.get_states().clone();
-                    self.print_cycle_diff(&states, &emu_states);
-                    self.trace_logger.flush();
-                    self.reset_after_validation(None);
-                    return Err(ValidatorError::MemOpMismatch);
-                }
-                // You can add more error handlers here
-                // For instance:
-                // MyError::OtherError => { ... }
-                None => {
-                    log::error!("Unknown CPU error!");
-                    return Err(ValidatorError::CpuError);
-                }
-                _ => {
-                    self.reset_after_validation(None);
-                    return Err(ValidatorError::CpuError);
-                } // Propagate other errors
-            },
+                        let states = self.cpu.get_states().clone();
+                        self.print_cycle_diff(&states, emu_states);
+                        self.trace_logger.flush();
+                        self.reset_after_validation(None);
+                        Err(ValidatorError::MemOpMismatch)
+                    }
+                    // You can add more error handlers here
+                    // For instance:
+                    // MyError::OtherError => { ... }
+                    None => {
+                        log::error!("Unknown CPU error!");
+                        Err(ValidatorError::CpuError)
+                    }
+                    _ => {
+                        self.reset_after_validation(None);
+                        Err(ValidatorError::CpuError)
+                    } // Propagate other errors
+                };
+            }
         };
 
         if cpu_states.is_empty() {
@@ -949,9 +948,9 @@ impl CpuValidator for ArduinoValidator {
                 trace_error!(self, "Memory validation failure. EMU:");
                 trace_error!(self, "\n{}", &RemoteCpu::get_reg_str(&self.current_instr.regs[1]));
                 trace_error!(self, "CPU:");
-                trace_error!(self, "\n{}", &RemoteCpu::get_reg_str(&regs));
+                trace_error!(self, "\n{}", &RemoteCpu::get_reg_str(regs));
 
-                self.print_cycle_diff(&cpu_states, &emu_states);
+                self.print_cycle_diff(&cpu_states, emu_states);
                 self.trace_logger.flush();
                 self.reset_after_validation(Some(cpu_states));
                 return Err(ValidatorError::MemOpMismatch);
@@ -961,11 +960,11 @@ impl CpuValidator for ArduinoValidator {
             }
         }
 
-        if self.opt_validate_cycles && (flags & VAL_NO_CYCLES == 0) && (emu_states.len() > 0) {
+        if self.opt_validate_cycles && (flags & VAL_NO_CYCLES == 0) && (!emu_states.is_empty()) {
             // Only validate CPU cycles if any were provided
 
             self.correct_queue_counts(&mut cpu_states);
-            let (result, cycle_num) = self.validate_cycles(flags, &cpu_states, &emu_states);
+            let (result, cycle_num) = self.validate_cycles(flags, &cpu_states, emu_states);
 
             if !result {
                 trace_error!(
@@ -974,18 +973,18 @@ impl CpuValidator for ArduinoValidator {
                     cycle_num,
                     cpu_states.len()
                 );
-                self.print_cycle_diff(&cpu_states, &emu_states);
+                self.print_cycle_diff(&cpu_states, emu_states);
                 trace_error!(self, "EMU AFTER:");
                 trace_error!(self, "\n{}", &RemoteCpu::get_reg_str(&self.current_instr.regs[1]));
 
                 trace_error!(self, "CPU AFTER:");
-                trace_error!(self, "\n{}", &RemoteCpu::get_reg_str(&regs));
+                trace_error!(self, "\n{}", &RemoteCpu::get_reg_str(regs));
                 self.trace_logger.flush();
                 self.reset_after_validation(Some(cpu_states));
                 return Err(ValidatorError::CycleMismatch);
             }
             else {
-                self.print_cycle_diff(&cpu_states, &emu_states);
+                self.print_cycle_diff(&cpu_states, emu_states);
             }
         }
 
@@ -1022,7 +1021,7 @@ impl CpuValidator for ArduinoValidator {
         self.cpu.adjust_ip(&mut store_regs);
         self.current_instr.cpu_after_regs = Some(store_regs);
 
-        match self.validate_registers(&regs) {
+        match self.validate_registers(regs) {
             RegisterValidationResult::Ok => Ok(()),
             RegisterValidationResult::GeneralMismatch => {
                 trace_error!(self, "Register validation failure. EMU BEFORE:");
@@ -1030,7 +1029,7 @@ impl CpuValidator for ArduinoValidator {
                 trace_error!(self, "EMU AFTER:");
                 trace_error!(self, "{}", &RemoteCpu::get_reg_str(&self.current_instr.regs[1]));
                 trace_error!(self, "CPU AFTER:");
-                RemoteCpu::print_regs(&regs);
+                RemoteCpu::print_regs(regs);
 
                 Err(ValidatorError::RegisterMismatch)
             }
@@ -1040,7 +1039,7 @@ impl CpuValidator for ArduinoValidator {
                 trace_error!(self, "EMU AFTER:");
                 trace_error!(self, "{}", &RemoteCpu::get_reg_str(&self.current_instr.regs[1]));
                 trace_error!(self, "CPU AFTER:");
-                RemoteCpu::print_regs(&regs);
+                RemoteCpu::print_regs(regs);
 
                 Err(ValidatorError::FlagsMismatch)
             }
@@ -1050,7 +1049,7 @@ impl CpuValidator for ArduinoValidator {
                 trace_error!(self, "EMU AFTER:");
                 trace_error!(self, "{}", &RemoteCpu::get_reg_str(&self.current_instr.regs[1]));
                 trace_error!(self, "CPU AFTER:");
-                RemoteCpu::print_regs(&regs);
+                RemoteCpu::print_regs(regs);
 
                 Err(ValidatorError::BothMismatch)
             }
@@ -1062,17 +1061,26 @@ impl CpuValidator for ArduinoValidator {
             return;
         }
 
+        // BHE will be enabled if the address is odd.
+        let bhe = (addr & 0x01) != 0;
+        let mut data = data as u16;
+        // Shift odd byte to high side of bus.
+        if bhe {
+            data <<= 8;
+        }
+
         match (bus_type, read_type) {
             (BusType::Mem, ReadType::Code) => {
                 self.current_instr.emu_fetches.push(BusOp {
                     op_type: BusOpType::CodeRead,
                     addr,
+                    bhe,
                     data,
                     flags: MOF_EMULATOR,
                 });
                 trace!(
                     self,
-                    "EMU fetch: [{:05X}] -> 0x{:02X} ({})",
+                    "EMU fetch: [{:05X}] -> 0x{:04X} ({})",
                     addr,
                     data,
                     self.current_instr.emu_ops.len()
@@ -1082,12 +1090,13 @@ impl CpuValidator for ArduinoValidator {
                 self.current_instr.emu_ops.push(BusOp {
                     op_type: BusOpType::MemRead,
                     addr,
+                    bhe,
                     data,
                     flags: MOF_EMULATOR,
                 });
                 trace!(
                     self,
-                    "EMU read: [{:05X}] -> 0x{:02X} ({})",
+                    "EMU read: [{:05X}] -> 0x{:04X} ({})",
                     addr,
                     data,
                     self.current_instr.emu_ops.len()
@@ -1097,12 +1106,73 @@ impl CpuValidator for ArduinoValidator {
                 self.current_instr.emu_ops.push(BusOp {
                     op_type: BusOpType::IoRead,
                     addr,
+                    bhe,
                     data,
                     flags: MOF_EMULATOR,
                 });
                 trace!(
                     self,
-                    "EMU IN: [{:05X}] -> 0x{:02X} ({})",
+                    "EMU IN: [{:05X}] -> 0x{:04X} ({})",
+                    addr,
+                    data,
+                    self.current_instr.emu_ops.len()
+                );
+            }
+        }
+    }
+
+    fn emu_read_word(&mut self, addr: u32, data: u16, bus_type: BusType, read_type: ReadType) {
+        if self.current_instr.discard {
+            return;
+        }
+
+        // BHE will be enabled for all word writes.
+        let bhe = true;
+
+        match (bus_type, read_type) {
+            (BusType::Mem, ReadType::Code) => {
+                self.current_instr.emu_fetches.push(BusOp {
+                    op_type: BusOpType::CodeRead,
+                    addr,
+                    bhe,
+                    data,
+                    flags: MOF_EMULATOR,
+                });
+                trace!(
+                    self,
+                    "EMU fetch: [{:05X}] -> 0x{:04X} ({})",
+                    addr,
+                    data,
+                    self.current_instr.emu_ops.len()
+                );
+            }
+            (BusType::Mem, ReadType::Data) => {
+                self.current_instr.emu_ops.push(BusOp {
+                    op_type: BusOpType::MemRead,
+                    addr,
+                    bhe,
+                    data,
+                    flags: MOF_EMULATOR,
+                });
+                trace!(
+                    self,
+                    "EMU read: [{:05X}] -> 0x{:04X} ({})",
+                    addr,
+                    data,
+                    self.current_instr.emu_ops.len()
+                );
+            }
+            (BusType::Io, _) => {
+                self.current_instr.emu_ops.push(BusOp {
+                    op_type: BusOpType::IoRead,
+                    addr,
+                    bhe,
+                    data,
+                    flags: MOF_EMULATOR,
+                });
+                trace!(
+                    self,
+                    "EMU IN: [{:05X}] -> 0x{:04X} ({})",
                     addr,
                     data,
                     self.current_instr.emu_ops.len()
@@ -1118,26 +1188,70 @@ impl CpuValidator for ArduinoValidator {
             return;
         }
 
+        // BHE will be enabled if the address is odd.
+        let bhe = (addr & 0x01) != 0;
+        let mut data = data as u16;
+        if bhe {
+            // Shift odd byte to high side of bus.
+            data <<= 8;
+        }
+
         match bus_type {
             BusType::Mem => {
                 self.current_instr.emu_ops.push(BusOp {
                     op_type: BusOpType::MemWrite,
                     addr,
+                    bhe,
                     data,
                     flags: MOF_EMULATOR,
                 });
 
-                trace!(self, "EMU write: [{:05X}] <- 0x{:02X}", addr, data);
+                trace!(self, "EMU write (Byte): [{:05X}] <- 0x{:02X}", addr, data);
             }
             BusType::Io => {
                 self.current_instr.emu_ops.push(BusOp {
                     op_type: BusOpType::IoWrite,
                     addr,
+                    bhe,
                     data,
                     flags: MOF_EMULATOR,
                 });
 
-                trace!(self, "EMU OUT: [{:05X}] <- 0x{:02X}", addr, data);
+                trace!(self, "EMU OUT (Byte): [{:05X}] <- 0x{:02X}", addr, data);
+            }
+        }
+    }
+
+    fn emu_write_word(&mut self, addr: u32, data: u16, bus_type: BusType) {
+        self.visited[(addr & 0xFFFFF) as usize] = false;
+
+        if self.current_instr.discard {
+            return;
+        }
+
+        // BHE will be enabled for all word writes
+        let bhe = true;
+
+        match bus_type {
+            BusType::Mem => {
+                self.current_instr.emu_ops.push(BusOp {
+                    op_type: BusOpType::MemWrite,
+                    addr,
+                    bhe,
+                    data,
+                    flags: MOF_EMULATOR,
+                });
+                trace!(self, "EMU write (Word): [{:05X}] <- 0x{:04X}", addr, data);
+            }
+            BusType::Io => {
+                self.current_instr.emu_ops.push(BusOp {
+                    op_type: BusOpType::IoWrite,
+                    addr,
+                    bhe,
+                    data,
+                    flags: MOF_EMULATOR,
+                });
+                trace!(self, "EMU OUT (Word): [{:05X}] <- 0x{:04X}", addr, data);
             }
         }
     }
@@ -1165,12 +1279,12 @@ impl CpuValidator for ArduinoValidator {
         self.current_instr.instr.clone()
     }
 
-    fn initial_queue(&self) -> Vec<u8> {
-        self.current_instr.initial_queue.clone()
-    }
-
     fn initial_regs(&self) -> VRegisters {
         self.current_instr.regs[0]
+    }
+
+    fn initial_queue(&self) -> Vec<u8> {
+        self.current_instr.initial_queue.clone()
     }
 
     fn final_emu_regs(&self) -> VRegisters {
@@ -1201,10 +1315,7 @@ impl CpuValidator for ArduinoValidator {
         let mut read_vec: Vec<_> = self
             .last_cpu_ops
             .iter()
-            .take_while(|&&op| match op.op_type {
-                BusOpType::CodeRead | BusOpType::MemRead | BusOpType::IoRead => true,
-                _ => false,
-            })
+            .take_while(|&&op| matches!(op.op_type, BusOpType::CodeRead | BusOpType::MemRead | BusOpType::IoRead))
             .cloned()
             .collect();
 
@@ -1216,5 +1327,9 @@ impl CpuValidator for ArduinoValidator {
 
     fn cpu_queue(&self) -> Vec<u8> {
         self.last_cpu_queue.clone()
+    }
+
+    fn cpu_type(&self) -> CpuType {
+        self.cpu_type
     }
 }

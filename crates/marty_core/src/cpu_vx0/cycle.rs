@@ -49,11 +49,29 @@ macro_rules! validate_read_u8 {
     }};
 }
 
+macro_rules! validate_read_u16 {
+    ($myself: expr, $addr: expr, $data: expr, $btype: expr, $rtype: expr) => {{
+        #[cfg(feature = "cpu_validator")]
+        if let Some(ref mut validator) = &mut $myself.validator {
+            validator.emu_read_word($addr, $data, $btype, $rtype)
+        }
+    }};
+}
+
 macro_rules! validate_write_u8 {
     ($myself: expr, $addr: expr, $data: expr, $btype: expr) => {{
         #[cfg(feature = "cpu_validator")]
         if let Some(ref mut validator) = &mut $myself.validator {
             validator.emu_write_byte($addr, $data, $btype)
+        }
+    }};
+}
+
+macro_rules! validate_write_u16 {
+    ($myself: expr, $addr: expr, $data: expr, $btype: expr) => {{
+        #[cfg(feature = "cpu_validator")]
+        if let Some(ref mut validator) = &mut $myself.validator {
+            validator.emu_write_word($addr, $data, $btype)
         }
     }};
 }
@@ -487,6 +505,8 @@ impl NecVx0 {
                     .bus
                     .read_u16(self.address_latch as usize, self.instr_elapsed)
                     .unwrap();
+
+                validate_read_u16!(self, self.address_latch, self.data_bus, BusType::Mem, ReadType::Code);
             }
             (BusStatus::MemRead, TransferSize::Byte) => {
                 (byte, _) = self

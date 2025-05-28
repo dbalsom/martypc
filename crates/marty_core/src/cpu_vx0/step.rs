@@ -591,7 +591,7 @@ impl NecVx0 {
                     }
 
                     if self.validator_state == CpuValidatorState::Running {
-                        log::debug!("Validating opcode: {:02X}", self.i.opcode);
+                        //log::debug!("Validating opcode: {:02X}", self.i.opcode);
                         match validator.validate_instruction(
                             self.i.to_string(),
                             &self.instr_slice,

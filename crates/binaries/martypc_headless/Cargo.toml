@@ -37,6 +37,9 @@ strum_macros.workspace = true
 flate2 = "1.0"
 pollster = "0.4"
 
+# Optional dependencies
+ard808x_client ={ git = "https://github.com/dbalsom/arduino808x", optional = true }
+
 [dev-dependencies]
 criterion = "0.5.1"
 
@@ -46,4 +49,13 @@ use_serialport = ["marty_core/serialport"]
 devtools = []
 cpu_validator = ["cpu_tests", "marty_core/cpu_validator"]
 cpu_tests = ["marty_core/cpu_collect_cycle_states"]
-arduino_validator = []
+arduino_validator = ["dep:ard808x_client", "marty_core/arduino_validator"]
+
+[lints.clippy]
+new_without_default = "allow"
+identity_op = "allow"
+wildcard_in_or_patterns = "allow"
+needless_update = "allow"
+comparison_chain = "allow"
+uninlined_format_args = "allow"
+bool_assert_comparison = "allow"

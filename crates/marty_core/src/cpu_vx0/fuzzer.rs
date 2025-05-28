@@ -48,6 +48,18 @@ macro_rules! get_rand {
     };
 }
 
+macro_rules! get_weighted_rand {
+    ($myself:expr) => {{
+        let p: f64 = $myself.rng.as_mut().unwrap().gen();
+        if p < 0.05 {
+            0
+        }
+        else {
+            $myself.rng.as_mut().unwrap().gen()
+        }
+    }};
+}
+
 macro_rules! get_rand_range {
     ($myself: expr, $begin: expr, $end: expr) => {
         $myself.rng.as_mut().unwrap().gen_range($begin..$end)
@@ -82,7 +94,7 @@ impl NecVx0 {
         self.reset();
 
         for reg in REGISTER16_LUT {
-            let n: u16 = get_rand!(self);
+            let n: u16 = get_weighted_rand!(self);
             self.set_register16(reg, n);
         }
 
@@ -105,9 +117,24 @@ impl NecVx0 {
     }
 
     #[allow(dead_code)]
-    pub fn randomize_mem(&mut self) {
+    pub fn randomize_mem(&mut self, weight: bool) {
         for i in 0..self.bus.size() {
-            let n: u8 = get_rand!(self);
+            let n: u8 = if weight {
+                let p = self.rng.as_mut().unwrap().gen::<f64>();
+                if p < 0.01 {
+                    0
+                }
+                else if p < 0.02 {
+                    0xFF
+                }
+                else {
+                    get_rand!(self)
+                }
+            }
+            else {
+                get_rand!(self)
+            };
+
             self.bus.write_u8(i, n, 0).expect("Mem err");
         }
 

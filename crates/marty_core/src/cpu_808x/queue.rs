@@ -63,6 +63,21 @@ impl Default for InstructionQueue {
     }
 }
 
+impl Display for InstructionQueue {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        let mut base_str = "".to_string();
+
+        if let Some(preload) = self.preload {
+            base_str.push_str(&format!("{:02X}", preload));
+        }
+
+        for i in 0..self.len {
+            base_str.push_str(&format!("{:02X}", self.q[(self.back + i) % self.size]));
+        }
+        write!(f, "{}", base_str)
+    }
+}
+
 impl InstructionQueue {
     pub fn new(size: usize, fetch_size: usize) -> Self {
         Self {
@@ -159,17 +174,16 @@ impl InstructionQueue {
     }
 
     #[inline]
-    pub fn push16(&mut self, word: u16) -> u16 {
+    pub fn push16(&mut self, word: u16, a0: bool) -> u16 {
         assert_eq!(self.fetch_size, 2);
 
-        if self.discard {
-            self.push8(((word >> 8) & 0xFF) as u8);
-            self.discard = false;
+        if a0 {
+            self.push8((word >> 8) as u8);
             1
         }
         else {
             self.push8((word & 0xFF) as u8);
-            self.push8(((word >> 8) & 0xFF) as u8);
+            self.push8((word >> 8) as u8);
             2
         }
     }
@@ -192,21 +206,7 @@ impl InstructionQueue {
         self.back = 0;
         self.front = 0;
         self.preload = None;
-    }
-
-    /// Convert the contents of the processor instruction queue to a hexadecimal string.
-    pub fn to_string(&self) -> String {
-        let mut base_str = "".to_string();
-
-        if let Some(preload) = self.preload {
-            base_str.push_str(&format!("{:02X}", preload));
-        }
-
-        for i in 0..self.len {
-            base_str.push_str(&format!("{:02X}", self.q[(self.back + i) % self.size]));
-        }
-
-        base_str
+        self.discard = false;
     }
 
     /// Write the contents of the processor instruction queue in order to the
@@ -214,8 +214,6 @@ impl InstructionQueue {
     /// length for the given cpu type.
     #[allow(dead_code)]
     pub fn to_slice(&self, slice: &mut [u8]) {
-        assert_eq!(self.size, slice.len());
-
         for i in 0..self.len {
             slice[i] = self.q[(self.back + i) % self.size];
         }

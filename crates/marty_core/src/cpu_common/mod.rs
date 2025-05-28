@@ -357,6 +357,13 @@ impl FromStr for CpuType {
 }
 
 impl CpuType {
+    /// Return the size of the instruction queue for this CPU type.
+    pub fn queue_size(&self) -> usize {
+        match self {
+            CpuType::Intel8088 | CpuType::NecV20(_) => 4,
+            CpuType::Intel8086 | CpuType::NecV30(_) => 6,
+        }
+    }
     pub fn decode(&self, bytes: &mut impl ByteQueue, peek: bool) -> Result<Instruction, Box<dyn std::error::Error>> {
         match self {
             CpuType::Intel8088 | CpuType::Intel8086 => Intel808x::decode(bytes, peek),
@@ -604,7 +611,7 @@ pub trait Cpu {
     #[cfg(feature = "cpu_validator")]
     fn get_validator_mut(&mut self) -> &mut Option<Box<dyn CpuValidator>>;
     fn randomize_seed(&mut self, seed: u64);
-    fn randomize_mem(&mut self);
+    fn randomize_mem(&mut self, weight: bool);
     fn randomize_regs(&mut self);
     fn random_grp_instruction(&mut self, opcode: u8, extension_list: &[u8]);
     fn random_inst_from_opcodes(&mut self, opcode_list: &[u8], prefix: Option<u8>);

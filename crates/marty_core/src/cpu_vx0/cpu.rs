@@ -540,8 +540,8 @@ impl Cpu for NecVx0 {
         self.randomize_seed(seed);
     }
 
-    fn randomize_mem(&mut self) {
-        self.randomize_mem();
+    fn randomize_mem(&mut self, weight: bool) {
+        self.randomize_mem(weight);
     }
 
     fn randomize_regs(&mut self) {

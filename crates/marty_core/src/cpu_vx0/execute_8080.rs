@@ -252,7 +252,7 @@ impl NecVx0 {
                     4 => {
                         // INR (Increment Register) Flags: Z,S,P,AC
                         let value = self.read_operand8(self.i.operand1_type, None).unwrap();
-                        let (result, _carry, _overflow, aux_carry) = value.alu_add(1);;
+                        let (result, _carry, _overflow, aux_carry) = value.alu_add(1);
                         self.write_operand8(self.i.operand1_type, None, result, ReadWriteFlag::RNI);
                         self.set_szp_flags_from_result_u8(result);
                         self.set_flag_state(Flag::AuxCarry, aux_carry);
@@ -260,7 +260,7 @@ impl NecVx0 {
                     5 => {
                         // 05, 0D, 15, 1D, 25, 2D, 35, 3D DCR (Decrement Register/Memory) Flags: Z,S,P,AC
                         let value = self.read_operand8(self.i.operand1_type, None).unwrap();
-                        let (result, _carry, _overflow, aux_carry) = value.alu_sbb(1, false);;
+                        let (result, _carry, _overflow, aux_carry) = value.alu_sbb(1, false);
                         self.write_operand8(self.i.operand1_type, None, result, ReadWriteFlag::RNI);
                         self.set_szp_flags_from_result_u8(result);
                         self.set_flag_state(Flag::AuxCarry, aux_carry);

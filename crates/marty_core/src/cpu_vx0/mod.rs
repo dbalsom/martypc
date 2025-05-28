@@ -988,7 +988,7 @@ impl NecVx0 {
 
     #[cfg(feature = "cpu_validator")]
     pub fn get_cycle_state(&mut self) -> CycleState {
-        let mut q = [0; 4];
+        let mut q = [0; 6];
         self.queue.to_slice(&mut q);
 
         CycleState {

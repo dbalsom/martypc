@@ -838,26 +838,29 @@ pub fn validate_memops(
             if !in_code_fetch {
                 read_ops.push(BusOp {
                     op_type: BusOpType::MemRead,
-                    addr:    cycle.addr,
-                    data:    cycle.data_bus as u8,
-                    flags:   0,
+                    addr: cycle.addr,
+                    bhe: cycle.bhe,
+                    data: cycle.data_bus,
+                    flags: 0,
                 });
             }
             else {
                 fetch_ops.push(BusOp {
                     op_type: BusOpType::CodeRead,
-                    addr:    cycle.addr,
-                    data:    cycle.data_bus as u8,
-                    flags:   0,
+                    addr: cycle.addr,
+                    bhe: cycle.bhe,
+                    data: cycle.data_bus,
+                    flags: 0,
                 });
             }
         }
         else if !cycle.mwtc && cycle.b_state == BusState::PASV {
             write_ops.push(BusOp {
                 op_type: BusOpType::MemWrite,
-                addr:    cycle.addr,
-                data:    cycle.data_bus as u8,
-                flags:   0,
+                addr: cycle.addr,
+                bhe: cycle.bhe,
+                data: cycle.data_bus,
+                flags: 0,
             });
         }
     }

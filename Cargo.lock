@@ -360,6 +360,15 @@ dependencies = [
 ]
 
 [[package]]
+name = "ard808x_client"
+version = "0.3.0"
+source = "git+https://github.com/dbalsom/arduino808x#9bbe3f1384fdddb5ee8dc8532a96ee9fc237af02"
+dependencies = [
+ "log",
+ "serialport 4.3.1-alpha.0",
+]
+
+[[package]]
 name = "array-init"
 version = "2.1.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -3698,6 +3707,7 @@ name = "marty_core"
 version = "0.4.0"
 dependencies = [
  "anyhow",
+ "ard808x_client",
  "arraydeque",
  "binrw",
  "bytemuck",
@@ -4059,6 +4069,7 @@ name = "martypc_headless"
 version = "0.4.0"
 dependencies = [
  "anyhow",
+ "ard808x_client",
  "colored 3.0.0",
  "criterion",
  "crossbeam-channel",

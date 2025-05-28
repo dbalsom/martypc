@@ -199,7 +199,10 @@ impl Intel808x {
                                 BusWidth::Byte => {
                                     self.pc = self.pc.wrapping_add(self.queue.push8(self.data_bus as u8));
                                 }
-                                BusWidth::Word => self.pc = self.pc.wrapping_add(self.queue.push16(self.data_bus)),
+                                BusWidth::Word => {
+                                    let inc = self.queue.push16(self.data_bus, self.a0());
+                                    self.pc = self.pc.wrapping_add(inc);
+                                }
                             }
                         }
 

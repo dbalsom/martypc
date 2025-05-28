@@ -483,6 +483,7 @@ pub struct Intel808x {
     address_bus: u32,
     address_latch: u32,
     data_bus: u16,
+    bhe: bool,         // Bus High Enable. Set when the high (odd) byte of the data bus is valid.
     last_ea: u16,      // Last calculated effective address. Used by 0xFE instructions
     bus: BusInterface, // CPU owns Bus
     i8288: I8288,      // Intel 8288 Bus Controller
@@ -653,19 +654,13 @@ pub struct Intel808x {
 }
 
 #[cfg(feature = "cpu_validator")]
-#[derive(PartialEq, Copy, Clone)]
+#[derive(PartialEq, Copy, Clone, Default)]
 pub enum CpuValidatorState {
+    #[default]
     Uninitialized,
     Running,
     Hung,
     Ended,
-}
-
-#[cfg(feature = "cpu_validator")]
-impl Default for CpuValidatorState {
-    fn default() -> Self {
-        CpuValidatorState::Uninitialized
-    }
 }
 
 pub struct CpuRegisterState {
@@ -722,10 +717,7 @@ pub enum TaCycle {
 impl TaCycle {
     #[inline]
     pub(crate) fn in_address_cycle(&self) -> bool {
-        match self {
-            TaCycle::Tr | TaCycle::Ts | TaCycle::T0 => true,
-            _ => false,
-        }
+        matches!(self, TaCycle::Tr | TaCycle::Ts | TaCycle::T0)
     }
 }
 
@@ -1037,6 +1029,11 @@ impl Intel808x {
         self.instruction_count
     }
 
+    #[inline(always)]
+    pub fn a0(&self) -> bool {
+        self.address_latch & 1 == 1
+    }
+
     pub fn flush_piq(&mut self) {
         // Rewind PC to the start of the instruction before flushing, so we will re-fetch it
         self.pc = self.pc.wrapping_sub(self.queue.len_p() as u16);
@@ -1118,15 +1115,12 @@ impl Intel808x {
 
     #[inline]
     pub fn is_before_t3(&self) -> bool {
-        match self.t_cycle {
-            TCycle::T1 | TCycle::T2 => true,
-            _ => false,
-        }
+        matches!(self.t_cycle, TCycle::T1 | TCycle::T2)
     }
 
     #[cfg(any(feature = "cpu_validator", feature = "cpu_collect_cycle_states"))]
     pub fn get_cycle_state(&mut self) -> CycleState {
-        let mut q = [0; 4];
+        let mut q = [0; 6];
         self.queue.to_slice(&mut q);
 
         CycleState {
@@ -1168,7 +1162,7 @@ impl Intel808x {
             aiowc: !self.i8288.aiowc,
             iowc: !self.i8288.iowc,
             inta: !self.i8288.inta,
-            bhe: false,
+            bhe: self.bhe,
             q_op: self.last_queue_op,
             q_byte: self.last_queue_byte,
             q_len: self.queue.len() as u32,
