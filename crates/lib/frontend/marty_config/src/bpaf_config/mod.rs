@@ -79,7 +79,7 @@ pub struct CmdLineArgs {
     pub romscan: bool,
 
     #[bpaf(long("machine_scan"), long("machinescan"), switch)]
-    pub machine_scan: bool,
+    pub machinescan: bool,
 
     #[bpaf(long, switch)]
     pub auto_poweron: bool,

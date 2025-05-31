@@ -427,6 +427,7 @@ impl EmulatorBuilder {
         // Do --machinescan commandline argument. We print machine info (and ROM info if --romscan
         // was also specified), then quit.
         if config.emulator.machinescan {
+            log::debug!("Doing machine scan...");
             // Print the list of machine configurations and their rom requirements
             for machine in machine_names {
                 writeln!(stdout, "Machine: {}", machine)?;
@@ -434,7 +435,10 @@ impl EmulatorBuilder {
                     .get_config(&machine)
                     .and_then(|config| Some(config.get_rom_requirements(true)))
                 {
-                    writeln!(stdout, "  Requires: {:?}", reqs)?
+                    if let Ok(reqs) = reqs {
+                        writeln!(stdout, "  Requires: {:?}", reqs.0)?;
+                        writeln!(stdout, "  Optionally requests: {:?}", reqs.1)?;
+                    }
                 }
             }
 
@@ -534,7 +538,14 @@ impl EmulatorBuilder {
 
         log::debug!("Created manifest!");
         for (i, rom) in rom_manifest.roms.iter().enumerate() {
-            log::debug!("  rom {}: md5: {} length: {}", i, rom.md5, rom.data.len());
+            log::debug!(
+                "  ROM #{}: md5: {} name: {} length: {} repeat: {}",
+                i,
+                rom.md5,
+                rom.name,
+                rom.data.len(),
+                rom.repeat
+            );
         }
 
         // Instantiate the floppy manager
