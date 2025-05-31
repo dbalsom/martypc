@@ -330,11 +330,28 @@ impl Default for HardDiskController {
             drives: [HardDisk::new(), HardDisk::new()],
             drive_ct: 1,
             drive_select: 0,
-            supported_formats: vec![HardDiskFormat {
-                geometry: DriveGeometry::new(615, 4, 17, 0, 512),
-                wpc: Some(300),
-                desc: "20MB, Type 2".to_string(),
-            }],
+            supported_formats: vec![
+                HardDiskFormat {
+                    geometry: DriveGeometry::new(306, 4, 17, 0, 512),
+                    wpc: Some(0),
+                    desc: "10MB, Type 1".to_string(),
+                },
+                HardDiskFormat {
+                    geometry: DriveGeometry::new(612, 4, 17, 0, 512),
+                    wpc: Some(0),
+                    desc: "20MB, Type 16".to_string(),
+                },
+                HardDiskFormat {
+                    geometry: DriveGeometry::new(615, 4, 17, 0, 512),
+                    wpc: Some(300),
+                    desc: "20MB, Type 2".to_string(),
+                },
+                HardDiskFormat {
+                    geometry: DriveGeometry::new(306, 8, 17, 0, 512),
+                    wpc: Some(128),
+                    desc: "20MB, Type 13".to_string(),
+                },
+            ],
             drive_type_dip: 0,
             state: State::Reset,
             last_error: OperationError::NoError,
