@@ -47,6 +47,8 @@ jobs:
           fetch-depth: 0
 
       - name: Cargo build
+        env:
+          RUSTFLAGS: -C target-feature=+crt-static
         run: |
           $USERPROFILE/.cargo/bin/cargo build --profile release-lto
 

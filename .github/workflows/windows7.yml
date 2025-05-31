@@ -43,6 +43,8 @@ jobs:
           fetch-depth: 0
 
       - name: Cargo build
+        env:
+          RUSTFLAGS: -C target-feature=+crt-static
         run: |
           & "$env:USERPROFILE\.cargo\bin\cargo" build --profile release-lto --no-default-features --features win7,use_winit,use_wgpu,sound,opl,use_gilrs,use_serialport
 
