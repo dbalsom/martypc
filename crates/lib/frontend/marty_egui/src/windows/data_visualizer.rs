@@ -212,6 +212,7 @@ pub struct DataVisualizerControl {
     dump_path: Option<PathBuf>,
     record: bool,
     active_preset: VizPreset,
+    last_file: Option<PathBuf>,
 }
 
 impl DataVisualizerControl {
@@ -236,6 +237,7 @@ impl DataVisualizerControl {
             dump_path: None,
             record: false,
             active_preset,
+            last_file: None,
         }
     }
 
@@ -268,9 +270,12 @@ impl DataVisualizerControl {
 
             if let Some(dump_path) = &self.dump_path {
                 if self.record {
-                    let filename = find_unique_filename(dump_path, "viz_dump", "png");
+                    let filename = find_unique_filename(dump_path, "viz_dump", "png", self.last_file.as_ref());
                     match canvas.save_buffer(&filename) {
-                        Ok(_) => log::info!("Saved visualization to file: {}", filename.display()),
+                        Ok(_) => {
+                            log::info!("Saved visualization to file: {}", filename.display());
+                            self.last_file = Some(filename);
+                        }
                         Err(e) => log::error!("Error saving visualization to file: {}", e),
                     }
                 }
@@ -442,10 +447,12 @@ impl DataVisualizerControl {
             {
                 if let Some(canvas) = self.canvas.as_mut() {
                     if let Some(dump_path) = &self.dump_path {
-                        let filename = find_unique_filename(dump_path, "viz_dump", "png");
-
+                        let filename = find_unique_filename(dump_path, "viz_dump", "png", self.last_file.as_ref());
                         match canvas.save_buffer(&filename) {
-                            Ok(_) => log::info!("Saved visualization to file: {}", filename.display()),
+                            Ok(_) => {
+                                log::info!("Saved visualization to file: {}", filename.display());
+                                self.last_file = Some(filename);
+                            }
                             Err(e) => log::error!("Error saving visualization to file: {}", e),
                         }
                     }

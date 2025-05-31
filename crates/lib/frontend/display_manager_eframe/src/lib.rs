@@ -418,6 +418,7 @@ pub struct EFrameDisplayManager {
     card_id_map: MartyHashMap<VideoCardId, Vec<usize>>, // Card id maps to a Vec<usize> as a single card can have multiple targets.
     primary_idx: Option<usize>,
     scaler_presets: MartyHashMap<String, ScalerPreset>,
+    last_screenshot: Option<PathBuf>,
 }
 
 impl Default for EFrameDisplayManager {
@@ -430,6 +431,7 @@ impl Default for EFrameDisplayManager {
             card_id_map: MartyHashMap::default(),
             primary_idx: None,
             scaler_presets: MartyHashMap::default(),
+            last_screenshot: None,
         }
     }
 }
@@ -1825,7 +1827,7 @@ impl<'p> DisplayManager<EFrameBackend, GuiRenderContext, ViewportId, ViewportId,
             return Err(anyhow!("Display target out of range!"));
         }
 
-        let filename = file_util::find_unique_filename(path.as_ref(), "screenshot", "png");
+        let filename = find_unique_filename(path.as_ref(), "screenshot", "png", self.last_screenshot.as_ref());
 
         if let Some(renderer) = &mut resolve_dtc_mut!(self.targets[dt.idx()]).renderer {
             renderer.request_screenshot(&filename);

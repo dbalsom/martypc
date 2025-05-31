@@ -90,6 +90,7 @@ pub struct RomDescriptor {
     size: Option<u32>,
     offset: Option<u32>,
     chip: Option<String>,
+    repeat: Option<u32>,
     org: Option<RomOrganization>,
     #[serde(skip)]
     present: bool,
@@ -137,7 +138,7 @@ pub struct RomFileCandidate {
     pub size: usize,
 }
 
-pub type NameMap = HashMap<String, (String, PathBuf)>; // Rom names resolve to md5sums
+pub type NameMap = HashMap<String, (String, PathBuf)>; // ROM names resolve to md5sums
 
 pub struct RomManager {
     prefer_oem:  bool,
@@ -148,14 +149,14 @@ pub struct RomManager {
     rom_set_active:    Option<String>,
 
     rom_sets_by_feature: HashMap<String, Vec<String>>,
-    //rom_sets: HashMap<String, RomSet>, // Rom sets are hashed by 'alias'
+    //rom_sets: HashMap<String, RomSet>, // ROM sets are hashed by 'alias'
     rom_candidates: HashMap<String, RomFileCandidate>,
-    rom_candidate_name_map: NameMap,      // Rom names resolve to md5sums
-    rom_paths: HashMap<String, PathBuf>,  // Rom paths are hashed by md5sum
-    rom_images: HashMap<String, Vec<u8>>, // Rom images are hashed by md5sum
+    rom_candidate_name_map: NameMap,      // ROM names resolve to md5sums
+    rom_paths: HashMap<String, PathBuf>,  // ROM paths are hashed by md5sum
+    rom_images: HashMap<String, Vec<u8>>, // ROM images are hashed by md5sum
     features_available: Vec<String>,
     features_required: Vec<String>,
-    rom_override: Option<String>, // Rom override forces a specific rom set alias to be loaded
+    rom_override: Option<String>, // ROM override forces a specific rom set alias to be loaded
 
     checkpoints_active: HashMap<u32, RomCheckpoint>,
     patches_active: HashMap<u32, RomPatch>,
@@ -174,14 +175,14 @@ impl Default for RomManager {
             rom_set_active:    None,
 
             rom_sets_by_feature: HashMap::new(),
-            //rom_sets: HashMap::new(), // Rom sets are hashed by 'alias'
+
             rom_candidates: HashMap::new(),
             rom_candidate_name_map: HashMap::new(),
             rom_paths: HashMap::new(),
-            rom_images: HashMap::new(), // Rom images can be stored by name or md5 hash.
+            rom_images: HashMap::new(),
             features_available: Vec::new(),
             features_required: Vec::new(),
-            rom_override: None, // Rom override forces a specific rom set alias to be loaded
+            rom_override: None,
 
             checkpoints_active: HashMap::new(),
             patches_active: HashMap::new(),
@@ -217,7 +218,7 @@ impl RomManager {
             })
             .collect();
 
-        log::debug!("load_defs(): Found {} rom definition files.", toml_defs.len());
+        log::debug!("load_defs(): Found {} ROM definition files.", toml_defs.len());
 
         // Attempt to load each toml file as a rom definition file.
         for def in toml_defs {
@@ -269,7 +270,7 @@ impl RomManager {
             }
         }
 
-        // Now that all the rom sets have been added to the feature map, we need
+        // Now that all the ROM sets have been added to the feature map, we need
         // to sort the feature map vectors by set priority.
         for (feature, rom_set_vec) in self.rom_sets_by_feature.iter_mut() {
             rom_set_vec.sort_by(|a, b| {
@@ -310,7 +311,7 @@ impl RomManager {
             println!(" {}", def.alias);
             for (i, rom) in def.rom.iter().enumerate() {
                 println!(
-                    "  rom {}: hash: {} file: {}",
+                    "  ROM {}: hash: {} file: {}",
                     i,
                     rom.md5.as_ref().unwrap_or(&String::from("")),
                     rom.filename.as_ref().unwrap_or(&String::from(""))
@@ -478,7 +479,7 @@ impl RomManager {
                     match self.rom_candidates.entry(file_digest_str.clone()) {
                         Entry::Occupied(prev_entry) => {
                             log::warn!(
-                                "Hash collision! Rom #1: {:?} Rom #2 {:?} both have hash {}. Rom #2 will be ignored.",
+                                "Hash collision! ROM #1: {:?} ROM #2 {:?} both have hash {}. ROM #2 will be ignored.",
                                 prev_entry.get().path,
                                 new_candidate.path,
                                 file_digest_str
@@ -493,7 +494,7 @@ impl RomManager {
                     match self.rom_candidate_name_map.entry(map_filename) {
                         Entry::Occupied(prev_entry) => {
                             log::warn!(
-                                "Name collision! Rom #1: {:?} Rom #2 {:?} have the same name. Rom #2 will be ignored when referenced by name.",
+                                "Name collision! ROM #1: {:?} ROM #2 {:?} have the same name. ROM #2 will be ignored when referenced by name.",
                                 prev_entry.get().1,
                                 map_path,
                             );
@@ -532,8 +533,13 @@ impl RomManager {
         // the specified ROMs (ignoring chip duplicates) we add it to the set of complete
         // ROM sets.
         for i in 0..self.rom_defs.len() {
-            if let Ok(_) = self.resolve_rom_set(i) {
-                self.rom_sets_complete.insert(self.rom_defs[i].alias.clone());
+            match self.resolve_rom_set(i) {
+                Ok(_) => {
+                    self.rom_sets_complete.insert(self.rom_defs[i].alias.clone());
+                }
+                Err(e) => {
+                    log::debug!("Failed to resolve ROM set {}: {}", self.rom_defs[i].alias, e);
+                }
             }
         }
 
@@ -560,6 +566,23 @@ impl RomManager {
                             "ROM name {} not found in candidate name map.",
                             filename
                         ));
+                    }
+                }
+            }
+
+            // If the ROM only has a md5, look it up in to get its path and set its filename.
+            if rom.filename.is_none() {
+                if let Some(md5) = rom.md5.clone() {
+                    if let Some(candidate) = self.rom_candidates.get(&md5) {
+                        rom.filename = Some(candidate.filename.clone());
+                        log::debug!(
+                            "ROM md5: {} resolved to filename: {}.",
+                            md5,
+                            rom.filename.as_ref().unwrap()
+                        );
+                    }
+                    else {
+                        return Err(anyhow::anyhow!("ROM md5 {} not found in candidate path map.", md5));
                     }
                 }
             }
@@ -596,6 +619,11 @@ impl RomManager {
 
             // Check if this chip has already been resolved. If it has, we can skip this ROM.
             if chip_set.contains(&rom.chip.clone().unwrap()) {
+                log::debug!(
+                    "ROM {} already resolved for chip {}. Skipping.",
+                    rom.md5.clone().unwrap(),
+                    rom.chip.clone().unwrap()
+                );
                 continue;
             }
 
@@ -667,7 +695,7 @@ impl RomManager {
             }
             else {
                 return Err(anyhow::anyhow!(
-                    "Specified rom set {} not found in rom set map.",
+                    "Specified ROM set {} not found in ROM set map.",
                     specified_rom
                 ));
             }
@@ -747,7 +775,7 @@ impl RomManager {
                             log::debug!("ROM set {} is not complete. Skipping.", rom);
                             continue;
                         }
-                        log::debug!("Found complete rom set for feature {}: {}", feature, rom);
+                        log::debug!("Found complete ROM set for feature {}: {}", feature, rom);
                         let rom_set_idx = self.rom_def_map.get(rom).unwrap();
                         let rom_set = &self.rom_defs[*rom_set_idx];
 
@@ -815,8 +843,8 @@ impl RomManager {
         self.create_manifest(rom_set_list, rm)
     }
 
-    /// Create a MachineRomManifest struct given the list of ROM set names. This Manifest can be given to the
-    /// emulator core to initialize a Machine.
+    /// Create a [MachineRomManifest] struct given the list of ROM set names. This Manifest can be given to the
+    /// emulator core to initialize a [Machine].
     pub fn create_manifest(
         &mut self,
         rom_set_list: Vec<String>,
@@ -829,18 +857,18 @@ impl RomManager {
             let rom_set_idx = self
                 .rom_def_map
                 .get(rom_set)
-                .ok_or(anyhow::anyhow!("Rom set {} not found in rom set map.", rom_set))?;
+                .ok_or(anyhow::anyhow!("ROM set {} not found in ROM set map.", rom_set))?;
 
             let rom_set_def = &self.rom_defs[*rom_set_idx];
             if rom_set_def.rom.is_empty() {
-                return Err(anyhow::anyhow!("Rom set {} has no roms.", rom_set));
+                return Err(anyhow::anyhow!("ROM set {} has no roms.", rom_set));
             }
 
             // Iterate over the roms in the rom set definition, load them from disk and add them to the manifest.
             for rom_desc in rom_set_def.rom.iter() {
                 let rom_md5 = rom_desc.md5.clone().unwrap();
                 let rom_file = self.rom_candidates.get(&rom_md5).ok_or_else(|| {
-                    anyhow::anyhow!("Rom {} not found in candidate list.", rom_desc.md5.as_ref().unwrap())
+                    anyhow::anyhow!("ROM {} not found in candidate list.", rom_desc.md5.as_ref().unwrap())
                 })?;
 
                 let mut rom_vec = rm.read_resource_from_path_blocking(&rom_file.path)?;
@@ -870,9 +898,11 @@ impl RomManager {
                         }
 
                         new_manifest.roms.push(MachineRomEntry {
-                            md5:  rom_desc.md5.clone().unwrap(),
-                            addr: rom_desc.addr,
-                            data: rom_vec,
+                            name:   rom_desc.filename.clone().unwrap_or_default(),
+                            md5:    rom_desc.md5.clone().unwrap(),
+                            addr:   rom_desc.addr,
+                            repeat: rom_desc.repeat.unwrap_or(1),
+                            data:   rom_vec,
                         });
                         new_manifest.rom_paths.push(rom_file.path.clone());
                     }
@@ -899,9 +929,11 @@ impl RomManager {
                         }
 
                         new_manifest.roms.push(MachineRomEntry {
-                            md5:  rom_desc.md5.clone().unwrap(),
-                            addr: rom_desc.addr,
-                            data: rom_vec,
+                            name:   rom_desc.filename.clone().unwrap_or_default(),
+                            md5:    rom_desc.md5.clone().unwrap(),
+                            addr:   rom_desc.addr,
+                            repeat: rom_desc.repeat.unwrap_or(1),
+                            data:   rom_vec,
                         });
                         new_manifest.rom_paths.push(rom_file.path.clone());
                     }
@@ -961,18 +993,18 @@ impl RomManager {
             let rom_set_idx = self
                 .rom_def_map
                 .get(rom_set)
-                .ok_or(anyhow::anyhow!("Rom set {} not found in rom set map.", rom_set))?;
+                .ok_or(anyhow::anyhow!("ROM set {} not found in ROM set map.", rom_set))?;
 
             let rom_set_def = &self.rom_defs[*rom_set_idx];
             if rom_set_def.rom.is_empty() {
-                return Err(anyhow::anyhow!("Rom set {} has no roms.", rom_set));
+                return Err(anyhow::anyhow!("ROM set {} has no roms.", rom_set));
             }
 
             // Iterate over the roms in the rom set definition, load them from disk and add them to the manifest.
             for rom_desc in rom_set_def.rom.iter() {
                 let rom_md5 = rom_desc.md5.clone().unwrap();
                 let rom_file = self.rom_candidates.get(&rom_md5).ok_or_else(|| {
-                    anyhow::anyhow!("Rom {} not found in candidate list.", rom_desc.md5.as_ref().unwrap())
+                    anyhow::anyhow!("ROM {} not found in candidate list.", rom_desc.md5.as_ref().unwrap())
                 })?;
 
                 let mut rom_vec = rm.read_resource_from_path(&rom_file.path).await?;
@@ -1002,9 +1034,11 @@ impl RomManager {
                         }
 
                         new_manifest.roms.push(MachineRomEntry {
-                            md5:  rom_desc.md5.clone().unwrap(),
-                            addr: rom_desc.addr,
-                            data: rom_vec,
+                            name:   rom_desc.filename.clone().unwrap_or_default(),
+                            md5:    rom_desc.md5.clone().unwrap(),
+                            addr:   rom_desc.addr,
+                            repeat: rom_desc.repeat.unwrap_or(1),
+                            data:   rom_vec,
                         });
                         new_manifest.rom_paths.push(rom_file.path.clone());
                     }
@@ -1031,9 +1065,11 @@ impl RomManager {
                         }
 
                         new_manifest.roms.push(MachineRomEntry {
-                            md5:  rom_desc.md5.clone().unwrap(),
-                            addr: rom_desc.addr,
-                            data: rom_vec,
+                            name:   rom_desc.filename.clone().unwrap_or_default(),
+                            md5:    rom_desc.md5.clone().unwrap(),
+                            addr:   rom_desc.addr,
+                            repeat: rom_desc.repeat.unwrap_or(1),
+                            data:   rom_vec,
                         });
                         new_manifest.rom_paths.push(rom_file.path.clone());
                     }
