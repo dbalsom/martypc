@@ -75,6 +75,9 @@ use marty_frontend_common::{
 
 use url::Url;
 
+#[cfg(feature = "use_serialport")]
+use marty_frontend_common::marty_common::MartyHashMap;
+
 #[derive(thiserror::Error, Debug)]
 pub enum EmuBuilderError {
     #[error("Configuration file '{0}' could not be found")]
