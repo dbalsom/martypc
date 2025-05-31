@@ -46,6 +46,7 @@ async fn main() -> eframe::Result {
         viewport: egui::ViewportBuilder::default()
             .with_inner_size([800.0, 600.0])
             .with_min_inner_size([800.0, 600.0])
+            .with_title(format!("MartyPC {}", env!("CARGO_PKG_VERSION")))
             .with_icon(
                 // NOTE: Adding an icon is optional
                 eframe::icon_data::from_png_bytes(&MARTY_ICON[..]).expect("Failed to load icon"),
