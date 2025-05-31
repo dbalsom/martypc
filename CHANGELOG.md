@@ -1,4 +1,4 @@
-## [0.4.1](https://github.com/dbalsom/martypc/releases/tag/0.4.1) (2025-05-XX)
+## [0.4.1](https://github.com/dbalsom/martypc/releases/tag/0.4.1) (2025-05-31)
 
 This is mostly a bugfix release, although there is one new feature: the V20's 8080 emulation mode is now supported.
 This hasn't been as rigorously tested as I'd like, so please report any issues you may encounter.
@@ -16,6 +16,7 @@ This hasn't been as rigorously tested as I'd like, so please report any issues y
 ## Core Bug Fixes / Improvements
  - Preliminary support for the V20's 8080 emulation mode
  - Fixed VGA cursor disable bit (Ferraro reference had it backwards)
+ - Fixed controller support on Windows 7
 
 ## [0.4.0](https://github.com/dbalsom/martypc/releases/tag/0.4.0) (2025-05-11)
 
