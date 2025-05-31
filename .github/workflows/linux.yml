@@ -51,7 +51,7 @@ jobs:
             rust-cache-${{ runner.os }}-
 
       - name: Cargo build
-        run: cargo build --profile release-lto --features use_winit,use_wgpu,sound,opl,use_gilrs,use_serialport
+        run: cargo build --profile release-lto
 
       - name: Copy files into install dir
         run: cp LICENSE README.md CHANGELOG.md CREDITS.md target/release-lto/martypc install

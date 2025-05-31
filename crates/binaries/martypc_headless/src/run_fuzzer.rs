@@ -124,7 +124,6 @@ pub fn run_fuzzer(config: &ConfigFileParams) {
     };
 
     cpu.randomize_seed(1234);
-    cpu.randomize_mem();
 
     let mut test_num = 0;
 
@@ -133,6 +132,7 @@ pub fn run_fuzzer(config: &ConfigFileParams) {
 
         test_num += 1;
         cpu.randomize_regs();
+        cpu.randomize_mem(true);
 
         if cpu.get_ip() > 0xFFF0 {
             // Avoid IP wrapping issues for now

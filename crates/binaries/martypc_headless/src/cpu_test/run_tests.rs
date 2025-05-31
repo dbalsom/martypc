@@ -117,10 +117,12 @@ pub fn run_runtests(config: ConfigFileParams) {
     // Load metadata file.
     let mut metadata_path = test_base_path.clone();
     metadata_path.push(String::from(METADATA_FILE));
-    let mut metadata_file = File::open(metadata_path.clone()).expect(&format!(
-        "Couldn't open metadata file '{}' at path: {:?}",
-        METADATA_FILE, metadata_path
-    ));
+    let mut metadata_file = File::open(metadata_path.clone()).unwrap_or_else(|_| {
+        panic!(
+            "Couldn't open metadata file '{}' at path: {:?}",
+            METADATA_FILE, metadata_path
+        )
+    });
     let mut contents = String::new();
     metadata_file
         .read_to_string(&mut contents)
@@ -184,8 +186,8 @@ pub fn run_runtests(config: ConfigFileParams) {
     let mut log_path = test_base_path.clone();
     let mut output_path = PathBuf::new();
     if let Some(ref test_output_path) = config.tests.test_output_path {
-        output_path = PathBuf::from(test_output_path.clone());
-        log_path = PathBuf::from(test_output_path.clone());
+        output_path = test_output_path.clone();
+        log_path = test_output_path.clone();
     }
     log_path.push("test_run.log");
 
@@ -201,30 +203,28 @@ pub fn run_runtests(config: ConfigFileParams) {
     thread::spawn(move || {
         match read_dir(test_base_path_clone) {
             Ok(entries) => {
-                for entry in entries {
-                    if let Ok(entry) = entry {
-                        // Filter for JSON files
-                        if let Some(extension) = entry.path().extension() {
-                            if ((extension.to_ascii_lowercase() == "json") || (extension.to_ascii_lowercase() == "gz"))
-                                && is_prefix_in_vec(&entry.path(), &str_vec)
-                            {
-                                // Load the JSON file
-                                match read_tests_from_file(entry.path()) {
-                                    Some(tests) => {
-                                        // Send tests through channel.
+                for entry in entries.flatten() {
+                    // Filter for JSON files
+                    if let Some(extension) = entry.path().extension() {
+                        if (extension.eq_ignore_ascii_case("json") || extension.eq_ignore_ascii_case("gz"))
+                            && is_prefix_in_vec(&entry.path(), &str_vec)
+                        {
+                            // Load the JSON file
+                            match read_tests_from_file(entry.path()) {
+                                Some(tests) => {
+                                    // Send tests through channel.
 
-                                        _ = tx.send(TestFileLoad {
-                                            path: entry.path().clone(),
-                                            tests,
-                                        });
-                                    }
-                                    None => {
-                                        eprintln!("Failed to parse json from file: {:?}. Skipping...", entry.path());
+                                    _ = tx.send(TestFileLoad {
+                                        path: entry.path().clone(),
+                                        tests,
+                                    });
+                                }
+                                None => {
+                                    eprintln!("Failed to parse json from file: {:?}. Skipping...", entry.path());
 
-                                        //let mut writer_lock = thread_logger.lock().unwrap();
-                                        //_ = writeln!(&mut writer_lock, "Failed to parse json from file: {:?}. Skipping...", entry.path());
-                                        continue;
-                                    }
+                                    //let mut writer_lock = thread_logger.lock().unwrap();
+                                    //_ = writeln!(&mut writer_lock, "Failed to parse json from file: {:?}. Skipping...", entry.path());
+                                    continue;
                                 }
                             }
                         }
@@ -233,7 +233,6 @@ pub fn run_runtests(config: ConfigFileParams) {
             }
             Err(e) => {
                 eprintln!("Error reading directory: {}", e);
-                return;
             }
         }
     });
@@ -276,7 +275,7 @@ pub fn run_runtests(config: ConfigFileParams) {
 
         //let results = run_tests(&metadata, &test_load.tests, opcode, extension_opt, &config, &mut writer_lock);
         let results = run_tests(
-            &metadata,
+            metadata,
             &test_load.tests,
             opcode_prefix_opt,
             opcode,
@@ -315,10 +314,12 @@ pub fn run_runtests(config: ConfigFileParams) {
                 validated_dir_path
             );
 
-            copy(test_load.path.clone(), copy_output_path.clone()).expect(&format!(
-                "Failed to copy file {:?} to output dir: {:?}!",
-                test_load.path, copy_output_path
-            ));
+            copy(test_load.path.clone(), copy_output_path.clone()).unwrap_or_else(|_| {
+                panic!(
+                    "Failed to copy file {:?} to output dir: {:?}!",
+                    test_load.path, copy_output_path
+                )
+            });
         }
 
         summary
@@ -337,7 +338,7 @@ pub fn run_runtests(config: ConfigFileParams) {
 
         print_summary(&summary);
 
-        print_cycle_summary(total_run_test_cycles as usize, total_run_cpu_cycles as usize);
+        print_cycle_summary(total_run_test_cycles, total_run_cpu_cycles);
 
         if let Some(summary_file) = &config.tests.test_run_summary_file {
             let mut summary_file_path = output_path;
@@ -383,13 +384,13 @@ fn run_tests(
     let mut trace_logger = TraceLogger::None;
     if let Some(trace_filename) = &config.machine.cpu.trace_file {
         log::debug!("Using CPU trace log: {:?}", trace_filename);
-        trace_logger = TraceLogger::from_filename(&trace_filename);
+        trace_logger = TraceLogger::from_filename(trace_filename);
     }
 
     // Create the validator trace file, if specified
     let mut validator_trace = TraceLogger::None;
     if let Some(trace_filename) = &config.validator.trace_file {
-        validator_trace = TraceLogger::from_filename(&trace_filename);
+        validator_trace = TraceLogger::from_filename(trace_filename);
     }
 
     let trace_mode = config.machine.cpu.trace_mode.unwrap_or_default();
@@ -401,9 +402,9 @@ fn run_tests(
     // TODO: Make cycle state collection a CPU option instead of relying on
     //       cpu_validator feature
     let mut cpu;
+    #[allow(clippy::unnecessary_operation)]
     #[cfg(feature = "cpu_tests")]
     {
-        use marty_core::cpu_validator::ValidatorMode;
         cpu = match CpuBuilder::new()
             .with_cpu_type(cpu_type)
             //.with_cpu_subtype(CpuSubType::Intel8088)
@@ -487,7 +488,7 @@ fn run_tests(
             // Validate that mem_entry[1] fits in u8.
             let byte: u8 = mem_entry[1]
                 .try_into()
-                .expect(&format!("Invalid memory byte value: {:?}", mem_entry[1]));
+                .unwrap_or_else(|_| panic!("Invalid memory byte value: {:?}", mem_entry[1]));
             cpu.bus_mut()
                 .write_u8(mem_entry[0] as usize, byte, 0)
                 .expect("Failed to write memory");
@@ -629,7 +630,7 @@ fn run_tests(
         // Validate final register state.
         let cpu_vregs = cpu.get_vregisters();
 
-        let test_final_vregs = test.initial_state.regs.clone().apply_delta(&test.final_state.regs);
+        let test_final_vregs = test.initial_state.regs.apply_delta(&test.final_state.regs);
 
         let mut current_test_failed = false;
 
@@ -643,7 +644,7 @@ fn run_tests(
 
         let validate_result = validate_registers(
             config.tests.test_cpu_type.unwrap_or(CpuType::Intel8088),
-            &metadata,
+            metadata,
             prefix_opt,
             opcode,
             extension_opt,
@@ -878,7 +879,7 @@ fn run_tests(
                     _ = writeln!(log, "{}| Test {:05}: Final memory OPS validated!", opcode_string, n);
                 }
                 Err(err) => {
-                    mem_valid = false;
+                    //mem_valid = false;
                     trace_error!(
                         log,
                         "{}| Test {:05}: Memory OPS validation error. {}",

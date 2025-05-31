@@ -483,6 +483,7 @@ pub struct Intel808x {
     address_bus: u32,
     address_latch: u32,
     data_bus: u16,
+    bhe: bool,         // Bus High Enable. Set when the high (odd) byte of the data bus is valid.
     last_ea: u16,      // Last calculated effective address. Used by 0xFE instructions
     bus: BusInterface, // CPU owns Bus
     i8288: I8288,      // Intel 8288 Bus Controller
@@ -653,19 +654,13 @@ pub struct Intel808x {
 }
 
 #[cfg(feature = "cpu_validator")]
-#[derive(PartialEq, Copy, Clone)]
+#[derive(PartialEq, Copy, Clone, Default)]
 pub enum CpuValidatorState {
+    #[default]
     Uninitialized,
     Running,
     Hung,
     Ended,
-}
-
-#[cfg(feature = "cpu_validator")]
-impl Default for CpuValidatorState {
-    fn default() -> Self {
-        CpuValidatorState::Uninitialized
-    }
 }
 
 pub struct CpuRegisterState {
@@ -722,10 +717,7 @@ pub enum TaCycle {
 impl TaCycle {
     #[inline]
     pub(crate) fn in_address_cycle(&self) -> bool {
-        match self {
-            TaCycle::Tr | TaCycle::Ts | TaCycle::T0 => true,
-            _ => false,
-        }
+        matches!(self, TaCycle::Tr | TaCycle::Ts | TaCycle::T0)
     }
 }
 
@@ -1037,6 +1029,11 @@ impl Intel808x {
         self.instruction_count
     }
 
+    #[inline(always)]
+    pub fn a0(&self) -> bool {
+        self.address_latch & 1 == 1
+    }
+
     pub fn flush_piq(&mut self) {
         // Rewind PC to the start of the instruction before flushing, so we will re-fetch it
         self.pc = self.pc.wrapping_sub(self.queue.len_p() as u16);
@@ -1118,15 +1115,12 @@ impl Intel808x {
 
     #[inline]
     pub fn is_before_t3(&self) -> bool {
-        match self.t_cycle {
-            TCycle::T1 | TCycle::T2 => true,
-            _ => false,
-        }
+        matches!(self.t_cycle, TCycle::T1 | TCycle::T2)
     }
 
     #[cfg(any(feature = "cpu_validator", feature = "cpu_collect_cycle_states"))]
     pub fn get_cycle_state(&mut self) -> CycleState {
-        let mut q = [0; 4];
+        let mut q = [0; 6];
         self.queue.to_slice(&mut q);
 
         CycleState {
@@ -1168,7 +1162,7 @@ impl Intel808x {
             aiowc: !self.i8288.aiowc,
             iowc: !self.i8288.iowc,
             inta: !self.i8288.inta,
-            bhe: false,
+            bhe: self.bhe,
             q_op: self.last_queue_op,
             q_byte: self.last_queue_byte,
             q_len: self.queue.len() as u32,
@@ -1492,28 +1486,29 @@ impl Intel808x {
     /// This is used to display the CPU state viewer window in the debug GUI.
     pub fn get_string_state(&self) -> CpuStringState {
         CpuStringState {
-            ah:   format!("{:02x}", self.a.h()),
-            al:   format!("{:02x}", self.a.l()),
-            ax:   format!("{:04x}", self.a.x()),
-            bh:   format!("{:02x}", self.b.h()),
-            bl:   format!("{:02x}", self.b.l()),
-            bx:   format!("{:04x}", self.b.x()),
-            ch:   format!("{:02x}", self.c.h()),
-            cl:   format!("{:02x}", self.c.l()),
-            cx:   format!("{:04x}", self.c.x()),
-            dh:   format!("{:02x}", self.d.h()),
-            dl:   format!("{:02x}", self.d.l()),
-            dx:   format!("{:04x}", self.d.x()),
-            sp:   format!("{:04x}", self.sp),
-            bp:   format!("{:04x}", self.bp),
-            si:   format!("{:04x}", self.si),
-            di:   format!("{:04x}", self.di),
-            cs:   format!("{:04x}", self.cs),
-            ds:   format!("{:04x}", self.ds),
-            ss:   format!("{:04x}", self.ss),
-            es:   format!("{:04x}", self.es),
-            ip:   format!("{:04x}", self.ip()),
-            pc:   format!("{:04x}", self.pc),
+            cpu_type: self.cpu_type,
+            ah: format!("{:02x}", self.a.h()),
+            al: format!("{:02x}", self.a.l()),
+            ax: format!("{:04x}", self.a.x()),
+            bh: format!("{:02x}", self.b.h()),
+            bl: format!("{:02x}", self.b.l()),
+            bx: format!("{:04x}", self.b.x()),
+            ch: format!("{:02x}", self.c.h()),
+            cl: format!("{:02x}", self.c.l()),
+            cx: format!("{:04x}", self.c.x()),
+            dh: format!("{:02x}", self.d.h()),
+            dl: format!("{:02x}", self.d.l()),
+            dx: format!("{:04x}", self.d.x()),
+            sp: format!("{:04x}", self.sp),
+            bp: format!("{:04x}", self.bp),
+            si: format!("{:04x}", self.si),
+            di: format!("{:04x}", self.di),
+            cs: format!("{:04x}", self.cs),
+            ds: format!("{:04x}", self.ds),
+            ss: format!("{:04x}", self.ss),
+            es: format!("{:04x}", self.es),
+            ip: format!("{:04x}", self.ip()),
+            pc: format!("{:04x}", self.pc),
             c_fl: {
                 let fl = self.flags & CPU_FLAG_CARRY > 0;
                 format!("{:1}", fl as u8)
@@ -1550,7 +1545,7 @@ impl Intel808x {
                 let fl = self.flags & CPU_FLAG_OVERFLOW > 0;
                 format!("{:1}", fl as u8)
             },
-
+            m_fl: { "1".to_string() },
             piq: self.queue.to_string(),
             flags: format!("{:04}", self.flags),
             instruction_count: self.instruction_count,

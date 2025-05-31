@@ -73,9 +73,12 @@ use marty_frontend_common::{
     vhd_manager::VhdManager,
 };
 
-use marty_egui::{GuiEnum, GuiVariableContext};
-use marty_frontend_common::marty_common::MartyHashMap;
 use url::Url;
+
+#[cfg(feature = "use_serialport")]
+use marty_egui::{GuiEnum, GuiVariableContext};
+#[cfg(feature = "use_serialport")]
+use marty_frontend_common::marty_common::MartyHashMap;
 
 #[derive(thiserror::Error, Debug)]
 pub enum EmuBuilderError {
@@ -427,14 +430,18 @@ impl EmulatorBuilder {
         // Do --machinescan commandline argument. We print machine info (and ROM info if --romscan
         // was also specified), then quit.
         if config.emulator.machinescan {
+            log::debug!("Doing machine scan...");
             // Print the list of machine configurations and their rom requirements
             for machine in machine_names {
                 writeln!(stdout, "Machine: {}", machine)?;
                 if let Some(reqs) = machine_manager
                     .get_config(&machine)
-                    .and_then(|config| Some(config.get_rom_requirements()))
+                    .and_then(|config| Some(config.get_rom_requirements(true)))
                 {
-                    writeln!(stdout, "  Requires: {:?}", reqs)?
+                    if let Ok(reqs) = reqs {
+                        writeln!(stdout, "  Requires: {:?}", reqs.0)?;
+                        writeln!(stdout, "  Optionally requests: {:?}", reqs.1)?;
+                    }
                 }
             }
 
@@ -477,7 +484,8 @@ impl EmulatorBuilder {
         };
 
         // Collect the ROM requirements for the machine configuration
-        let (required_features, optional_features) = machine_config_file.get_rom_requirements()?;
+        let (required_features, optional_features) =
+            machine_config_file.get_rom_requirements(config.machine.custom_roms)?;
 
         // Scan the rom resource director(ies)
         rom_manager.scan(&mut resource_manager).await?;
@@ -533,7 +541,14 @@ impl EmulatorBuilder {
 
         log::debug!("Created manifest!");
         for (i, rom) in rom_manifest.roms.iter().enumerate() {
-            log::debug!("  rom {}: md5: {} length: {}", i, rom.md5, rom.data.len());
+            log::debug!(
+                "  ROM #{}: md5: {} name: {} length: {} repeat: {}",
+                i,
+                rom.md5,
+                rom.name,
+                rom.data.len(),
+                rom.repeat
+            );
         }
 
         // Instantiate the floppy manager
@@ -698,6 +713,7 @@ impl EmulatorBuilder {
 
         // Build the Machine instance
         log::debug!("Building Machine...");
+        #[allow(unused_mut)]
         let mut machine = machine_builder.build()?;
 
         // Now that we have a Machine, we can query it for sound sources (devices that produce sound)

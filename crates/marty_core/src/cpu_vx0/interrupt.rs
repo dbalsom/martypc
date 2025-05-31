@@ -38,10 +38,56 @@ use crate::{
 impl NecVx0 {
     /// Execute the IRET microcode routine.
     pub fn iret_routine(&mut self) {
-        self.cycle_i(0x0c8);
-        self.farret(true);
+        self.cycles(1);
+        self.ret(true);
         self.pop_flags();
-        self.cycle_i(0x0ca);
+        self.cycles(1);
+        // The Vx0 has a crucial difference from the 8088 in that when IRET pops flags, we will
+        // re-enter emulation mode if the mode bit popped was cleared (emulation mode).
+        if self.flags & CPU_FLAG_MODE == 0 {
+            // Re-enter emulation mode.
+            self.enter_emulation_mode();
+        }
+    }
+
+    /// Perform the 8080's CALLN.
+    /// This is essentially a software interrupt that changes the mode flag after pushing the old
+    /// flag to the stack.
+    pub fn calln_8080(&mut self, interrupt: u8) {
+        self.cycles(3);
+
+        // Read the IVT
+        let vec_addr = (interrupt as usize * INTERRUPT_VEC_LEN) as u16;
+
+        let new_ip = self.biu_read_u16(Segment::None, vec_addr, ReadWriteFlag::Normal);
+        self.cycle_i(0x1a1);
+        let new_cs = self.biu_read_u16(Segment::None, vec_addr.wrapping_add(2), ReadWriteFlag::Normal);
+
+        // Add interrupt to call stack
+        self.push_call_stack(
+            CallStackEntry::Interrupt {
+                ret_cs: self.cs,
+                ret_ip: self.ip(),
+                call_cs: new_cs,
+                call_ip: new_ip,
+                itype: InterruptType::Software,
+                number: interrupt,
+                ah: self.a.h(),
+            },
+            self.cs,
+            self.ip(),
+        );
+
+        self.biu_fetch_suspend(); // 1a3 SUSP
+        self.cycles_i(2, &[0x1a3, 0x1a4]);
+        self.push_flags(ReadWriteFlag::Normal);
+        self.exit_emulation_mode();
+
+        self.clear_flag(Flag::Interrupt);
+        self.clear_flag(Flag::Trap);
+        self.cycle_i(0x1a6);
+        self.farcall2(new_cs, new_ip);
+        self.int_count += 1;
     }
 
     /// Perform a software interrupt

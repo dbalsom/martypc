@@ -637,9 +637,6 @@ pub const DECODE: [InstTemplate; 352] = [
 impl Intel808x {
     #[rustfmt::skip]
     pub fn decode(bytes: &mut impl ByteQueue, peek: bool) -> Result<Instruction, Box<dyn std::error::Error>> {
-        
-        
-
         // Read an initial byte as our opcode or first prefix
         let mut opcode = bytes.q_read_u8(QueueType::First, QueueReader::Biu);
         let mut size: u32 = 1;

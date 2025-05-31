@@ -68,6 +68,9 @@ impl CpuViewerControl {
             .striped(false)
             .min_col_width(60.0)
             .show(ui, |ui| {
+                ui.label("CPU Type: ");
+                ui.label(self.cpu_state.cpu_type.to_string());
+                ui.end_row();
                 ui.label("Run state: ");
                 ui.label(&state_str);
                 ui.end_row();
@@ -298,6 +301,9 @@ impl CpuViewerControl {
             .striped(true)
             .max_col_width(10.0)
             .show(ui, |ui| {
+                if self.cpu_state.cpu_type.is_nec() {
+                    Self::show_flagbit(ui, &mut self.cpu_state.m_fl,  "M", "Mode");    
+                }
                 Self::show_flagbit_mut(ui, &mut self.cpu_state.o_fl, &mut self.flag_updated,  "O", "Overflow");
                 Self::show_flagbit_mut(ui, &mut self.cpu_state.d_fl, &mut self.flag_updated, "D", "Direction");
                 Self::show_flagbit_mut(ui, &mut self.cpu_state.i_fl, &mut self.flag_updated, "I", "Interrupt enable");
@@ -444,6 +450,9 @@ impl CpuViewerControl {
             .striped(true)
             .max_col_width(10.0)
             .show(ui, |ui| {
+                if self.cpu_state.cpu_type.is_nec() {
+                    Self::show_flagbit(ui, &mut self.cpu_state.m_fl.as_str(), "M", "Mode");
+                }
                 Self::show_flagbit(ui, &mut self.cpu_state.o_fl.as_str(),"O", "Overflow");
                 Self::show_flagbit(ui, &mut self.cpu_state.d_fl.as_str(), "D", "Direction");
                 Self::show_flagbit(ui, &mut self.cpu_state.i_fl.as_str(), "I", "Interrupt enable");
@@ -588,6 +597,11 @@ impl CpuViewerControl {
                     self.reg_updated = false;
                     self.cpu_state = cpu_state;
                     self.paused_updates += 1;
+                }
+                else if cpu_state.cycle_count != self.cpu_state.cycle_count {
+                    // Incoming state is post-reset, or has a higher cycle count, accept it.
+                    self.cpu_state = cpu_state;
+                    self.reg_updated = false;
                 }
             }
         }

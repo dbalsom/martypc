@@ -58,8 +58,7 @@ rfd.workspace = true
 # ---------------------------------------------------------------------------------------------------------------------
 rodio = {  workspace = true, optional = true }
 # gilrs is used to provide gamepad support
-#gilrs = { version = "0.11", default-features = false, features = ["xinput"], optional = true }
-gilrs = { workspace = true, optional = true }
+gilrs = { workspace = true, default-features = false, optional = true, package = "gilrs" }
 # wgpu is used if the `use_wgpu` feature is enabled.
 wgpu = { workspace = true, optional = true }
 egui_commonmark = { workspace = true, optional = true }
@@ -110,7 +109,7 @@ marty_config = { path = "../../lib/frontend/marty_config", default-features = fa
 winres = "0.1"
 
 [features]
-default = ["all_video_cards", "use_winit", "use_wgpu", "use_gilrs", "sound", "opl"]
+default = ["all_video_cards", "use_winit", "use_wgpu", "use_gilrs", "gilrs_default", "sound", "opl", "use_serialport"]
 wasm_glow = ["all_video_cards","sound","use_glow","use_gilrs"]
 wasm_wgpu = ["all_video_cards","sound","use_wgpu","use_gilrs"]
 shader_ui = ["marty_egui/scaler_ui"]
@@ -134,7 +133,8 @@ use_glow = ["eframe/glow", "display_manager_eframe/use_glow", "marty_egui/scaler
 # Use serialport
 use_serialport = ["marty_core/serial", "marty_egui/use_serialport", "marty_egui_eframe/use_serialport"]
 # Use gilrs for gamepads
-use_gilrs = ["dep:gilrs", "marty_frontend_common/use_gilrs"]
+use_gilrs = ["gilrs", "marty_frontend_common/use_gilrs"]
+gilrs_default = ["gilrs/default"]
 # Enable UI for internal development tooling. This is not intended for end-users. No support!
 devtools = ["marty_egui/devtools"]
 arduino_validator = ["marty_core/arduino_validator"]
@@ -142,6 +142,8 @@ cpu_validator = ["marty_core/cpu_validator"]
 ega = ["marty_core/ega", "marty_frontend_common/ega", "marty_videocard_renderer/ega"]
 vga = ["marty_core/vga", "marty_frontend_common/vga", "marty_videocard_renderer/vga"]
 opl = ["marty_core/opl"]
+# Enable Windows 7 compatibility
+win7 = ["gilrs/xinput"]
 # enable dev stuff, including logging in release.
 # !! Warning, may be unstable or completely broken !!
 devmode = ["marty_core/cpu_trace_comments"]

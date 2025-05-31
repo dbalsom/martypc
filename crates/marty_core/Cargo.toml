@@ -32,7 +32,6 @@ toml = "0.5.10"
 uuid = { version = "1.1.2", features = ["v4"] }
 anyhow.workspace = true
 serialport = { workspace = true, optional = true }
-#rodio.workspace = true
 fxhash.workspace = true
 enum_dispatch.workspace = true
 crossbeam-channel.workspace = true
@@ -43,6 +42,10 @@ binrw.workspace = true
 [dependencies.opl3-rs]
 git = "https://github.com/dbalsom/opl3-rs.git"
 branch = "main"
+optional = true
+
+[dependencies.ard808x_client]
+git =  "https://github.com/dbalsom/arduino808x"
 optional = true
 
 [target.'cfg(not(target_arch = "wasm32"))'.dependencies]
@@ -81,7 +84,7 @@ sound = []
 serial = ["serialport"]
 opl = ["dep:opl3-rs"]
 wasm = []
-arduino_validator = []
+arduino_validator = ["dep:ard808x_client"]
 cpu_validator = ["cpu_collect_cycle_states"]
 cpu_collect_cycle_states = []
 cpu_cycle_trace = []

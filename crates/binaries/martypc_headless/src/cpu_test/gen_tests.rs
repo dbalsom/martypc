@@ -30,7 +30,6 @@
 
 use anyhow::{anyhow, bail, Error};
 use std::{
-    cell::RefCell,
     collections::{HashMap, LinkedList},
     ffi::OsString,
     fs::{File, OpenOptions},
@@ -44,10 +43,12 @@ use indexmap::IndexMap;
 use marty_config::ConfigFileParams;
 use serde::{Deserialize, Serialize};
 
+use ard808x_client::CpuWidth;
+
 use marty_core::{
     arduino8088_validator::ArduinoValidator,
     bytequeue::ByteQueue,
-    cpu_808x::{Cpu, *},
+    cpu_808x::Cpu,
     cpu_common,
     cpu_common::{
         builder::CpuBuilder,
@@ -95,6 +96,7 @@ pub fn run_gentests(config: &ConfigFileParams) {
     let trace_mode = config.machine.cpu.trace_mode.unwrap_or_default();
     let cpu_type = config.tests.test_cpu_type.unwrap_or(CpuType::Intel8088);
     let mut cpu;
+    #[allow(clippy::unnecessary_operation)]
     #[cfg(feature = "cpu_validator")]
     {
         cpu = match CpuBuilder::new()
@@ -128,7 +130,7 @@ pub fn run_gentests(config: &ConfigFileParams) {
         cpu.randomize_seed(1234);
     }
 
-    cpu.randomize_mem();
+    cpu.randomize_mem(true);
 
     let mut validator = cpu.get_validator_mut().as_mut().unwrap();
     validator.set_opts(
@@ -169,7 +171,7 @@ pub fn run_gentests(config: &ConfigFileParams) {
             0x9B, // WAIT instruction
             //0x9D, // POPF (figure out a way to handle this?)
             0xF0, 0xF1, 0xF2, 0xF3, // Prefixes
-            0xF4,
+            0xF4, // HALT
         ]);
     }
 
@@ -177,7 +179,7 @@ pub fn run_gentests(config: &ConfigFileParams) {
 
     let test_append = config.tests.test_gen_append.unwrap_or(true);
     let test_limit = config.tests.test_gen_opcode_count.unwrap_or(5000);
-    println!("Using test limit: {}", test_limit);
+    println!("Using test limit: {test_limit}");
 
     let mut test_path_postfix = PathBuf::from("tests".to_string());
     if let Some(test_path_inner) = &config.tests.test_path {
@@ -218,14 +220,14 @@ pub fn run_gentests(config: &ConfigFileParams) {
             let mut filename_str = OsString::new();
             // Prepend '0F' to multibyte opcodes
             if let Some(prefix) = config.tests.test_opcode_prefix {
-                filename_str.push(&format!("{:02X}", prefix));
+                filename_str.push(format!("{:02X}", prefix));
             }
 
             if !is_grp {
-                filename_str.push(&format!("{:02X}.json", test_opcode));
+                filename_str.push(format!("{:02X}.json", test_opcode));
             }
             else {
-                filename_str.push(&format!("{:02X}.{:01X}.json", test_opcode, op_ext));
+                filename_str.push(format!("{:02X}.{:01X}.json", test_opcode, op_ext));
             }
 
             test_path.push(filename_str);
@@ -317,7 +319,7 @@ pub fn run_gentests(config: &ConfigFileParams) {
 
             'testloop: while test_num < test_limit {
                 cpu.reset();
-                cpu.randomize_mem();
+                cpu.randomize_mem(true);
                 cpu.randomize_regs();
 
                 let mut instruction_address =
@@ -396,7 +398,8 @@ pub fn run_gentests(config: &ConfigFileParams) {
                 }
 
                 // Determine whether to prefetch this instruction. (prefetch even numbered tests)
-                let prefetch = (test_num - 1) & 0x01 == 0;
+                //let prefetch = (test_num - 1) & 0x01 == 0;
+                let prefetch = false;
 
                 println!(
                     "Test {}: Creating test for instruction: {} opcode:{:02X} addr:{:05X} bytes: {:X?} prefetch: {}",
@@ -479,10 +482,10 @@ pub fn run_gentests(config: &ConfigFileParams) {
                     Ok(cpu_test) => tests.push_back(cpu_test),
                     Err(e) => {
                         if config.tests.test_gen_stop_on_error.unwrap_or(true) {
-                            panic!("Failed to get test info: {:?}", e);
+                            panic!("Failed to get test info: {e:?}");
                         }
                         else {
-                            log::error!("Failed to get test info: {:?}", e);
+                            log::error!("Failed to get test info: {e:?}");
                             break;
                         }
                     }
@@ -544,8 +547,14 @@ pub fn get_test_info(validator: &Box<dyn CpuValidator>) -> Result<CpuTest, Error
 
     let initial_queue = validator.initial_queue();
 
-    let (initial_state, initial_ram) =
-        initial_state_from_ops(initial_regs.cs, initial_regs.ip, &bytes, initial_queue.len(), &cpu_ops);
+    let (initial_state, initial_ram) = initial_state_from_ops(
+        CpuWidth::from(validator.cpu_type()),
+        initial_regs.cs,
+        initial_regs.ip,
+        &bytes,
+        initial_queue.len(),
+        &cpu_ops,
+    );
 
     //let mut read_ram = ram_from_reads(cpu_reads);
     //initial_ram.append(&mut read_ram);
@@ -568,7 +577,7 @@ pub fn get_test_info(validator: &Box<dyn CpuValidator>) -> Result<CpuTest, Error
 
     log::debug!("Got {} CPU cycles from instruction.", cycle_states.len());
 
-    if cycle_states.len() == 0 {
+    if cycle_states.is_empty() {
         bail!("Got 0 cycles from instruction!");
     }
 
@@ -589,6 +598,8 @@ pub fn get_test_info(validator: &Box<dyn CpuValidator>) -> Result<CpuTest, Error
                 ip,
                 validator.final_emu_regs().ip
             );
+
+            bail!("Final IP mismatch!");
         }
     }
 
@@ -613,6 +624,21 @@ pub fn get_test_info(validator: &Box<dyn CpuValidator>) -> Result<CpuTest, Error
     })
 }
 
+pub fn bytes_from_bus_op(op: &BusOp) -> Vec<(u32, u8)> {
+    let mut bytes = Vec::new();
+    let mut high_offset = 0;
+    if op.addr & 1 == 0 {
+        // Even address, so push the low byte.
+        bytes.push((op.addr, (op.data & 0xFF) as u8));
+        high_offset = 1;
+    }
+    if op.bhe {
+        // BHE is set, so push the high byte also.
+        bytes.push((op.addr + high_offset, ((op.data >> 8) & 0xFF) as u8));
+    }
+    bytes
+}
+
 /// Try to calculate the initial memory state from a list of Bus operations.
 /// This is harder than anticipated due to the particular fetch behavior of the validator.
 /// The validator feeds NOPs to the CPU for every fetch after the last instruction byte
@@ -624,17 +650,15 @@ pub fn get_test_info(validator: &Box<dyn CpuValidator>) -> Result<CpuTest, Error
 /// If we do detect self modifying code, we can insert random bytes(?) as the original
 /// value doesn't matter
 pub fn initial_state_from_ops(
+    cpu_width: CpuWidth,
     cs: u16,
     ip: u16,
-    instr_bytes: &Vec<u8>,
+    instr_bytes: &[u8],
     prefetch_len: usize,
     all_ops: &Vec<BusOp>,
-) -> (IndexMap<u32, u8>, Vec<[u32; 2]>) {
-    //let mut ram_ops = all_ops.clone();
-    //let mut ram: Vec<[u32; 2]> = Vec::new();
-
-    let mut initial_state: IndexMap<u32, u8> = IndexMap::new();
-    let mut code_addresses: IndexMap<u32, (u8, bool)> = IndexMap::new();
+) -> (IndexMap<u32, u16>, Vec<[u32; 2]>) {
+    let mut initial_state: IndexMap<u32, u16> = IndexMap::new();
+    let mut code_addresses: IndexMap<u32, (u16, bool)> = IndexMap::new();
 
     // Add the instruction bytes to the initial state. They cannot be modified
     // by the validated instruction because every instruction is done fetching
@@ -644,8 +668,10 @@ pub fn initial_state_from_ops(
 
     for byte in instr_bytes {
         let flat_addr = cpu_common::calc_linear_address(cs, pc);
-        code_addresses.insert(flat_addr, (*byte, true));
-        initial_state.insert(flat_addr, *byte);
+        let data_value = *byte as u16;
+
+        code_addresses.insert(flat_addr, (data_value, true));
+        initial_state.insert(flat_addr, data_value);
         pc = pc.wrapping_add(1);
     }
 
@@ -660,13 +686,15 @@ pub fn initial_state_from_ops(
     }
 
     let mut shadowed_addresses: IndexMap<u32, bool> = IndexMap::new();
-    let mut read_addresses: IndexMap<u32, u8> = IndexMap::new();
-    let mut write_addresses: IndexMap<u32, u8> = IndexMap::new();
+    let mut read_addresses: IndexMap<u32, u16> = IndexMap::new();
+    let mut write_addresses: IndexMap<u32, u16> = IndexMap::new();
 
     for op in all_ops {
         match op.op_type {
             BusOpType::MemRead => {
-                read_addresses.insert(op.addr, op.data);
+                for (addr, data) in bytes_from_bus_op(op).into_iter() {
+                    read_addresses.insert(addr, data as u16);
+                }
 
                 if write_addresses.get(&op.addr).is_some() {
                     // Reading from an address the instruction wrote to (not sure if this ever happens?)
@@ -676,12 +704,14 @@ pub fn initial_state_from_ops(
                 else {
                     // This address was never written to, so the value here must have been part of the
                     // initial state.
-                    initial_state.insert(op.addr, op.data);
+                    for (addr, data) in bytes_from_bus_op(op).into_iter() {
+                        initial_state.insert(addr, data as u16);
+                    }
                 }
             }
             BusOpType::CodeRead => {
                 if let Some((byte, flag)) = code_addresses.get(&op.addr) {
-                    if *flag == true {
+                    if *flag {
                         // This operation corresponds to an initial fetch.
                         // Just as a sanity check, compare bytes.
                         assert_eq!(*byte, op.data);
@@ -714,21 +744,22 @@ pub fn initial_state_from_ops(
                 }
             }
             BusOpType::MemWrite => {
-                // Check if this address was read from previously.
-                if read_addresses.get(&op.addr).is_some() || code_addresses.get(&op.addr).is_some() {
-                    // Modifying a previously read address. This is fine.
-                }
-                else {
-                    // This address was never read from, so this write shadows
-                    // the original value at this address. Mark it as a
-                    // shadowed address.
-                    shadowed_addresses.insert(op.addr, true);
+                for (addr, data) in bytes_from_bus_op(op).into_iter() {
+                    // Check if this address was read from previously.
+                    if read_addresses.get(&addr).is_some() || code_addresses.get(&addr).is_some() {
+                        // Modifying a previously read address. This is fine.
+                    }
+                    else {
+                        // This address was never read from, so this write shadows
+                        // the original value at this address. Mark it as a
+                        // shadowed address.
+                        shadowed_addresses.insert(addr, true);
 
-                    // Since this isn't a fetch, we don't have to add it to the initial state
-                    // - whatever it was isn't important
+                        // Since this isn't a fetch, we don't have to add it to the initial state
+                        // - whatever it was isn't important
+                    }
+                    write_addresses.insert(addr, data as u16);
                 }
-
-                write_addresses.insert(op.addr, op.data);
             }
             _ => {}
         }
@@ -743,18 +774,7 @@ pub fn initial_state_from_ops(
     (initial_state, ram_vec)
 }
 
-pub fn ram_from_reads(reads: Vec<BusOp>) -> Vec<[u32; 2]> {
-    let mut ram_reads = reads.clone();
-
-    // Filter out IO reads, these are not used for ram setup
-    ram_reads.retain(|&op| !matches!(op.op_type, BusOpType::IoRead));
-
-    let ram = ram_reads.iter().map(|&x| [x.addr, x.data as u32]).collect();
-
-    ram
-}
-
-pub fn final_state_from_ops(initial_state: IndexMap<u32, u8>, all_ops: Vec<BusOp>) -> Vec<[u32; 2]> {
+pub fn final_state_from_ops(initial_state: IndexMap<u32, u16>, all_ops: Vec<BusOp>) -> Vec<[u32; 2]> {
     let mut ram_ops = all_ops.clone();
     // We modify the initial state by inserting write operations into it.
     let mut final_state = initial_state.clone();
@@ -764,7 +784,7 @@ pub fn final_state_from_ops(initial_state: IndexMap<u32, u8>, all_ops: Vec<BusOp
     // Filter out IO writes, these are not used for ram setup
     ram_ops.retain(|&op| !matches!(op.op_type, BusOpType::IoWrite));
 
-    let mut write_addresses: IndexMap<u32, u8> = IndexMap::new();
+    let mut write_addresses: IndexMap<u32, u16> = IndexMap::new();
     //let mut ram_hash: HashMap<u32, u8> = HashMap::new();
 
     for op in ram_ops {
@@ -772,41 +792,44 @@ pub fn final_state_from_ops(initial_state: IndexMap<u32, u8>, all_ops: Vec<BusOp
             BusOpType::MemRead => {
                 // Check if this read is already in memory. If it is, it must have the same value,
                 // or we are out of sync!
-                match initial_state.get(&op.addr) {
-                    Some(d) => {
-                        if *d != op.data {
-                            // Read op doesn't match initial state. Invalid!
-                            panic!(
-                                "Memop sync fail. MemRead [{:05X}]:{:02X}, hash value: {:02X}",
-                                op.addr, op.data, d
-                            );
+                for (addr, data) in bytes_from_bus_op(&op).into_iter() {
+                    match initial_state.get(&addr) {
+                        Some(d) => {
+                            if *d != (data as u16) {
+                                // Read op doesn't match initial state. Invalid!
+                                panic!(
+                                    "Memop sync fail. MemRead [{:05X}]:{:02X}, hash value: {:02X}",
+                                    addr, data, d
+                                );
+                            }
                         }
-                    }
-                    None => {
-                        // Read from mem op not in initial state. If we didn't write to this value, this read is invalid.
-
-                        if write_addresses.get(&op.addr).is_some() {
-                            // Ok, we wrote to this address at some point, so we can read it even if it wasn't in the
-                            // initial state.
-                        }
-                        else {
-                            // We never wrote to this address, and it's not in the initial state. This is invalid!
-                            panic!("Memop sync fail. MemRead from address not in initial state and not written: [{:05X}]:{:02X}", op.addr, op.data);
+                        None => {
+                            // Read from mem op not in initial state. If we didn't write to this value, this read is invalid.
+                            if write_addresses.get(&addr).is_some() {
+                                // Ok, we wrote to this address at some point, so we can read it even if it wasn't in the
+                                // initial state.
+                            }
+                            else {
+                                // We never wrote to this address, and it's not in the initial state. This is invalid!
+                                panic!("Memop sync fail. MemRead from address not in initial state and not written: [{:05X}]:{:02X}", addr, data);
+                            }
                         }
                     }
                 }
             }
             BusOpType::MemWrite => {
-                // No need to check writes; just insert the value.
+                // No need to check writes; just insert the values.
                 write_addresses.insert(op.addr, op.data);
-                final_state.insert(op.addr, op.data);
+                for (addr, data) in bytes_from_bus_op(&op).into_iter() {
+                    final_state.insert(addr, data as u16);
+                }
             }
             _ => {}
         }
     }
 
     // Collapse ram hash into vector of arrays
-    let mut ram_vec: Vec<[u32; 2]> = final_state.iter().map(|(&addr, &data)| [addr, data as u32]).collect();
+    let ram_vec: Vec<[u32; 2]> = final_state.iter().map(|(&addr, &data)| [addr, data as u32]).collect();
 
     // v2: Don't sort the final ram vector. Leave in order of operation.
     //ram_vec.sort_by(|a, b| a[0].cmp(&b[0]));

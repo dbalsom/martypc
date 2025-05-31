@@ -41,8 +41,12 @@ mod biu;
 mod cpu;
 mod cycle;
 mod decode;
+mod decode_8080;
+mod decode_v20;
 mod display;
+mod emulation_mode;
 mod execute;
+mod execute_8080;
 mod execute_extended;
 mod fuzzer;
 mod gdr;
@@ -59,7 +63,7 @@ mod stack;
 mod step;
 mod string;
 
-use crate::cpu_common::QueueOp;
+use crate::{cpu_common::QueueOp, cpu_vx0::decode::DecodeTable};
 use core::fmt::Display;
 use lazy_static::lazy_static;
 use regex::Regex;
@@ -130,6 +134,8 @@ macro_rules! vgdr {
 }
 
 use crate::cpu_common::{operands::OperandSize, services::CPUDebugServices, Register16, Register8, ServiceEvent};
+
+use crate::cpu_vx0::decode_v20::OperandTemplate;
 use trace_print;
 
 const QUEUE_MAX: usize = 6;
@@ -153,18 +159,20 @@ pub const CPU_FLAG_TRAP: u16 = 0b0000_0001_0000_0000;
 pub const CPU_FLAG_INT_ENABLE: u16 = 0b0000_0010_0000_0000;
 pub const CPU_FLAG_DIRECTION: u16 = 0b0000_0100_0000_0000;
 pub const CPU_FLAG_OVERFLOW: u16 = 0b0000_1000_0000_0000;
+pub const CPU_FLAG_MODE: u16 = 0b1000_0000_0000_0000; // Vx0 emulation mode bit
 
 /*
 const CPU_FLAG_RESERVED12: u16 = 0b0001_0000_0000_0000;
 const CPU_FLAG_RESERVED13: u16 = 0b0010_0000_0000_0000;
 const CPU_FLAG_RESERVED14: u16 = 0b0100_0000_0000_0000;
-const CPU_FLAG_RESERVED15: u16 = 0b1000_0000_0000_0000;
 */
 
-const CPU_FLAGS_RESERVED_ON: u16 = 0b1111_0000_0000_0010;
+// Vx0 adds MD bit in position 15.
+const CPU_FLAGS_RESERVED_ON: u16 = 0b0111_0000_0000_0010;
 const CPU_FLAGS_RESERVED_OFF: u16 = !(CPU_FLAG_RESERVED3 | CPU_FLAG_RESERVED5);
 
-const FLAGS_POP_MASK: u16 = 0b0000_1111_1101_0101;
+// Vx0 adds MD bit in position 15.
+const FLAGS_POP_MASK: u16 = 0b1000_1111_1101_0101;
 
 const REGISTER_HI_MASK: u16 = 0b0000_0000_1111_1111;
 const REGISTER_LO_MASK: u16 = 0b1111_1111_0000_0000;
@@ -270,10 +278,27 @@ pub const REGISTER16_LUT: [Register16; 8] = [
     Register16::DI,
 ];
 
+pub const REGISTER8_8080_LUT: [Option<Register8>; 8] = [
+    Some(Register8::CH), // B
+    Some(Register8::CL), // C
+    Some(Register8::DH), // D
+    Some(Register8::DL), // E
+    Some(Register8::BH), // H
+    Some(Register8::BL), // L
+    None,                // MEM
+    Some(Register8::AL), // ACC
+];
+
+pub const REGISTER16_8080_LUT: [Register16; 4] = [
+    Register16::CX, // BC
+    Register16::DX, // DE
+    Register16::BX, // HL
+    Register16::BP, // SP
+];
+
 pub const SEGMENT_REGISTER16_LUT: [Register16; 4] = [Register16::ES, Register16::CS, Register16::SS, Register16::DS];
 
-#[derive(Debug, Copy, Clone, PartialEq)]
-#[derive(Default)]
+#[derive(Debug, Copy, Clone, PartialEq, Default)]
 pub enum CpuState {
     #[default]
     Normal,
@@ -315,6 +340,7 @@ pub enum Flag {
     Interrupt,
     Direction,
     Overflow,
+    Mode,
 }
 
 /*
@@ -435,14 +461,12 @@ impl Default for InterruptDescriptor {
     }
 }
 
-#[derive(Copy, Clone, Debug)]
-#[derive(Default)]
+#[derive(Copy, Clone, Debug, Default)]
 pub enum TransferSize {
     #[default]
     Byte,
     Word,
 }
-
 
 #[derive(Default)]
 pub struct I8288 {
@@ -465,6 +489,7 @@ pub struct I8288 {
 pub struct NecVx0 {
     cpu_type: CpuType,
     state:    CpuState,
+    decode:   DecodeTable,
 
     a: GeneralRegister,
     b: GeneralRegister,
@@ -480,6 +505,7 @@ pub struct NecVx0 {
     es: u16,
     //ip:    u16,
     flags: u16,
+    emulation_mode: bool,
 
     address_bus: u32,
     address_latch: u32,
@@ -798,7 +824,7 @@ impl NecVx0 {
         let mut cpu: NecVx0 = Default::default();
 
         match cpu_type {
-            CpuType::NecV20 => {
+            CpuType::NecV20(_) => {
                 cpu.queue.set_size(4, 1);
                 cpu.fetch_size = TransferSize::Byte;
             }
@@ -864,6 +890,32 @@ impl NecVx0 {
         self.pc.wrapping_sub(self.queue.len() as u16)
     }
 
+    /// 8080 stuff
+    #[inline]
+    pub fn acc_80(&self) -> u8 {
+        self.a.l()
+    }
+
+    #[inline]
+    pub fn hl_80(&self) -> u16 {
+        self.b.x()
+    }
+
+    #[inline]
+    pub fn bc_80(&self) -> u16 {
+        self.c.x()
+    }
+
+    #[inline]
+    pub fn de_80(&self) -> u16 {
+        self.d.x()
+    }
+
+    #[inline]
+    pub fn sp_80(&self) -> u16 {
+        self.bp
+    }
+
     /// Return the IP value for disassembly purposes. We wish to adjust the real value of IP in
     /// certain circumstances, such as when a reentrant instruction is being executed. This is so
     /// that reentrant instructions stay in the disassembly viewer until completed.
@@ -906,9 +958,7 @@ impl NecVx0 {
     #[inline]
     pub fn is_last_wait(&self) -> bool {
         match self.t_cycle {
-            TCycle::T3 | TCycle::Tw => {
-                self.wait_states == 0 && self.dma_wait_states == 0
-            }
+            TCycle::T3 | TCycle::Tw => self.wait_states == 0 && self.dma_wait_states == 0,
             _ => false,
         }
     }
@@ -917,9 +967,7 @@ impl NecVx0 {
     pub fn is_before_last_wait(&self) -> bool {
         match self.t_cycle {
             TCycle::T1 | TCycle::T2 => true,
-            TCycle::T3 | TCycle::Tw => {
-                self.wait_states > 0 || self.dma_wait_states > 0
-            }
+            TCycle::T3 | TCycle::Tw => self.wait_states > 0 || self.dma_wait_states > 0,
             _ => false,
         }
     }
@@ -934,7 +982,7 @@ impl NecVx0 {
 
     #[cfg(feature = "cpu_validator")]
     pub fn get_cycle_state(&mut self) -> CycleState {
-        let mut q = [0; 4];
+        let mut q = [0; 6];
         self.queue.to_slice(&mut q);
 
         CycleState {
@@ -1014,6 +1062,7 @@ impl NecVx0 {
             }
             Flag::Direction => CPU_FLAG_DIRECTION,
             Flag::Overflow => CPU_FLAG_OVERFLOW,
+            Flag::Mode => CPU_FLAG_MODE,
         };
     }
 
@@ -1029,6 +1078,7 @@ impl NecVx0 {
             Flag::Interrupt => !CPU_FLAG_INT_ENABLE,
             Flag::Direction => !CPU_FLAG_DIRECTION,
             Flag::Overflow => !CPU_FLAG_OVERFLOW,
+            Flag::Mode => !CPU_FLAG_MODE,
         };
     }
 
@@ -1078,6 +1128,7 @@ impl NecVx0 {
                 Flag::Interrupt => CPU_FLAG_INT_ENABLE,
                 Flag::Direction => CPU_FLAG_DIRECTION,
                 Flag::Overflow => CPU_FLAG_OVERFLOW,
+                Flag::Mode => CPU_FLAG_MODE,
             }
             != 0
     }
@@ -1303,65 +1354,39 @@ impl NecVx0 {
     /// This is used to display the CPU state viewer window in the debug GUI.
     pub fn get_string_state(&self) -> CpuStringState {
         CpuStringState {
-            ah:   format!("{:02x}", self.a.h()),
-            al:   format!("{:02x}", self.a.l()),
-            ax:   format!("{:04x}", self.a.x()),
-            bh:   format!("{:02x}", self.b.h()),
-            bl:   format!("{:02x}", self.b.l()),
-            bx:   format!("{:04x}", self.b.x()),
-            ch:   format!("{:02x}", self.c.h()),
-            cl:   format!("{:02x}", self.c.l()),
-            cx:   format!("{:04x}", self.c.x()),
-            dh:   format!("{:02x}", self.d.h()),
-            dl:   format!("{:02x}", self.d.l()),
-            dx:   format!("{:04x}", self.d.x()),
-            sp:   format!("{:04x}", self.sp),
-            bp:   format!("{:04x}", self.bp),
-            si:   format!("{:04x}", self.si),
-            di:   format!("{:04x}", self.di),
-            cs:   format!("{:04x}", self.cs),
-            ds:   format!("{:04x}", self.ds),
-            ss:   format!("{:04x}", self.ss),
-            es:   format!("{:04x}", self.es),
-            ip:   format!("{:04x}", self.ip()),
-            pc:   format!("{:04x}", self.pc),
-            c_fl: {
-                let fl = self.flags & CPU_FLAG_CARRY > 0;
-                format!("{:1}", fl as u8)
-            },
-            p_fl: {
-                let fl = self.flags & CPU_FLAG_PARITY > 0;
-                format!("{:1}", fl as u8)
-            },
-            a_fl: {
-                let fl = self.flags & CPU_FLAG_AUX_CARRY > 0;
-                format!("{:1}", fl as u8)
-            },
-            z_fl: {
-                let fl = self.flags & CPU_FLAG_ZERO > 0;
-                format!("{:1}", fl as u8)
-            },
-            s_fl: {
-                let fl = self.flags & CPU_FLAG_SIGN > 0;
-                format!("{:1}", fl as u8)
-            },
-            t_fl: {
-                let fl = self.flags & CPU_FLAG_TRAP > 0;
-                format!("{:1}", fl as u8)
-            },
-            i_fl: {
-                let fl = self.flags & CPU_FLAG_INT_ENABLE > 0;
-                format!("{:1}", fl as u8)
-            },
-            d_fl: {
-                let fl = self.flags & CPU_FLAG_DIRECTION > 0;
-                format!("{:1}", fl as u8)
-            },
-            o_fl: {
-                let fl = self.flags & CPU_FLAG_OVERFLOW > 0;
-                format!("{:1}", fl as u8)
-            },
-
+            cpu_type: self.cpu_type,
+            ah: format!("{:02x}", self.a.h()),
+            al: format!("{:02x}", self.a.l()),
+            ax: format!("{:04x}", self.a.x()),
+            bh: format!("{:02x}", self.b.h()),
+            bl: format!("{:02x}", self.b.l()),
+            bx: format!("{:04x}", self.b.x()),
+            ch: format!("{:02x}", self.c.h()),
+            cl: format!("{:02x}", self.c.l()),
+            cx: format!("{:04x}", self.c.x()),
+            dh: format!("{:02x}", self.d.h()),
+            dl: format!("{:02x}", self.d.l()),
+            dx: format!("{:04x}", self.d.x()),
+            sp: format!("{:04x}", self.sp),
+            bp: format!("{:04x}", self.bp),
+            si: format!("{:04x}", self.si),
+            di: format!("{:04x}", self.di),
+            cs: format!("{:04x}", self.cs),
+            ds: format!("{:04x}", self.ds),
+            ss: format!("{:04x}", self.ss),
+            es: format!("{:04x}", self.es),
+            ip: format!("{:04x}", self.ip()),
+            pc: format!("{:04x}", self.pc),
+            c_fl: { format!("{:1}", (self.flags & CPU_FLAG_CARRY != 0) as u8) },
+            p_fl: { format!("{:1}", (self.flags & CPU_FLAG_PARITY != 0) as u8) },
+            a_fl: { format!("{:1}", (self.flags & CPU_FLAG_AUX_CARRY != 0) as u8) },
+            z_fl: { format!("{:1}", (self.flags & CPU_FLAG_ZERO != 0) as u8) },
+            s_fl: { format!("{:1}", (self.flags & CPU_FLAG_SIGN != 0) as u8) },
+            t_fl: { format!("{:1}", (self.flags & CPU_FLAG_TRAP != 0) as u8) },
+            i_fl: { format!("{:1}", (self.flags & CPU_FLAG_INT_ENABLE != 0) as u8) },
+            d_fl: { format!("{:1}", (self.flags & CPU_FLAG_DIRECTION != 0) as u8) },
+            o_fl: { format!("{:1}", (self.flags & CPU_FLAG_OVERFLOW != 0) as u8) },
+            m_fl: { format!("{:1}", (self.flags & CPU_FLAG_MODE != 0) as u8) },
             piq: self.queue.to_string(),
             flags: format!("{:04}", self.flags),
             instruction_count: self.instruction_count,
@@ -1692,13 +1717,14 @@ impl NecVx0 {
 
         for i in &self.instruction_history {
             if let HistoryEntry::InstructionEntry {
-                    cs,
-                    ip,
-                    cycles: _,
-                    interrupt,
-                    jump: _,
-                    i,
-                } = i {
+                cs,
+                ip,
+                cycles: _,
+                interrupt,
+                jump: _,
+                i,
+            } = i
+            {
                 let i_string = format!(
                     "{:05X}{} [{:04X}:{:04X}] {}\n",
                     i.address,

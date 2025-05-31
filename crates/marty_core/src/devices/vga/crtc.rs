@@ -95,11 +95,13 @@ pub enum CRTCRegister {
     LineCompare,
 }
 
+/// Cursor Start register. Note that the Ferraro book has the cursor disable bit backwards,
+/// at least as of the third edition.
 #[bitfield]
 #[derive(Copy, Clone)]
 pub struct CCursorStart {
-    pub cursor_start: B5,
-    pub cursor_on: B1,
+    pub start: B5,
+    pub disabled: bool,
     #[skip]
     unused: B2,
 }
@@ -107,7 +109,7 @@ pub struct CCursorStart {
 #[bitfield]
 #[derive(Copy, Clone)]
 pub struct CCursorEnd {
-    pub cursor_end: B5,
+    pub end: B5,
     pub cursor_skew: B2,
     #[skip]
     unused: B1,
@@ -288,7 +290,7 @@ pub struct VgaCrtc {
     crtc_overflow: COverflow,                // R(7) Overflow
     crtc_preset_row_scan: u8,                // R(8) Preset Row Scan
     crtc_maximum_scanline: CMaximumScanline, // R(9) Max Scanline
-    crtc_cursor_start: u8,                   // R(A) Cursor Location (9-bit value)
+    crtc_cursor_start: CCursorStart,         // R(A) Cursor Location (9-bit value)
     crtc_cursor_enabled: bool,               // Calculated from R(A) bit 5
     crtc_cursor_end: CCursorEnd,             // R(B)
     crtc_cursor_skew: u8,                    // Calculated from R(B) bits 5-6
@@ -360,7 +362,7 @@ impl Default for VgaCrtc {
             crtc_overflow: COverflow::new(),
             crtc_preset_row_scan: DEFAULT_PRESET_ROW_SCAN,
             crtc_maximum_scanline: CMaximumScanline::new(),
-            crtc_cursor_start: DEFAULT_CURSOR_START_LINE,
+            crtc_cursor_start: CCursorStart::new(),
             crtc_cursor_enabled: true,
             crtc_cursor_end: CCursorEnd::from_bytes([DEFAULT_CURSOR_END_LINE]),
             crtc_cursor_skew: 0,
@@ -508,7 +510,7 @@ impl VgaCrtc {
             }
             CRTCRegister::CursorStartLine => {
                 // R(A)
-                self.crtc_cursor_start
+                self.crtc_cursor_start.into_bytes()[0]
             }
             CRTCRegister::CursorEndLine => {
                 // R(B)
@@ -668,13 +670,7 @@ impl VgaCrtc {
             }
             CRTCRegister::CursorStartLine => {
                 // R(A)
-                // Bits 0-4: Cursor Start Line
-                // Bit 5: Cursor Enable (This field only valid in VGA)
-                // I suppose the only way to disable the cursor on IBM EGA is to position it off
-                // the screen.
-                //self.crtc_cursor_enabled = byte >> 5 & 0x01 != 0;
-
-                self.crtc_cursor_start = byte & CURSOR_LINE_MASK;
+                self.crtc_cursor_start = CCursorStart::from_bytes([byte]);
                 self.update_cursor_data();
             }
             CRTCRegister::CursorEndLine => {
@@ -894,44 +890,27 @@ impl VgaCrtc {
 
     /// Update the cursor data array based when either cursor_start or cursor_end have changed.
     fn update_cursor_data(&mut self) {
+        // TODO: This logic is adapted from EGA - we need to check how a VGA behaves
+
         // Reset cursor data to 0.
         self.cursor_data.fill(false);
 
+        if self.crtc_cursor_start.disabled() {
+            // If cursor is disabled, just leave the cursor data empty.
+            return;
+        }
+
+        let cursor_start = self.crtc_cursor_start.start();
         // Start line must be reached when iterating through character rows to draw a cursor at all.
         // Therefore, if start_line > maximum_scanline, the cursor is disabled.
-        if self.crtc_cursor_start > self.crtc_maximum_scanline.maximum_scanline() {
+        if cursor_start > self.crtc_maximum_scanline.maximum_scanline() {
             return;
         }
 
-        // If start == end, a single line of cursor is drawn.
-        if self.crtc_cursor_start == self.crtc_cursor_end.cursor_end() {
-            self.cursor_data[self.crtc_cursor_start as usize] = true;
-            return;
-        }
-
-        if self.crtc_cursor_start <= self.crtc_cursor_end.cursor_end() {
-            // Normal cursor definition. Cursor runs from start_line to end_line - 1
-            // EGA differs from CGA in this regard as the CGA's cursor runs from start_line to end_line.
-            for i in self.crtc_cursor_start..=self.crtc_cursor_end.cursor_end().saturating_sub(1) {
+        if cursor_start <= self.crtc_cursor_end.end() {
+            // Normal cursor definition. Cursor runs from start_line to end_line
+            for i in cursor_start..=self.crtc_cursor_end.end() {
                 self.cursor_data[i as usize] = true;
-            }
-        } else {
-            // The EGA will draw a single scanline instead of a split cursor if (end % 16) == start
-            // https://www.pcjs.org/blog/2018/03/20/
-            if (self.crtc_cursor_end.cursor_end() & 0x0F) == self.crtc_cursor_start {
-                self.cursor_data[self.crtc_cursor_start as usize] = true;
-                return;
-            }
-
-            // Split cursor.
-            for i in 0..self.crtc_cursor_end.cursor_end().saturating_sub(1) {
-                // First part of cursor is 0->end_line
-                self.cursor_data[i as usize] = true;
-            }
-
-            for i in (self.crtc_cursor_start as usize)..VGA_CURSOR_MAX {
-                // Second part of cursor is start_line->max
-                self.cursor_data[i] = true;
             }
         }
     }
@@ -1360,7 +1339,7 @@ impl VgaCrtc {
     }
 
     pub fn get_cursor_span(&self) -> (u8, u8) {
-        (self.crtc_cursor_start, self.crtc_cursor_end.cursor_end())
+        (self.crtc_cursor_start.start(), self.crtc_cursor_end.end())
     }
 
     pub fn horizontal_display_end(&self) -> u8 {
@@ -1394,7 +1373,7 @@ impl VgaCrtc {
         push_reg_str!(crtc_vec, CRTCRegister::Overflow, "[R07]", self.crtc_overflow.into_bytes()[0]);
         push_reg_str!(crtc_vec, CRTCRegister::PresetRowScan, "[R08]", self.crtc_preset_row_scan);
         push_reg_str!(crtc_vec, CRTCRegister::MaximumScanLine, "[R09]", format!("{:02X}:{}", self.crtc_maximum_scanline.into_bytes()[0], self.crtc_maximum_scanline.maximum_scanline()));
-        push_reg_str!(crtc_vec, CRTCRegister::CursorStartLine, "[R0A]", self.crtc_cursor_start);
+        push_reg_str!(crtc_vec, CRTCRegister::CursorStartLine, "[R0A]", self.crtc_cursor_start.into_bytes()[0]);
         push_reg_str!(crtc_vec, CRTCRegister::CursorEndLine, "[R0B]", self.crtc_cursor_end.into_bytes()[0]);
         push_reg_str!(crtc_vec, CRTCRegister::StartAddressH, "[R0C]", self.crtc_start_address_ho);
         push_reg_str!(crtc_vec, CRTCRegister::StartAddressL, "[R0D]", self.crtc_start_address_lo);

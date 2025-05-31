@@ -1,3 +1,22 @@
+## [0.4.1](https://github.com/dbalsom/martypc/releases/tag/0.4.1) (2025-05-31)
+
+This is mostly a bugfix release, although there is one new feature: the V20's 8080 emulation mode is now supported.
+This hasn't been as rigorously tested as I'd like, so please report any issues you may encounter.
+
+## Frontend Bug Fixes / Improvements
+ - Added 'custom' ROM feature flag to make it easier to load custom ROM extensions.
+ - Removed bad IBM ROM definition file
+ - Added 'repeat' field to ROM definitions and changed IBM ROM definitions to use it - fixes 1982 5160 BIOSes
+ - Fixed CPU Status window updating when paused/stepping
+ - Fixed PIQ flush on V20 CPU
+ - Added Mode flag to CPU Status Window when using a V20 CPU
+ - Fixed --machinescan option
+ - Improved unique filename generation function - avoids O(n) behavior as file list grows (now O(log N), O(1) with hint)
+
+## Core Bug Fixes / Improvements
+ - Preliminary support for the V20's 8080 emulation mode
+ - Fixed VGA cursor disable bit (Ferraro reference had it backwards)
+ - Fixed controller support on Windows 7
 
 ## [0.4.0](https://github.com/dbalsom/martypc/releases/tag/0.4.0) (2025-05-11)
 

@@ -415,10 +415,12 @@ pub fn run() {
             }
         }
     };
-    let (required_features, optional_features) = machine_config_file.get_rom_requirements().unwrap_or_else(|e| {
-        eprintln!("Error getting ROM requirements for machine: {}", e);
-        std::process::exit(1);
-    });
+    let (required_features, optional_features) = machine_config_file
+        .get_rom_requirements(config.machine.custom_roms)
+        .unwrap_or_else(|e| {
+            eprintln!("Error getting ROM requirements for machine: {}", e);
+            std::process::exit(1);
+        });
 
     // Scan the rom resource director(ies)
     let future = rom_manager.scan(&mut resource_manager);

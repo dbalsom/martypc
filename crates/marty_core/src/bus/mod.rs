@@ -58,10 +58,7 @@ use crate::{
         dma::*,
         fdc::FloppyController,
         game_port::GamePort,
-        hdc::{
-            xebec::{HardDiskController, DRIVE_TYPE2_DIP},
-            xtide::XtIdeController,
-        },
+        hdc::{xebec::HardDiskController, xtide::XtIdeController},
         keyboard::{KeyboardType, *},
         lotech_ems::LotechEmsCard,
         lpt_card::ParallelController,
@@ -1075,7 +1072,7 @@ impl BusInterface {
             match hdc_config.hdc_type {
                 HardDiskControllerType::IbmXebec => {
                     // TODO: Get the correct drive type from the specified VHD...?
-                    let hdc = HardDiskController::new(2, DRIVE_TYPE2_DIP);
+                    let hdc = HardDiskController::new(2);
                     // Add HDC ports to io_map
                     add_io_device!(self, hdc, IoDeviceType::HardDiskController);
                     self.hdc = Some(Box::new(hdc));

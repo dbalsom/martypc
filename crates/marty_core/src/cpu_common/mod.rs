@@ -42,14 +42,13 @@ pub mod mnemonic;
 pub mod operands;
 pub mod services;
 
-use std::str::FromStr;
-
 pub use addressing::{AddressingMode, CpuAddress, Displacement};
 pub use analyzer::{AnalyzerEntry, LogicAnalyzer};
 pub use error::CpuError;
 pub use instruction::{Instruction, InstructionWidth};
 pub use mnemonic::Mnemonic;
 pub use operands::OperandType;
+use std::{fmt, fmt::Display, str::FromStr};
 
 #[cfg(feature = "cpu_validator")]
 use crate::cpu_validator::CpuValidator;
@@ -66,10 +65,11 @@ use crate::{
 };
 
 use enum_dispatch::enum_dispatch;
-use serde::Deserialize;
+use serde::{Deserialize, Deserializer};
 
 // Instruction prefixes
 pub const OPCODE_PREFIX_0F: u32 = 0b_1000_0000_0000_0000;
+pub const OPCODE_PREFIX_ED: u32 = 0b_0100_0000_0000_0000;
 pub const OPCODE_PREFIX_ES_OVERRIDE: u32 = 0b_0000_0000_0100;
 pub const OPCODE_PREFIX_CS_OVERRIDE: u32 = 0b_0000_0000_1000;
 pub const OPCODE_PREFIX_SS_OVERRIDE: u32 = 0b_0000_0001_0000;
@@ -84,6 +84,13 @@ pub const OPCODE_PREFIX_REPMASK: u32 = 0b1111_0000_0000;
 // Some CPUs can restore up to 3 prefixes when returning to an interrupted string operation.
 // The first two bits of the prefixes field stores the number of prefixes to restore from 0-3.
 pub const OPCODE_PREFIX_CT_MASK: u32 = 0b0000_0000_0011;
+
+#[derive(Copy, Clone, Debug, Default, Deserialize, Eq, PartialEq, Hash)]
+pub enum CpuArch {
+    #[default]
+    I86,
+    I8080,
+}
 
 #[derive(Debug, Default, PartialEq)]
 pub enum ExecutionResult {
@@ -105,6 +112,62 @@ pub enum CpuException {
     BoundsException,
 }
 
+pub enum Register16_8080 {
+    BC,
+    DE,
+    HL,
+    SP,
+}
+
+impl From<Register16_8080> for Register16 {
+    fn from(reg: Register16_8080) -> Self {
+        match reg {
+            Register16_8080::BC => Register16::CX,
+            Register16_8080::DE => Register16::DX,
+            Register16_8080::HL => Register16::BX,
+            Register16_8080::SP => Register16::SP,
+        }
+    }
+}
+
+pub enum Register8_8080 {
+    AC,
+    B,
+    C,
+    D,
+    E,
+    H,
+    L,
+}
+
+impl From<Register8_8080> for Register8 {
+    fn from(reg: Register8_8080) -> Self {
+        match reg {
+            Register8_8080::AC => Register8::AL,
+            Register8_8080::B => Register8::CH,
+            Register8_8080::C => Register8::CL,
+            Register8_8080::D => Register8::DH,
+            Register8_8080::E => Register8::DL,
+            Register8_8080::H => Register8::BH,
+            Register8_8080::L => Register8::BL,
+        }
+    }
+}
+
+impl From<Register8_8080> for Register16 {
+    fn from(reg: Register8_8080) -> Self {
+        match reg {
+            Register8_8080::AC => Register16::AX,
+            Register8_8080::H => Register16::BX,
+            Register8_8080::L => Register16::BX,
+            Register8_8080::B => Register16::CX,
+            Register8_8080::C => Register16::CX,
+            Register8_8080::D => Register16::DX,
+            Register8_8080::E => Register16::DX,
+        }
+    }
+}
+
 #[derive(Copy, Clone, Debug, PartialEq)]
 pub enum Register8 {
     AL,
@@ -115,6 +178,20 @@ pub enum Register8 {
     CH,
     DH,
     BH,
+}
+
+impl Register8 {
+    pub const fn from_r8_8080(reg: Register8_8080) -> Self {
+        match reg {
+            Register8_8080::AC => Register8::AL,
+            Register8_8080::B => Register8::CH,
+            Register8_8080::C => Register8::CL,
+            Register8_8080::D => Register8::DH,
+            Register8_8080::E => Register8::DL,
+            Register8_8080::H => Register8::BH,
+            Register8_8080::L => Register8::BL,
+        }
+    }
 }
 
 #[derive(Copy, Clone, Debug, PartialEq)]
@@ -135,6 +212,39 @@ pub enum Register16 {
     InvalidRegister,
 }
 
+impl Display for Register16 {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        let s = match self {
+            Register16::AX => "ax",
+            Register16::BX => "bx",
+            Register16::CX => "cx",
+            Register16::DX => "dx",
+            Register16::SP => "sp",
+            Register16::BP => "bp",
+            Register16::SI => "si",
+            Register16::DI => "di",
+            Register16::ES => "es",
+            Register16::CS => "cs",
+            Register16::SS => "ss",
+            Register16::DS => "ds",
+            Register16::PC => "pc",
+            _ => "*invalid*",
+        };
+        write!(f, "{s}")
+    }
+}
+
+impl Register16 {
+    pub const fn from_r16_8080(reg: Register16_8080) -> Self {
+        match reg {
+            Register16_8080::BC => Register16::CX,
+            Register16_8080::DE => Register16::DX,
+            Register16_8080::HL => Register16::BX,
+            Register16_8080::SP => Register16::BP,
+        }
+    }
+}
+
 #[derive(Copy, Clone, Default, Debug)]
 pub enum Segment {
     None,
@@ -147,6 +257,7 @@ pub enum Segment {
 
 #[derive(Default, Debug, Clone)]
 pub struct CpuStringState {
+    pub cpu_type: CpuType,
     pub ah: String,
     pub al: String,
     pub ax: String,
@@ -179,6 +290,7 @@ pub struct CpuStringState {
     pub i_fl: String,
     pub d_fl: String,
     pub o_fl: String,
+    pub m_fl: String,
     pub piq: String,
     pub instruction_count: u64,
     pub cycle_count: u64,
@@ -187,14 +299,99 @@ pub struct CpuStringState {
     pub dram_refresh_cycle_num: String,
 }
 
-#[derive(Copy, Clone, Debug, Deserialize, Eq, PartialEq, Hash)]
-#[derive(Default)]
+#[derive(Default, Debug, Clone)]
+pub struct CpuDebugState {
+    pub ax: u16,
+    pub bx: u16,
+    pub cx: u16,
+    pub dx: u16,
+    pub sp: u16,
+    pub bp: u16,
+    pub si: u16,
+    pub di: u16,
+    pub cs: u16,
+    pub ds: u16,
+    pub ss: u16,
+    pub es: u16,
+    pub pc: u16,
+    pub ip: u16,
+    pub flags: u16,
+    pub c_fl: bool,
+    pub p_fl: bool,
+    pub a_fl: bool,
+    pub z_fl: bool,
+    pub s_fl: bool,
+    pub t_fl: bool,
+    pub i_fl: bool,
+    pub d_fl: bool,
+    pub o_fl: bool,
+    pub piq: String,
+    pub instruction_count: u64,
+    pub cycle_count: u64,
+    pub dma_state: String,
+    pub dram_refresh_cycle_period: String,
+    pub dram_refresh_cycle_num: String,
+}
+
+#[derive(Copy, Clone, Debug, Eq, PartialEq, Hash, Default)]
 pub enum CpuType {
     #[default]
     Intel8088,
     Intel8086,
-    NecV20,
-    NecV30,
+    NecV20(CpuArch),
+    NecV30(CpuArch),
+}
+
+impl Display for CpuType {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        let s = match self {
+            CpuType::Intel8088 => "Intel 8088",
+            CpuType::Intel8086 => "Intel 8086",
+            CpuType::NecV20(arch) => match arch {
+                CpuArch::I86 => "NEC V20",
+                CpuArch::I8080 => "NEC V20 (8080 Mode)",
+            },
+            CpuType::NecV30(arch) => match arch {
+                CpuArch::I86 => "NEC V30",
+                CpuArch::I8080 => "NEC V30 (8080 Mode)",
+            },
+        };
+        write!(f, "{s}")
+    }
+}
+
+/// We need a custom deserializer due to the fact that the NEC CPU types have non-unit variants
+/// that we wish to ignore when deserializing, populating the default value instead.
+impl<'de> Deserialize<'de> for CpuType {
+    fn deserialize<D>(deserializer: D) -> Result<Self, D::Error>
+    where
+        D: Deserializer<'de>,
+    {
+        struct CpuTypeVisitor;
+
+        impl<'de> serde::de::Visitor<'de> for CpuTypeVisitor {
+            type Value = CpuType;
+
+            fn expecting(&self, formatter: &mut fmt::Formatter) -> fmt::Result {
+                formatter.write_str("a CPU type string like 'Intel8088', 'NecV20'")
+            }
+
+            fn visit_str<E>(self, value: &str) -> Result<CpuType, E>
+            where
+                E: serde::de::Error,
+            {
+                match value.to_ascii_lowercase().as_str() {
+                    "intel8088" => Ok(CpuType::Intel8088),
+                    "intel8086" => Ok(CpuType::Intel8086),
+                    "necv20" => Ok(CpuType::NecV20(CpuArch::default())),
+                    "necv30" => Ok(CpuType::NecV30(CpuArch::default())),
+                    _ => Err(E::custom(format!("unknown CpuType '{}'", value))),
+                }
+            }
+        }
+
+        deserializer.deserialize_any(CpuTypeVisitor)
+    }
 }
 
 impl FromStr for CpuType {
@@ -206,24 +403,40 @@ impl FromStr for CpuType {
         match s.to_lowercase().as_str() {
             "intel8088" => Ok(CpuType::Intel8088),
             "intel8086" => Ok(CpuType::Intel8086),
-            "necv20" => Ok(CpuType::NecV20),
-            "necv30" => Ok(CpuType::NecV30),
+            "necv20" => Ok(CpuType::NecV20(Default::default())),
+            "necv30" => Ok(CpuType::NecV30(Default::default())),
             _ => Err("Bad value for cputype".to_string()),
         }
     }
 }
 
 impl CpuType {
+    pub fn is_nec(&self) -> bool {
+        matches!(self, CpuType::NecV20(_) | CpuType::NecV30(_))
+    }
+    /// Return the size of the instruction queue for this CPU type.
+    pub fn queue_size(&self) -> usize {
+        match self {
+            CpuType::Intel8088 | CpuType::NecV20(_) => 4,
+            CpuType::Intel8086 | CpuType::NecV30(_) => 6,
+        }
+    }
     pub fn decode(&self, bytes: &mut impl ByteQueue, peek: bool) -> Result<Instruction, Box<dyn std::error::Error>> {
         match self {
             CpuType::Intel8088 | CpuType::Intel8086 => Intel808x::decode(bytes, peek),
-            CpuType::NecV20 | CpuType::NecV30 => NecVx0::decode(bytes, peek),
+            CpuType::NecV20(arch) | CpuType::NecV30(arch) => match arch {
+                CpuArch::I86 => NecVx0::decode(bytes, peek),
+                CpuArch::I8080 => NecVx0::decode_8080(bytes, peek),
+            },
         }
     }
     pub fn tokenize_instruction(&self, instruction: &Instruction) -> Vec<SyntaxToken> {
         match self {
             CpuType::Intel8088 | CpuType::Intel8086 => instruction.tokenize(),
-            CpuType::NecV20 | CpuType::NecV30 => instruction.tokenize(),
+            CpuType::NecV20(arch) | CpuType::NecV30(arch) => match arch {
+                CpuArch::I86 => instruction.tokenize(),
+                CpuArch::I8080 => instruction.tokenize(),
+            },
         }
     }
 }
@@ -243,8 +456,7 @@ pub enum CycleTraceMode {
     Sigrok,
 }
 
-#[derive(Copy, Clone, Debug, Deserialize, PartialEq)]
-#[derive(Default)]
+#[derive(Copy, Clone, Debug, Deserialize, PartialEq, Default)]
 pub enum TraceMode {
     #[default]
     None,
@@ -270,7 +482,6 @@ impl FromStr for TraceMode {
         }
     }
 }
-
 
 #[derive(Debug)]
 pub enum CpuOption {
@@ -333,7 +544,6 @@ pub fn format_instruction_bytes(bytes: &[u8]) -> String {
 #[enum_dispatch]
 pub enum CpuDispatch {
     Intel808x,
-
     NecVx0,
 }
 
@@ -458,7 +668,7 @@ pub trait Cpu {
     #[cfg(feature = "cpu_validator")]
     fn get_validator_mut(&mut self) -> &mut Option<Box<dyn CpuValidator>>;
     fn randomize_seed(&mut self, seed: u64);
-    fn randomize_mem(&mut self);
+    fn randomize_mem(&mut self, weight: bool);
     fn randomize_regs(&mut self);
     fn random_grp_instruction(&mut self, opcode: u8, extension_list: &[u8]);
     fn random_inst_from_opcodes(&mut self, opcode_list: &[u8], prefix: Option<u8>);

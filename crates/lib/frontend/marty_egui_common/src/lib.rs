@@ -25,8 +25,6 @@
     --------------------------------------------------------------------------
 */
 
-use std::{ffi::OsString, path::PathBuf};
-
 #[allow(dead_code)]
 pub enum GuiCommonEvent {
     Exit,

@@ -273,8 +273,10 @@ pub struct PitData {
 
 #[derive(Clone, Default, Debug)]
 pub struct MachineRomEntry {
+    pub name: String,
     pub md5: String,
     pub addr: u32,
+    pub repeat: u32,
     pub data: Vec<u8>,
 }
 
@@ -774,27 +776,39 @@ impl Machine {
 
     pub fn install_roms(bus: &mut BusInterface, rom_manifest: &MachineRomManifest) {
         for rom in rom_manifest.roms.iter() {
-            match bus.copy_from(&rom.data, rom.addr as usize, 0, true) {
-                Ok(_) => {
-                    log::debug!("Mounted rom at location {:06X}", rom.addr);
+            let mut addr = rom.addr as usize;
+            for _i in 0..rom.repeat {
+                // Copy the ROM data to the bus at the specified address
+                match bus.copy_from(&rom.data, addr, 0, true) {
+                    Ok(_) => {
+                        log::debug!("Mounted rom {} at location {:06X}", rom.md5, rom.addr);
+                    }
+                    Err(e) => {
+                        log::debug!("Failed to mount rom {} at location {:06X}: {}", rom.md5, rom.addr, e);
+                    }
                 }
-                Err(e) => {
-                    log::debug!("Failed to mount rom {} at location {:06X}: {}", rom.md5, rom.addr, e);
-                }
+
+                // Increment address by the size of the ROM data
+                addr += rom.data.len();
             }
         }
     }
 
     pub fn reinstall_roms(&mut self, rom_manifest: MachineRomManifest) -> Result<(), Error> {
         for rom in rom_manifest.roms.iter() {
-            match self.cpu.bus_mut().copy_from(&rom.data, rom.addr as usize, 0, true) {
-                Ok(_) => {
-                    log::debug!("Mounted rom at location {:06X}", rom.addr);
+            let mut addr = rom.addr as usize;
+            for _i in 0..rom.repeat {
+                match self.cpu.bus_mut().copy_from(&rom.data, addr, 0, true) {
+                    Ok(_) => {
+                        log::debug!("Mounted rom at location {:06X}", rom.addr);
+                    }
+                    Err(e) => {
+                        log::debug!("Failed to mount rom {} at location {:06X}: {}", rom.md5, rom.addr, e);
+                        return Err(anyhow!("Failed to mount rom {} at location {:06X}: {}", rom.md5, rom.addr, e));
+                    }
                 }
-                Err(e) => {
-                    log::debug!("Failed to mount rom {} at location {:06X}: {}", rom.md5, rom.addr, e);
-                    return Err(anyhow!("Failed to mount rom {} at location {:06X}: {}", rom.md5, rom.addr, e));
-                }
+                // Increment address by the size of the ROM data
+                addr += rom.data.len();
             }
         }
 

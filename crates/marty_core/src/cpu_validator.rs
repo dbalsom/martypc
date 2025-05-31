@@ -38,6 +38,26 @@ use std::{
     str::FromStr,
 };
 
+#[cfg(feature = "arduino_validator")]
+pub use ard808x_client::BusState;
+
+#[cfg(not(feature = "arduino_validator"))]
+#[derive(Copy, Clone, Debug, PartialEq)]
+pub enum BusState {
+    INTA = 0, // IRQ Acknowledge
+    IOR = 1,  // IO Read
+    IOW = 2,  // IO Write
+    HALT = 3, // Halt
+    CODE = 4, // Code
+    MEMR = 5, // Memory Read
+    MEMW = 6, // Memory Write
+    PASV = 7, // Passive
+}
+
+#[cfg(feature = "arduino_validator")]
+use crate::arduino8088_validator::MOF_EMULATOR;
+
+use crate::cpu_common::{CpuType, QueueOp};
 use serde::{
     de::{self, Deserializer, SeqAccess, Visitor},
     ser::SerializeSeq,
@@ -46,8 +66,6 @@ use serde::{
     Serializer,
 };
 
-use crate::cpu_common::QueueOp;
-
 pub const VAL_NO_READS: u8 = 0b0000_0001; // Don't validate read op data
 pub const VAL_NO_WRITES: u8 = 0b0000_0010; // Don't validate write op data
 pub const VAL_NO_REGS: u8 = 0b0000_0100; // Don't validate registers
@@ -55,8 +73,7 @@ pub const VAL_NO_FLAGS: u8 = 0b0000_1000; // Don't validate flags
 pub const VAL_ALLOW_ONE: u8 = 0b0001_0000; // Allow a one-cycle variance in cycle states.
 pub const VAL_NO_CYCLES: u8 = 0b0010_0000; // Don't validate cycle states.
 
-#[derive(Copy, Clone, Debug, Deserialize, PartialEq)]
-#[derive(Default)]
+#[derive(Copy, Clone, Debug, Deserialize, PartialEq, Default)]
 pub enum ValidatorType {
     #[default]
     None,
@@ -116,9 +133,10 @@ pub enum BusOpType {
 #[derive(Copy, Clone)]
 pub struct BusOp {
     pub op_type: BusOpType,
-    pub addr:    u32,
-    pub data:    u8,
-    pub flags:   u8,
+    pub addr: u32,
+    pub bhe: bool,
+    pub data: u16,
+    pub flags: u8,
 }
 
 #[derive(Copy, Clone, Default, Debug, PartialEq, Serialize, Deserialize)]
@@ -427,16 +445,16 @@ pub enum AccessType {
     Data,
 }
 
-#[derive(Copy, Clone, Debug, PartialEq)]
-pub enum BusState {
-    INTA = 0, // IRQ Acknowledge
-    IOR = 1,  // IO Read
-    IOW = 2,  // IO Write
-    HALT = 3, // Halt
-    CODE = 4, // Code
-    MEMR = 5, // Memory Read
-    MEMW = 6, // Memory Write
-    PASV = 7, // Passive
+impl From<u8> for AccessType {
+    fn from(value: u8) -> Self {
+        match value {
+            0x0 => AccessType::AlternateData,
+            0x1 => AccessType::Stack,
+            0x2 => AccessType::CodeOrNone,
+            0x3 => AccessType::Data,
+            _ => AccessType::CodeOrNone, // Default to CodeOrNone for invalid values
+        }
+    }
 }
 
 #[derive(Copy, Clone, Debug)]
@@ -447,6 +465,7 @@ pub struct CycleState {
     pub a_type: AccessType,
     pub b_state: BusState,
     pub ale: bool,
+    pub bhe: bool,
     pub mrdc: bool,
     pub amwc: bool,
     pub mwtc: bool,
@@ -454,11 +473,10 @@ pub struct CycleState {
     pub aiowc: bool,
     pub iowc: bool,
     pub inta: bool,
-    pub bhe: bool,
     pub q_op: QueueOp,
     pub q_byte: u8,
     pub q_len: u32,
-    pub q: [u8; 4],
+    pub q: [u8; 6],
     pub data_bus: u16,
 }
 
@@ -517,18 +535,20 @@ impl Serialize for CycleState {
             format!("{:?}", self.b_state),
             format!("{:?}", self.t_state),
             (match self.q_op {
-                    QueueOp::First => "F",
-                    QueueOp::Subsequent => "S",
-                    QueueOp::Flush => "E",
-                    _ => "-",
-                }).to_string(),
+                QueueOp::First => "F",
+                QueueOp::Subsequent => "S",
+                QueueOp::Flush => "E",
+                _ => "-",
+            })
+            .to_string(),
             (if matches!(self.q_op, QueueOp::Idle) {
-                    "--"
-                }
-                else {
-                    q_byte = format!("{:02X}", self.q_byte);
-                    &q_byte
-                }).to_string(),
+                "--"
+            }
+            else {
+                q_byte = format!("{:02X}", self.q_byte);
+                &q_byte
+            })
+            .to_string(),
         ];
 
         let mut seq = serializer.serialize_seq(Some(fields_as_strings.len()))?;
@@ -663,7 +683,7 @@ impl<'de> de::Deserialize<'de> for CycleState {
                     q_op,
                     q_byte,
                     q_len: 0,
-                    q: [0; 4],
+                    q: [0; 6],
                     data_bus,
                 })
             }
@@ -724,6 +744,14 @@ impl Display for CycleState {
             false => '.',
         };
 
+        let bhe_chr = match self.bhe {
+            true => 'B',
+            false => '.',
+        };
+
+        let intr_chr = '.';
+        let inta_chr = '.';
+
         let bus_str = match self.b_state {
             BusState::INTA => "INTA",
             BusState::IOR => "IOR ",
@@ -744,15 +772,15 @@ impl Display for CycleState {
             BusCycle::Tw => "Tw",
         };
 
-        let is_reading = !self.mrdc | !self.iorc;
-        let is_writing = !self.mwtc | !self.aiowc | !self.iowc;
+        let is_reading = (!self.mrdc | !self.iorc) && matches!(self.b_state, BusState::PASV);
+        let is_writing = (!self.mwtc | !self.iowc) && matches!(self.b_state, BusState::PASV);
 
-        let mut xfer_str = "      ".to_string();
+        let mut xfer_str = "        ".to_string();
         if is_reading {
-            xfer_str = format!("<-r {:02X}", self.data_bus);
+            xfer_str = format!("r-> {:04X}", self.data_bus);
         }
         else if is_writing {
-            xfer_str = format!("w-> {:02X}", self.data_bus);
+            xfer_str = format!("<-w {:04X}", self.data_bus);
         }
 
         let mut q_read_str = String::new();
@@ -767,24 +795,30 @@ impl Display for CycleState {
 
         write!(
             f,
-            "{:08} {:02}[{:05X}] {:02} M:{}{}{} I:{}{}{} {:04} {:02} {:06} | {:1}{:1} {} {:6}",
-            self.n,
-            ale_str,
-            self.addr,
-            seg_str,
-            rs_chr,
-            aws_chr,
-            ws_chr,
-            ior_chr,
-            aiow_chr,
-            iow_chr,
-            bus_str,
-            t_str,
-            xfer_str,
-            q_op_chr,
-            self.q_len,
-            get_queue_str(&self.q, self.q_len as usize),
-            q_read_str,
+            "{cycle_num:08} {ale_str:02}[{addr:05X}] \
+            {seg_str:02} M:{rs_chr}{aws_chr}{ws_chr} I:{ior_chr}{aiow_chr}{iow_chr} \
+            P:{intr_chr}{inta_chr}{bhe_chr} {bus_str:04} {t_str:02} {xfer_str:06} {q_op_chr:1}{q_len:1}{q_str:width$} {q_read_str}",
+            cycle_num = self.n,
+            ale_str = ale_str,
+            addr = self.addr,
+            seg_str = seg_str,
+            rs_chr = rs_chr,
+            aws_chr = aws_chr,
+            ws_chr = ws_chr,
+            ior_chr = ior_chr,
+            aiow_chr = aiow_chr,
+            iow_chr = iow_chr,
+            intr_chr = intr_chr,
+            inta_chr = inta_chr,
+            bhe_chr = bhe_chr,
+            bus_str = bus_str,
+            t_str = t_str,
+            xfer_str = xfer_str,
+            q_op_chr = q_op_chr,
+            q_len = self.q_len,
+            q_str = get_queue_str(&self.q, self.q_len as usize),
+            width = 12,
+            q_read_str = q_read_str,
         )
     }
 }
@@ -796,7 +830,7 @@ pub fn get_queue_str(q: &[u8], len: usize) -> String {
     for i in 0..len {
         inner.push_str(&format!("{:02X}", q[i]));
     }
-    outer.push_str(&format!("{:8}]", inner));
+    outer.push_str(&format!("{:12}]", inner));
     outer
 }
 
@@ -865,7 +899,9 @@ pub trait CpuValidator {
     ) -> Result<ValidatorResult, ValidatorError>;
     fn validate_regs(&mut self, regs: &VRegisters) -> Result<(), ValidatorError>;
     fn emu_read_byte(&mut self, addr: u32, data: u8, bus_type: BusType, read_type: ReadType);
+    fn emu_read_word(&mut self, addr: u32, data: u16, bus_type: BusType, read_type: ReadType);
     fn emu_write_byte(&mut self, addr: u32, data: u8, bus_type: BusType);
+    fn emu_write_word(&mut self, addr: u32, data: u16, bus_type: BusType);
     fn discard_op(&mut self);
     fn flush(&mut self);
 
@@ -881,4 +917,6 @@ pub trait CpuValidator {
     fn cpu_ops(&self) -> Vec<BusOp>;
     fn cpu_reads(&self) -> Vec<BusOp>;
     fn cpu_queue(&self) -> Vec<u8>;
+
+    fn cpu_type(&self) -> CpuType;
 }

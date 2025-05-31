@@ -360,6 +360,15 @@ dependencies = [
 ]
 
 [[package]]
+name = "ard808x_client"
+version = "0.3.0"
+source = "git+https://github.com/dbalsom/arduino808x#9bbe3f1384fdddb5ee8dc8532a96ee9fc237af02"
+dependencies = [
+ "log",
+ "serialport 4.3.1-alpha.0",
+]
+
+[[package]]
 name = "array-init"
 version = "2.1.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -1726,7 +1735,7 @@ checksum = "bd0c93bb4b0c6d9b77f4435b0ae98c24d17f1c45b2ff844c6151a07256ca923b"
 
 [[package]]
 name = "display_backend_eframe_glow"
-version = "0.4.0"
+version = "0.4.1"
 dependencies = [
  "anyhow",
  "display_backend_trait",
@@ -1738,7 +1747,7 @@ dependencies = [
 
 [[package]]
 name = "display_backend_eframe_wgpu"
-version = "0.4.0"
+version = "0.4.1"
 dependencies = [
  "anyhow",
  "display_backend_trait",
@@ -1751,7 +1760,7 @@ dependencies = [
 
 [[package]]
 name = "display_backend_trait"
-version = "0.4.0"
+version = "0.4.1"
 dependencies = [
  "anyhow",
  "egui 0.30.0",
@@ -1762,7 +1771,7 @@ dependencies = [
 
 [[package]]
 name = "display_backend_wgpu"
-version = "0.4.0"
+version = "0.4.1"
 dependencies = [
  "anyhow",
  "display_backend_trait",
@@ -1777,7 +1786,7 @@ dependencies = [
 
 [[package]]
 name = "display_manager_eframe"
-version = "0.4.0"
+version = "0.4.1"
 dependencies = [
  "anyhow",
  "display_backend_eframe_glow",
@@ -1802,7 +1811,7 @@ dependencies = [
 
 [[package]]
 name = "display_manager_wgpu"
-version = "0.4.0"
+version = "0.4.1"
 dependencies = [
  "anyhow",
  "display_backend_wgpu",
@@ -2729,10 +2738,12 @@ dependencies = [
  "libudev-sys",
  "log",
  "nix 0.29.0",
+ "rusty-xinput",
  "uuid",
  "vec_map",
  "wasm-bindgen",
  "web-sys",
+ "winapi",
  "windows 0.58.0",
 ]
 
@@ -3663,7 +3674,7 @@ dependencies = [
 
 [[package]]
 name = "marty_common"
-version = "0.4.0"
+version = "0.4.1"
 dependencies = [
  "fxhash",
  "serde",
@@ -3674,7 +3685,7 @@ dependencies = [
 
 [[package]]
 name = "marty_config"
-version = "0.4.0"
+version = "0.4.1"
 dependencies = [
  "anyhow",
  "bpaf",
@@ -3695,9 +3706,10 @@ dependencies = [
 
 [[package]]
 name = "marty_core"
-version = "0.4.0"
+version = "0.4.1"
 dependencies = [
  "anyhow",
+ "ard808x_client",
  "arraydeque",
  "binrw",
  "bytemuck",
@@ -3733,7 +3745,7 @@ dependencies = [
 
 [[package]]
 name = "marty_display_common"
-version = "0.4.0"
+version = "0.4.1"
 dependencies = [
  "anyhow",
  "cfg-if",
@@ -3754,7 +3766,7 @@ dependencies = [
 
 [[package]]
 name = "marty_egui"
-version = "0.4.0"
+version = "0.4.1"
 dependencies = [
  "anyhow",
  "bytemuck",
@@ -3787,7 +3799,7 @@ dependencies = [
 
 [[package]]
 name = "marty_egui_common"
-version = "0.4.0"
+version = "0.4.1"
 dependencies = [
  "egui 0.30.0",
  "egui_extras 0.30.0 (git+https://github.com/dbalsom/egui_martypc.git?branch=0.30.0_raw_winit_hook)",
@@ -3798,7 +3810,7 @@ dependencies = [
 
 [[package]]
 name = "marty_egui_eframe"
-version = "0.4.0"
+version = "0.4.1"
 dependencies = [
  "egui 0.30.0",
  "egui_extras 0.30.0 (git+https://github.com/dbalsom/egui_martypc.git?branch=0.30.0_raw_winit_hook)",
@@ -3811,7 +3823,7 @@ dependencies = [
 
 [[package]]
 name = "marty_egui_wgpu"
-version = "0.4.0"
+version = "0.4.1"
 dependencies = [
  "egui 0.30.0",
  "egui-wgpu 0.30.0",
@@ -3829,7 +3841,7 @@ dependencies = [
 
 [[package]]
 name = "marty_frontend_common"
-version = "0.4.0"
+version = "0.4.1"
 dependencies = [
  "anyhow",
  "cfg-if",
@@ -3896,7 +3908,7 @@ dependencies = [
 
 [[package]]
 name = "marty_scaler_glow"
-version = "0.4.0"
+version = "0.4.1"
 dependencies = [
  "bytemuck",
  "eframe",
@@ -3907,7 +3919,7 @@ dependencies = [
 
 [[package]]
 name = "marty_scaler_null"
-version = "0.4.0"
+version = "0.4.1"
 dependencies = [
  "egui 0.30.0",
  "marty_display_common",
@@ -3916,7 +3928,7 @@ dependencies = [
 
 [[package]]
 name = "marty_scaler_wgpu"
-version = "0.4.0"
+version = "0.4.1"
 dependencies = [
  "bytemuck",
  "marty_display_common",
@@ -3927,7 +3939,7 @@ dependencies = [
 
 [[package]]
 name = "marty_videocard_renderer"
-version = "0.4.0"
+version = "0.4.1"
 dependencies = [
  "bytemuck",
  "criterion",
@@ -3945,7 +3957,7 @@ dependencies = [
 
 [[package]]
 name = "marty_web_helpers"
-version = "0.4.0"
+version = "0.4.1"
 dependencies = [
  "crossbeam-channel",
  "gloo-timers",
@@ -3960,7 +3972,7 @@ dependencies = [
 
 [[package]]
 name = "martypc_desktop_wgpu"
-version = "0.4.0"
+version = "0.4.1"
 dependencies = [
  "anyhow",
  "bytemuck",
@@ -4012,7 +4024,7 @@ dependencies = [
 
 [[package]]
 name = "martypc_eframe"
-version = "0.4.0"
+version = "0.4.1"
 dependencies = [
  "anyhow",
  "async-std",
@@ -4056,9 +4068,10 @@ dependencies = [
 
 [[package]]
 name = "martypc_headless"
-version = "0.4.0"
+version = "0.4.1"
 dependencies = [
  "anyhow",
+ "ard808x_client",
  "colored 3.0.0",
  "criterion",
  "crossbeam-channel",
@@ -4085,7 +4098,7 @@ dependencies = [
 
 [[package]]
 name = "martypc_launcher"
-version = "0.4.0"
+version = "0.4.1"
 dependencies = [
  "anyhow",
  "async-std",
@@ -5529,6 +5542,17 @@ name = "rustversion"
 version = "1.0.19"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "f7c45b9784283f1b2e7fb61b42047c2fd678ef0960d4f6f1eba131594cc369d4"
+
+[[package]]
+name = "rusty-xinput"
+version = "1.3.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "c3335c2b62e1e48dd927f6c8941705386e3697fa944aabcb10431bea7ee47ef3"
+dependencies = [
+ "lazy_static",
+ "log",
+ "winapi",
+]
 
 [[package]]
 name = "ryu"
@@ -6995,7 +7019,7 @@ dependencies = [
 
 [[package]]
 name = "wgpu_wrapper"
-version = "0.4.0"
+version = "0.4.1"
 dependencies = [
  "bytemuck",
  "pollster 0.3.0",

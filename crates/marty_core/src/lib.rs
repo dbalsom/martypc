@@ -63,9 +63,6 @@ pub mod vhd;
 
 #[cfg(feature = "arduino_validator")]
 #[macro_use]
-pub mod arduino8088_client;
-#[cfg(feature = "arduino_validator")]
-#[macro_use]
 pub mod arduino8088_validator;
 
 // Re-exported for use by frontend to populate file browser.

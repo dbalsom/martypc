@@ -42,7 +42,7 @@ pub enum GamepadEvent {
 
 impl GamepadInterface {
     pub fn new(auto_connect: bool, deadzone: f32) -> Self {
-        Self { dummy: false }
+        Self { mapping: (None, None) }
     }
 
     #[inline]

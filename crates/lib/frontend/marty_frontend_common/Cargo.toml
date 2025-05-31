@@ -32,7 +32,7 @@ pollster = "0.4"
 egui = { workspace = true, optional = true }
 wgpu = { workspace = true, optional = true }
 url = { workspace = true, optional = true }
-gilrs = { workspace = true, optional = true }
+gilrs = { workspace = true, default-features = false, optional = true, package = "gilrs" }
 cfg-if = "1.0.0"
 
 [target.'cfg(not(target_arch = "wasm32"))'.dependencies]
@@ -63,4 +63,4 @@ use_glow_display = ["use_glow", "dep:marty_videocard_renderer", "marty_videocard
 use_wgpu = ["dep:wgpu"]
 use_glow = []
 use_egui = ["dep:egui"]
-use_gilrs = ["dep:gilrs"]
+use_gilrs = ["gilrs"]

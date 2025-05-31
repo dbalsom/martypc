@@ -42,7 +42,7 @@ use crate::{
         Register8,
         Segment,
     },
-    cpu_vx0::{Flag, NecVx0, ReadWriteFlag, RepType},
+    cpu_vx0::{microcode::MC_JUMP, Flag, NecVx0, ReadWriteFlag, RepType},
 };
 
 // Bitfield width for BINS/BEXT instructions
@@ -60,7 +60,7 @@ impl NecVx0 {
     #[rustfmt::skip]
     pub fn execute_extended_instruction(&mut self) -> ExecutionResult {
         let mut unhandled: bool = false;
-        let jump: bool = false;
+        let mut jump: bool = false;
         let exception: CpuException = CpuException::NoException;
 
         self.step_over_target = None;
@@ -419,6 +419,21 @@ impl NecVx0 {
                     }
                 }                
             }
+            0xFF => { // BREKEM
+                // The byte operand specifies the IVT entry. 
+                let irq = self.read_operand8(self.i.operand1_type, None).unwrap();
+
+                log::debug!("BREKEM executed at {:04X}:{:04X}", self.cs, self.instruction_address );
+                
+                // Save next address if we step over this INT.
+                self.step_over_target = Some(CpuAddress::Segmented(self.cs, self.ip()));
+                self.cycle_i(MC_JUMP);
+                // It's important to do the interrupt before the mode change, so that the mode 
+                // flag is preserved.
+                self.sw_interrupt(irq);
+                self.enter_emulation_mode();
+                jump = true;
+            }
             _ => {
                 unhandled = true;
             }
@@ -436,8 +451,12 @@ impl NecVx0 {
         }
 
         if unhandled {
-            unreachable!("Invalid opcode: {:02X}", self.i.opcode);
+            log::warn!("Invalid opcode: {:02X}", self.i.opcode);
             //ExecutionResult::UnsupportedOpcode(self.i.opcode)
+            
+            // Do a NOP instead of panicking.
+            self.cycles(3);
+            ExecutionResult::Okay
         }
         else if self.halted && !self.reported_halt && !self.get_flag(Flag::Interrupt) && !self.get_flag(Flag::Trap) {
             // CPU was halted with interrupts disabled - will not continue

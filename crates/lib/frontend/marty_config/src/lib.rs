@@ -314,6 +314,8 @@ pub struct Machine {
     #[serde(default)]
     pub patch_roms: bool,
     #[serde(default)]
+    pub custom_roms: bool,
+    #[serde(default)]
     pub no_roms: bool,
     #[serde(default)]
     pub raw_rom: bool,
@@ -447,7 +449,7 @@ impl ConfigFileParams {
         self.emulator.input.reverse_mouse_buttons |= shell_args.reverse_mouse_buttons;
 
         self.emulator.romscan = shell_args.romscan;
-        self.emulator.machinescan = shell_args.romscan;
+        self.emulator.machinescan = shell_args.machinescan;
 
         let mut have_cmd_hdd = false;
         let mut have_cmd_floppy = false;
