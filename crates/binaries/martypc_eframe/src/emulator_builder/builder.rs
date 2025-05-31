@@ -713,7 +713,8 @@ impl EmulatorBuilder {
 
         // Build the Machine instance
         log::debug!("Building Machine...");
-        let machine = machine_builder.build()?;
+        #[allow(unused_mut)]
+        let mut machine = machine_builder.build()?;
 
         // Now that we have a Machine, we can query it for sound sources (devices that produce sound)
         // For each sound source we will create a source in the SoundInterface, to give it

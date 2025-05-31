@@ -109,7 +109,7 @@ marty_config = { path = "../../lib/frontend/marty_config", default-features = fa
 winres = "0.1"
 
 [features]
-default = ["all_video_cards", "use_winit", "use_wgpu", "use_gilrs", "gilrs_default", "sound", "opl"]
+default = ["all_video_cards", "use_winit", "use_wgpu", "use_gilrs", "gilrs_default", "sound", "opl", "use_serialport"]
 wasm_glow = ["all_video_cards","sound","use_glow","use_gilrs"]
 wasm_wgpu = ["all_video_cards","sound","use_wgpu","use_gilrs"]
 shader_ui = ["marty_egui/scaler_ui"]
