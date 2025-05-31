@@ -142,6 +142,8 @@ cpu_validator = ["marty_core/cpu_validator"]
 ega = ["marty_core/ega", "marty_frontend_common/ega", "marty_videocard_renderer/ega"]
 vga = ["marty_core/vga", "marty_frontend_common/vga", "marty_videocard_renderer/vga"]
 opl = ["marty_core/opl"]
+# Enable Windows 7 compatibility
+win7 = ["gilrs/xinput"]
 # enable dev stuff, including logging in release.
 # !! Warning, may be unstable or completely broken !!
 devmode = ["marty_core/cpu_trace_comments"]
