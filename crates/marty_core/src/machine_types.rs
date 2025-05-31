@@ -29,14 +29,15 @@
     This module manages machine-related type definitions.
 
 */
-
 use core::fmt;
+use std::{fmt::Display, str::FromStr};
+
 use fluxfox::StandardFormat;
 use serde::{self, Deserializer};
 use serde_derive::Deserialize;
-use std::{fmt::Display, str::FromStr};
+use strum_macros::EnumIter;
 
-#[derive(Copy, Clone, Debug, Default, Deserialize, Hash, Eq, PartialEq)]
+#[derive(Copy, Clone, Debug, Default, Deserialize, EnumIter, Hash, Eq, PartialEq)]
 pub enum MachineType {
     Default,
     Ibm5150v64K,

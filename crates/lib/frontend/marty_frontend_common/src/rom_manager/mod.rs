@@ -689,7 +689,7 @@ impl RomManager {
             }
 
             if let Some(rom_set) = self.find_best_set_for_feature(feature) {
-                log::debug!("Found rom set for feature {}: {}", feature, rom_set);
+                log::debug!("Found ROM set for feature {}: {}", feature, rom_set);
                 let rom_set_idx = self.rom_def_map.get(&rom_set).unwrap();
                 let rom_set = &self.rom_defs[*rom_set_idx];
 
@@ -698,7 +698,7 @@ impl RomManager {
                 for feature in rom_set.provides.iter() {
                     if provided_features.contains(feature) {
                         log::debug!(
-                            "Rom set {} provides feature {} which is already provided. Skipping.",
+                            "ROM set {} provides feature {} which is already provided. Skipping.",
                             rom_set.alias,
                             feature
                         );
@@ -744,7 +744,7 @@ impl RomManager {
                     // Get the list of provided features for the first rom set in the feature vector.
                     for rom in rom_set_vec.iter() {
                         if !self.rom_sets_complete.contains(rom) {
-                            log::debug!("Rom set {} is not complete. Skipping.", rom);
+                            log::debug!("ROM set {} is not complete. Skipping.", rom);
                             continue;
                         }
                         log::debug!("Found complete rom set for feature {}: {}", feature, rom);
@@ -756,7 +756,7 @@ impl RomManager {
                         for feature in rom_set.provides.iter() {
                             if provided_features.contains(feature) {
                                 log::debug!(
-                                    "Rom set {} provides feature {} which is already provided. Skipping.",
+                                    "ROM set {} provides feature {} which is already provided. Skipping.",
                                     rom_set_vec[0],
                                     feature
                                 );

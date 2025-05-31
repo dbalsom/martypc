@@ -432,7 +432,7 @@ impl EmulatorBuilder {
                 writeln!(stdout, "Machine: {}", machine)?;
                 if let Some(reqs) = machine_manager
                     .get_config(&machine)
-                    .and_then(|config| Some(config.get_rom_requirements()))
+                    .and_then(|config| Some(config.get_rom_requirements(true)))
                 {
                     writeln!(stdout, "  Requires: {:?}", reqs)?
                 }
@@ -477,7 +477,8 @@ impl EmulatorBuilder {
         };
 
         // Collect the ROM requirements for the machine configuration
-        let (required_features, optional_features) = machine_config_file.get_rom_requirements()?;
+        let (required_features, optional_features) =
+            machine_config_file.get_rom_requirements(config.machine.custom_roms)?;
 
         // Scan the rom resource director(ies)
         rom_manager.scan(&mut resource_manager).await?;

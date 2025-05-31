@@ -55,6 +55,9 @@ reload_roms = true
 # as some patches may speed up boot time.
 patch_roms = true
 
+# Use the 'custom' ROM feature to load custom ROM definitions.
+custom_roms = true
+
 # Don't load any ROMs if true. Default: false
 #no_roms = true
 

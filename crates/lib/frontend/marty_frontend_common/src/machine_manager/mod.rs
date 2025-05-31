@@ -313,7 +313,7 @@ impl MachineConfigFileEntry {
 
     /// Returns a tuple of vectors of strings representing the required and optional ROM features for this
     /// configuration
-    pub fn get_rom_requirements(&self) -> Result<(Vec<String>, Vec<String>), Error> {
+    pub fn get_rom_requirements(&self, load_custom_roms: bool) -> Result<(Vec<String>, Vec<String>), Error> {
         let mut req_set: HashSet<String> = HashSet::new();
         let mut req_vec: Vec<String> = Vec::new();
         let mut opt_vec: Vec<String> = Vec::new();
@@ -328,6 +328,10 @@ impl MachineConfigFileEntry {
 
         if let Some(features) = marty_core::machine_config::get_optional_rom_features(self.machine_type) {
             for feature in features {
+                if *feature == "custom" && !load_custom_roms {
+                    log::debug!("Skipping custom ROM feature as load_custom_roms is false.");
+                    continue;
+                }
                 if req_set.insert(feature.to_string()) {
                     opt_vec.push(feature.to_string());
                 }

@@ -56,6 +56,7 @@ use std::collections::HashMap;
 use crate::{device_traits::videocard::VideoCardSubType, devices::a0::A0Type};
 use marty_common::types::joystick::ControllerLayout;
 use serde_derive::Deserialize;
+use strum::IntoEnumIterator;
 
 // Clock derivation from reenigne
 // See https://www.vogons.org/viewtopic.php?t=55049
@@ -332,8 +333,15 @@ lazy_static! {
         m.insert(MachineType::IbmPCJr, vec!["pcjr_cartridge"]);
         m.insert(MachineType::Tandy1000, vec![]);
         m.insert(MachineType::Tandy1000SL, vec![]);
-        m.insert(MachineType::CompaqPortable, vec!["ibm_basic"]);
+        m.insert(MachineType::CompaqPortable, vec![]);
         m.insert(MachineType::CompaqDeskpro, vec![]);
+
+        // Add the "custom" optional feature to all Machine types.
+        for machine_type in MachineType::iter() {
+            m.entry(machine_type)
+                .or_insert_with(Vec::new)
+                .extend(vec!["custom"]);
+        }
         m
     };
 
