@@ -46,7 +46,7 @@ use crate::{
 use anyhow::Error;
 use std::{
     collections::{BTreeMap, BTreeSet, HashMap},
-    ffi::OsString,
+    ffi::{OsStr, OsString},
     fmt::Display,
     fs::File,
     path::{Path, PathBuf},
@@ -258,8 +258,8 @@ impl VhdManager {
 
     /// Load a VHD file by its resource name and return a rust File handle.
     #[cfg(not(target_arch = "wasm32"))]
-    pub fn load_vhd_file_by_name(&mut self, drive: usize, name: &OsString) -> Result<(File, usize), VhdManagerError> {
-        if let Some(path) = self.find_first_name(name.clone()) {
+    pub fn load_vhd_file_by_name(&mut self, drive: usize, name: &OsStr) -> Result<(File, usize), VhdManagerError> {
+        if let Some(path) = self.find_first_name(name) {
             let img_idx;
 
             if let Some(vhd_idx) = self.image_map.get(&path) {
@@ -316,7 +316,7 @@ impl VhdManager {
         }
     }
 
-    pub fn find_first_name(&mut self, name: OsString) -> Option<PathBuf> {
+    pub fn find_first_name(&mut self, name: &OsStr) -> Option<PathBuf> {
         for path in self.image_map.keys() {
             if let Some(filename) = path.file_name() {
                 if filename == name {

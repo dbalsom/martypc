@@ -51,7 +51,6 @@ pub mod builder;
 use marty_common::*;
 use marty_core::{
     device_traits::videocard::{DisplayApertureType, DisplayExtents, VideoCardId},
-    file_util,
     machine::Machine,
 };
 use std::{

@@ -32,18 +32,19 @@ pub mod joystick_state;
 pub mod keyboard_state;
 pub mod mouse_state;
 
-use anyhow::Error;
-use fluxfox::DiskImage;
-use marty_config::ConfigFileParams;
 use std::{
     cell::RefCell,
     ffi::{OsStr, OsString},
+    path::Path,
     rc::Rc,
     sync::Arc,
 };
 
 #[cfg(target_arch = "wasm32")]
 use crate::wasm::file_open;
+use anyhow::Error;
+use fluxfox::DiskImage;
+use marty_config::ConfigFileParams;
 #[cfg(target_arch = "wasm32")]
 use marty_frontend_common::thread_events::{FileOpenContext, FileSelectionContext};
 
@@ -427,33 +428,7 @@ impl Emulator {
 
             #[cfg(not(target_arch = "wasm32"))]
             {
-                match self
-                    .vhd_manager
-                    .load_vhd_file_by_path(drive_idx, (&vhd_os_name).as_ref())
-                {
-                    Ok(vhd_file) => {
-                        self.load_vhd(Box::new(vhd_file), drive_idx, &vhd_os_name, None)?;
-                        mount_info_vec.push(MountInfo {
-                            index: drive_idx,
-                            name:  vhd_os_name.to_string_lossy().to_string(),
-                        })
-                    }
-                    Err(_err) => {
-                        log::error!("Couldn't load VHD image {:?} by path, trying by name...", vhd_os_name);
-                        match self.vhd_manager.load_vhd_file_by_name(drive_idx, &vhd_os_name) {
-                            Ok((vhd_file, vhd_idx)) => {
-                                self.load_vhd(Box::new(vhd_file), drive_idx, &vhd_os_name, Some(vhd_idx))?;
-                                mount_info_vec.push(MountInfo {
-                                    index: drive_idx,
-                                    name:  vhd_os_name.to_string_lossy().to_string(),
-                                })
-                            }
-                            Err(err) => {
-                                log::error!("Failed to load VHD image {:?}: {}", vhd_os_name, err);
-                            }
-                        }
-                    }
-                }
+                self.handle_vhd_path(drive_idx, &vhd_os_name, &mut mount_info_vec)?;
             }
 
             #[cfg(target_arch = "wasm32")]
@@ -471,6 +446,70 @@ impl Emulator {
             drive_idx += 1;
         }
         Ok(mount_info_vec)
+    }
+
+    fn handle_vhd_path(
+        &mut self,
+        drive_idx: usize,
+        vhd_os_name: &OsStr,
+        mount_info_vec: &mut Vec<MountInfo>,
+    ) -> Result<(), Error> {
+        let path = Path::new(vhd_os_name);
+
+        if path.is_absolute() {
+            // Absolute path: try loading by path
+            match self.vhd_manager.load_vhd_file_by_path(drive_idx, path) {
+                Ok(vhd_file) => {
+                    self.load_vhd(Box::new(vhd_file), drive_idx, &vhd_os_name, None)?;
+                    mount_info_vec.push(MountInfo {
+                        index: drive_idx,
+                        name:  vhd_os_name.to_string_lossy().to_string(),
+                    });
+                    Ok(())
+                }
+                Err(err) => {
+                    log::error!("Failed to load absolute VHD image {:?} by path: {}", vhd_os_name, err);
+                    Err(Error::from(err))
+                }
+            }
+        }
+        else {
+            // Relative path or just filename
+            if path.parent().is_some() && path.parent().unwrap().as_os_str().len() > 0 {
+                // Relative path (has directory components)
+                match self.vhd_manager.load_vhd_file_by_path(drive_idx, path) {
+                    Ok(vhd_file) => {
+                        self.load_vhd(Box::new(vhd_file), drive_idx, &vhd_os_name, None)?;
+                        mount_info_vec.push(MountInfo {
+                            index: drive_idx,
+                            name:  vhd_os_name.to_string_lossy().to_string(),
+                        });
+                        Ok(())
+                    }
+                    Err(err) => {
+                        log::error!("Failed to load relative VHD image {:?} by path: {}", vhd_os_name, err);
+                        Err(Error::from(err))
+                    }
+                }
+            }
+            else {
+                // Just filename, try loading by name (from media/hdds)
+                match self.vhd_manager.load_vhd_file_by_name(drive_idx, &vhd_os_name) {
+                    Ok((vhd_file, vhd_idx)) => {
+                        self.load_vhd(Box::new(vhd_file), drive_idx, &vhd_os_name, Some(vhd_idx))?;
+                        mount_info_vec.push(MountInfo {
+                            index: drive_idx,
+                            name:  vhd_os_name.to_string_lossy().to_string(),
+                        });
+                        Ok(())
+                    }
+                    Err(err) => {
+                        log::error!("Failed to load VHD image {:?} by name: {}", vhd_os_name, err);
+                        Err(Error::from(err))
+                    }
+                }
+            }
+        }
     }
 
     pub fn load_vhd(

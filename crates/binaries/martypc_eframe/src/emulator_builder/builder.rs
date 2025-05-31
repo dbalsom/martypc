@@ -73,8 +73,6 @@ use marty_frontend_common::{
     vhd_manager::VhdManager,
 };
 
-use marty_egui::{GuiEnum, GuiVariableContext};
-use marty_frontend_common::marty_common::MartyHashMap;
 use url::Url;
 
 #[derive(thiserror::Error, Debug)]
@@ -710,7 +708,7 @@ impl EmulatorBuilder {
 
         // Build the Machine instance
         log::debug!("Building Machine...");
-        let mut machine = machine_builder.build()?;
+        let machine = machine_builder.build()?;
 
         // Now that we have a Machine, we can query it for sound sources (devices that produce sound)
         // For each sound source we will create a source in the SoundInterface, to give it
