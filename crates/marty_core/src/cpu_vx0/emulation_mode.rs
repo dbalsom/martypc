@@ -29,7 +29,7 @@
 
 use crate::{
     cpu_common::{CpuArch, CpuType},
-    cpu_vx0::{Flag, NecVx0, CPU_FLAG_MODE},
+    cpu_vx0::{Flag, NecVx0},
 };
 
 impl NecVx0 {

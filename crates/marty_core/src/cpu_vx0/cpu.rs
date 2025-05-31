@@ -40,7 +40,6 @@ use crate::{
     cpu_common::{
         Cpu,
         CpuAddress,
-        CpuArch,
         CpuError,
         CpuOption,
         CpuStringState,

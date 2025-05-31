@@ -257,6 +257,7 @@ pub enum Segment {
 
 #[derive(Default, Debug, Clone)]
 pub struct CpuStringState {
+    pub cpu_type: CpuType,
     pub ah: String,
     pub al: String,
     pub ax: String,
@@ -289,6 +290,41 @@ pub struct CpuStringState {
     pub i_fl: String,
     pub d_fl: String,
     pub o_fl: String,
+    pub m_fl: String,
+    pub piq: String,
+    pub instruction_count: u64,
+    pub cycle_count: u64,
+    pub dma_state: String,
+    pub dram_refresh_cycle_period: String,
+    pub dram_refresh_cycle_num: String,
+}
+
+#[derive(Default, Debug, Clone)]
+pub struct CpuDebugState {
+    pub ax: u16,
+    pub bx: u16,
+    pub cx: u16,
+    pub dx: u16,
+    pub sp: u16,
+    pub bp: u16,
+    pub si: u16,
+    pub di: u16,
+    pub cs: u16,
+    pub ds: u16,
+    pub ss: u16,
+    pub es: u16,
+    pub pc: u16,
+    pub ip: u16,
+    pub flags: u16,
+    pub c_fl: bool,
+    pub p_fl: bool,
+    pub a_fl: bool,
+    pub z_fl: bool,
+    pub s_fl: bool,
+    pub t_fl: bool,
+    pub i_fl: bool,
+    pub d_fl: bool,
+    pub o_fl: bool,
     pub piq: String,
     pub instruction_count: u64,
     pub cycle_count: u64,
@@ -304,6 +340,24 @@ pub enum CpuType {
     Intel8086,
     NecV20(CpuArch),
     NecV30(CpuArch),
+}
+
+impl Display for CpuType {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        let s = match self {
+            CpuType::Intel8088 => "Intel 8088",
+            CpuType::Intel8086 => "Intel 8086",
+            CpuType::NecV20(arch) => match arch {
+                CpuArch::I86 => "NEC V20",
+                CpuArch::I8080 => "NEC V20 (8080 Mode)",
+            },
+            CpuType::NecV30(arch) => match arch {
+                CpuArch::I86 => "NEC V30",
+                CpuArch::I8080 => "NEC V30 (8080 Mode)",
+            },
+        };
+        write!(f, "{s}")
+    }
 }
 
 /// We need a custom deserializer due to the fact that the NEC CPU types have non-unit variants
@@ -357,6 +411,9 @@ impl FromStr for CpuType {
 }
 
 impl CpuType {
+    pub fn is_nec(&self) -> bool {
+        matches!(self, CpuType::NecV20(_) | CpuType::NecV30(_))
+    }
     /// Return the size of the instruction queue for this CPU type.
     pub fn queue_size(&self) -> usize {
         match self {

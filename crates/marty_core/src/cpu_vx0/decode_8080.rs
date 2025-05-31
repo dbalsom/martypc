@@ -34,9 +34,9 @@ use crate::cpu_vx0::{*};
 use crate::{
     bytequeue::*,
     cpu_vx0::{gdr::GdrEntry, decode::InstTemplate},
-    cpu_common::{AddressingMode, Instruction, alu::Xi},
+    cpu_common::{AddressingMode, Instruction},
 };
-use crate::cpu_common::{Mnemonic, Segment, OperandType, Register8_8080, Register16_8080, OPCODE_PREFIX_ED};
+use crate::cpu_common::{Mnemonic, OperandType, Register8_8080, Register16_8080};
 use crate::cpu_common::mnemonic::Mnemonic8080;
 use crate::cpu_common::operands::OperandSize;
 
@@ -108,8 +108,6 @@ impl TableInitializer {
 
 #[rustfmt::skip]
 pub static DECODE_8080_ED: [InstTemplate; TOTAL_OPS_LEN] = {
-    use Register8_8080::*;
-    use Register16_8080::*;
     let mut o: TableInitializer = TableInitializer::new();
     inst!( 0xED, o, 0b0000000000000000, 0x000,         CALLN,     Ot::Immediate8, Ot::NoOperand);
     inst!( 0xFD, o, 0b0000000000000000, 0x000,         RETEM,     Ot::NoOperand,  Ot::NoOperand);
@@ -416,11 +414,11 @@ pub static DECODE_8080: [InstTemplate; TOTAL_OPS_LEN] = {
 
 impl NecVx0 {
     #[rustfmt::skip]
-    pub fn decode_8080(bytes: &mut impl ByteQueue, peek: bool) -> Result<Instruction, Box<dyn std::error::Error>> {
+    pub fn decode_8080(bytes: &mut impl ByteQueue, peek: bool) -> Result<Instruction, Box<dyn Error>> {
         let mut operand1_type: OperandType = OperandType::NoOperand;
         let mut operand2_type: OperandType = OperandType::NoOperand;
         
-        let mut opcode = bytes.q_read_u8(QueueType::First, QueueReader::Biu);
+        let opcode = bytes.q_read_u8(QueueType::First, QueueReader::Biu);
         let mut size: u32 = 1;
         let mut op_prefixes: u32 = 0;
         let mut op_prefix_ct = 0;

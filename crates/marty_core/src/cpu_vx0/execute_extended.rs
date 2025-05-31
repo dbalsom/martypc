@@ -34,9 +34,7 @@ use crate::{
     cpu_common::{
         alu::{AluAdc, AluSbb},
         CpuAddress,
-        CpuArch,
         CpuException,
-        CpuType,
         ExecutionResult,
         Mnemonic,
         QueueOp,

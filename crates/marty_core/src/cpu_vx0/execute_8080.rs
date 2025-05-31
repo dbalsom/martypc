@@ -35,9 +35,7 @@ use crate::{
         alu::{AluAdc, AluAdd, AluRotateCarryLeft, AluRotateCarryRight, AluRotateLeft, AluRotateRight, AluSbb},
         mnemonic::Mnemonic8080,
         CpuAddress,
-        CpuArch,
         CpuException,
-        CpuType,
         ExecutionResult,
         Mnemonic,
         QueueOp,
@@ -46,7 +44,7 @@ use crate::{
         Register8,
         Segment,
     },
-    cpu_vx0::{microcode::MC_JUMP, Flag, NecVx0, ReadWriteFlag, RepType, REGISTER16_8080_LUT, REGISTER8_8080_LUT},
+    cpu_vx0::{microcode::MC_JUMP, Flag, NecVx0, ReadWriteFlag, RepType, REGISTER16_8080_LUT},
 };
 
 // Bitfield width for BINS/BEXT instructions
@@ -303,7 +301,7 @@ impl NecVx0 {
                             }
                             4 => {
                                 // DAA (Decimal Adjust ACC after addition)
-                                let value = self.acc_80();
+                                //let value = self.acc_80();
                                 // TODO: 8080 mode might need a unique DAA - need to test
                                 self.daa();
                             }
@@ -638,14 +636,12 @@ impl NecVx0 {
                             }
                             5 => {
                                 // ED CALLN & RETEM
-                                log::warn!("ED V20 escape opcode!");
                                 match self.i.mnemonic {
                                     Mnemonic::I8080(mnem) if matches!(mnem, Mnemonic8080::CALLN) => {
                                         let irq = self.read_operand8(self.i.operand1_type, None).unwrap();
                                         self.calln_8080(irq);
                                     }
                                     Mnemonic::I8080(mnem) if matches!(mnem, Mnemonic8080::RETEM) => {
-                                        log::warn!("RETEM!");
                                         self.ret(true);
                                         self.pop_flags();
                                         // TODO: Does RETEM itself control leaving emulation mode or is it simply the 

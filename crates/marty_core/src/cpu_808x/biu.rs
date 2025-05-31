@@ -1147,7 +1147,7 @@ impl Intel808x {
     }
 
     pub fn biu_do_bus_transfer(&mut self) {
-        let mut byte;
+        let byte;
 
         match (self.bus_status_latch, self.transfer_size) {
             (BusStatus::CodeFetch, TransferSize::Byte) => {

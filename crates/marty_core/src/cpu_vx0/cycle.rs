@@ -67,6 +67,7 @@ macro_rules! validate_write_u8 {
     }};
 }
 
+#[allow(unused_macros)]
 macro_rules! validate_write_u16 {
     ($myself: expr, $addr: expr, $data: expr, $btype: expr) => {{
         #[cfg(feature = "cpu_validator")]

@@ -133,15 +133,9 @@ macro_rules! vgdr {
     };
 }
 
-use crate::{
-    cpu_common::{operands::OperandSize, services::CPUDebugServices, Register16, Register8, ServiceEvent},
-    cpu_vx0::{decode_8080::DECODE_8080, decode_v20::DECODE},
-};
+use crate::cpu_common::{operands::OperandSize, services::CPUDebugServices, Register16, Register8, ServiceEvent};
 
-use crate::{
-    cpu_common::alu::Xi,
-    cpu_vx0::{decode_v20::OperandTemplate, gdr::GdrEntry},
-};
+use crate::cpu_vx0::decode_v20::OperandTemplate;
 use trace_print;
 
 const QUEUE_MAX: usize = 6;
@@ -1360,65 +1354,39 @@ impl NecVx0 {
     /// This is used to display the CPU state viewer window in the debug GUI.
     pub fn get_string_state(&self) -> CpuStringState {
         CpuStringState {
-            ah:   format!("{:02x}", self.a.h()),
-            al:   format!("{:02x}", self.a.l()),
-            ax:   format!("{:04x}", self.a.x()),
-            bh:   format!("{:02x}", self.b.h()),
-            bl:   format!("{:02x}", self.b.l()),
-            bx:   format!("{:04x}", self.b.x()),
-            ch:   format!("{:02x}", self.c.h()),
-            cl:   format!("{:02x}", self.c.l()),
-            cx:   format!("{:04x}", self.c.x()),
-            dh:   format!("{:02x}", self.d.h()),
-            dl:   format!("{:02x}", self.d.l()),
-            dx:   format!("{:04x}", self.d.x()),
-            sp:   format!("{:04x}", self.sp),
-            bp:   format!("{:04x}", self.bp),
-            si:   format!("{:04x}", self.si),
-            di:   format!("{:04x}", self.di),
-            cs:   format!("{:04x}", self.cs),
-            ds:   format!("{:04x}", self.ds),
-            ss:   format!("{:04x}", self.ss),
-            es:   format!("{:04x}", self.es),
-            ip:   format!("{:04x}", self.ip()),
-            pc:   format!("{:04x}", self.pc),
-            c_fl: {
-                let fl = self.flags & CPU_FLAG_CARRY > 0;
-                format!("{:1}", fl as u8)
-            },
-            p_fl: {
-                let fl = self.flags & CPU_FLAG_PARITY > 0;
-                format!("{:1}", fl as u8)
-            },
-            a_fl: {
-                let fl = self.flags & CPU_FLAG_AUX_CARRY > 0;
-                format!("{:1}", fl as u8)
-            },
-            z_fl: {
-                let fl = self.flags & CPU_FLAG_ZERO > 0;
-                format!("{:1}", fl as u8)
-            },
-            s_fl: {
-                let fl = self.flags & CPU_FLAG_SIGN > 0;
-                format!("{:1}", fl as u8)
-            },
-            t_fl: {
-                let fl = self.flags & CPU_FLAG_TRAP > 0;
-                format!("{:1}", fl as u8)
-            },
-            i_fl: {
-                let fl = self.flags & CPU_FLAG_INT_ENABLE > 0;
-                format!("{:1}", fl as u8)
-            },
-            d_fl: {
-                let fl = self.flags & CPU_FLAG_DIRECTION > 0;
-                format!("{:1}", fl as u8)
-            },
-            o_fl: {
-                let fl = self.flags & CPU_FLAG_OVERFLOW > 0;
-                format!("{:1}", fl as u8)
-            },
-
+            cpu_type: self.cpu_type,
+            ah: format!("{:02x}", self.a.h()),
+            al: format!("{:02x}", self.a.l()),
+            ax: format!("{:04x}", self.a.x()),
+            bh: format!("{:02x}", self.b.h()),
+            bl: format!("{:02x}", self.b.l()),
+            bx: format!("{:04x}", self.b.x()),
+            ch: format!("{:02x}", self.c.h()),
+            cl: format!("{:02x}", self.c.l()),
+            cx: format!("{:04x}", self.c.x()),
+            dh: format!("{:02x}", self.d.h()),
+            dl: format!("{:02x}", self.d.l()),
+            dx: format!("{:04x}", self.d.x()),
+            sp: format!("{:04x}", self.sp),
+            bp: format!("{:04x}", self.bp),
+            si: format!("{:04x}", self.si),
+            di: format!("{:04x}", self.di),
+            cs: format!("{:04x}", self.cs),
+            ds: format!("{:04x}", self.ds),
+            ss: format!("{:04x}", self.ss),
+            es: format!("{:04x}", self.es),
+            ip: format!("{:04x}", self.ip()),
+            pc: format!("{:04x}", self.pc),
+            c_fl: { format!("{:1}", (self.flags & CPU_FLAG_CARRY != 0) as u8) },
+            p_fl: { format!("{:1}", (self.flags & CPU_FLAG_PARITY != 0) as u8) },
+            a_fl: { format!("{:1}", (self.flags & CPU_FLAG_AUX_CARRY != 0) as u8) },
+            z_fl: { format!("{:1}", (self.flags & CPU_FLAG_ZERO != 0) as u8) },
+            s_fl: { format!("{:1}", (self.flags & CPU_FLAG_SIGN != 0) as u8) },
+            t_fl: { format!("{:1}", (self.flags & CPU_FLAG_TRAP != 0) as u8) },
+            i_fl: { format!("{:1}", (self.flags & CPU_FLAG_INT_ENABLE != 0) as u8) },
+            d_fl: { format!("{:1}", (self.flags & CPU_FLAG_DIRECTION != 0) as u8) },
+            o_fl: { format!("{:1}", (self.flags & CPU_FLAG_OVERFLOW != 0) as u8) },
+            m_fl: { format!("{:1}", (self.flags & CPU_FLAG_MODE != 0) as u8) },
             piq: self.queue.to_string(),
             flags: format!("{:04}", self.flags),
             instruction_count: self.instruction_count,
