@@ -82,22 +82,20 @@ rom = [
 alias = "ibm5160_82_v1"
 datestr = "1982/08/16"
 desc = "IBM 5160 BIOS Aug 16 1982"
-priority = 2
-provides = ["bios", "ibm5160", "expansion"]
+priority = 1
+provides = ["bios", "ibm5160", "ibm_basic", "expansion"]
 oem = true
 rom = [
     { md5 = "c25bf18a021f7c5fd17f2c3968590c51", addr = 0xF8000, size = 32768, chip = "u18" },
-    { md5 = "69e2bd1d08c893cbf841607c8749d5bd", addr = 0xF0000, size = 8192,  chip = "u19a" },
-    { md5 = "69e2bd1d08c893cbf841607c8749d5bd", addr = 0xF2000, size = 8192,  chip = "u19b" },
-    { md5 = "69e2bd1d08c893cbf841607c8749d5bd", addr = 0xF4000, size = 8192,  chip = "u19c" },
-    { md5 = "69e2bd1d08c893cbf841607c8749d5bd", addr = 0xF6000, size = 8192,  chip = "u19d" },
+    # 8K ROM is repeated 4x from 0xF0000 to 0xF8000
+    { md5 = "69e2bd1d08c893cbf841607c8749d5bd", addr = 0xF0000, size = 8192,  chip = "u19", repeat = 4 }
 ]
 
 [[romset]]
 alias = "ibm5160_82_v2_32k"
 datestr = "1982/11/08"
 desc = "IBM 5160 BIOS Nov 8 1982"
-priority = 1
+priority = 2
 provides = ["bios", "ibm5160", "ibm_basic", "expansion"]
 oem = true
 rom = [
@@ -140,18 +138,15 @@ checkpoint = [
 alias = "ibm5160_82_v2"
 datestr = "1982/11/08"
 desc = "IBM 5160 BIOS Nov 8 1982"
-priority = 2
-provides = ["bios", "ibm5160", "expansion"]
+priority = 3
+provides = ["bios", "ibm5160", "ibm_basic", "expansion"]
 oem = true
 rom = [
     { md5 = "1a2ac1ae0fe0f7783197e78da8b3126c", addr = 0xF8000, size = 32768, chip = "u18" },
     # Alternate 1982 copyright date but otherwise identical
     { md5 = "4ba8c5febc328c04e983fa52e6d08cdf", addr = 0xF8000, size = 32768, chip = "u18" },
-    # The u19 ROM is 8K, but repeated 4x due to decoding
-    { md5 = "69e2bd1d08c893cbf841607c8749d5bd", addr = 0xF0000, size = 8192,  chip = "u19a" },
-    { md5 = "69e2bd1d08c893cbf841607c8749d5bd", addr = 0xF2000, size = 8192,  chip = "u19b" },
-    { md5 = "69e2bd1d08c893cbf841607c8749d5bd", addr = 0xF4000, size = 8192,  chip = "u19c" },
-    { md5 = "69e2bd1d08c893cbf841607c8749d5bd", addr = 0xF6000, size = 8192,  chip = "u19d" },
+    # 8K ROM is repeated 4x from 0xF0000 to 0xF8000
+    { md5 = "69e2bd1d08c893cbf841607c8749d5bd", addr = 0xF0000, size = 8192,  chip = "u19", repeat = 4 },
 ]
 checkpoint = [
     { addr = 0xFE01A, lvl = 3, desc = "RAM Check Routine" },
@@ -184,8 +179,8 @@ checkpoint = [
 
 [[romset]]
 alias = "ibm5160_86_v2"
-datestr = "01/10/86"
-priority = 3
+datestr = "1986/01/10"
+priority = 4
 provides = ["bios", "ibm5160", "expansion", "ibm_basic"]
 rom = [
     { md5 = "f051b4bbc3b60c3a14df94a0e4ee720f", addr = 0xF0000, chip = "basic+u19" },
@@ -194,8 +189,8 @@ rom = [
 
 [[romset]]
 alias = "ibm5160_86_v3"
-datestr = "05/09/86"
-priority = 4
+datestr = "1986/05/09"
+priority = 5
 provides = ["bios", "ibm5160", "expansion", "ibm_basic"]
 oem = true
 rom = [
@@ -246,7 +241,7 @@ priority = 2
 provides = ["ibm_basic"]
 oem = true
 rom = [
-    { md5 = "2ad31da203a49b504fad3a34af0c719f", addr = 0xF6000, size = 32768 },
+    { md5 = "2ad31da203a49b504fad3a34af0c719f", addr = 0xF6000, size = 32768, chip = "c" },
 ]
 
 [[romset]]
@@ -265,7 +260,7 @@ rom = [
 [[romset]]
 alias = "ibmbasic_v11_32k"
 desc = "IBM Cassette Basic C1.10"
-priority = 2
+priority = 4
 provides = ["ibm_basic"]
 oem = true
 rom = [
@@ -275,7 +270,7 @@ rom = [
 [[romset]]
 alias = "ibmbasic_v11_8k"
 desc = "IBM Cassette Basic C1.10"
-priority = 1
+priority = 3
 provides = ["ibm_basic"]
 oem = true
 rom = [
