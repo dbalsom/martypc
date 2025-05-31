@@ -52,7 +52,6 @@ use crate::{
 pub const HDC_IRQ: u8 = 0x05;
 pub const HDC_DMA: usize = 0x03;
 pub const SECTOR_SIZE: usize = 512;
-pub const DRIVE_TYPE2_DIP: u8 = 0b1010; // 2x IBM Type 2, 20MB drives
 
 pub const HDC_DATA_REGISTER: u16 = 0x320;
 pub const HDC_STATUS_REGISTER: u16 = 0x321;
@@ -294,6 +293,7 @@ pub struct HardDiskController {
     drive_select: usize,
 
     supported_formats: Vec<HardDiskFormat>,
+    format_dips: Vec<u8>,
     drive_type_dip: u8,
     state: State,
     last_error: OperationError,
@@ -352,6 +352,7 @@ impl Default for HardDiskController {
                     desc: "20MB, Type 13".to_string(),
                 },
             ],
+            format_dips: vec![0b00, 0b01, 0b10, 0b11],
             drive_type_dip: 0,
             state: State::Reset,
             last_error: OperationError::NoError,
@@ -381,10 +382,9 @@ impl Default for HardDiskController {
 }
 
 impl HardDiskController {
-    pub fn new(drive_ct: usize, drive_type_dip: u8) -> Self {
+    pub fn new(drive_ct: usize) -> Self {
         Self {
             drive_ct,
-            drive_type_dip,
             ..Default::default()
         }
     }
@@ -417,29 +417,49 @@ impl HardDiskController {
         self.supported_formats.clone()
     }
 
-    pub fn set_vhd(&mut self, device_id: usize, vhd: VirtualHardDisk) -> Result<(), ControllerError> {
-        if device_id > 1 {
+    pub fn set_vhd(&mut self, drive_id: usize, vhd: VirtualHardDisk) -> Result<(), ControllerError> {
+        if drive_id > 1 {
             return Err(ControllerError::InvalidDevice);
         }
 
         // Check that the VHD geometry is in the list of supported formats
-        // (Currently there is only one supported format but that might change)
         let mut supported = false;
-        for format in &self.supported_formats {
+        let mut format_idx = 0;
+        for (fi, format) in self.supported_formats.iter().enumerate() {
             if vhd.max_cylinders as u16 == format.geometry.c
                 && vhd.max_heads as u8 == format.geometry.h
                 && vhd.max_sectors as u8 == format.geometry.s
             {
                 supported = true;
+                format_idx = fi;
                 break;
             }
         }
 
         if supported {
-            self.drives[device_id].max_cylinders = vhd.max_cylinders as u16;
-            self.drives[device_id].max_heads = vhd.max_heads as u8;
-            self.drives[device_id].max_sectors = vhd.max_sectors as u8;
-            self.drives[device_id].vhd = Some(vhd);
+            self.drives[drive_id].max_cylinders = vhd.max_cylinders as u16;
+            self.drives[drive_id].max_heads = vhd.max_heads as u8;
+            self.drives[drive_id].max_sectors = vhd.max_sectors as u8;
+            self.drives[drive_id].vhd = Some(vhd);
+
+            // Set the DIP switches for the type of hard disk.
+            // The bits read out of the sense switch register are in reverse order,
+            // so low-order bit 0 is switch 3, and bit 3 is switch 0.
+            match drive_id {
+                0 => {
+                    self.drive_type_dip &= !0b1100;
+                    self.drive_type_dip |= self.format_dips[format_idx] << 2;
+                }
+                _ => {
+                    self.drive_type_dip &= !0b11;
+                    self.drive_type_dip |= self.format_dips[format_idx];
+                }
+            }
+            log::debug!(
+                "set_vhd(): New DIP setting {:04b} for format {:?}",
+                self.drive_type_dip,
+                self.supported_formats[format_idx]
+            );
         }
         else {
             return Err(ControllerError::UnsupportedVHD);
@@ -448,12 +468,12 @@ impl HardDiskController {
         Ok(())
     }
 
-    pub fn unload_vhd(&mut self, device_id: usize) -> Result<(), ControllerError> {
-        if device_id < self.drive_ct {
-            self.drives[device_id].vhd = None;
-            self.drives[device_id].max_cylinders = 0;
-            self.drives[device_id].max_heads = 0;
-            self.drives[device_id].max_sectors = 0;
+    pub fn unload_vhd(&mut self, drive_id: usize) -> Result<(), ControllerError> {
+        if drive_id < self.drive_ct {
+            self.drives[drive_id].vhd = None;
+            self.drives[drive_id].max_cylinders = 0;
+            self.drives[drive_id].max_heads = 0;
+            self.drives[drive_id].max_sectors = 0;
             Ok(())
         }
         else {
