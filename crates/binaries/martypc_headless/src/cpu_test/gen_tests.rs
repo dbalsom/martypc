@@ -44,7 +44,6 @@ use marty_config::ConfigFileParams;
 use serde::{Deserialize, Serialize};
 
 use ard808x_client::CpuWidth;
-
 use marty_core::{
     arduino8088_validator::ArduinoValidator,
     bytequeue::ByteQueue,
@@ -75,22 +74,25 @@ use marty_core::{
     devices::pic::Pic,
     tracelogger::TraceLogger,
 };
+use rand::{prelude::StdRng, Rng, SeedableRng};
 
 use crate::cpu_test::common::{clean_cycle_states, write_tests_to_file, CpuTest, TestStateFinal, TestStateInitial};
 
 pub fn run_gentests(config: &ConfigFileParams) {
     //let pic = Rc::new(RefCell::new(Pic::new()));
 
+    let mut rng = StdRng::seed_from_u64(config.tests.test_seed.unwrap_or(1234));
+
     // Create the cpu trace file, if specified
     let mut trace_logger = TraceLogger::None;
     if let Some(trace_filename) = &config.machine.cpu.trace_file {
-        trace_logger = TraceLogger::from_filename(&trace_filename);
+        trace_logger = TraceLogger::from_filename(trace_filename);
     }
 
     // Create the validator trace file, if specified
     let mut validator_trace = TraceLogger::None;
     if let Some(trace_filename) = &config.validator.trace_file {
-        validator_trace = TraceLogger::from_filename(&trace_filename);
+        validator_trace = TraceLogger::from_filename(trace_filename);
     }
 
     let trace_mode = config.machine.cpu.trace_mode.unwrap_or_default();
@@ -108,6 +110,7 @@ pub fn run_gentests(config: &ConfigFileParams) {
             .with_validator_mode(ValidatorMode::Instruction)
             .with_validator_logger(validator_trace)
             .with_validator_baud(config.validator.baud_rate.unwrap_or(1_000_000))
+            .with_validator_port(config.validator.port.clone())
             .build()
         {
             Ok(cpu) => cpu,
@@ -129,8 +132,6 @@ pub fn run_gentests(config: &ConfigFileParams) {
     else {
         cpu.randomize_seed(1234);
     }
-
-    cpu.randomize_mem(true);
 
     let mut validator = cpu.get_validator_mut().as_mut().unwrap();
     validator.set_opts(
@@ -200,9 +201,10 @@ pub fn run_gentests(config: &ConfigFileParams) {
             if range.len() < 2 {
                 panic!("Invalid test opcode extension range specified!");
             }
-
-            start_ext = range[0];
-            end_ext = range[1];
+            if is_grp {
+                start_ext = range[0];
+                end_ext = range[1];
+            }
         }
 
         for op_ext in start_ext..=end_ext {
@@ -318,50 +320,61 @@ pub fn run_gentests(config: &ConfigFileParams) {
             advance_rng_ct = tests.len() as u32;
 
             'testloop: while test_num < test_limit {
+                // Determine whether to prefetch this instruction. (prefetch even numbered tests)
+                //let prefetch = (test_num - 1) & 0x01 == 0;
+                let prefetch = config.tests.test_gen_prefetch;
+
                 cpu.reset();
+                // Randomize memory for each test so we can inject 00 and FF values.
                 cpu.randomize_mem(true);
-                cpu.randomize_regs();
 
-                let mut instruction_address =
-                    cpu_common::calc_linear_address(cpu.get_register16(Register16::CS), cpu.get_ip());
+                // We need to get the bytes array for the instruction we are going to test,
+                // so we need to determine our own CS and PC values. PC will be adjusted by the
+                // If test prefetching is enabled, PC will be adjusted by the size of the instruction
+                // queue.
+                let mut cs: u16 = rng.random();
+                let mut pc: u16 = rng.random();
+                let mut instruction_address = cpu_common::calc_linear_address(cs, pc);
 
-                while (cpu.get_ip() > 0xFFF0) || ((instruction_address & 0xFFFFF) > 0xFFFF0) {
-                    // Avoid IP wrapping issues for now
-                    cpu.randomize_regs();
-                    instruction_address =
-                        cpu_common::calc_linear_address(cpu.get_register16(Register16::CS), cpu.get_ip());
+                // Avoid IP wrapping issues for now
+                while (instruction_address & 0xFFFFF) > 0xFFFF0 {
+                    log::trace!(
+                        "Instruction address {:05X} is too high, re-randomizing CS and PC",
+                        instruction_address
+                    );
+                    cs = rng.random();
+                    pc = rng.random();
+                    instruction_address = cpu_common::calc_linear_address(cs, pc);
                 }
-
-                test_num += 1;
 
                 // Is the specified opcode a group instruction?
                 if is_grp {
-                    cpu.random_grp_instruction(test_opcode, &[op_ext]);
+                    cpu.random_grp_instruction(test_opcode, &[op_ext], instruction_address);
                 }
                 else {
-                    cpu.random_inst_from_opcodes(&[test_opcode], config.tests.test_opcode_prefix);
-                }
-
-                if cpu.get_ip() != cpu.get_register16(Register16::PC) {
-                    log::error!(
-                        "IP: {:04X} PC: {:04X}",
-                        cpu.get_ip(),
-                        cpu.get_register16(Register16::PC)
-                    );
-                    panic!("IP and PC are out of sync!");
+                    cpu.random_inst_from_opcodes(&[test_opcode], config.tests.test_opcode_prefix, instruction_address);
                 }
 
                 // Decode this instruction
-                instruction_address = cpu_common::calc_linear_address(cpu.get_register16(Register16::CS), cpu.get_ip());
                 log::debug!(
                     "Instruction address: {:05X} [{:04X}:{:04X}]",
                     instruction_address,
-                    cpu.get_register16(Register16::CS),
-                    cpu.get_ip()
+                    cs,
+                    pc
                 );
 
                 cpu.bus_mut().seek(instruction_address as usize);
                 let opcode = cpu.bus().peek_u8(instruction_address as usize).expect("mem err");
+
+                // if opcode != test_opcode {
+                //     log::error!(
+                //         "Opcode mismatch! Expected {:02X}, got {:02X} at address {:05X}",
+                //         test_opcode,
+                //         opcode,
+                //         instruction_address
+                //     );
+                //     break 'testloop;
+                // }
 
                 let mut i = match cpu.get_type().decode(cpu.bus_mut(), true) {
                     Ok(i) => i,
@@ -370,6 +383,58 @@ pub fn run_gentests(config: &ConfigFileParams) {
                         continue 'testloop;
                     }
                 };
+
+                let bytes = cpu
+                    .bus()
+                    .peek_range(instruction_address as usize, i.size as usize)
+                    .unwrap()
+                    .to_vec();
+
+                if prefetch {
+                    // Calculate prefetched queue contents - extend instruction bytes with NOPs if
+                    // instruction doesn't fully fill the queue.
+                    let mut queue_bytes = bytes.clone();
+                    let queue_len = cpu.get_type().queue_size();
+
+                    let mut pad_len = queue_len.saturating_sub(queue_bytes.len());
+                    if queue_len == 6 && instruction_address & 1 == 1 {
+                        // If bus width is 16 and the instruction address is odd, we can't fill the queue
+                        // completely, since the queue length will be 1, 3, 5, (no room)
+                        pad_len = pad_len.saturating_sub(1);
+                    }
+
+                    if queue_bytes.len() < queue_len {
+                        queue_bytes.extend(std::iter::repeat_n(0x90, pad_len));
+                    }
+                    else if (queue_bytes.len() > 5) && (instruction_address & 1 == 1) {
+                        // Trim queue bytes to 5
+                        queue_bytes.truncate(5);
+                    }
+                    else if queue_bytes.len() > 6 {
+                        // Trim queue bytes to 6
+                        queue_bytes.truncate(6);
+                    }
+
+                    cpu.set_queue_contents(&queue_bytes, true);
+                    cpu.get_validator_mut().as_mut().unwrap().set_prefetch(true);
+                }
+
+                cpu.set_option(CpuOption::TraceLoggingEnabled(config.machine.cpu.trace_on));
+                cpu.randomize_regs(Some(cs), Some(pc));
+
+                // Now that our register state is set, we can patch the instruction address.
+                cpu.patch_instruction(test_opcode);
+
+                test_num += 1;
+
+                // if cpu.get_ip() != cpu.get_register16(Register16::PC) {
+                //     log::error!(
+                //         "IP: {:04X} PC: {:04X}",
+                //         cpu.get_ip(),
+                //         cpu.get_register16(Register16::PC)
+                //     );
+                //     panic!("IP and PC are out of sync!");
+                // }
 
                 // Replicate RNG for existing test, but don't re-generate test. Skip ahead.
                 // This allows us to seamlessly resume test set generation, in theory.
@@ -384,11 +449,6 @@ pub fn run_gentests(config: &ConfigFileParams) {
 
                 i.address = instruction_address;
 
-                let bytes = cpu
-                    .bus()
-                    .peek_range(instruction_address as usize, i.size as usize)
-                    .unwrap();
-
                 if test_num < config.tests.test_start.unwrap_or(0) {
                     println!(
                         "Test {}: Skipping test for instruction: {} opcode:{:02X} addr:{:05X} bytes: {:X?}",
@@ -397,14 +457,7 @@ pub fn run_gentests(config: &ConfigFileParams) {
                     continue;
                 }
 
-                // Determine whether to prefetch this instruction. (prefetch even numbered tests)
-                //let prefetch = (test_num - 1) & 0x01 == 0;
-                let prefetch = false;
-
-                println!(
-                    "Test {}: Creating test for instruction: {} opcode:{:02X} addr:{:05X} bytes: {:X?} prefetch: {}",
-                    test_num, i, opcode, i.address, bytes, prefetch
-                );
+                log::trace!("ip(): {:04X} size: {}", cpu.get_ip(), i.size);
 
                 // Set terminating address for CPU validator.
                 let end_address = cpu_common::calc_linear_address(
@@ -413,7 +466,11 @@ pub fn run_gentests(config: &ConfigFileParams) {
                 );
 
                 cpu.set_end_address(CpuAddress::Flat(end_address));
-                log::trace!("Setting end address: {:05X}", end_address);
+
+                println!(
+                    "Test {}: Creating test for instruction: {} opcode:{:02X} addr:{:05X} end_addr:{:05X} bytes: {:X?} prefetch: {}",
+                    test_num, i, opcode, i.address, end_address, bytes, prefetch
+                );
 
                 match i.mnemonic {
                     Mnemonic::MOVSB
@@ -443,16 +500,12 @@ pub fn run_gentests(config: &ConfigFileParams) {
                     | Mnemonic::SHL
                     | Mnemonic::SHR
                     | Mnemonic::SAR => {
-                        // Limit cl to 0-63.
+                        // Limit cl to 63.
                         cpu.set_register8(Register8::CL, cpu.get_register8(Register8::CL) & 0x3F);
-                        //cpu.set_register8(Register8::CL, 3);
-
                         log::debug!("SHIFT OP: CL is {:02X}", cpu.get_register8(Register8::CL));
                     }
                     _ => {}
                 }
-
-                cpu.get_validator_mut().as_mut().unwrap().set_prefetch(prefetch);
 
                 // We loop here to handle REP string instructions, which are broken up into 1 effective instruction
                 // execution per iteration. The 8088 makes no such distinction.
@@ -491,8 +544,8 @@ pub fn run_gentests(config: &ConfigFileParams) {
                     }
                 };
 
-                // Write every 1000 tests to file.
-                if tests.len() % 1000 == 0 {
+                // Write every 200 tests to file.
+                if tests.len() % 200 == 0 {
                     write_tests_to_file(test_path.clone(), &tests);
                 }
             }

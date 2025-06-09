@@ -465,7 +465,8 @@ fn run_tests(
         // If this test is prefetched, we need to specify the initial queue state that reset()
         // will use as reset() flushes the queue.
         if test_prefetched {
-            cpu.set_reset_queue_contents(test.initial_state.queue.clone());
+            log::trace!("Test is prefetched. Setting initial queue state.");
+            cpu.set_queue_contents(&test.initial_state.queue, true);
         }
 
         cpu.reset();

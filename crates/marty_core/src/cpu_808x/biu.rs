@@ -760,8 +760,10 @@ impl Intel808x {
         }
     }
 
-    /// Request a word size (16-bit) bus write transfer from the BIU.
+    /// Request a word size (16-bit) bus write operation from the BIU using 8-bit transfers.
     /// The 8088 divides word transfers up into two consecutive byte size transfers.
+    /// The 8086 divides odd-aligned word transfers into two consecutive word sized transfers
+    /// bookending the odd byte and the next even byte.
     pub fn biu_write_u16_native8(&mut self, seg: Segment, offset: u16, word: u16) {
         let mut addr = self.calc_linear_address_seg(seg, offset);
 

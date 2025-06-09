@@ -363,8 +363,6 @@ impl Intel808x {
             }
         };
 
-        self.tick_dma2();
-
         // Reset queue operation
         self.last_queue_op = self.queue_op;
         self.last_queue_byte = self.queue_byte;
@@ -470,24 +468,6 @@ impl Intel808x {
                 self.dma_state = DmaState::Idle;
             }
         }
-    }
-
-    pub fn tick_dma2(&mut self) {
-        // match &mut self.dma_state {
-        //     DmaState::Hrq(0) => {
-        //         self.dma_state = DmaState::Hrq(1);
-        //     }
-        //     DmaState::Hrq(1) => {
-        //         if self.bus_status == BusStatus::Passive {
-        //             // S0 & S1 are idle. Issue hold acknowledge if LOCK not asserted.
-        //             if !self.lock {
-        //                 self.dma_state = DmaState::HoldA;
-        //                 self.dma_holda = true;
-        //             }
-        //         }
-        //     }
-        //     _ => {}
-        // }
     }
 
     #[inline]

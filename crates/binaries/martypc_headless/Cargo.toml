@@ -50,6 +50,7 @@ devtools = []
 cpu_validator = ["cpu_tests", "marty_core/cpu_validator"]
 cpu_tests = ["marty_core/cpu_collect_cycle_states"]
 arduino_validator = ["dep:ard808x_client", "marty_core/arduino_validator"]
+cpu_trace_comments = ["marty_core/cpu_trace_comments"]
 
 [lints.clippy]
 new_without_default = "allow"

@@ -40,8 +40,8 @@ use crate::{
 
 use crate::cpu_common::{Disassembly, LogicAnalyzer, Register8, TraceMode};
 
-#[cfg(feature = "cpu_validator")]
-use crate::cpu_808x::CpuValidatorState;
+// #[cfg(feature = "cpu_validator")]
+// use crate::cpu_808x::CpuValidatorState;
 #[cfg(feature = "cpu_validator")]
 use crate::cpu_validator::CpuValidator;
 #[cfg(any(feature = "cpu_validator", feature = "cpu_collect_cycle_states"))]
@@ -58,8 +58,13 @@ impl Cpu for Intel808x {
     }
 
     #[inline]
-    fn set_reset_queue_contents(&mut self, contents: Vec<u8>) {
-        self.set_reset_queue_contents(contents)
+    fn set_queue_contents(&mut self, contents: &[u8], on_reset: bool) {
+        if on_reset {
+            self.set_reset_queue_contents(contents);
+        }
+        else {
+            self.set_queue_contents(contents);
+        }
     }
 
     #[inline]
@@ -366,16 +371,20 @@ impl Cpu for Intel808x {
         self.randomize_mem(weight);
     }
 
-    fn randomize_regs(&mut self) {
-        self.randomize_regs();
+    fn randomize_regs(&mut self, cs: Option<u16>, pc: Option<u16>) {
+        self.randomize_regs(cs, pc);
     }
 
-    fn random_grp_instruction(&mut self, opcode: u8, extension_list: &[u8]) {
-        self.random_grp_instruction(opcode, extension_list)
+    fn random_grp_instruction(&mut self, opcode: u8, extension_list: &[u8], addr: u32) {
+        self.random_grp_instruction(opcode, extension_list, addr)
     }
 
-    fn random_inst_from_opcodes(&mut self, opcode_list: &[u8], _prefix: Option<u8>) {
-        self.random_inst_from_opcodes(opcode_list);
+    fn random_inst_from_opcodes(&mut self, opcode_list: &[u8], _prefix: Option<u8>, addr: u32) {
+        self.random_inst_from_opcodes(opcode_list, addr);
+    }
+
+    fn patch_instruction(&mut self, opcode: u8) {
+        self.patch_instruction(opcode);
     }
 
     fn logic_analyzer(&mut self) -> Option<&mut LogicAnalyzer> {

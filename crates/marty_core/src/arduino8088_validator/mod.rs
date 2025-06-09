@@ -92,6 +92,14 @@ macro_rules! trace_error {
     }};
 }
 
+pub struct ValidatorOptions {
+    pub vtype: ValidatorType,
+    pub trace: TraceLogger,
+    pub mode:  ValidatorMode,
+    pub baud:  Option<u32>,
+    pub port:  Option<String>,
+}
+
 #[derive(Copy, Clone, Debug, PartialEq)]
 pub enum RegisterValidationResult {
     Ok,
@@ -193,12 +201,12 @@ pub struct ArduinoValidator {
 }
 
 impl ArduinoValidator {
-    pub fn new(cpu_type: CpuType, trace_logger: TraceLogger, _baud_rate: u32) -> Self {
+    pub fn new(cpu_type: CpuType, trace_logger: TraceLogger, port: Option<String>, _baud_rate: Option<u32>) -> Self {
         // Trigger addr is address at which to start validation
         // if trigger_addr == V_INVALID_POINTER then validate
         let trigger_addr = V_INVALID_POINTER;
 
-        let cpu_client = match CpuClient::init(None) {
+        let cpu_client = match CpuClient::init(port) {
             Ok(client) => client,
             Err(e) => {
                 panic!("Failed to initialize ArduinoValidator: {}", e);
@@ -727,15 +735,17 @@ impl CpuValidator for ArduinoValidator {
         // If we are prefetching the next instruction, we need to adjust IP by the size of the
         // prefetch program.
         if self.current_instr.prefetch {
-            let pgm_len = self.cpu.get_preload_pgm().len();
-            adjusted_regs.ip = adjusted_regs.ip.wrapping_sub(pgm_len as u16);
-            trace_debug!(
-                self,
-                "Adjusting IP by prefetch program length: {} new_ip: {:04X} new_addr: {:05X}",
-                pgm_len,
-                adjusted_regs.ip,
-                RemoteCpu::calc_linear_address(adjusted_regs.cs, adjusted_regs.ip)
-            );
+            if let Some(program) = self.cpu.prefetch_program() {
+                let pgm_len = program.ip_adjustment(adjusted_regs.ip);
+                adjusted_regs.ip = adjusted_regs.ip.wrapping_sub(pgm_len as u16);
+                trace_debug!(
+                    self,
+                    "Adjusting IP by prefetch program length: {} new_ip: {:04X} new_addr: {:05X}",
+                    pgm_len,
+                    adjusted_regs.ip,
+                    RemoteCpu::calc_linear_address(adjusted_regs.cs, adjusted_regs.ip)
+                );
+            }
 
             // On 8088/8086, we need to adjust DI by 4 depending on flag direction.
             if let CpuType::Intel8088 | CpuType::Intel8086 = self.cpu_type {
@@ -861,6 +871,7 @@ impl CpuValidator for ArduinoValidator {
         };
 
         self.cpu.set_instr_string(name.clone());
+        self.cpu.set_instr_bytes(instr);
 
         trace_debug!(
             self,

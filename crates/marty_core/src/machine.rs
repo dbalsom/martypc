@@ -584,6 +584,7 @@ impl Machine {
                     .with_validator_mode(ValidatorMode::Cycle)
                     .with_validator_logger(validator_trace)
                     .with_validator_baud(core_config.get_validator_baud().unwrap_or(1_000_000))
+                    .with_validator_port(core_config.get_validator_port())
                     .build() {
                         Ok(cpu) => cpu,
                         Err(e) => {

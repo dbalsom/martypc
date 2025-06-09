@@ -206,7 +206,7 @@ impl Cpu for NecVx0 {
 
         // If reset queue contents are provided, set the queue contents instead of flushing.
         if let Some(reset_queue) = self.reset_queue.clone() {
-            self.set_queue_contents(reset_queue);
+            self.set_queue_contents(&reset_queue);
         }
         else {
             self.biu_queue_flush();
@@ -233,8 +233,13 @@ impl Cpu for NecVx0 {
     }
 
     #[inline]
-    fn set_reset_queue_contents(&mut self, contents: Vec<u8>) {
-        self.set_reset_queue_contents(contents);
+    fn set_queue_contents(&mut self, contents: &[u8], on_reset: bool) {
+        if on_reset {
+            self.set_reset_queue_contents(contents);
+        }
+        else {
+            self.set_queue_contents(contents);
+        }
     }
 
     #[inline]
@@ -543,16 +548,20 @@ impl Cpu for NecVx0 {
         self.randomize_mem(weight);
     }
 
-    fn randomize_regs(&mut self) {
-        self.randomize_regs();
+    fn randomize_regs(&mut self, cs: Option<u16>, pc: Option<u16>) {
+        self.randomize_regs(cs, pc);
     }
 
-    fn random_grp_instruction(&mut self, opcode: u8, extension_list: &[u8]) {
-        self.random_grp_instruction(opcode, extension_list)
+    fn random_grp_instruction(&mut self, opcode: u8, extension_list: &[u8], addr: u32) {
+        self.random_grp_instruction(opcode, extension_list, addr)
     }
 
-    fn random_inst_from_opcodes(&mut self, opcode_list: &[u8], prefix: Option<u8>) {
-        self.random_inst_from_opcodes(opcode_list, prefix);
+    fn random_inst_from_opcodes(&mut self, opcode_list: &[u8], prefix: Option<u8>, addr: u32) {
+        self.random_inst_from_opcodes(opcode_list, prefix, addr);
+    }
+
+    fn patch_instruction(&mut self, opcode: u8) {
+        self.patch_instruction(opcode);
     }
 
     fn logic_analyzer(&mut self) -> Option<&mut LogicAnalyzer> {

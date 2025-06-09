@@ -104,10 +104,10 @@ use crate::cpu_validator::{
 };
 
 #[cfg(any(feature = "cpu_validator", feature = "cpu_collect_cycle_states"))]
-use crate::cpu_validator::{AccessType, BusCycle, BusState, CycleState, VRegisters};
+use crate::cpu_validator::{AccessType, BusCycle, BusState, BusType, CycleState, ReadType, VRegisters};
 
 #[cfg(feature = "arduino_validator")]
-use crate::arduino8088_validator::ArduinoValidator;
+use crate::arduino8088_validator::{ArduinoValidator, ValidatorOptions};
 
 macro_rules! trace_print {
     ($self:ident, $($t:tt)*) => {{
@@ -801,10 +801,7 @@ impl Intel808x {
         clock_factor: Option<ClockFactor>,
         trace_mode: TraceMode,
         trace_logger: TraceLogger,
-        #[cfg(feature = "cpu_validator")] validator_type: ValidatorType,
-        #[cfg(feature = "cpu_validator")] validator_trace: TraceLogger,
-        #[cfg(feature = "cpu_validator")] validator_mode: ValidatorMode,
-        #[cfg(feature = "cpu_validator")] validator_baud: u32,
+        #[cfg(feature = "cpu_validator")] v_opts: ValidatorOptions,
     ) -> Self {
         let mut cpu: Intel808x = Default::default();
 
@@ -826,18 +823,19 @@ impl Intel808x {
 
         #[cfg(feature = "cpu_validator")]
         {
-            cpu.validator = match validator_type {
+            cpu.validator = match v_opts.vtype {
                 #[cfg(feature = "arduino_validator")]
                 ValidatorType::Arduino8088 => Some(Box::new(ArduinoValidator::new(
                     cpu_type,
-                    validator_trace,
-                    validator_baud,
+                    v_opts.trace,
+                    v_opts.port,
+                    v_opts.baud,
                 ))),
                 _ => None,
             };
 
             if let Some(ref mut validator) = cpu.validator {
-                match validator.init(validator_mode, true, true, false) {
+                match validator.init(v_opts.mode, true, true, false) {
                     true => {}
                     false => {
                         panic!("Failed to init cpu validator.");
@@ -845,7 +843,7 @@ impl Intel808x {
                 }
             }
 
-            cpu.validator_mode = validator_mode;
+            cpu.validator_mode = v_opts.mode
         }
 
         cpu.trace_logger = trace_logger;
@@ -1004,9 +1002,10 @@ impl Intel808x {
 
         // If reset queue contents are provided, set the queue contents instead of flushing.
         if let Some(reset_queue) = self.reset_queue.clone() {
-            self.set_queue_contents(reset_queue);
+            self.set_queue_contents(&reset_queue);
         }
         else {
+            log::trace!("reset(): performing BIU queue flush");
             self.biu_queue_flush();
         }
         self.reset_queue = None;
@@ -2105,20 +2104,89 @@ impl Intel808x {
     }
 
     /// Specify queue contents to be set on next reset.
-    pub fn set_reset_queue_contents(&mut self, contents: Vec<u8>) {
-        self.reset_queue = Some(contents);
+    pub fn set_reset_queue_contents(&mut self, contents: &[u8]) {
+        self.reset_queue = Some(contents.to_vec());
     }
 
     /// Set queue contents to the specified byte vector.
-    pub fn set_queue_contents(&mut self, contents: Vec<u8>) {
-        let old_len = self.queue.len();
-        self.pc = self.pc.wrapping_sub(old_len as u16);
+    pub fn set_queue_contents(&mut self, contents: &[u8]) {
+        self.pc = self.pc.wrapping_sub(self.queue.len() as u16);
+        let initial_pc = self.pc;
+        #[allow(unused_variables)]
+        let initial_addr = Intel808x::calc_linear_address(self.cs, self.pc);
         self.queue.flush();
         for (i, byte) in contents.iter().enumerate() {
             if i < self.queue.size() {
                 self.queue.push8(*byte);
                 self.pc = self.pc.wrapping_add(1);
             }
+        }
+        log::trace!(
+            "set_queue_contents(): got {} bytes for queue contents: {:X?}, initial pc: {:04X} new pc: {:04X}",
+            contents.len(),
+            contents,
+            initial_pc,
+            self.pc
+        );
+
+        // Synthesize validator fetch events that represent filling the queue
+        #[cfg(feature = "cpu_validator")]
+        if let Some(ref mut validator) = &mut self.validator {
+            match self.bus_width {
+                BusWidth::Byte => {
+                    // This is easy, just add the queue contents as byte reads.
+                    for (i, byte) in contents.iter().enumerate() {
+                        validator.emu_read_byte(initial_addr + (i as u32), *byte, BusType::Mem, ReadType::Code);
+                    }
+                }
+                BusWidth::Word => {
+                    // If initial_addr is odd, we need to add an initial byte fetch
+                    let mut next_addr = initial_addr;
+                    if initial_addr & 1 != 0 {
+                        let byte = contents[0];
+                        validator.emu_read_byte(initial_addr, byte, BusType::Mem, ReadType::Code);
+                        next_addr = initial_addr + 1;
+
+                        // Skipping the first byte, add the remaining queue contents as word reads
+                        for (i, byte) in contents[1..].chunks(2).enumerate() {
+                            if byte.len() == 2 {
+                                let word = u16::from_le_bytes([byte[0], byte[1]]);
+                                validator.emu_read_word(next_addr + (i as u32 * 2), word, BusType::Mem, ReadType::Code);
+                            }
+                            else {
+                                // We can't have an even number of bytes in the queue if we started fetching at an even address.
+                                panic!("set_queue_contents(): queue contents should have an odd number of bytes if starting at an odd address");
+                            }
+                        }
+                    }
+                    else {
+                        // If initial_addr is even, we can add the queue contents as word reads
+                        for (i, byte) in contents.chunks(2).enumerate() {
+                            if byte.len() == 2 {
+                                let word = u16::from_le_bytes([byte[0], byte[1]]);
+                                validator.emu_read_word(
+                                    initial_addr + (i as u32 * 2),
+                                    word,
+                                    BusType::Mem,
+                                    ReadType::Code,
+                                );
+                            }
+                            else {
+                                // We can't have an odd number of bytes in the queue if we started fetching at an even address.
+                                panic!("set_queue_contents(): queue contents should have an even number of bytes if starting at an even address");
+                            }
+                        }
+                    }
+                }
+            }
+        }
+
+        // Update fetch state
+        if !self.queue.has_room_for_fetch() {
+            self.fetch_state = FetchState::PausedFull;
+        }
+        else {
+            self.fetch_state = FetchState::Normal;
         }
     }
 }

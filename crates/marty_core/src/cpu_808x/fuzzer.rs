@@ -83,10 +83,13 @@ impl Intel808x {
         self.rng = Some(rand::rngs::StdRng::seed_from_u64(seed));
     }
 
+    /// Randomize the CPU register state.
+    /// If `pc_offset` is provided, it will be added to the PC register and subsequently the
+    /// reset vector. This is to accommodate test prefetching.
     #[allow(dead_code)]
-    pub fn randomize_regs(&mut self) {
-        self.cs = get_rand!(self);
-        self.pc = get_rand!(self);
+    pub fn randomize_regs(&mut self, cs: Option<u16>, pc: Option<u16>) {
+        self.cs = cs.unwrap_or(get_rand!(self));
+        self.pc = pc.unwrap_or(get_rand!(self));
 
         self.set_reset_vector(CpuAddress::Segmented(self.cs, self.pc));
         self.reset();
@@ -102,9 +105,6 @@ impl Intel808x {
         // we would attempt to add one, wrapping to 0, and rep scasb would not execute.
         self.set_register16(Register16::CX, self.get_register16(Register16::CX) & 0xFFFE);
 
-        // Flush queue
-        self.queue.flush();
-
         self.ds = get_rand!(self);
         self.ss = get_rand!(self);
         self.es = get_rand!(self);
@@ -116,10 +116,10 @@ impl Intel808x {
         flags &= !CPU_FLAG_INT_ENABLE;
 
         self.set_flags_safe(flags);
-
-        //self.set_flags(0);
     }
 
+    /// Randomize memory contents. If 'weight' is true, then the memory will be filled with either
+    /// 0x00 or 0xFF with a 2% probability.
     #[allow(dead_code)]
     pub fn randomize_mem(&mut self, weight: bool) {
         for i in 0..self.bus.size() {
@@ -147,8 +147,66 @@ impl Intel808x {
         self.bus.write_u8(0x00400, 0xCF, 0).expect("Mem err writing IRET");
     }
 
+    /// Certain instructions may need patches to memory or register values to function. Mostly this
+    /// concerns the status of flags on the stack, to avoid setting the trap flag which will break
+    /// the validator Store program.
+    pub fn patch_instruction(&mut self, opcode: u8) {
+        match opcode {
+            0x9D => {
+                // POPF.
+                // We need to modify the word at SS:SP to clear the trap flag bit.
+                let flat_addr = self.calc_linear_address_seg(Segment::SS, self.sp);
+                log::trace!(
+                    "patch_instruction(): POPF: Clearing trap flag at stack address: [{:05X}] SS:{:04X} SP: {:04X}",
+                    flat_addr,
+                    self.ss,
+                    self.sp
+                );
+                let (mut flag_word, _) = self
+                    .bus_mut()
+                    .read_u16(flat_addr as usize, 0)
+                    .expect("Couldn't read stack!");
+
+                // Clear trap flag
+                flag_word &= !CPU_FLAG_TRAP;
+
+                self.bus_mut()
+                    .write_u16(flat_addr as usize, flag_word, 0)
+                    .expect("Couldn't write stack!");
+            }
+            0xCF => {
+                // IRET.
+                // We need to modify the word at SS:SP + 4 to clear the trap flag bit.
+
+                let flat_addr = self.calc_linear_address_seg(Segment::SS, self.sp.wrapping_add(4));
+                log::trace!(
+                    "patch_instruction(): IRET: Clearing trap flag at stack address: {:05X}",
+                    flat_addr
+                );
+                let (mut flag_word, _) = self
+                    .bus_mut()
+                    .read_u16(flat_addr as usize, 0)
+                    .expect("Couldn't read stack!");
+
+                // Clear trap flag
+                flag_word &= !CPU_FLAG_TRAP;
+
+                self.bus_mut()
+                    .write_u16(flat_addr as usize, flag_word, 0)
+                    .expect("Couldn't write stack!");
+            }
+            0xD2 | 0xD3 => {
+                // Shifts and rotates by cl.
+                // Mask CL to 6 bits to shorten tests.
+                // This will still catch emulators that are masking CL to 5 bits.
+                self.c.set_l(self.c.l() & 0x3F);
+            }
+            _ => {}
+        }
+    }
+
     #[allow(dead_code)]
-    pub fn random_inst_from_opcodes(&mut self, opcode_list: &[u8]) {
+    pub fn random_inst_from_opcodes(&mut self, opcode_list: &[u8], addr: u32) {
         let mut instr: VecDeque<u8> = VecDeque::new();
 
         // Randomly pick one opcode from the provided list
@@ -180,49 +238,6 @@ impl Intel808x {
 
                 // Mask CX to 8 bits.
                 //self.cx = self.cx & 0x00FF;
-            }
-            0x9D => {
-                // POPF.
-                // We need to modify the word at SS:SP to clear the trap flag bit.
-
-                let flat_addr = self.calc_linear_address_seg(Segment::SS, self.sp);
-
-                let (mut flag_word, _) = self
-                    .bus_mut()
-                    .read_u16(flat_addr as usize, 0)
-                    .expect("Couldn't read stack!");
-
-                // Clear trap flag
-                flag_word &= !CPU_FLAG_TRAP;
-
-                self.bus_mut()
-                    .write_u16(flat_addr as usize, flag_word, 0)
-                    .expect("Couldn't write stack!");
-            }
-            0xCF => {
-                // IRET.
-                // We need to modify the word at SS:SP + 4 to clear the trap flag bit.
-
-                let flat_addr = self.calc_linear_address_seg(Segment::SS, self.sp.wrapping_add(4));
-
-                let (mut flag_word, _) = self
-                    .bus_mut()
-                    .read_u16(flat_addr as usize, 0)
-                    .expect("Couldn't read stack!");
-
-                // Clear trap flag
-                flag_word &= !CPU_FLAG_TRAP;
-
-                self.bus_mut()
-                    .write_u16(flat_addr as usize, flag_word, 0)
-                    .expect("Couldn't write stack!");
-            }
-            0xD2 | 0xD3 => {
-                // Shifts and rotates by cl.
-                // Mask CL to 6 bits to shorten tests.
-                // This will still catch emulators that are masking CL to 5 bits.
-
-                self.c.set_l(self.c.l() & 0x3F);
             }
             0xC0..=0xC3 | 0xC8..=0xCF => {
                 // RETN, RETF, INT[X], IRET
@@ -309,8 +324,7 @@ impl Intel808x {
             instr.push_back(instr_byte);
         }
 
-        // Copy instruction to memory at CS:IP
-        let addr = Intel808x::calc_linear_address(self.cs, self.pc);
+        // Copy instruction to memory at specified address
         log::debug!("Using instruction vector: {:X?}", instr.make_contiguous());
         self.bus
             .copy_from(instr.make_contiguous(), (addr & 0xFFFFF) as usize, 0, false)
@@ -318,7 +332,7 @@ impl Intel808x {
     }
 
     #[allow(dead_code)]
-    pub fn random_grp_instruction(&mut self, opcode: u8, extension_list: &[u8]) {
+    pub fn random_grp_instruction(&mut self, opcode: u8, extension_list: &[u8], addr: u32) {
         let mut instr: VecDeque<u8> = VecDeque::new();
 
         // Randomly pick one extension from the provided list
@@ -375,7 +389,7 @@ impl Intel808x {
             // Filter out invalid forms of some instructions that cannot
             // reasonably be validated.
 
-            /*            match opcode {
+            match opcode {
                 // FF group opcode
                 0xFF => {
                     match modrm_byte & 0b00_111_000 {
@@ -397,7 +411,7 @@ impl Intel808x {
                     }
                 }
                 _ => {}
-            }*/
+            }
 
             modrm_valid = true;
         }
@@ -412,8 +426,7 @@ impl Intel808x {
             instr.push_back(instr_byte);
         }
 
-        // Copy instruction to memory at CS:IP
-        let addr = Intel808x::calc_linear_address(self.cs, self.pc);
+        // Copy instruction to memory at specified address
         log::debug!("Using instruction vector: {:X?}", instr.make_contiguous());
         self.bus
             .copy_from(instr.make_contiguous(), addr as usize, 0, false)

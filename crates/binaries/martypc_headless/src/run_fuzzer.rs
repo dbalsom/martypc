@@ -83,13 +83,13 @@ pub fn run_fuzzer(config: &ConfigFileParams) {
     // Create the cpu trace file, if specified
     let mut cpu_trace = TraceLogger::None;
     if let Some(trace_filename) = &config.machine.cpu.trace_file {
-        cpu_trace = TraceLogger::from_filename(&trace_filename);
+        cpu_trace = TraceLogger::from_filename(trace_filename);
     }
 
     // Create the validator trace file, if specified
     let mut validator_trace = TraceLogger::None;
     if let Some(trace_filename) = &config.validator.trace_file {
-        validator_trace = TraceLogger::from_filename(&trace_filename);
+        validator_trace = TraceLogger::from_filename(trace_filename);
     }
 
     let trace_mode = config.machine.cpu.trace_mode.unwrap_or_default();
@@ -98,6 +98,7 @@ pub fn run_fuzzer(config: &ConfigFileParams) {
     use marty_core::cpu_validator::ValidatorMode;
 
     let mut cpu;
+    #[allow(clippy::unnecessary_operation)]
     #[cfg(feature = "cpu_validator")]
     {
         cpu = match CpuBuilder::new()
@@ -109,6 +110,7 @@ pub fn run_fuzzer(config: &ConfigFileParams) {
             .with_validator_mode(ValidatorMode::Instruction)
             .with_validator_logger(validator_trace)
             .with_validator_baud(config.validator.baud_rate.unwrap_or(1_000_000))
+            .with_validator_port(config.validator.port.clone())
             .build()
         {
             Ok(cpu) => cpu,
@@ -131,7 +133,7 @@ pub fn run_fuzzer(config: &ConfigFileParams) {
         cpu.reset();
 
         test_num += 1;
-        cpu.randomize_regs();
+        cpu.randomize_regs(None, None);
         cpu.randomize_mem(true);
 
         if cpu.get_ip() > 0xFFF0 {
@@ -268,9 +270,11 @@ pub fn run_fuzzer(config: &ConfigFileParams) {
         //cpu.random_grp_instruction(0xF6, &[4, 5]); // 8 bit MUL & IMUL
         //cpu.random_grp_instruction(0xF7, &[4, 5]); // 16 bit MUL & IMUL
 
-        cpu.random_grp_instruction(0xF6, &[6, 7]); // 8 bit DIV & IDIV
-                                                   //cpu.random_grp_instruction(0xF7, &[6, 7]); // 16 bit DIV & IDIV
+        let instruction_address = cpu_common::calc_linear_address(cpu.get_register16(Register16::CS), cpu.get_ip());
 
+        cpu.random_grp_instruction(0xF6, &[6, 7], instruction_address); // 8 bit DIV & IDIV
+
+        //cpu.random_grp_instruction(0xF7, &[6, 7]); // 16 bit DIV & IDIV
         //cpu.random_inst_from_opcodes(&[0xF8, 0xF9, 0xFA, 0xFB, 0xFC, 0xFD]); // CLC, STC, CLI, STI, CLD, STD
 
         //cpu.random_grp_instruction(0xFE, &[0, 1]); // 8 bit INC & DEC
@@ -284,7 +288,6 @@ pub fn run_fuzzer(config: &ConfigFileParams) {
         //cpu.random_grp_instruction(0xFF, &[6, 7]); // PUSH & POP
 
         // Decode this instruction
-        let instruction_address = cpu_common::calc_linear_address(cpu.get_register16(Register16::CS), cpu.get_ip());
 
         cpu.bus_mut().seek(instruction_address as usize);
         let (opcode, _cost) = cpu.bus_mut().read_u8(instruction_address as usize, 0).expect("mem err");

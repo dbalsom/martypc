@@ -114,7 +114,7 @@ use crate::cpu_validator::{
 use crate::cpu_validator::{CycleState, VRegisters};
 
 #[cfg(feature = "arduino_validator")]
-use crate::arduino8088_validator::ArduinoValidator;
+use crate::arduino8088_validator::{ArduinoValidator, ValidatorOptions};
 
 macro_rules! trace_print {
     ($self:ident, $($t:tt)*) => {{
@@ -816,10 +816,7 @@ impl NecVx0 {
         cpu_type: CpuType,
         trace_mode: TraceMode,
         trace_logger: TraceLogger,
-        #[cfg(feature = "cpu_validator")] validator_type: ValidatorType,
-        #[cfg(feature = "cpu_validator")] validator_trace: TraceLogger,
-        #[cfg(feature = "cpu_validator")] validator_mode: ValidatorMode,
-        #[cfg(feature = "cpu_validator")] validator_baud: u32,
+        #[cfg(feature = "cpu_validator")] validator_opts: ValidatorOptions,
     ) -> Self {
         let mut cpu: NecVx0 = Default::default();
 
@@ -840,18 +837,19 @@ impl NecVx0 {
 
         #[cfg(feature = "cpu_validator")]
         {
-            cpu.validator = match validator_type {
+            cpu.validator = match validator_opts.vtype {
                 #[cfg(feature = "arduino_validator")]
                 ValidatorType::Arduino8088 => Some(Box::new(ArduinoValidator::new(
                     cpu_type,
-                    validator_trace,
-                    validator_baud,
+                    validator_opts.trace,
+                    validator_opts.port,
+                    validator_opts.baud,
                 ))),
                 _ => None,
             };
 
             if let Some(ref mut validator) = cpu.validator {
-                match validator.init(validator_mode, true, true, false) {
+                match validator.init(validator_opts.mode, true, true, false) {
                     true => {}
                     false => {
                         panic!("Failed to init cpu validator.");
@@ -859,7 +857,7 @@ impl NecVx0 {
                 }
             }
 
-            cpu.validator_mode = validator_mode;
+            cpu.validator_mode = validator_opts.mode;
         }
 
         cpu.trace_logger = trace_logger;
@@ -1932,12 +1930,12 @@ impl NecVx0 {
     }
 
     /// Specify queue contents to be set on next reset.
-    pub fn set_reset_queue_contents(&mut self, contents: Vec<u8>) {
-        self.reset_queue = Some(contents);
+    pub fn set_reset_queue_contents(&mut self, contents: &[u8]) {
+        self.reset_queue = Some(contents.to_vec());
     }
 
     /// Set queue contents to the specified byte vector.
-    pub fn set_queue_contents(&mut self, contents: Vec<u8>) {
+    pub fn set_queue_contents(&mut self, contents: &[u8]) {
         let old_len = self.queue.len();
         self.pc = self.pc.wrapping_sub(old_len as u16);
         self.queue.flush();

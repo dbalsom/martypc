@@ -29,6 +29,11 @@
     Implements common functionality shared by different CPU types.
 
 */
+#[cfg(feature = "arduino_validator")]
+use crate::arduino8088_validator::ValidatorOptions;
+#[cfg(feature = "cpu_validator")]
+use crate::cpu_validator::{ValidatorMode, ValidatorType};
+
 use crate::{
     bus::ClockFactor,
     cpu_808x::Intel808x,
@@ -37,9 +42,6 @@ use crate::{
     tracelogger::TraceLogger,
 };
 use anyhow::{bail, Result};
-
-#[cfg(feature = "cpu_validator")]
-use crate::cpu_validator::{ValidatorMode, ValidatorType};
 
 #[derive(Default)]
 pub struct CpuBuilder {
@@ -56,6 +58,8 @@ pub struct CpuBuilder {
     validator_logger: Option<TraceLogger>,
     #[cfg(feature = "cpu_validator")]
     validator_baud: Option<u32>,
+    #[cfg(feature = "cpu_validator")]
+    validator_port: Option<String>,
 }
 
 impl CpuBuilder {
@@ -65,6 +69,15 @@ impl CpuBuilder {
 
     pub fn build(&mut self) -> Result<CpuDispatch> {
         // Build the CPU
+
+        #[cfg(feature = "cpu_validator")]
+        let v_opts = ValidatorOptions {
+            vtype: self.validator_type,
+            trace: self.validator_logger.take().unwrap_or_default(),
+            mode:  self.validator_mode.take().unwrap_or_default(),
+            baud:  self.validator_baud,
+            port:  self.validator_port.clone(),
+        };
 
         if let Some(cpu_type) = self.cpu_type {
             match cpu_type {
@@ -76,13 +89,7 @@ impl CpuBuilder {
                         self.trace_mode,
                         self.trace_logger.take().unwrap_or_default(),
                         #[cfg(feature = "cpu_validator")]
-                        self.validator_type,
-                        #[cfg(feature = "cpu_validator")]
-                        self.validator_logger.take().unwrap_or_default(),
-                        #[cfg(feature = "cpu_validator")]
-                        self.validator_mode.take().unwrap_or_default(),
-                        #[cfg(feature = "cpu_validator")]
-                        self.validator_baud.take().unwrap_or_default(),
+                        v_opts,
                     );
                     Ok(cpu.into())
                 }
@@ -94,13 +101,7 @@ impl CpuBuilder {
                         self.trace_mode,
                         self.trace_logger.take().unwrap_or_default(),
                         #[cfg(feature = "cpu_validator")]
-                        self.validator_type,
-                        #[cfg(feature = "cpu_validator")]
-                        self.validator_logger.take().unwrap_or_default(),
-                        #[cfg(feature = "cpu_validator")]
-                        self.validator_mode.take().unwrap_or_default(),
-                        #[cfg(feature = "cpu_validator")]
-                        self.validator_baud.take().unwrap_or_default(),
+                        v_opts,
                     );
                     Ok(cpu.into())
                 }
@@ -110,13 +111,7 @@ impl CpuBuilder {
                         self.trace_mode,
                         self.trace_logger.take().unwrap_or_default(),
                         #[cfg(feature = "cpu_validator")]
-                        self.validator_type,
-                        #[cfg(feature = "cpu_validator")]
-                        self.validator_logger.take().unwrap_or_default(),
-                        #[cfg(feature = "cpu_validator")]
-                        self.validator_mode.take().unwrap_or_default(),
-                        #[cfg(feature = "cpu_validator")]
-                        self.validator_baud.take().unwrap_or_default(),
+                        v_opts,
                     );
                     Ok(cpu.into())
                 }
@@ -176,6 +171,12 @@ impl CpuBuilder {
     #[cfg(feature = "cpu_validator")]
     pub fn with_validator_baud(mut self, validator_baud: u32) -> Self {
         self.validator_baud = Some(validator_baud);
+        self
+    }
+
+    #[cfg(feature = "cpu_validator")]
+    pub fn with_validator_port(mut self, validator_port: Option<String>) -> Self {
+        self.validator_port = validator_port;
         self
     }
 }
