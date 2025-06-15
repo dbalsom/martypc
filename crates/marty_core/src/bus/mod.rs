@@ -61,6 +61,7 @@ use crate::{
         hdc::{xebec::HardDiskController, xtide::XtIdeController},
         keyboard::{KeyboardType, *},
         lotech_ems::LotechEmsCard,
+        fantasy_ems::FantasyEmsCard,
         lpt_card::ParallelController,
         mda::MDACard,
         mouse::*,
@@ -471,6 +472,7 @@ pub struct BusInterface {
     jride: Option<Box<JrIdeController>>,
     mouse: Option<Mouse>,
     ems: Option<LotechEmsCard>,
+    fantasy_ems: Option<FantasyEmsCard>,
     cart_slot: Option<CartridgeSlot>,
     game_port: Option<GamePort>,
     #[cfg(feature = "opl")]
@@ -559,6 +561,7 @@ impl Default for BusInterface {
             jride: None,
             mouse: None,
             ems: None,
+            fantasy_ems: None,
             cart_slot: None,
             game_port: None,
             #[cfg(feature = "opl")]
@@ -1198,6 +1201,15 @@ impl BusInterface {
                 add_mmio_device!(self, ems, MmioDeviceType::Ems);
                 self.ems = Some(ems);
             }
+
+            if let EmsType::Fantasy4MB = ems_config.ems_type {
+                // Add EMS ports to io_map
+                let fantasy_ems = FantasyEmsCard::new(Some(ems_config.io_base), Some(ems_config.window as usize));
+                add_io_device!(self, fantasy_ems, IoDeviceType::Ems);
+                add_mmio_device!(self, fantasy_ems, MmioDeviceType::Ems);
+                self.fantasy_ems = Some(fantasy_ems);
+            }
+
         }
 
         // Create PCJr cartridge slot

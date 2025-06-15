@@ -126,6 +126,9 @@ impl BusInterface {
                     if let Some(ems) = &mut self.ems {
                         byte = Some(ems.read_u8(port, nul_delta));
                     }
+                    else if let Some(fantasy_ems) = &mut self.fantasy_ems {
+                        byte = Some(fantasy_ems.read_u8(port, nul_delta));
+                    }
                 }
                 IoDeviceType::GamePort => {
                     if let Some(game_port) = &mut self.game_port {
@@ -321,6 +324,11 @@ impl BusInterface {
                         ems.write_u8(port, data, None, NULL_DELTA_US, analyzer);
                         resolved = true;
                     }
+                    else if let Some(fantasy_ems) = &mut self.fantasy_ems {
+                        fantasy_ems.write_u8(port, data, None, NULL_DELTA_US, analyzer);
+                        resolved = true;
+                    }
+
                 }
                 IoDeviceType::GamePort => {
                     if let Some(game_port) = &mut self.game_port {

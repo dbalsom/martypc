@@ -253,6 +253,10 @@ impl BusInterface {
                             let (data, _waits) = MemoryMappedDevice::mmio_read_u8(ems, address, system_ticks, None);
                             return Ok((data, 0));
                         }
+                        else if let Some(fantasy_ems) = &mut self.fantasy_ems {
+                            let (data, _waits) = MemoryMappedDevice::mmio_read_u8(fantasy_ems, address, system_ticks, None);
+                            return Ok((data, 0));
+                        }
                     }
                     MmioDeviceType::Cart => {
                         if let Some(cart_slot) = &mut self.cart_slot {
@@ -310,6 +314,10 @@ impl BusInterface {
                     MmioDeviceType::Ems => {
                         if let Some(ems) = &self.ems {
                             let data = MemoryMappedDevice::mmio_peek_u8(ems, address, None);
+                            return Ok(data);
+                        }
+                        else if let Some(fantasy_ems) = &self.fantasy_ems {
+                            let data = MemoryMappedDevice::mmio_peek_u8(fantasy_ems, address, None);
                             return Ok(data);
                         }
                     }
@@ -401,6 +409,9 @@ impl BusInterface {
                     MmioDeviceType::Ems => {
                         if let Some(ems) = &mut self.ems {
                             MemoryMappedDevice::mmio_write_u8(ems, address, data, 0, None);
+                        }
+                        else if let Some(fantasy_ems) = &mut self.fantasy_ems {
+                            MemoryMappedDevice::mmio_write_u8(fantasy_ems, address, data, 0, None);
                         }
                     }
                     MmioDeviceType::JrIde => {
