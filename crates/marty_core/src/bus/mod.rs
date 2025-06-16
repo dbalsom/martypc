@@ -1204,7 +1204,7 @@ impl BusInterface {
 
             if let EmsType::Fantasy4MB = ems_config.ems_type {
                 // Add EMS ports to io_map
-                let fantasy_ems = FantasyEmsCard::new(Some(ems_config.io_base), Some(ems_config.window as usize));
+                let fantasy_ems = FantasyEmsCard::new(Some(ems_config.window as usize));
                 add_io_device!(self, fantasy_ems, IoDeviceType::Ems);
                 add_mmio_device!(self, fantasy_ems, MmioDeviceType::Ems);
                 self.fantasy_ems = Some(fantasy_ems);
