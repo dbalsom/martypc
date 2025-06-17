@@ -59,9 +59,10 @@ pub const FANTASY_PAGE_SHIFT: usize = 14;
 
 pub const FANTASY_PAGE_SELECT_REGISTER: u16 = 0xE8;
 pub const FANTASY_PAGE_SET_REGISTER: u16 = 0xEA;
+// todo make this EA+EB to commit the write. Support 8 MB for simplicity?
 pub const FANTASY_AUTOINCREMENT_PAGE_FLAG: u8 = 0x40;
-pub const FANTASY_PAGE_SET_MASK: u8 = 0x1F;
-pub const FANTASY_PAGE_COUNT: usize = 28;
+pub const FANTASY_PAGE_SET_MASK: u8 = 0x3F;
+pub const FANTASY_PAGE_COUNT: u8 = 36;
 
 // translates the 0x400 of the memory address into the appropriate page
 static PAGE_LOOKUP_TABLE: &'static [u8] = &[
@@ -69,18 +70,18 @@ static PAGE_LOOKUP_TABLE: &'static [u8] = &[
     0, 0, 0, 0,     // 0x10000
     0, 0, 0, 0,     // 0x20000
     0, 0, 0, 0,     // 0x30000
-    4, 5, 6, 7,     // 0x40000
-    8, 9, 10, 11,   // 0x50000
-    12, 13, 14, 15, // 0x60000
-    16, 17, 18, 19, // 0x70000
-    20, 21, 22, 23, // 0x80000
-    24, 25, 26, 27, // 0x90000
+    12, 13, 14, 15, // 0x40000
+    16, 17, 18, 19, // 0x50000
+    20, 21, 22, 23, // 0x60000
+    24, 25, 26, 27, // 0x70000
+    28, 29, 30, 31, // 0x80000
+    32, 33, 34, 35, // 0x90000
     0, 0, 0, 0,     // 0xA0000
     0, 0, 0, 0,     // 0xB0000
-    0, 0, 0, 0,     // 0xC0000
-    0, 1, 2, 3,     // 0xD0000
-    0, 1, 2, 3,     // 0xE0000
-    0, 0, 0, 0     // 0xF0000
+    0, 1, 2, 3,     // 0xC0000
+    4, 5, 6, 7,     // 0xD0000
+    8, 9, 10, 11,   // 0xE0000
+    0, 0, 0, 0      // 0xF0000
 
 ];
 
@@ -94,7 +95,7 @@ pub struct PageRegister {
 pub struct FantasyEmsCard {
     window_addr: usize,
     conventional_base_addr: usize,
-    pages: [PageRegister; FANTASY_PAGE_COUNT],
+    pages: [PageRegister; FANTASY_PAGE_COUNT as usize],
     mem: Vec<u8>,
     page_index_auto_increment_on: bool,
     current_page_index: u8,
@@ -113,86 +114,55 @@ impl Default for FantasyEmsCard {
                 // first four pages (the page frame) point to later pages, such that the
                 // conventional page frame points to the first pages on the device
                 PageRegister {
-                    page_addr: 0x18 << FANTASY_PAGE_SHIFT,
-                    unmapped_default : 0x18
+                    page_addr: 0x28 << FANTASY_PAGE_SHIFT,
+                    unmapped_default : 0x28
                 },
                 PageRegister {
-                    page_addr: 0x19 << FANTASY_PAGE_SHIFT,
-                    unmapped_default : 0x19
+                    page_addr: 0x29 << FANTASY_PAGE_SHIFT,
+                    unmapped_default : 0x29
                 },
                 PageRegister {
-                    page_addr: 0x1A << FANTASY_PAGE_SHIFT,
-                    unmapped_default : 0x1A
+                    page_addr: 0x2A << FANTASY_PAGE_SHIFT,
+                    unmapped_default : 0x2A
                 },
                 PageRegister {
-                    page_addr: 0x1B << FANTASY_PAGE_SHIFT,
-                    unmapped_default : 0x1B
+                    page_addr: 0x2B << FANTASY_PAGE_SHIFT,
+                    unmapped_default : 0x2B
                 },
+                PageRegister {
+                    page_addr: 0x2C << FANTASY_PAGE_SHIFT,
+                    unmapped_default : 0x2C
+                },
+                PageRegister {
+                    page_addr: 0x2D << FANTASY_PAGE_SHIFT,
+                    unmapped_default : 0x2D
+                },
+                PageRegister {
+                    page_addr: 0x2E << FANTASY_PAGE_SHIFT,
+                    unmapped_default : 0x2E
+                },
+                PageRegister {
+                    page_addr: 0x2F << FANTASY_PAGE_SHIFT,
+                    unmapped_default : 0x2F
+                },
+                PageRegister {
+                    page_addr: 0x30 << FANTASY_PAGE_SHIFT,
+                    unmapped_default : 0x30
+                },
+                PageRegister {
+                    page_addr: 0x31 << FANTASY_PAGE_SHIFT,
+                    unmapped_default : 0x31
+                },
+                PageRegister {
+                    page_addr: 0x32 << FANTASY_PAGE_SHIFT,
+                    unmapped_default : 0x32
+                },
+                PageRegister {
+                    page_addr: 0x33 << FANTASY_PAGE_SHIFT,
+                    unmapped_default : 0x33
+                },
+// conventional here
 
-                PageRegister {
-                    page_addr: 0x00 << FANTASY_PAGE_SHIFT,
-                    unmapped_default : 0x00
-                },
-                PageRegister {
-                    page_addr: 0x01 << FANTASY_PAGE_SHIFT,
-                    unmapped_default : 0x01
-                },
-                PageRegister {
-                    page_addr: 0x02 << FANTASY_PAGE_SHIFT,
-                    unmapped_default : 0x02
-                },
-                PageRegister {
-                    page_addr: 0x03 << FANTASY_PAGE_SHIFT,
-                    unmapped_default : 0x03
-                },
-                PageRegister {
-                    page_addr: 0x04 << FANTASY_PAGE_SHIFT,
-                    unmapped_default : 0x04
-                },
-                PageRegister {
-                    page_addr: 0x05 << FANTASY_PAGE_SHIFT,
-                    unmapped_default : 0x05
-                },
-                PageRegister {
-                    page_addr: 0x06 << FANTASY_PAGE_SHIFT,
-                    unmapped_default : 0x06
-                },
-                PageRegister {
-                    page_addr: 0x07 << FANTASY_PAGE_SHIFT,
-                    unmapped_default : 0x07
-                },
-                PageRegister {
-                    page_addr: 0x08 << FANTASY_PAGE_SHIFT,
-                    unmapped_default : 0x08
-                },
-                PageRegister {
-                    page_addr: 0x09 << FANTASY_PAGE_SHIFT,
-                    unmapped_default : 0x09
-                },
-                PageRegister {
-                    page_addr: 0x0A << FANTASY_PAGE_SHIFT,
-                    unmapped_default : 0x0A
-                },
-                PageRegister {
-                    page_addr: 0x0B << FANTASY_PAGE_SHIFT,
-                    unmapped_default : 0x0B
-                },
-                PageRegister {
-                    page_addr: 0x0C << FANTASY_PAGE_SHIFT,
-                    unmapped_default : 0x0C
-                },
-                PageRegister {
-                    page_addr: 0x0D << FANTASY_PAGE_SHIFT,
-                    unmapped_default : 0x0D
-                },
-                PageRegister {
-                    page_addr: 0x0E << FANTASY_PAGE_SHIFT,
-                    unmapped_default : 0x0E
-                },
-                PageRegister {
-                    page_addr: 0x0F << FANTASY_PAGE_SHIFT,
-                    unmapped_default : 0x0F
-                },
                 PageRegister {
                     page_addr: 0x10 << FANTASY_PAGE_SHIFT,
                     unmapped_default : 0x10
@@ -224,6 +194,70 @@ impl Default for FantasyEmsCard {
                 PageRegister {
                     page_addr: 0x17 << FANTASY_PAGE_SHIFT,
                     unmapped_default : 0x17
+                },
+                PageRegister {
+                    page_addr: 0x18 << FANTASY_PAGE_SHIFT,
+                    unmapped_default : 0x18
+                },
+                PageRegister {
+                    page_addr: 0x19 << FANTASY_PAGE_SHIFT,
+                    unmapped_default : 0x19
+                },
+                PageRegister {
+                    page_addr: 0x1A << FANTASY_PAGE_SHIFT,
+                    unmapped_default : 0x1A
+                },
+                PageRegister {
+                    page_addr: 0x1B << FANTASY_PAGE_SHIFT,
+                    unmapped_default : 0x1B
+                },
+                PageRegister {
+                    page_addr: 0x1C << FANTASY_PAGE_SHIFT,
+                    unmapped_default : 0x1C
+                },
+                PageRegister {
+                    page_addr: 0x1D << FANTASY_PAGE_SHIFT,
+                    unmapped_default : 0x1D
+                },
+                PageRegister {
+                    page_addr: 0x1E << FANTASY_PAGE_SHIFT,
+                    unmapped_default : 0x1E
+                },
+                PageRegister {
+                    page_addr: 0x1F << FANTASY_PAGE_SHIFT,
+                    unmapped_default : 0x1F
+                },
+                PageRegister {
+                    page_addr: 0x20 << FANTASY_PAGE_SHIFT,
+                    unmapped_default : 0x20
+                },
+                PageRegister {
+                    page_addr: 0x21 << FANTASY_PAGE_SHIFT,
+                    unmapped_default : 0x21
+                },
+                PageRegister {
+                    page_addr: 0x22 << FANTASY_PAGE_SHIFT,
+                    unmapped_default : 0x22
+                },
+                PageRegister {
+                    page_addr: 0x23 << FANTASY_PAGE_SHIFT,
+                    unmapped_default : 0x23
+                },
+                PageRegister {
+                    page_addr: 0x24 << FANTASY_PAGE_SHIFT,
+                    unmapped_default : 0x24
+                },
+                PageRegister {
+                    page_addr: 0x25 << FANTASY_PAGE_SHIFT,
+                    unmapped_default : 0x25
+                },
+                PageRegister {
+                    page_addr: 0x26 << FANTASY_PAGE_SHIFT,
+                    unmapped_default : 0x26
+                },
+                PageRegister {
+                    page_addr: 0x27 << FANTASY_PAGE_SHIFT,
+                    unmapped_default : 0x27
                 },
 
 
@@ -284,9 +318,13 @@ impl IoDevice for FantasyEmsCard {
             // Read is from LPT port.
 
             // todo: what to do about bad values...?
-            self.current_page_index = data & FANTASY_PAGE_SET_MASK;
+            if (self.current_page_index > FANTASY_PAGE_COUNT){
+                log::warn!("Out of range page select register write!");
+                self.current_page_index = 0;
+            } else {
+                self.current_page_index = data;
+            }
 
-            // todo: this
             if ((data & FANTASY_AUTOINCREMENT_PAGE_FLAG) == FANTASY_AUTOINCREMENT_PAGE_FLAG){
                 self.page_index_auto_increment_on = true;
             } else {
@@ -294,15 +332,20 @@ impl IoDevice for FantasyEmsCard {
             }
         }
         else if (port == FANTASY_PAGE_SET_REGISTER) {
-            // Read is from LPT port.
             if (data == 0xFF){
+                // log::warn!("Page unset!");
                 self.page_reg_unmap(self.current_page_index);
             } else {
+                // log::warn!("Page set!");
                 self.page_reg_write(self.current_page_index, data);
             }
 
             if (self.page_index_auto_increment_on){
-                self.current_page_index = (self.current_page_index + 1) % (FANTASY_PAGE_COUNT as u8);
+                self.current_page_index += 1;
+                if (self.current_page_index > FANTASY_PAGE_COUNT){
+                    self.current_page_index = 0;
+                }
+
             }
         }
     }
