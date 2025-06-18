@@ -43,15 +43,27 @@ use crate::{
     cpu_common::LogicAnalyzer,
 };
 
+// todos:
+// proper config
+// unmapped state for page frames
+// Port EB
+// ? reset pages on reset?
+
 pub const FANTASY_DEFAULT_IO_BASE: u16 = 0x260;
 pub const FANTASY_IO_MASK: u16 = !0x03;
 pub const FANTASY_DEFAULT_EMS_WINDOW_SEG: usize = 0xD000;
 pub const FANTASY_EMS_WINDOW_SIZE: usize = 0x10000;
-pub const FANTASY_CONVENTIONAL_WINDOW_START_SEG: usize = 0x4000;
+
+pub const FANTASY_NON_PAGEABLE_CONVENTIONAL_WINDOW_START_SEG: usize = 0x0000;
+pub const FANTASY_NON_PAGEABLE_CONVENTIONAL_WINDOW_START_SEG_16K: usize = 0x0400;
+
+pub const FANTASY_NON_PAGEABLE_CONVENTIONAL_WINDOW_SIZE: usize = 0x40000;
+
+pub const FANTASY_PAGEABLE_CONVENTIONAL_WINDOW_START_SEG: usize = 0x4000;
 // todo stylistic: 9FFF or A000 (inclusive or exclusive)
-pub const FANTASY_CONVENTIONAL_WINDOW_END_SEG: usize = 0x9FFF;
-pub const FANTASY_CONVENTIONAL_WINDOW_END_ADDRESS: usize = 0x9FFFF;
-pub const FANTASY_CONVENTIONAL_WINDOW_SIZE: usize = 0x60000;  // 0xA0000 - 0x40000
+pub const FANTASY_PAGEABLE_CONVENTIONAL_WINDOW_END_SEG: usize = 0x9FFF;
+pub const FANTASY_PAGEABLE_CONVENTIONAL_WINDOW_END_ADDRESS: usize = 0x9FFFF;
+pub const FANTASY_PAGEABLE_CONVENTIONAL_WINDOW_SIZE: usize = 0x60000;  // 0xA0000 - 0x40000
 pub const FANTASY_EMS_SIZE: usize = 0x400000;
 
 pub const FANTASY_PAGE_MASK: usize                  = 0b1111_1100_0000_0000_0000;pub const FANTASY_BASE_MASK: usize                  = 0b0000_0011_1111_1111_1111;
@@ -62,14 +74,16 @@ pub const FANTASY_PAGE_SET_REGISTER: u16 = 0xEA;
 // todo make this EA+EB to commit the write. Support 8 MB for simplicity?
 pub const FANTASY_AUTOINCREMENT_PAGE_FLAG: u8 = 0x40;
 pub const FANTASY_PAGE_SET_MASK: u8 = 0x3F;
-pub const FANTASY_PAGE_COUNT: u8 = 36;
+// pages above 36 are not port-accessible and are read only for the sake of page_lookup_table
+pub const FANTASY_WRITABLE_PAGE_COUNT: u8 = 36;
+pub const FANTASY_PAGE_COUNT: u8 = 52;
 
 // translates the 0x400 of the memory address into the appropriate page
 static PAGE_LOOKUP_TABLE: &'static [u8] = &[
-    0, 0, 0, 0,     // 0x00000
-    0, 0, 0, 0,     // 0x10000
-    0, 0, 0, 0,     // 0x20000
-    0, 0, 0, 0,     // 0x30000
+    36, 37, 38, 39,     // 0x00000 (inaccessible)
+    40, 41, 42, 43,     // 0x10000 (inaccessible)
+    44, 45, 46, 47,     // 0x20000 (inaccessible)
+    48, 49, 50, 51,     // 0x30000 (inaccessible)
     12, 13, 14, 15, // 0x40000
     16, 17, 18, 19, // 0x50000
     20, 21, 22, 23, // 0x60000
@@ -94,7 +108,8 @@ pub struct PageRegister {
 
 pub struct FantasyEmsCard {
     window_addr: usize,
-    conventional_base_addr: usize,
+    non_pageable_conventional_base_addr: usize,
+    pageable_conventional_base_addr: usize,
     pages: [PageRegister; FANTASY_PAGE_COUNT as usize],
     mem: Vec<u8>,
     page_index_auto_increment_on: bool,
@@ -105,7 +120,8 @@ impl Default for FantasyEmsCard {
     fn default() -> Self {
         FantasyEmsCard {
             window_addr: FANTASY_DEFAULT_EMS_WINDOW_SEG << 4,
-            conventional_base_addr: FANTASY_CONVENTIONAL_WINDOW_START_SEG << 4,
+            non_pageable_conventional_base_addr: 0,
+            pageable_conventional_base_addr: FANTASY_PAGEABLE_CONVENTIONAL_WINDOW_START_SEG << 4,
 //            pages: [PageRegister::default(); FANTASY_PAGE_COUNT
             // todo there's got to be a better way
             page_index_auto_increment_on: false,
@@ -259,8 +275,71 @@ impl Default for FantasyEmsCard {
                     page_addr: 0x27 << FANTASY_PAGE_SHIFT,
                     unmapped_default : 0x27
                 },
-
-
+// non-pageable conventional
+                PageRegister {
+                    page_addr: 0x00 << FANTASY_PAGE_SHIFT,
+                    unmapped_default : 0x00
+                },
+                PageRegister {
+                    page_addr: 0x01 << FANTASY_PAGE_SHIFT,
+                    unmapped_default : 0x01
+                },
+                PageRegister {
+                    page_addr: 0x02 << FANTASY_PAGE_SHIFT,
+                    unmapped_default : 0x02
+                },
+                PageRegister {
+                    page_addr: 0x03 << FANTASY_PAGE_SHIFT,
+                    unmapped_default : 0x03
+                },
+                PageRegister {
+                    page_addr: 0x04 << FANTASY_PAGE_SHIFT,
+                    unmapped_default : 0x04
+                },
+                PageRegister {
+                    page_addr: 0x05 << FANTASY_PAGE_SHIFT,
+                    unmapped_default : 0x05
+                },
+                PageRegister {
+                    page_addr: 0x06 << FANTASY_PAGE_SHIFT,
+                    unmapped_default : 0x06
+                },
+                PageRegister {
+                    page_addr: 0x07 << FANTASY_PAGE_SHIFT,
+                    unmapped_default : 0x07
+                },
+                PageRegister {
+                    page_addr: 0x08 << FANTASY_PAGE_SHIFT,
+                    unmapped_default : 0x08
+                },
+                PageRegister {
+                    page_addr: 0x09 << FANTASY_PAGE_SHIFT,
+                    unmapped_default : 0x09
+                },
+                PageRegister {
+                    page_addr: 0x0A << FANTASY_PAGE_SHIFT,
+                    unmapped_default : 0x0A
+                },
+                PageRegister {
+                    page_addr: 0x0B << FANTASY_PAGE_SHIFT,
+                    unmapped_default : 0x0B
+                },
+                PageRegister {
+                    page_addr: 0x0C << FANTASY_PAGE_SHIFT,
+                    unmapped_default : 0x0C
+                },
+                PageRegister {
+                    page_addr: 0x0D << FANTASY_PAGE_SHIFT,
+                    unmapped_default : 0x0D
+                },
+                PageRegister {
+                    page_addr: 0x0E << FANTASY_PAGE_SHIFT,
+                    unmapped_default : 0x0E
+                },
+                PageRegister {
+                    page_addr: 0x0F << FANTASY_PAGE_SHIFT,
+                    unmapped_default : 0x0F
+                },
 
             ],
             mem: vec![0xAA; FANTASY_EMS_SIZE],
@@ -269,10 +348,10 @@ impl Default for FantasyEmsCard {
 }
 
 impl FantasyEmsCard {
-    pub fn new(window_seg: Option<usize>) -> Self {
+    pub fn new(window_seg: Option<usize>, base_addr: Option<usize>) -> Self {
         FantasyEmsCard {
             window_addr: window_seg.unwrap_or(FANTASY_DEFAULT_EMS_WINDOW_SEG) << 4,
-
+            non_pageable_conventional_base_addr: base_addr.unwrap_or(FANTASY_NON_PAGEABLE_CONVENTIONAL_WINDOW_START_SEG),
             ..Default::default()
         }
     }
@@ -315,11 +394,8 @@ impl IoDevice for FantasyEmsCard {
         _analyzer: Option<&mut LogicAnalyzer>,
     ) {
         if (port == FANTASY_PAGE_SELECT_REGISTER) {
-            // Read is from LPT port.
-
-            // todo: what to do about bad values...?
-            if (self.current_page_index > FANTASY_PAGE_COUNT){
-                log::warn!("Out of range page select register write!");
+            if (data > FANTASY_WRITABLE_PAGE_COUNT){
+                log::warn!("Out of range page select register write! {}", data);
                 self.current_page_index = 0;
             } else {
                 self.current_page_index = data;
@@ -333,16 +409,16 @@ impl IoDevice for FantasyEmsCard {
         }
         else if (port == FANTASY_PAGE_SET_REGISTER) {
             if (data == 0xFF){
-                // log::warn!("Page unset!");
+                //log::warn!("Page {} Unset!", self.current_page_index);
                 self.page_reg_unmap(self.current_page_index);
             } else {
-                // log::warn!("Page set!");
+                //log::warn!("Page set! {} as {}", self.current_page_index, data);
                 self.page_reg_write(self.current_page_index, data);
             }
 
             if (self.page_index_auto_increment_on){
                 self.current_page_index += 1;
-                if (self.current_page_index > FANTASY_PAGE_COUNT){
+                if (self.current_page_index > FANTASY_WRITABLE_PAGE_COUNT){
                     self.current_page_index = 0;
                 }
 
@@ -367,6 +443,10 @@ impl MemoryMappedDevice for FantasyEmsCard {
         let page = PAGE_LOOKUP_TABLE[(address & FANTASY_PAGE_MASK) >> FANTASY_PAGE_SHIFT] as usize;
         let ems_addr = self.pages[page].page_addr + (address & FANTASY_BASE_MASK);
 
+        if (ems_addr == 0x9C000){
+
+        }
+
         (self.mem[ems_addr], 0)
     }
 
@@ -381,7 +461,7 @@ impl MemoryMappedDevice for FantasyEmsCard {
     fn mmio_peek_u8(&self, address: usize, _cpumem: Option<&[u8]>) -> u8 {
         let page = PAGE_LOOKUP_TABLE[(address & FANTASY_PAGE_MASK) >> FANTASY_PAGE_SHIFT] as usize;
         let ems_addr = self.pages[page].page_addr + (address & FANTASY_BASE_MASK);
-
+        
         self.mem[ems_addr]
     }
 
@@ -421,9 +501,20 @@ impl MemoryMappedDevice for FantasyEmsCard {
             priority: 0,
         });
 
+        // should this be its own mapping for clarity reasons?
+        // or merged with the pageable one below?
         mapping.push(MemRangeDescriptor {
-            address: self.conventional_base_addr,
-            size: FANTASY_CONVENTIONAL_WINDOW_SIZE,
+            address: self.non_pageable_conventional_base_addr,
+            size: FANTASY_NON_PAGEABLE_CONVENTIONAL_WINDOW_SIZE - self.non_pageable_conventional_base_addr,
+            cycle_cost: 0,
+            read_only: false,
+            priority: 0,
+        });
+
+
+        mapping.push(MemRangeDescriptor {
+            address: self.pageable_conventional_base_addr,
+            size: FANTASY_PAGEABLE_CONVENTIONAL_WINDOW_SIZE,
             cycle_cost: 0,
             read_only: false,
             priority: 0,
