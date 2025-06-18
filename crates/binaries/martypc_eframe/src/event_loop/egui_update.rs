@@ -211,6 +211,17 @@ pub fn update_egui(emu: &mut Emulator, dm: &mut EFrameDisplayManager, tm: &Times
         emu.gui.io_stats_viewer.set_content(vec);
     }
 
+    // -- Update IO stats viewer window if open
+    if emu.gui.is_window_open(GuiWindow::FantasyEMSStatsViewer) {
+        if let Some(fantasy_ems) = emu.machine.bus_mut().fantasy_ems_mut() {
+            // let vec = fantasy_ems.dump_fantasy_stats();
+            // emu.gui.fantasy_ems_stats_viewer.set_content(vec);
+            let ems_state = fantasy_ems.get_ems_debug_state();
+            emu.gui.fantasy_ems_stats_viewer.update_state(&ems_state);
+
+        }
+    }
+
     // -- Update PIT viewer window
     if emu.gui.is_window_open(GuiWindow::PitViewer) {
         let pit_state = emu.machine.pit_state();

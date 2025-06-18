@@ -80,6 +80,7 @@ use crate::devices::fdc::FdcDebugState;
 use crate::devices::floppy_drive::FloppyImageState;
 
 use ringbuf::{Consumer};
+use crate::devices::fantasy_ems::FantasyEmsCard;
 use crate::devices::hdc::jr_ide::JrIdeController;
 
 pub const STEP_OVER_TIMEOUT: u32 = 320000;
@@ -912,6 +913,10 @@ impl Machine {
     }
 
      */
+
+    pub fn fantasy_ems(&mut self) -> &mut Option<FantasyEmsCard> {
+        self.cpu.bus_mut().fantasy_ems_mut()
+    }
 
     pub fn cpu(&self) -> &CpuDispatch {
         &self.cpu

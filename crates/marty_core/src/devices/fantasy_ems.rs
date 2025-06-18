@@ -42,12 +42,14 @@ use crate::{
     bus::{BusInterface, DeviceRunTimeUnit, IoDevice, MemRangeDescriptor, MemoryMappedDevice, NO_IO_BYTE},
     cpu_common::LogicAnalyzer,
 };
-
-// todos:
-// proper config
-// unmapped state for page frames
-// Port EB
-// ? reset pages on reset?
+use crate::bus::DEVICE_DESC_LEN;
+use crate::devices::pic::PicStringState;
+use crate::syntax_token::{SyntaxFormatType, SyntaxToken};
+// todos/wishlist:
+// ? reset pages on reset/power off
+// Status window with current page frames
+// Flat memory viewer?
+// Memory access breakpoints of the EMS memory regions
 
 pub const FANTASY_DEFAULT_IO_BASE: u16 = 0x260;
 pub const FANTASY_IO_MASK: u16 = !0x03;
@@ -64,14 +66,14 @@ pub const FANTASY_PAGEABLE_CONVENTIONAL_WINDOW_START_SEG: usize = 0x4000;
 pub const FANTASY_PAGEABLE_CONVENTIONAL_WINDOW_END_SEG: usize = 0x9FFF;
 pub const FANTASY_PAGEABLE_CONVENTIONAL_WINDOW_END_ADDRESS: usize = 0x9FFFF;
 pub const FANTASY_PAGEABLE_CONVENTIONAL_WINDOW_SIZE: usize = 0x60000;  // 0xA0000 - 0x40000
-pub const FANTASY_EMS_SIZE: usize = 0x400000;
+pub const FANTASY_EMS_SIZE: usize = 0x800000;
 
 pub const FANTASY_PAGE_MASK: usize                  = 0b1111_1100_0000_0000_0000;pub const FANTASY_BASE_MASK: usize                  = 0b0000_0011_1111_1111_1111;
 pub const FANTASY_PAGE_SHIFT: usize = 14;
 
 pub const FANTASY_PAGE_SELECT_REGISTER: u16 = 0xE8;
-pub const FANTASY_PAGE_SET_REGISTER: u16 = 0xEA;
-// todo make this EA+EB to commit the write. Support 8 MB for simplicity?
+pub const FANTASY_PAGE_SET_REGISTER_LO: u16 = 0xEA;
+pub const FANTASY_PAGE_SET_REGISTER_HI: u16 = 0xEB;
 pub const FANTASY_AUTOINCREMENT_PAGE_FLAG: u8 = 0x40;
 pub const FANTASY_PAGE_SET_MASK: u8 = 0x3F;
 // pages above 36 are not port-accessible and are read only for the sake of page_lookup_table
@@ -99,6 +101,32 @@ static PAGE_LOOKUP_TABLE: &'static [u8] = &[
 
 ];
 
+static PAGE_SEGMENT_LOOKUP: &'static [u16] = &[
+    0xC000, 0xC400, 0xC800, 0xCC00,
+    0xD000, 0xD400, 0xD800, 0xDC00,
+    0xE000, 0xE400, 0xE800, 0xEC00,
+    0x4000, 0x4400, 0x4800, 0x4C00,
+    0x5000, 0x5400, 0x5800, 0x5C00,
+    0x6000, 0x6400, 0x6800, 0x6C00,
+    0x7000, 0x7400, 0x7800, 0x7C00,
+    0x8000, 0x8400, 0x8800, 0x8C00,
+    0x9000, 0x9400, 0x9800, 0x9C00,
+    0x0000, 0x0400, 0x0800, 0x0C00,
+    0x1000, 0x1400, 0x1800, 0x1C00,
+    0x2000, 0x2400, 0x2800, 0x2C00,
+    0x3000, 0x3400, 0x3800, 0x3C00,
+];
+
+
+#[derive(Clone, Default)]
+pub struct EMSDebugState {
+    pub current_page_index_state: u8,
+    pub current_page_set_register_lo_value_state: u8,
+    pub page_index_auto_increment_on_state: bool,
+    pub page_register_state: Vec<(u8, u16, usize)>,
+}
+
+
 
 #[derive(Debug, Clone, Copy, Default)]
 pub struct PageRegister {
@@ -113,6 +141,7 @@ pub struct FantasyEmsCard {
     pages: [PageRegister; FANTASY_PAGE_COUNT as usize],
     mem: Vec<u8>,
     page_index_auto_increment_on: bool,
+    current_page_set_register_lo_value: u8,
     current_page_index: u8,
 }
 
@@ -122,10 +151,10 @@ impl Default for FantasyEmsCard {
             window_addr: FANTASY_DEFAULT_EMS_WINDOW_SEG << 4,
             non_pageable_conventional_base_addr: 0,
             pageable_conventional_base_addr: FANTASY_PAGEABLE_CONVENTIONAL_WINDOW_START_SEG << 4,
-//            pages: [PageRegister::default(); FANTASY_PAGE_COUNT
-            // todo there's got to be a better way
             page_index_auto_increment_on: false,
+            current_page_set_register_lo_value: 0,
             current_page_index: 0,
+            // todo there's got to be a better way
             pages: [
                 // first four pages (the page frame) point to later pages, such that the
                 // conventional page frame points to the first pages on the device
@@ -356,7 +385,7 @@ impl FantasyEmsCard {
         }
     }
 
-    pub fn page_reg_write(&mut self, port_num: u8, data: u8) {
+    pub fn page_reg_write(&mut self, port_num: u8, data: u16) {
         //self.pages[port_num as usize].page_addr = ((data & 0x7F) as usize) << 14;
         self.pages[port_num as usize].page_addr = (data as usize) << FANTASY_PAGE_SHIFT;
     }
@@ -365,6 +394,40 @@ impl FantasyEmsCard {
         //self.pages[port_num as usize].page_addr = ((data & 0x7F) as usize) << 14;
         self.pages[port_num as usize].page_addr = (self.pages[port_num as usize].unmapped_default as usize) << FANTASY_PAGE_SHIFT;
     }
+
+
+    pub fn dump_fantasy_stats(&mut self) -> Vec<Vec<SyntaxToken>> {
+        let mut token_vec = Vec::new();
+
+        for (i, page) in self.pages.iter_mut().enumerate() {
+            let mut tokens = Vec::new();
+            tokens.push(SyntaxToken::Text(format!("Page {:02X}{:04x}", i, page.page_addr)));
+            token_vec.push(tokens);
+        }
+
+
+        token_vec.clone()
+    }
+
+    pub fn get_ems_debug_state(&self) -> EMSDebugState {
+
+        let mut state = EMSDebugState {
+            current_page_index_state: self.current_page_index,
+            current_page_set_register_lo_value_state: self.current_page_set_register_lo_value,
+            page_index_auto_increment_on_state: self.page_index_auto_increment_on, // todo boolean fine?
+            page_register_state: Vec::new(),
+        };
+
+        for (i, page) in self.pages.iter().enumerate() {
+            state.page_register_state.push((
+                i as u8,
+                PAGE_SEGMENT_LOOKUP[i],
+                page.page_addr
+            ));
+        }
+        state
+    }
+
 
 }
 
@@ -377,8 +440,10 @@ impl IoDevice for FantasyEmsCard {
 
         if (port == FANTASY_PAGE_SELECT_REGISTER) {
             self.current_page_index
-        } else if (port == FANTASY_PAGE_SET_REGISTER) {
+        } else if (port == FANTASY_PAGE_SET_REGISTER_LO) {
             (self.pages[self.current_page_index as usize].page_addr >> FANTASY_PAGE_SHIFT) as u8
+        } else if (port == FANTASY_PAGE_SET_REGISTER_HI) {
+            (self.pages[self.current_page_index as usize].page_addr >> (FANTASY_PAGE_SHIFT + 8)) as u8
         } else {
             NO_IO_BYTE
 
@@ -407,13 +472,18 @@ impl IoDevice for FantasyEmsCard {
                 self.page_index_auto_increment_on = false;
             }
         }
-        else if (port == FANTASY_PAGE_SET_REGISTER) {
-            if (data == 0xFF){
+        else if (port == FANTASY_PAGE_SET_REGISTER_LO) {
+            self.current_page_set_register_lo_value = data;
+
+        }
+        else if (port == FANTASY_PAGE_SET_REGISTER_HI) {
+            let combined_data:u16 = ((data as u16) << 8) + (self.current_page_set_register_lo_value as u16);
+            if (combined_data == 0xFFFF){
                 //log::warn!("Page {} Unset!", self.current_page_index);
                 self.page_reg_unmap(self.current_page_index);
             } else {
                 //log::warn!("Page set! {} as {}", self.current_page_index, data);
-                self.page_reg_write(self.current_page_index, data);
+                self.page_reg_write(self.current_page_index, combined_data);
             }
 
             if (self.page_index_auto_increment_on){
@@ -429,7 +499,8 @@ impl IoDevice for FantasyEmsCard {
     fn port_list(&self) -> Vec<(String, u16)> {
         vec![
             ("EMS Page Select Register".to_string(), FANTASY_PAGE_SELECT_REGISTER),
-            ("EMS Page Set Register".to_string(), FANTASY_PAGE_SET_REGISTER),
+            ("EMS Page Set Register Lo".to_string(), FANTASY_PAGE_SET_REGISTER_LO),
+            ("EMS Page Set Register Hi".to_string(), FANTASY_PAGE_SET_REGISTER_HI),
         ]
     }
 }
@@ -444,7 +515,7 @@ impl MemoryMappedDevice for FantasyEmsCard {
         let ems_addr = self.pages[page].page_addr + (address & FANTASY_BASE_MASK);
 
         if (ems_addr == 0x9C000){
-
+            // self.set_breakpoint_flag();
         }
 
         (self.mem[ems_addr], 0)
@@ -461,7 +532,7 @@ impl MemoryMappedDevice for FantasyEmsCard {
     fn mmio_peek_u8(&self, address: usize, _cpumem: Option<&[u8]>) -> u8 {
         let page = PAGE_LOOKUP_TABLE[(address & FANTASY_PAGE_MASK) >> FANTASY_PAGE_SHIFT] as usize;
         let ems_addr = self.pages[page].page_addr + (address & FANTASY_BASE_MASK);
-        
+
         self.mem[ems_addr]
     }
 
@@ -522,4 +593,7 @@ impl MemoryMappedDevice for FantasyEmsCard {
 
         mapping
     }
+
+
+
 }

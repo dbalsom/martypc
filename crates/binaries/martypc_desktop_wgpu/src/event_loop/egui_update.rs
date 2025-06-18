@@ -187,6 +187,14 @@ pub fn update_egui(emu: &mut Emulator, tm: &TimestepManager, elwt: &EventLoopWin
         emu.gui.io_stats_viewer.set_content(vec);
     }
 
+    // -- Update EMS stats viewer window if open
+    if emu.gui.is_window_open(GuiWindow::FantasyEMSStatsViewer) {
+        if let Some(fantasy_ems) = emu.machine.bus_mut().fantasy_ems_mut() {
+            let ems_state = fantasy_ems.get_ems_debug_state();
+            emu.gui.fantasy_ems_stats_viewer.update_state(&ems_state);
+        }
+    }
+
     // -- Update register viewer window
     if emu.gui.is_window_open(GuiWindow::CpuStateViewer) {
         let cpu_state = emu.machine.cpu().get_string_state();

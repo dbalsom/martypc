@@ -1789,6 +1789,10 @@ impl BusInterface {
         &mut self.fdc
     }
 
+    pub fn fantasy_ems_mut(&mut self) -> &mut Option<FantasyEmsCard> {
+        &mut self.fantasy_ems
+    }
+
     pub fn hdc_mut(&mut self) -> &mut Option<Box<HardDiskController>> {
         &mut self.hdc
     }
@@ -2022,4 +2026,5 @@ impl BusInterface {
             stats.1.writes_dirty = false;
         }
     }
+
 }
