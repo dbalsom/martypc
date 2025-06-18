@@ -143,6 +143,36 @@ pub fn update_egui(emu: &mut Emulator, tm: &TimestepManager, elwt: &EventLoopWin
         emu.gui.memory_viewer.set_memory(mem_dump_vec);
     }
 
+    if emu.gui.is_window_open(GuiWindow::EMSVirtualMemoryViewer) {
+        let (mem_dump_addr_str, _source) = emu.gui.ems_virtual_memory_viewer.get_address();
+
+        if let Some(fantasy_ems) = emu.machine.fantasy_ems() {
+            let (addr, mem_dump_addr) = match fantasy_ems.eval_virtual_address(&mem_dump_addr_str)
+            {
+                Some(i) => {
+                let addr: u32 = i.into();
+                // Dump at 16 byte block boundaries
+                (addr, addr & !0x0F)
+            }
+                None => {
+                // Show address 0 if expression eval fails
+                (0, 0)
+            }
+            };
+
+            let mem_dump_vec = emu
+                .machine
+                .bus()
+                .dump_virtual_flat_tokens_ex(mem_dump_addr as usize, addr as usize, 256);
+
+            //framework.gui.memory_viewer.set_row(mem_dump_addr as usize);
+
+            emu.gui.ems_virtual_memory_viewer.set_address(addr as usize);
+            emu.gui.ems_virtual_memory_viewer.set_memory(mem_dump_vec);
+        }
+
+    }
+
     // Update data visualizer
     if emu.gui.is_window_open(GuiWindow::DataVisualizer) {
         let path_opt = emu.rm.resource_path("dump");

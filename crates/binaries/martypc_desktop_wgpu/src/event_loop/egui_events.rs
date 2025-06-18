@@ -727,11 +727,35 @@ pub fn handle_egui_event(emu: &mut Emulator, elwt: &EventLoopWindowTarget<()>, g
                 emu.gui.memory_viewer.set_address(mem_dump_addr as usize);
             }
         }
+        GuiEvent::EMSVirtualMemoryUpdate => {
+            // The address bar for the memory viewer was updated. We need to
+            // evaluate the expression and set a new row value for the control.
+            // The memory contents will be updated in the normal frame update.
+            let (mem_dump_addr_str, source) = emu.gui.ems_virtual_memory_viewer.get_address();
+
+            if let InputFieldChangeSource::UserInput = source {
+                // Only evaluate expression if the address box was changed by user input.
+                if let Some(fantasy_ems) = emu.machine.fantasy_ems() {
+                    let mem_dump_addr: u32 = match fantasy_ems.eval_virtual_address(&mem_dump_addr_str) {
+                        Some(i) => {
+                            let addr: u32 = i.into();
+                            addr & !0x0F
+                        }
+                        None => {
+                            // Show address 0 if expression eval fails
+                            0
+                        }
+                    };
+                    emu.gui.ems_virtual_memory_viewer.set_address(mem_dump_addr as usize);
+                }
+            }
+        }
         GuiEvent::TokenHover(addr) => {
             // Hovered over a token in a TokenListView.
             let cpu_type = emu.machine.cpu().get_type();
             let debug = emu.machine.bus_mut().get_memory_debug(cpu_type, *addr);
             emu.gui.memory_viewer.set_hover_text(format!("{}", debug));
+            //todo ems
         }
         GuiEvent::FlushLogs => {
             // Request to flush trace logs.

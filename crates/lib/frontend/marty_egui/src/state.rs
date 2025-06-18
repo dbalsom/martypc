@@ -63,6 +63,7 @@ use crate::{
         fantasy_ems_stats_viewer::FantasyEMSStatsViewerControl,
         ivt_viewer::IvtViewerControl,
         memory_viewer::MemoryViewerControl,
+        ems_virtual_memory_viewer::EMSVirtualMemoryViewerControl,
         performance_viewer::PerformanceViewerControl,
         pic_viewer::PicViewerControl,
         pit_viewer::PitViewerControl,
@@ -118,6 +119,7 @@ use serde::{Deserialize, Serialize};
 #[cfg(feature = "use_serialport")]
 use serialport::SerialPortInfo;
 use strum::IntoEnumIterator;
+use crate::GuiWindow::EMSVirtualMemoryViewer;
 
 pub enum FloppyDriveSelection {
     None,
@@ -317,6 +319,7 @@ pub struct GuiState {
     pub cpu_viewer: CpuViewerControl,
     pub cycle_trace_viewer: CycleTraceViewerControl,
     pub memory_viewer: MemoryViewerControl,
+    pub ems_virtual_memory_viewer: EMSVirtualMemoryViewerControl,
     pub data_visualizer: DataVisualizerControl,
 
     pub perf_viewer:  PerformanceViewerControl,
@@ -466,6 +469,7 @@ impl GuiState {
             cpu_viewer: CpuViewerControl::new(exec_control.clone()),
             cycle_trace_viewer: CycleTraceViewerControl::new(),
             memory_viewer: MemoryViewerControl::new(),
+            ems_virtual_memory_viewer: EMSVirtualMemoryViewerControl::new(),
             data_visualizer: DataVisualizerControl::new(),
 
             perf_viewer: PerformanceViewerControl::new(),

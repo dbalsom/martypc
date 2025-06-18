@@ -37,12 +37,14 @@
 
 
 */
-
+use lazy_static::lazy_static;
+use regex::Regex;
 use crate::{
     bus::{BusInterface, DeviceRunTimeUnit, IoDevice, MemRangeDescriptor, MemoryMappedDevice, NO_IO_BYTE},
     cpu_common::LogicAnalyzer,
 };
 use crate::bus::DEVICE_DESC_LEN;
+use crate::cpu_common::CpuAddress;
 use crate::devices::pic::PicStringState;
 use crate::syntax_token::{SyntaxFormatType, SyntaxToken};
 // todos/wishlist:
@@ -428,6 +430,34 @@ impl FantasyEmsCard {
         state
     }
 
+    pub fn get_mem_blob(&self) -> Vec<u8> {
+        self.mem.clone()
+    }
+
+
+    // // todo this should be in a more generic EMS class perhaps?
+    pub fn eval_virtual_address(&self, expr: &str) -> Option<CpuAddress> {
+        lazy_static! {
+            static ref FLAT_REX: Regex = Regex::new(r"(?P<flat>[A-Fa-f\d]{6})$").unwrap();
+        }
+
+        if FLAT_REX.is_match(expr) {
+            match u32::from_str_radix(expr, 16) {
+                Ok(address) => Some(CpuAddress::Flat(address)),
+                Err(_) => None,
+            }
+        }
+
+        else {
+            None
+        }
+    }
+
+
+    pub(crate) fn peek_virtual_u8(&self, address: usize) -> u8 {
+        self.mem[address]
+    }
+
 
 }
 
@@ -459,7 +489,7 @@ impl IoDevice for FantasyEmsCard {
         _analyzer: Option<&mut LogicAnalyzer>,
     ) {
         if (port == FANTASY_PAGE_SELECT_REGISTER) {
-            if (data > FANTASY_WRITABLE_PAGE_COUNT){
+            if (data >= FANTASY_WRITABLE_PAGE_COUNT){
                 log::warn!("Out of range page select register write! {}", data);
                 self.current_page_index = 0;
             } else {
@@ -488,7 +518,7 @@ impl IoDevice for FantasyEmsCard {
 
             if (self.page_index_auto_increment_on){
                 self.current_page_index += 1;
-                if (self.current_page_index > FANTASY_WRITABLE_PAGE_COUNT){
+                if (self.current_page_index >= FANTASY_WRITABLE_PAGE_COUNT){
                     self.current_page_index = 0;
                 }
 
