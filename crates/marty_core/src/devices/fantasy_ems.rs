@@ -73,10 +73,14 @@ pub const FANTASY_EMS_SIZE: usize = 0x800000;
 pub const FANTASY_PAGE_MASK: usize                  = 0b1111_1100_0000_0000_0000;pub const FANTASY_BASE_MASK: usize                  = 0b0000_0011_1111_1111_1111;
 pub const FANTASY_PAGE_SHIFT: usize = 14;
 
+// SCAMP MODE
 pub const FANTASY_PAGE_SELECT_REGISTER: u16 = 0xE8;
 pub const FANTASY_PAGE_SET_REGISTER_LO: u16 = 0xEA;
 pub const FANTASY_PAGE_SET_REGISTER_HI: u16 = 0xEB;
 pub const FANTASY_AUTOINCREMENT_PAGE_FLAG: u8 = 0x40;
+
+
+
 pub const FANTASY_PAGE_SET_MASK: u8 = 0x3F;
 // pages above 36 are not port-accessible and are read only for the sake of page_lookup_table
 pub const FANTASY_WRITABLE_PAGE_COUNT: u8 = 36;
@@ -457,6 +461,38 @@ impl FantasyEmsCard {
     pub(crate) fn peek_virtual_u8(&self, address: usize) -> u8 {
         self.mem[address]
     }
+
+
+    pub fn reset(&mut self) {
+
+        // fill doesn't seem to work?
+        // self.mem.fill(0xAA);    // reset memory
+        // self.mem.iter_mut().map(|x| *x = 0xAA).count();
+
+        self.page_index_auto_increment_on = false;
+        self.current_page_set_register_lo_value = 0;
+        self.current_page_index = 0;
+
+        // reset page registers
+        for (i, page) in self.pages.iter_mut().enumerate() {
+            page.page_addr =  (page.unmapped_default as usize) << FANTASY_PAGE_SHIFT;
+        }
+
+
+    }
+
+
+    pub fn reset_warm(&mut self) {
+        // dont reset memory.
+
+        self.page_index_auto_increment_on = false;
+        self.current_page_set_register_lo_value = 0;
+        self.current_page_index = 0;
+
+        // reset page registers
+        for (i, page) in self.pages.iter_mut().enumerate() {
+            page.page_addr =  (page.unmapped_default as usize) << FANTASY_PAGE_SHIFT;
+        }    }
 
 
 }

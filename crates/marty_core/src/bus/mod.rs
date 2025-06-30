@@ -1737,12 +1737,25 @@ impl BusInterface {
         if let Some(a0) = self.a0.as_mut() {
             a0.reset();
         }
+
+
+        // Reset fantasy ems registers, memory
+        if let Some(fantasy_ems) = self.fantasy_ems.as_mut() {
+            fantasy_ems.reset();
+        }
+
     }
 
     /// Call the reset methods for devices to be reset on warm boot
     pub fn reset_devices_warm(&mut self) {
         self.pit.as_mut().unwrap().reset();
         //self.pic1.as_mut().unwrap().reset();
+
+        // Reset fantasy ems registers
+        if let Some(fantasy_ems) = self.fantasy_ems.as_mut() {
+            fantasy_ems.reset_warm();
+        }
+
     }
 
     /// Return a boolean indicating whether a timer interrupt is imminent.
