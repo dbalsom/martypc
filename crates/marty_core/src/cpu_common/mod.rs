@@ -59,6 +59,7 @@ use crate::{
     breakpoints::{BreakPointType, StopWatchData},
     bus::BusInterface,
     bytequeue::ByteQueue,
+    cpu_286::Intel286,
     cpu_808x::Intel808x,
     cpu_vx0::NecVx0,
     syntax_token::{SyntaxToken, SyntaxTokenize},
@@ -340,6 +341,7 @@ pub enum CpuType {
     Intel8086,
     NecV20(CpuArch),
     NecV30(CpuArch),
+    Intel80286,
 }
 
 impl Display for CpuType {
@@ -355,6 +357,7 @@ impl Display for CpuType {
                 CpuArch::I86 => "NEC V30",
                 CpuArch::I8080 => "NEC V30 (8080 Mode)",
             },
+            CpuType::Intel80286 => "Intel 80286",
         };
         write!(f, "{s}")
     }
@@ -385,6 +388,7 @@ impl<'de> Deserialize<'de> for CpuType {
                     "intel8086" => Ok(CpuType::Intel8086),
                     "necv20" => Ok(CpuType::NecV20(CpuArch::default())),
                     "necv30" => Ok(CpuType::NecV30(CpuArch::default())),
+                    "intel80286" => Ok(CpuType::Intel80286),
                     _ => Err(E::custom(format!("unknown CpuType '{}'", value))),
                 }
             }
@@ -405,6 +409,7 @@ impl FromStr for CpuType {
             "intel8086" => Ok(CpuType::Intel8086),
             "necv20" => Ok(CpuType::NecV20(Default::default())),
             "necv30" => Ok(CpuType::NecV30(Default::default())),
+            "intel80286" => Ok(CpuType::Intel80286),
             _ => Err("Bad value for cputype".to_string()),
         }
     }
@@ -419,6 +424,7 @@ impl CpuType {
         match self {
             CpuType::Intel8088 | CpuType::NecV20(_) => 4,
             CpuType::Intel8086 | CpuType::NecV30(_) => 6,
+            CpuType::Intel80286 => 6,
         }
     }
     pub fn decode(&self, bytes: &mut impl ByteQueue, peek: bool) -> Result<Instruction, Box<dyn std::error::Error>> {
@@ -428,6 +434,7 @@ impl CpuType {
                 CpuArch::I86 => NecVx0::decode(bytes, peek),
                 CpuArch::I8080 => NecVx0::decode_8080(bytes, peek),
             },
+            CpuType::Intel80286 => Intel286::decode(bytes, peek),
         }
     }
     pub fn tokenize_instruction(&self, instruction: &Instruction) -> Vec<SyntaxToken> {
@@ -437,6 +444,7 @@ impl CpuType {
                 CpuArch::I86 => instruction.tokenize(),
                 CpuArch::I8080 => instruction.tokenize(),
             },
+            CpuType::Intel80286 => instruction.tokenize(),
         }
     }
 }

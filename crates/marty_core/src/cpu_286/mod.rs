@@ -24,7 +24,7 @@
 
     ---------------------------------------------------------------------------
 
-    cpu_808x::mod.rs
+    cpu_286::mod.rs
 
     Implements the 8088 (And eventually 8086) CPU.
 
@@ -82,7 +82,7 @@ use crate::{
     breakpoints::{BreakPointType, CycleStopWatch, StopWatchData},
     bus::{BusInterface, MEM_BPA_BIT, MEM_BPE_BIT, MEM_RET_BIT, MEM_SW_BIT},
     bytequeue::*,
-    cpu_808x::{microcode::*, queue::InstructionQueue},
+    cpu_286::{microcode::*, queue::InstructionQueue},
     cpu_common::{CpuType, TraceMode},
     cycles_mc,
     syntax_token::*,
@@ -120,7 +120,7 @@ macro_rules! trace_print {
 }
 
 #[macro_export]
-macro_rules! gdr286 {
+macro_rules! gdr {
     ($inst:expr) => {
         &DECODE[$inst.decode_idx as usize].gdr
     };
@@ -128,7 +128,7 @@ macro_rules! gdr286 {
 
 use crate::{
     bus::ClockFactor,
-    cpu_808x::biu::BusWidth,
+    cpu_286::biu::BusWidth,
     cpu_common::{operands::OperandSize, services::CPUDebugServices, Register16, Register8},
 };
 use trace_print;
@@ -460,7 +460,7 @@ pub struct I8288 {
 }
 
 #[derive(Default)]
-pub struct Intel808x {
+pub struct Intel286 {
     cpu_type: CpuType,
     cpu_subtype: CpuSubType,
     state: CpuState,
@@ -794,7 +794,7 @@ impl Display for BusStatus {
     }
 }
 
-impl Intel808x {
+impl Intel286 {
     pub fn new(
         cpu_type: CpuType,
         cpu_subtype: CpuSubType,
@@ -803,7 +803,7 @@ impl Intel808x {
         trace_logger: TraceLogger,
         #[cfg(feature = "cpu_validator")] v_opts: ValidatorOptions,
     ) -> Self {
-        let mut cpu: Intel808x = Default::default();
+        let mut cpu: Intel286 = Default::default();
 
         match cpu_subtype {
             CpuSubType::Harris80C88 | CpuSubType::Intel8088 => {
@@ -1064,7 +1064,7 @@ impl Intel808x {
     }
 
     pub fn flat_sp(&self) -> u32 {
-        Intel808x::calc_linear_address(self.ss, self.sp)
+        Intel286::calc_linear_address(self.ss, self.sp)
     }
 
     /// Execute the CORR (Correct PC) microcode routine.
@@ -1654,7 +1654,7 @@ impl Intel808x {
             self.call_stack.push_back(entry);
 
             // Flag the specified CS:IP as a return address
-            let return_addr = Intel808x::calc_linear_address(cs, ip);
+            let return_addr = Intel286::calc_linear_address(cs, ip);
 
             self.bus.set_flags(return_addr as usize, MEM_RET_BIT);
         }
@@ -1678,9 +1678,9 @@ impl Intel808x {
 
         let pos = self.call_stack.iter().position(|&call| {
             return_addr = match call {
-                CallStackEntry::CallF { ret_cs, ret_ip, .. } => Intel808x::calc_linear_address(ret_cs, ret_ip),
-                CallStackEntry::Call { cs, ret_ip, .. } => Intel808x::calc_linear_address(cs, ret_ip),
-                CallStackEntry::Interrupt { ret_cs, ret_ip, .. } => Intel808x::calc_linear_address(ret_cs, ret_ip),
+                CallStackEntry::CallF { ret_cs, ret_ip, .. } => Intel286::calc_linear_address(ret_cs, ret_ip),
+                CallStackEntry::Call { cs, ret_ip, .. } => Intel286::calc_linear_address(cs, ret_ip),
+                CallStackEntry::Interrupt { ret_cs, ret_ip, .. } => Intel286::calc_linear_address(ret_cs, ret_ip),
             };
 
             return_addr == addr
@@ -1691,9 +1691,9 @@ impl Intel808x {
 
             drained.for_each(|drained_call| {
                 return_addr = match drained_call {
-                    CallStackEntry::CallF { ret_cs, ret_ip, .. } => Intel808x::calc_linear_address(ret_cs, ret_ip),
-                    CallStackEntry::Call { cs, ret_ip, .. } => Intel808x::calc_linear_address(cs, ret_ip),
-                    CallStackEntry::Interrupt { ret_cs, ret_ip, .. } => Intel808x::calc_linear_address(ret_cs, ret_ip),
+                    CallStackEntry::CallF { ret_cs, ret_ip, .. } => Intel286::calc_linear_address(ret_cs, ret_ip),
+                    CallStackEntry::Call { cs, ret_ip, .. } => Intel286::calc_linear_address(cs, ret_ip),
+                    CallStackEntry::Interrupt { ret_cs, ret_ip, .. } => Intel286::calc_linear_address(ret_cs, ret_ip),
                 };
 
                 // Clear flags for returns we popped
@@ -2113,7 +2113,7 @@ impl Intel808x {
         self.pc = self.pc.wrapping_sub(self.queue.len() as u16);
         let initial_pc = self.pc;
         #[allow(unused_variables)]
-        let initial_addr = Intel808x::calc_linear_address(self.cs, self.pc);
+        let initial_addr = Intel286::calc_linear_address(self.cs, self.pc);
         self.queue.flush();
         for (i, byte) in contents.iter().enumerate() {
             if i < self.queue.size() {
