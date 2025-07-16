@@ -32,7 +32,7 @@
 
 use crate::{
     cpu_286::{
-        microcode::{MC_CORR, MC_JUMP, MC_NONE, MC_RTN, MICROCODE_NUL, MICROCODE_SRC_8088},
+        microcode::{MC_CORR, MC_JUMP, MC_NONE, MC_RTN},
         BusStatus,
         Cpu,
         DmaState,
@@ -356,11 +356,6 @@ impl Intel286 {
             }
         };
 
-        let microcode_op_str = match self.trace_instr {
-            i if usize::from(i) < MICROCODE_SRC_8088.len() => MICROCODE_SRC_8088[i as usize].to_string(),
-            _ => MICROCODE_NUL.to_string(),
-        };
-
         let _dma_dreq_chr = match self.dma_aen {
             true => 'R',
             false => '.',
@@ -422,7 +417,7 @@ impl Intel286 {
         }
         else {
             cycle_str = format!(
-                "{:08}:{:04} {:02}[{:05X}] {:02} {}{}{} M:{}{}{} I:{}{}{} |{:5}| {:04} {:02} | {:04} {:02} {:04} {:02} | {:0xfer_size$} | {:<8}| {:<10} | {:1}{:1}{:1}[{:queue_size$}] {} | {}: {} | {}",
+                "{:08}:{:04} {:02}[{:05X}] {:02} {}{}{} M:{}{}{} I:{}{}{} |{:5}| {:04} {:02} | {:04} {:02} {:04} {:02} | {:0xfer_size$} | {:<8}| {:<10} | {:1}{:1}{:1}[{:queue_size$}] {} | {}",
                 self.cycle_num,
                 self.instr_cycle,
                 ale_str,
@@ -447,8 +442,6 @@ impl Intel286 {
                 q_preload_char,
                 self.queue.to_string(),
                 q_read_str,
-                microcode_line_str,
-                microcode_op_str,
                 instr_str
             );
         }
@@ -600,12 +593,6 @@ impl Intel286 {
         };
         let microcode_line_token = SyntaxToken::Text(microcode_line_str.to_string());
 
-        let microcode_op_str = match self.trace_instr {
-            i if usize::from(i) < MICROCODE_SRC_8088.len() => MICROCODE_SRC_8088[i as usize].to_string(),
-            _ => MICROCODE_NUL.to_string(),
-        };
-        let microcode_op_token = SyntaxToken::Text(microcode_op_str.to_string());
-
         let _dma_dreq_chr = match self.dma_aen {
             true => 'R',
             false => '.',
@@ -665,8 +652,6 @@ impl Intel286 {
             SyntaxToken::Text(self.last_queue_len.to_string()),
             SyntaxToken::Text(self.queue.to_string()),
             q_read_token,
-            microcode_line_token,
-            microcode_op_token,
             instr_str_token,
             SyntaxToken::Text(comment_str),
         ];
