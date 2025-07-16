@@ -202,6 +202,7 @@ impl InstructionQueue {
 
     /// Flush the processor queue. This resets the queue to an empty state
     pub fn flush(&mut self) {
+        log::trace!("flushing queue!");
         self.len = 0;
         self.back = 0;
         self.front = 0;

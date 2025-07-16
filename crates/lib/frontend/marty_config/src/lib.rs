@@ -237,6 +237,7 @@ pub struct Validator {
     pub trigger_address: Option<u32>,
     pub trace_file: Option<PathBuf>,
     pub baud_rate: Option<u32>,
+    pub port: Option<String>,
 }
 
 #[derive(Debug, Deserialize)]
@@ -267,6 +268,8 @@ pub struct Tests {
     pub test_gen_append: Option<bool>,
     pub test_gen_stop_on_error: Option<bool>,
     pub test_gen_version: Option<u32>,
+    #[serde(default)]
+    pub test_gen_prefetch: bool,
     pub test_gen_ignore_underflow: Option<bool>,
     pub test_gen_validate_cycles: Option<bool>,
     pub test_gen_validate_memops: Option<bool>,

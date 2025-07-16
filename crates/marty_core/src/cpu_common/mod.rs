@@ -602,7 +602,7 @@ pub trait Cpu {
     // General CPU control
     fn reset(&mut self);
     fn set_reset_vector(&mut self, address: CpuAddress);
-    fn set_reset_queue_contents(&mut self, contents: Vec<u8>);
+    fn set_queue_contents(&mut self, contents: &[u8], on_reset: bool);
     fn set_end_address(&mut self, address: CpuAddress);
     fn set_nmi(&mut self, state: bool);
     fn set_intr(&mut self, state: bool);
@@ -669,10 +669,10 @@ pub trait Cpu {
     fn get_validator_mut(&mut self) -> &mut Option<Box<dyn CpuValidator>>;
     fn randomize_seed(&mut self, seed: u64);
     fn randomize_mem(&mut self, weight: bool);
-    fn randomize_regs(&mut self);
-    fn random_grp_instruction(&mut self, opcode: u8, extension_list: &[u8]);
-    fn random_inst_from_opcodes(&mut self, opcode_list: &[u8], prefix: Option<u8>);
-
+    fn randomize_regs(&mut self, cs: Option<u16>, pc: Option<u16>);
+    fn random_grp_instruction(&mut self, opcode: u8, extension_list: &[u8], addr: u32);
+    fn random_inst_from_opcodes(&mut self, opcode_list: &[u8], prefix: Option<u8>, addr: u32);
+    fn patch_instruction(&mut self, opcode: u8);
     // Logic Analyzer
     fn logic_analyzer(&mut self) -> Option<&mut LogicAnalyzer>;
     fn bus_and_analyzer_mut(&mut self) -> (&mut BusInterface, Option<&mut LogicAnalyzer>);

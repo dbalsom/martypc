@@ -366,7 +366,7 @@ pub fn run() {
             println!("Machine: {}", machine);
             if let Some(reqs) = machine_manager
                 .get_config(&machine)
-                .and_then(|config| Some(config.get_rom_requirements()))
+                .map(|machine_config| machine_config.get_rom_requirements(config.machine.custom_roms))
             {
                 println!("  Requires: {:?}", reqs);
             }

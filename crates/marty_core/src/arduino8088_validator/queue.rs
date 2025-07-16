@@ -31,6 +31,7 @@ use std::fmt::Display;
 pub enum QueueDataType {
     Program,
     PrefetchProgram,
+    PrefetchProgramHalf,
     EndInstruction,
     Finalize,
     FinalizeHalf,
@@ -108,8 +109,10 @@ impl InstructionQueue {
                 }
                 DataWidth::Sixteen => {
                     let (byte_type0, byte_type1) = if matches!(dtype, QueueDataType::FinalizeHalf) {
-                        // Substitute FinalizeHalf with Program Finalize
                         (QueueDataType::Program, QueueDataType::Finalize)
+                    }
+                    else if matches!(dtype, QueueDataType::PrefetchProgramHalf) {
+                        (QueueDataType::PrefetchProgram, QueueDataType::Program)
                     }
                     else {
                         (dtype, dtype)

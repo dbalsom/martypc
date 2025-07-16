@@ -54,9 +54,6 @@ pub enum BusState {
     PASV = 7, // Passive
 }
 
-#[cfg(feature = "arduino_validator")]
-use crate::arduino8088_validator::MOF_EMULATOR;
-
 use crate::cpu_common::{CpuType, QueueOp};
 use serde::{
     de::{self, Deserializer, SeqAccess, Visitor},
@@ -447,7 +444,7 @@ pub enum AccessType {
 
 impl From<u8> for AccessType {
     fn from(value: u8) -> Self {
-        match value {
+        match (value >> 3) & 0x03 {
             0x0 => AccessType::AlternateData,
             0x1 => AccessType::Stack,
             0x2 => AccessType::CodeOrNone,

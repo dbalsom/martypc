@@ -26,7 +26,6 @@
 use core::fmt::Display;
 use std::error::Error;
 
-#[macro_use]
 use ard808x_client::*;
 
 use super::{BusOp, BusOpType, OPCODE_NOP};
@@ -47,10 +46,9 @@ const ADDRESS_SPACE: usize = 1_048_576;
 
 // Code to perform a full prefetch on a given CPU. We utilize an undefined opcode on V20 that has
 // no side effects
-// TODO: Figure out how to do this on 8088.
-static NULL_PRELOAD_PGM: [u8; 0] = [];
-static INTEL808X_PRELOAD_PGM: [u8; 4] = [0xAA, 0xAA, 0xAA, 0xAA];
-static NECVX0_PRELOAD_PGM: [u8; 2] = [0x63, 0xC0];
+static NULL_PREFETCH_PGM: [u8; 0] = [];
+static INTEL808X_PREFETCH_PGM: [u8; 4] = [0xAA, 0xAA, 0xAA, 0xAA];
+static NECVX0_PREFETCH_PGM: [u8; 2] = [0x63, 0xC0];
 
 static INTEL_PREFIXES: [u8; 8] = [0x26, 0x2E, 0x36, 0x3E, 0xF0, 0xF1, 0xF2, 0xF3];
 static NEC_PREFIXES: [u8; 10] = [0x26, 0x2E, 0x36, 0x3E, 0xF0, 0xF1, 0xF2, 0xF3, 0x64, 0x65];
@@ -174,6 +172,7 @@ pub struct RemoteCpu {
     rni: bool,
     opcode: u8,
     instr_str: String,
+    instr_bytes: Vec<u8>,
     instr_addr: u32,
     end_instruction: bool,
     finalize: bool,
@@ -214,7 +213,12 @@ impl RemoteCpu {
             validator_state: ProgramState::Reset,
             run_state: RunState::Init,
 
-            prefetch_pgm: None,
+            prefetch_pgm: Some(RemoteProgram::new(
+                RemoteCpu::prefetch_pgm_bytes(cpu_type),
+                OPCODE_NOP,
+                CpuWidth::from(cpu_type),
+                true,
+            )),
             code_stream: CodeStream::new(width),
 
             address_latch: 0,
@@ -244,6 +248,7 @@ impl RemoteCpu {
             opcode: 0,
             instr_str: String::new(),
             instr_addr: 0,
+            instr_bytes: Vec::new(),
             end_instruction: false,
             finalize: false,
             flushed: false,
@@ -339,6 +344,18 @@ impl RemoteCpu {
         self.instr_str = instr_str;
     }
 
+    pub fn set_instr_bytes(&mut self, instr_bytes: &[u8]) {
+        self.instr_bytes = instr_bytes.to_vec();
+
+        if let Some(prefetch_pgm) = &mut self.prefetch_pgm {
+            // Set the next fetch byte to the first byte of the instruction.
+            if !instr_bytes.is_empty() {
+                log::trace!("Setting prefetch program next-fetch byte: {:02X}", instr_bytes[0]);
+                prefetch_pgm.set_next_fetch(instr_bytes[0]);
+            }
+        }
+    }
+
     pub fn reset(&mut self) {
         self.bus_cycle = BusCycle::T1;
         self.mcycle_state = BusState::CODE; // First state after reset is a code fetch
@@ -403,8 +420,8 @@ impl RemoteCpu {
     /// TODO: This should probably return a Result instead of setting an internal error condition.
     pub fn handle_bus_read(
         &mut self,
-        emu_mem_ops: &Vec<BusOp>,
-        emu_fetch_ops: &Vec<BusOp>,
+        emu_mem_ops: &[BusOp],
+        emu_fetch_ops: &[BusOp],
         cpu_mem_ops: &mut Vec<BusOp>,
         cpu_fetch_ops: &mut Vec<BusOp>,
         q_op: QueueOp,
@@ -421,17 +438,34 @@ impl RemoteCpu {
                     if self.in_prefetch_pgm() {
                         let program = self.prefetch_pgm.as_mut().unwrap();
 
-                        program.read_program(a0, &mut self.code_stream, QueueDataType::Program);
+                        let bytes_fetched = program.read_program(a0, &mut self.code_stream, QueueDataType::Program);
 
                         self.data_type = QueueDataType::PrefetchProgram;
                         let value = self.code_stream.pop_data_bus();
 
-                        trace!(log, ">>> Fetching {:04X} from prefetch program.", value.bus_value());
+                        log::trace!(">>> Prefetch program fetch!");
+                        trace!(
+                            log,
+                            ">>> Fetched {} bytes ({:04X}) from prefetch program, new pgm pc: {}",
+                            bytes_fetched,
+                            value.bus_value(),
+                            program.pos()
+                        );
                         self.data_bus = value.bus_value();
 
                         if !self.in_prefetch_pgm() {
                             trace!(log, ">>> Ending prefetch program fetch.");
                             self.prefetch = false;
+
+                            if bytes_fetched == 1 {
+                                // One byte of the program is the next-fetch byte, ie, part of the user program.
+                                // We need to accept the emulator fetch for this byte.
+
+                                // Add emu op to CPU FetchOp list
+                                self.data_type = QueueDataType::PrefetchProgramHalf;
+                                cpu_fetch_ops.push(emu_fetch_ops[self.fetchop_n]);
+                                self.fetchop_n += 1;
+                            }
                         }
 
                         self.cpu_client
@@ -629,7 +663,7 @@ impl RemoteCpu {
                     }
                 }
                 else {
-                    if !self.fetching_beyond {
+                    if !self.prefetch && !self.fetching_beyond {
                         trace!(log, "Fatal: fetch underflow within instruction bounds!");
                         self.error = Some(RemoteCpuError::CannotOweMultipleOps);
                         return;
@@ -853,7 +887,7 @@ impl RemoteCpu {
 
     pub fn cycle(
         &mut self,
-        instr: &[u8],
+        _instr: &[u8],
         emu_fetch_ops: &Vec<BusOp>,
         emu_mem_ops: &Vec<BusOp>,
         cpu_fetch_ops: &mut Vec<BusOp>,
@@ -1053,11 +1087,18 @@ impl RemoteCpu {
         &self.cycle_states
     }
 
-    pub fn get_preload_pgm(&self) -> &'static [u8] {
-        match self.cpu_type {
-            CpuType::Intel8088 | CpuType::Intel8086 => &INTEL808X_PRELOAD_PGM,
-            CpuType::NecV20(_) | CpuType::NecV30(_) => &NECVX0_PRELOAD_PGM,
+    pub fn prefetch_pgm_bytes(cpu_type: CpuType) -> &'static [u8] {
+        match cpu_type {
+            CpuType::Intel8088 | CpuType::Intel8086 => &INTEL808X_PREFETCH_PGM,
+            CpuType::NecV20(_) | CpuType::NecV30(_) => &NECVX0_PREFETCH_PGM,
         }
+    }
+
+    pub fn prefetch_program(&self) -> Option<&RemoteProgram> {
+        if let Some(program) = &self.prefetch_pgm {
+            return Some(program);
+        }
+        None
     }
 
     pub fn step(
@@ -1095,13 +1136,8 @@ impl RemoteCpu {
         self.ignore_underflow = ignore_underflow;
         self.cycle_states.clear();
 
-        // Install the prefetch program if requested
+        // Do prefetch program initialization
         if self.prefetch {
-            self.prefetch_pgm = Some(RemoteProgram::new(
-                self.get_preload_pgm(),
-                OPCODE_NOP,
-                CpuWidth::from(self.cpu_type),
-            ));
             self.program_started = false;
             self.run_state = RunState::Preload;
         }
@@ -1200,6 +1236,12 @@ impl RemoteCpu {
             if cycle_trace {
                 trace!(log, "{}", self.get_cpu_state_str());
             }
+        }
+
+        if let Some(prefetch_pgm) = &mut self.prefetch_pgm {
+            // Reset prefetch program
+            prefetch_pgm.reset();
+            trace!(log, "Resetting prefetch program");
         }
 
         Ok((cycle_vec, self.discard_front))
