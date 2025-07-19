@@ -61,6 +61,7 @@ use crate::{
         hdc::{xebec::HardDiskController, xtide::XtIdeController},
         keyboard::{KeyboardType, *},
         lotech_ems::LotechEmsCard,
+        fantasy_ems::FantasyEmsCard,
         lpt_card::ParallelController,
         mda::MDACard,
         mouse::*,
@@ -471,6 +472,7 @@ pub struct BusInterface {
     jride: Option<Box<JrIdeController>>,
     mouse: Option<Mouse>,
     ems: Option<LotechEmsCard>,
+    fantasy_ems: Option<FantasyEmsCard>,
     cart_slot: Option<CartridgeSlot>,
     game_port: Option<GamePort>,
     #[cfg(feature = "opl")]
@@ -559,6 +561,7 @@ impl Default for BusInterface {
             jride: None,
             mouse: None,
             ems: None,
+            fantasy_ems: None,
             cart_slot: None,
             game_port: None,
             #[cfg(feature = "opl")]
@@ -1198,6 +1201,15 @@ impl BusInterface {
                 add_mmio_device!(self, ems, MmioDeviceType::Ems);
                 self.ems = Some(ems);
             }
+
+            if let EmsType::Fantasy4MB = ems_config.ems_type {
+                // Add EMS ports to io_map
+                let fantasy_ems = FantasyEmsCard::new(Some(ems_config.window as usize), Some(16384)); //todo pull this from a new type of config
+                add_io_device!(self, fantasy_ems, IoDeviceType::Ems);
+                add_mmio_device!(self, fantasy_ems, MmioDeviceType::Ems);
+                self.fantasy_ems = Some(fantasy_ems);
+            }
+
         }
 
         // Create PCJr cartridge slot
@@ -1725,12 +1737,25 @@ impl BusInterface {
         if let Some(a0) = self.a0.as_mut() {
             a0.reset();
         }
+
+
+        // Reset fantasy ems registers, memory
+        if let Some(fantasy_ems) = self.fantasy_ems.as_mut() {
+            fantasy_ems.reset();
+        }
+
     }
 
     /// Call the reset methods for devices to be reset on warm boot
     pub fn reset_devices_warm(&mut self) {
         self.pit.as_mut().unwrap().reset();
         //self.pic1.as_mut().unwrap().reset();
+
+        // Reset fantasy ems registers
+        if let Some(fantasy_ems) = self.fantasy_ems.as_mut() {
+            fantasy_ems.reset_warm();
+        }
+
     }
 
     /// Return a boolean indicating whether a timer interrupt is imminent.
@@ -1775,6 +1800,10 @@ impl BusInterface {
 
     pub fn fdc_mut(&mut self) -> &mut Option<Box<FloppyController>> {
         &mut self.fdc
+    }
+
+    pub fn fantasy_ems_mut(&mut self) -> &mut Option<FantasyEmsCard> {
+        &mut self.fantasy_ems
     }
 
     pub fn hdc_mut(&mut self) -> &mut Option<Box<HardDiskController>> {
@@ -2010,4 +2039,5 @@ impl BusInterface {
             stats.1.writes_dirty = false;
         }
     }
+
 }

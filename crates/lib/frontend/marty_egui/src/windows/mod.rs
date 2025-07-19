@@ -60,3 +60,5 @@ pub mod sn_viewer;
 pub mod text_mode_viewer;
 pub mod vhd_creator;
 pub mod videocard_viewer;
+pub(crate) mod fantasy_ems_stats_viewer;
+pub(crate) mod ems_virtual_memory_viewer;

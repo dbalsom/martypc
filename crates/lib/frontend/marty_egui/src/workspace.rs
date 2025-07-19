@@ -149,6 +149,9 @@ impl GuiState {
                 GuiWindow::MemoryViewer => {
                     self.memory_viewer.draw(ui, &mut self.event_queue);
                 }
+                GuiWindow::EMSVirtualMemoryViewer => {
+                    self.ems_virtual_memory_viewer.draw(ui, &mut self.event_queue);
+                }
                 #[cfg(feature = "use_display")]
                 GuiWindow::CompositeAdjust => {
                     self.composite_adjust.draw(ui, &mut self.event_queue);
@@ -168,6 +171,9 @@ impl GuiState {
                 }
                 GuiWindow::IoStatsViewer => {
                     self.io_stats_viewer.draw(ui, &mut self.event_queue);
+                }
+                GuiWindow::FantasyEMSStatsViewer => {
+                    self.fantasy_ems_stats_viewer.draw(ui, &mut self.event_queue);
                 }
                 GuiWindow::DelayAdjust => {
                     self.delay_adjust.draw(ui, &mut self.event_queue);

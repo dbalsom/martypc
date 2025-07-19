@@ -253,6 +253,10 @@ impl BusInterface {
                             let (data, _waits) = MemoryMappedDevice::mmio_read_u8(ems, address, system_ticks, None);
                             return Ok((data, 0));
                         }
+                        else if let Some(fantasy_ems) = &mut self.fantasy_ems {
+                            let (data, _waits) = MemoryMappedDevice::mmio_read_u8(fantasy_ems, address, system_ticks, None);
+                            return Ok((data, 0));
+                        }
                     }
                     MmioDeviceType::Cart => {
                         if let Some(cart_slot) = &mut self.cart_slot {
@@ -310,6 +314,10 @@ impl BusInterface {
                     MmioDeviceType::Ems => {
                         if let Some(ems) = &self.ems {
                             let data = MemoryMappedDevice::mmio_peek_u8(ems, address, None);
+                            return Ok(data);
+                        }
+                        else if let Some(fantasy_ems) = &self.fantasy_ems {
+                            let data = MemoryMappedDevice::mmio_peek_u8(fantasy_ems, address, None);
                             return Ok(data);
                         }
                     }
@@ -401,6 +409,9 @@ impl BusInterface {
                     MmioDeviceType::Ems => {
                         if let Some(ems) = &mut self.ems {
                             MemoryMappedDevice::mmio_write_u8(ems, address, data, 0, None);
+                        }
+                        else if let Some(fantasy_ems) = &mut self.fantasy_ems {
+                            MemoryMappedDevice::mmio_write_u8(fantasy_ems, address, data, 0, None);
                         }
                     }
                     MmioDeviceType::JrIde => {
@@ -524,6 +535,41 @@ impl BusInterface {
         }
     }
 
+    pub fn dump_virtual_flat(&self, address: usize, size: usize) -> String {
+        if address + size >= 0x800000 {
+            "REQUEST OUT OF BOUNDS".to_string()
+        }
+        else {
+            let mut dump_str = String::new();
+
+            if let Some(fantasy_ems) = &self.fantasy_ems {
+                let dump_slice = &fantasy_ems.get_mem_blob()[address..address + size];
+                let mut display_address = address;
+
+                for dump_row in dump_slice.chunks_exact(16) {
+                    let mut dump_line = String::new();
+                    let mut ascii_line = String::new();
+
+                    for byte in dump_row {
+                        dump_line.push_str(&format!("{:02x} ", byte));
+
+                        let char_str = match byte {
+                            00..=31 => ".".to_string(),
+                            32..=127 => format!("{}", *byte as char),
+                            128.. => ".".to_string(),
+                        };
+                        ascii_line.push_str(&char_str)
+                    }
+                    dump_str.push_str(&format!("{:06X} {} {}\n", display_address, dump_line, ascii_line));
+                    display_address += 16;
+                }
+                return dump_str;
+            };
+
+            "NO EMS DEVICE".to_string()
+        }
+    }
+
     /// Dump memory to a vector of string representations.
     ///
     /// Does not honor memory mappings.
@@ -559,6 +605,46 @@ impl BusInterface {
             }
         }
         vec
+    }
+
+    pub fn dump_virtual_flat_vec(&self, address: usize, size: usize) -> Vec<String> {
+        if let Some(fantasy_ems) = &self.fantasy_ems {
+            let mut vec = Vec::new();
+
+            if address + size >= fantasy_ems.get_mem_blob().len() {
+                vec.push("REQUEST OUT OF BOUNDS".to_string());
+                return vec;
+            } else {
+                let dump_slice = &fantasy_ems.get_mem_blob()[address..address + size];
+                let mut display_address = address;
+
+                for dump_row in dump_slice.chunks_exact(16) {
+                    let mut dump_line = String::new();
+                    let mut ascii_line = String::new();
+
+                    for byte in dump_row {
+                        dump_line.push_str(&format!("{:02x} ", byte));
+
+                        let char_str = match byte {
+                            00..=31 => ".".to_string(),
+                            32..=127 => format!("{}", *byte as char),
+                            128.. => ".".to_string(),
+                        };
+                        ascii_line.push_str(&char_str)
+                    }
+
+                    vec.push(format!("{:06X} {} {}\n", display_address, dump_line, ascii_line));
+
+                    display_address += 16;
+                }
+            }
+            vec
+        } else {
+            let mut vec = Vec::new();
+            vec.push("NO EMS VIRTUAL MEMORY".to_string());
+            return vec;
+
+        }
     }
 
     /// Dump memory to a vector of vectors of SyntaxTokens.
@@ -639,6 +725,87 @@ impl BusInterface {
         vec
     }
 
+    pub fn dump_virtual_flat_tokens(&self, address: usize, cursor: usize, mut size: usize) -> Vec<Vec<SyntaxToken>> {
+        if let Some(fantasy_ems) = &self.fantasy_ems {
+            let mut vec: Vec<Vec<SyntaxToken>> = Vec::new();
+
+            if address >= fantasy_ems.get_mem_blob().len() {
+                // Start address is invalid. Send only an error token.
+                let linevec = vec![SyntaxToken::ErrorString("REQUEST OUT OF BOUNDS".to_string())];
+                vec.push(linevec);
+                return vec;
+            } else if address + size >= fantasy_ems.get_mem_blob().len() {
+                // Request size invalid. Send truncated result.
+                let new_size = size - ((address + size) - fantasy_ems.get_mem_blob().len());
+                size = new_size
+            }
+
+            let dump_slice = &fantasy_ems.get_mem_blob()[address..address + size];
+            let mut display_address = address;
+
+            for dump_row in dump_slice.chunks_exact(16) {
+                let mut line_vec = Vec::new();
+
+                // Push memory flat address tokens
+                line_vec.push(SyntaxToken::MemoryAddressFlat(
+                    display_address as u32,
+                    format!("{:06X}", display_address),
+                ));
+
+                // Build hex byte value tokens
+                let mut i = 0;
+                for byte in dump_row {
+                    if (display_address + i) == cursor {
+                        line_vec.push(SyntaxToken::MemoryByteHexValue(
+                            (display_address + i) as u32,
+                            *byte,
+                            format!("{:02X}", *byte),
+                            true, // Set cursor on this byte
+                            0,
+                        ));
+                    } else {
+                        line_vec.push(SyntaxToken::MemoryByteHexValue(
+                            (display_address + i) as u32,
+                            *byte,
+                            format!("{:02X}", *byte),
+                            false,
+                            0,
+                        ));
+                    }
+                    i += 1;
+                }
+
+                // Build ASCII representation tokens
+                let mut i = 0;
+                for byte in dump_row {
+                    let char_str = match byte {
+                        00..=31 => ".".to_string(),
+                        32..=127 => format!("{}", *byte as char),
+                        128.. => ".".to_string(),
+                    };
+                    line_vec.push(SyntaxToken::MemoryByteAsciiValue(
+                        (display_address + i) as u32,
+                        *byte,
+                        char_str,
+                        0,
+                    ));
+                    i += 1;
+                }
+
+                vec.push(line_vec);
+                display_address += 16;
+            }
+
+            vec
+        } else {
+            let mut vec2: Vec<Vec<SyntaxToken>> = Vec::new();
+            let linevec2 = vec![SyntaxToken::ErrorString("NO EMS VIRTUAL MEMORY".to_string())];
+            vec2.push(linevec2);
+            vec2
+
+        }
+    }
+
     /// Dump memory to a vector of vectors of SyntaxTokens.
     ///
     /// Uses bus peek functions to resolve MMIO addresses.
@@ -716,6 +883,91 @@ impl BusInterface {
         }
 
         vec
+    }
+
+    pub fn dump_virtual_flat_tokens_ex(&self, address: usize, cursor: usize, mut size: usize) -> Vec<Vec<SyntaxToken>> {
+
+
+        if let Some(fantasy_ems) = &self.fantasy_ems {
+            let mut vec: Vec<Vec<SyntaxToken>> = Vec::new();
+            if address >= fantasy_ems.get_mem_blob().len() {
+
+                // Start address is invalid. Send only an error token.
+                let linevec = vec![SyntaxToken::ErrorString("REQUEST OUT OF BOUNDS".to_string())];
+                vec.push(linevec);
+
+                return vec;
+            } else if address + size >= fantasy_ems.get_mem_blob().len() {
+                // Request size invalid. Send truncated result.
+                let new_size = size - ((address + size) - fantasy_ems.get_mem_blob().len());
+                size = new_size
+            }
+
+            let addr_vec = Vec::from_iter(address..address + size);
+            let mut display_address = address;
+
+            for dump_addr_row in addr_vec.chunks_exact(16) {
+                let mut line_vec = Vec::new();
+
+                // Push memory flat address tokens
+                line_vec.push(SyntaxToken::MemoryAddressFlat(
+                    display_address as u32,
+                    format!("{:06X}", display_address),
+                ));
+
+                // Build hex byte value tokens
+                for (i, addr) in dump_addr_row.iter().enumerate() {
+                    let byte = fantasy_ems.peek_virtual_u8(*addr);
+
+                    if (display_address + i) == cursor {
+                        line_vec.push(SyntaxToken::MemoryByteHexValue(
+                            (display_address + i) as u32,
+                            byte,
+                            format!("{:02X}", byte),
+                            true, // Set cursor on this byte
+                            0,
+                        ));
+                    } else {
+                        line_vec.push(SyntaxToken::MemoryByteHexValue(
+                            (display_address + i) as u32,
+                            byte,
+                            format!("{:02X}", byte),
+                            false,
+                            0,
+                        ));
+                    }
+                }
+
+                // Build ASCII representation tokens
+                for (i, addr) in dump_addr_row.iter().enumerate() {
+                    let byte = fantasy_ems.peek_virtual_u8(*addr);
+
+                    let char_str = match byte {
+                        00..=31 => ".".to_string(),
+                        32..=127 => format!("{}", byte as char),
+                        128.. => ".".to_string(),
+                    };
+                    line_vec.push(SyntaxToken::MemoryByteAsciiValue(
+                        (display_address + i) as u32,
+                        byte,
+                        char_str,
+                        0,
+                    ));
+                }
+
+                vec.push(line_vec);
+                display_address += 16;
+            }
+
+            return vec;
+        }
+
+        let mut vec2: Vec<Vec<SyntaxToken>> = Vec::new();
+        let linevec2 = vec![SyntaxToken::ErrorString("NO EMS VIRTUAL MEMORY".to_string())];
+        vec2.push(linevec2);
+        vec2
+
+
     }
 
     pub fn dump_mem(&self, path: &Path) {

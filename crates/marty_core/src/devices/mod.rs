@@ -47,6 +47,7 @@ pub mod game_port;
 pub mod hdc;
 pub mod keyboard;
 pub mod lotech_ems;
+pub mod fantasy_ems;
 pub mod lpt_card;
 pub mod lpt_port;
 pub mod mc6845;

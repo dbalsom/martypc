@@ -60,8 +60,10 @@ use crate::{
         floppy_viewer::FloppyViewerControl,
         instruction_history_viewer::InstructionHistoryControl,
         io_stats_viewer::IoStatsViewerControl,
+        fantasy_ems_stats_viewer::FantasyEMSStatsViewerControl,
         ivt_viewer::IvtViewerControl,
         memory_viewer::MemoryViewerControl,
+        ems_virtual_memory_viewer::EMSVirtualMemoryViewerControl,
         performance_viewer::PerformanceViewerControl,
         pic_viewer::PicViewerControl,
         pit_viewer::PitViewerControl,
@@ -117,6 +119,7 @@ use serde::{Deserialize, Serialize};
 #[cfg(feature = "use_serialport")]
 use serialport::SerialPortInfo;
 use strum::IntoEnumIterator;
+use crate::GuiWindow::EMSVirtualMemoryViewer;
 
 pub enum FloppyDriveSelection {
     None,
@@ -316,6 +319,7 @@ pub struct GuiState {
     pub cpu_viewer: CpuViewerControl,
     pub cycle_trace_viewer: CycleTraceViewerControl,
     pub memory_viewer: MemoryViewerControl,
+    pub ems_virtual_memory_viewer: EMSVirtualMemoryViewerControl,
     pub data_visualizer: DataVisualizerControl,
 
     pub perf_viewer:  PerformanceViewerControl,
@@ -339,6 +343,7 @@ pub struct GuiState {
     pub scaler_adjust: ScalerAdjustControl,
     pub ivt_viewer: IvtViewerControl,
     pub io_stats_viewer: IoStatsViewerControl,
+    pub fantasy_ems_stats_viewer: FantasyEMSStatsViewerControl,
     pub device_control: DeviceControl,
     pub vhd_creator: VhdCreator,
     pub text_mode_viewer: TextModeViewer,
@@ -464,6 +469,7 @@ impl GuiState {
             cpu_viewer: CpuViewerControl::new(exec_control.clone()),
             cycle_trace_viewer: CycleTraceViewerControl::new(),
             memory_viewer: MemoryViewerControl::new(),
+            ems_virtual_memory_viewer: EMSVirtualMemoryViewerControl::new(),
             data_visualizer: DataVisualizerControl::new(),
 
             perf_viewer: PerformanceViewerControl::new(),
@@ -485,6 +491,7 @@ impl GuiState {
             scaler_adjust: ScalerAdjustControl::new(),
             ivt_viewer: IvtViewerControl::new(),
             io_stats_viewer: IoStatsViewerControl::new(),
+            fantasy_ems_stats_viewer: FantasyEMSStatsViewerControl::new(),
             device_control: DeviceControl::new(),
             vhd_creator: VhdCreator::new(),
             text_mode_viewer: TextModeViewer::new(),

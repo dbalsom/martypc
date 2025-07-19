@@ -312,4 +312,5 @@ pub enum ParallelControllerType {
 #[derive(Copy, Clone, Debug, Deserialize, Eq, PartialEq)]
 pub enum EmsType {
     LoTech2MB,
+    Fantasy4MB,
 }

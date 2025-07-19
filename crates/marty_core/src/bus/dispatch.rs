@@ -35,6 +35,7 @@ use crate::{
         conventional_memory::ConventionalMemory,
         hdc::{jr_ide::JrIdeController, xebec::HardDiskController, xtide::XtIdeController},
         lotech_ems::LotechEmsCard,
+        fantasy_ems::FantasyEmsCard,
     },
 };
 
@@ -90,9 +91,15 @@ impl HdcDispatch {
     }
 }
 
+pub enum EmsDispatch {
+    LoTech(Box<LotechEmsCard>),
+    FantasyEms(Box<FantasyEmsCard>),
+}
+
 pub enum MemoryDispatch {
     Conventional(ConventionalMemory),
     Ems(LotechEmsCard),
+    FantasyEms(FantasyEmsCard),
 }
 
 impl MemoryDispatch {
@@ -100,6 +107,7 @@ impl MemoryDispatch {
         match self {
             MemoryDispatch::Conventional(conventional) => conventional.mmio_peek_u8(address, cpumem),
             MemoryDispatch::Ems(ems) => ems.mmio_peek_u8(address, cpumem),
+            MemoryDispatch::FantasyEms(fantasy_ems) => fantasy_ems.mmio_peek_u8(address, cpumem),
         }
     }
 
@@ -107,6 +115,7 @@ impl MemoryDispatch {
         match self {
             MemoryDispatch::Conventional(conventional) => conventional.mmio_read_u8(address, ticks, cpumem),
             MemoryDispatch::Ems(ems) => ems.mmio_read_u8(address, ticks, cpumem),
+            MemoryDispatch::FantasyEms(fantasy_ems) => fantasy_ems.mmio_read_u8(address, ticks, cpumem),
         }
     }
 
@@ -114,6 +123,7 @@ impl MemoryDispatch {
         match self {
             MemoryDispatch::Conventional(conventional) => conventional.mmio_write_u8(address, data, ticks, cpumem),
             MemoryDispatch::Ems(ems) => ems.mmio_write_u8(address, data, ticks, cpumem),
+            MemoryDispatch::FantasyEms(fantasy_ems) => fantasy_ems.mmio_write_u8(address, data, ticks, cpumem),
         }
     }
 
@@ -121,6 +131,7 @@ impl MemoryDispatch {
         match self {
             MemoryDispatch::Conventional(conventional) => conventional.get_read_wait(address, system_ticks),
             MemoryDispatch::Ems(ems) => ems.get_read_wait(address, system_ticks),
+            MemoryDispatch::FantasyEms(fantasy_ems) => fantasy_ems.get_read_wait(address, system_ticks),
         }
     }
 }

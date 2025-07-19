@@ -29,6 +29,26 @@ name = "lotech_ems"
     # Memory size = 2MB. Do not modify.
     size = 0x200000
 
+[[overlay]]
+name = "fantasy_ems"
+    [overlay.ems]
+    ems_type = "Fantasy4MB"
+    # EMS Window
+    # Valid values for Fantasy EMS card are:
+    #  0xC000
+    #  0xD000
+    #  0xE000
+    window = 0xD000
+    # Base IO address
+    # Valid values for Fantasy EMS card are:
+    #  0x260h
+    #  0x264h
+    #  0x268h
+    #  0x26Ch
+    io_base = 0x260
+    # Memory size = 4MB. Do not modify.
+    size = 0x400000
+
 
 # The AdLib sound card hosts a Yamaha OPL2 chip and was a popular early option
 # for FM synthesis sound on the PC before the SoundBlaster became the de facto

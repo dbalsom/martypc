@@ -126,6 +126,8 @@ impl GuiState {
                 self.workspace_window_open_button(ui, GuiWindow::MemoryViewer, true, true);
                 self.workspace_window_open_button(ui, GuiWindow::DataVisualizer, true, true);
                 self.workspace_window_open_button(ui, GuiWindow::IvtViewer, true, true);
+                self.workspace_window_open_button(ui, GuiWindow::FantasyEMSStatsViewer, true, true);
+                self.workspace_window_open_button(ui, GuiWindow::EMSVirtualMemoryViewer, true, true);
 
                 ui.menu_button("Dump Memory", |ui| {
                     if ui.button("Video Memory").clicked() {
