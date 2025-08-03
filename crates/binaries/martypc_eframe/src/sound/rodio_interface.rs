@@ -311,7 +311,7 @@ impl SoundInterface {
                 let latency = (block_duration - sink_pos)
                     + Duration::from_secs_f64(source.sink.len() as f64 * block_duration.as_secs_f64());
                 let dt = last_block_duration.as_secs_f32();
-                let new_speed = source.controller.update(latency.as_millis_f32(), dt);
+                let new_speed = source.controller.update((latency.as_nanos() as f32) / 1_000_000.0, dt);
 
                 //let effective_sample_rate = block_len as f32 / block_duration.as_secs_f32();
                 let _average_sample_rate =
