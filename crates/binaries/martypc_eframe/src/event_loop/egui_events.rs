@@ -255,7 +255,7 @@ pub fn handle_egui_event(
                             match hdc.set_vhd(*drive_idx, vhd) {
                                 Ok(_) => true,
                                 Err(err) => {
-                                    error_str = Some(format!("Error mounting VHD '{}': {}", vhd_name.display(), err));
+                                    error_str = Some(format!("Error mounting VHD '{}': {}", vhd_name.to_string_lossy(), err));
                                     false
                                 }
                             }
@@ -264,7 +264,7 @@ pub fn handle_egui_event(
                             match hdc.set_vhd(*drive_idx, vhd) {
                                 Ok(_) => true,
                                 Err(err) => {
-                                    error_str = Some(format!("Error mounting VHD '{}': {}", vhd_name.display(), err));
+                                    error_str = Some(format!("Error mounting VHD '{}': {}", vhd_name.to_string_lossy(), err));
                                     false
                                 }
                             }
@@ -277,7 +277,7 @@ pub fn handle_egui_event(
                         if mount_success {
                             log::info!(
                                 "VHD image {} successfully loaded into virtual drive: {}",
-                                vhd_name.display(),
+                                vhd_name.to_string_lossy(),
                                 *drive_idx
                             );
 

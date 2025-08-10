@@ -39,7 +39,6 @@
 //! output of the emulation core's video devices. Typically, this involves converting
 //! indexed color data to RGBA.
 
-#![feature(trait_alias)]
 #[cfg(not(any(feature = "use_wgpu", feature = "use_egui_backend")))]
 compile_error!("Either the 'use_wgpu' or 'use_egui_backend' feature must be enabled.");
 #[cfg(all(feature = "use_wgpu", feature = "use_egui_backend"))]
