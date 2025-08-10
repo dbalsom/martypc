@@ -48,10 +48,11 @@ wasm-bindgen-futures.workspace = true
 marty_videocard_renderer = { path = "../marty_videocard_renderer", optional = true }
 
 [dependencies.fatfs]
-git = "https://github.com/dbalsom/fatfs_martypc.git"
-branch = "master"
+git = "https://github.com/dbalsom/fluxfox_fat.git"
+package = "fatfs"
+branch = "bpb_fix"
 default-features = false
-features = ["chrono", "std", "alloc"]
+features = ["std", "chrono", "alloc", "log_level_debug"]
 
 [features]
 default = []
