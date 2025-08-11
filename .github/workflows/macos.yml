@@ -17,10 +17,10 @@ jobs:
     runs-on: macos-14
 
     steps:
-      - name: Install nightly Rust
+      - name: Install Rust
         run: |
           curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs -o rustup-init.sh
-          sh rustup-init.sh -y --default-host aarch64-apple-darwin --default-toolchain nightly --profile complete
+          sh rustup-init.sh -y --default-host aarch64-apple-darwin --default-toolchain stable --profile complete
           . "$HOME/.cargo/env"
           $HOME/.cargo/bin/cargo version
 
@@ -30,7 +30,7 @@ jobs:
           fetch-depth: 0
 
       - name: Cargo build
-        run: cargo +nightly build --profile release-lto
+        run: cargo build --profile release-lto
 
       - name: Copy files into install dir
         run: cp LICENSE README.md CHANGELOG.md CREDITS.md target/release-lto/martypc install
@@ -58,10 +58,10 @@ jobs:
     runs-on: macos-13
 
     steps:
-      - name: Install nightly Rust
+      - name: Install Rust
         run: |
           curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs -o rustup-init.sh
-          sh rustup-init.sh -y --default-host x86_64-apple-darwin --default-toolchain nightly --profile complete
+          sh rustup-init.sh -y --default-host x86_64-apple-darwin --default-toolchain stable --profile complete
           . "$HOME/.cargo/env"
           $HOME/.cargo/bin/cargo version
 
@@ -71,7 +71,7 @@ jobs:
           fetch-depth: 0
 
       - name: Cargo build
-        run: cargo +nightly build --profile release-lto --features use_winit,use_wgpu,sound,opl
+        run: cargo build --profile release-lto --features use_winit,use_wgpu,sound,opl
 
       - name: Copy files into install dir
         run: cp LICENSE README.md CHANGELOG.md CREDITS.md target/release-lto/martypc install

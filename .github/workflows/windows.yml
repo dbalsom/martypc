@@ -35,10 +35,10 @@ jobs:
           pacboy: >-
             toolchain:p
 
-      - name: Install nightly Rust
+      - name: Install Rust
         run: |
           curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs -o rustup-init.sh
-          sh rustup-init.sh -y --default-host x86_64-pc-windows-gnu --default-toolchain nightly --profile complete
+          sh rustup-init.sh -y --default-host x86_64-pc-windows-gnu --default-toolchain stable --profile complete
           $USERPROFILE/.cargo/bin/cargo version
 
       - name: Checkout repository
