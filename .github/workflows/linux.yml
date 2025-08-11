@@ -17,10 +17,10 @@ jobs:
     runs-on: ubuntu-22.04
 
     steps:
-      - name: Install nightly Rust
+      - name: Install Rust
         run: |
           curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs -o rustup-init.sh
-          sh rustup-init.sh -y --default-host x86_64-unknown-linux-gnu --default-toolchain nightly --profile complete
+          sh rustup-init.sh -y --default-host x86_64-unknown-linux-gnu --default-toolchain stable --profile complete
           . "$HOME/.cargo/env"
           $HOME/.cargo/bin/cargo version
 
