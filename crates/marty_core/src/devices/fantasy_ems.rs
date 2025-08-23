@@ -81,6 +81,7 @@ pub const FANTASY_AUTOINCREMENT_PAGE_FLAG: u8 = 0x40;
 
 
 
+
 pub const FANTASY_PAGE_SET_MASK: u8 = 0x3F;
 // pages above 36 are not port-accessible and are read only for the sake of page_lookup_table
 pub const FANTASY_WRITABLE_PAGE_COUNT: u8 = 36;
@@ -525,11 +526,11 @@ impl IoDevice for FantasyEmsCard {
         _analyzer: Option<&mut LogicAnalyzer>,
     ) {
         if (port == FANTASY_PAGE_SELECT_REGISTER) {
-            if (data >= FANTASY_WRITABLE_PAGE_COUNT){
+            if ((data & FANTASY_PAGE_SET_MASK) >= FANTASY_WRITABLE_PAGE_COUNT){
                 log::warn!("Out of range page select register write! {}", data);
                 self.current_page_index = 0;
             } else {
-                self.current_page_index = data;
+                self.current_page_index = data & FANTASY_PAGE_SET_MASK;
             }
 
             if ((data & FANTASY_AUTOINCREMENT_PAGE_FLAG) == FANTASY_AUTOINCREMENT_PAGE_FLAG){
