@@ -70,8 +70,11 @@ pub const FANTASY_PAGEABLE_CONVENTIONAL_WINDOW_END_ADDRESS: usize = 0x9FFFF;
 pub const FANTASY_PAGEABLE_CONVENTIONAL_WINDOW_SIZE: usize = 0x60000;  // 0xA0000 - 0x40000
 pub const FANTASY_EMS_SIZE: usize = 0x800000;
 
-pub const FANTASY_PAGE_MASK: usize                  = 0b1111_1100_0000_0000_0000;pub const FANTASY_BASE_MASK: usize                  = 0b0000_0011_1111_1111_1111;
+pub const FANTASY_PAGE_MASK: usize                  = 0b1111_1100_0000_0000_0000;pub
+const FANTASY_BASE_MASK: usize                  = 0b0000_0011_1111_1111_1111;
 pub const FANTASY_PAGE_SHIFT: usize = 14;
+pub const FANTASY_EMS_MAX_LOGICAL_PAGE: u16 = (FANTASY_EMS_SIZE >> FANTASY_PAGE_SHIFT) as u16;
+pub const FANTASY_EMS_MAX_LOGICAL_PAGE_MASK: u16 = FANTASY_EMS_MAX_LOGICAL_PAGE as u16 - 1;
 
 // SCAMP MODE
 pub const FANTASY_PAGE_SELECT_REGISTER: u16 = 0xE8;
@@ -550,7 +553,8 @@ impl IoDevice for FantasyEmsCard {
                 self.page_reg_unmap(self.current_page_index);
             } else {
                 //log::warn!("Page set! {} as {}", self.current_page_index, data);
-                self.page_reg_write(self.current_page_index, combined_data);
+
+                self.page_reg_write(self.current_page_index, combined_data & FANTASY_EMS_MAX_LOGICAL_PAGE_MASK);
             }
 
             if (self.page_index_auto_increment_on){
