@@ -27,8 +27,8 @@
     devices::fantasy_ems.rs
 
     Implementation of a non-existent 'fantasy' 4MB EMS 4.0 Board
-     with conventional backfill, loosely based on the VLSI SCAMP
-      motherboard's register scheme.
+    with conventional backfill, loosely based on the VLSI SCAMP
+    motherboard's register scheme.
 
       Pages 0-3 are the pages in the page frame beginning at
         0xC000, 0xD000, or 0xE000 as per setting.
@@ -37,16 +37,16 @@
 
 
 */
-use lazy_static::lazy_static;
-use regex::Regex;
+
 use crate::{
     bus::{BusInterface, DeviceRunTimeUnit, IoDevice, MemRangeDescriptor, MemoryMappedDevice, NO_IO_BYTE},
-    cpu_common::LogicAnalyzer,
+    cpu_common::{CpuAddress, LogicAnalyzer},
+    syntax_token::SyntaxToken,
 };
-use crate::bus::DEVICE_DESC_LEN;
-use crate::cpu_common::CpuAddress;
-use crate::devices::pic::PicStringState;
-use crate::syntax_token::{SyntaxFormatType, SyntaxToken};
+
+use lazy_static::lazy_static;
+use regex::Regex;
+
 // todos/wishlist:
 // ? reset pages on reset/power off
 // Status window with current page frames
@@ -67,10 +67,11 @@ pub const FANTASY_PAGEABLE_CONVENTIONAL_WINDOW_START_SEG: usize = 0x4000;
 // todo stylistic: 9FFF or A000 (inclusive or exclusive)
 pub const FANTASY_PAGEABLE_CONVENTIONAL_WINDOW_END_SEG: usize = 0x9FFF;
 pub const FANTASY_PAGEABLE_CONVENTIONAL_WINDOW_END_ADDRESS: usize = 0x9FFFF;
-pub const FANTASY_PAGEABLE_CONVENTIONAL_WINDOW_SIZE: usize = 0x60000;  // 0xA0000 - 0x40000
+pub const FANTASY_PAGEABLE_CONVENTIONAL_WINDOW_SIZE: usize = 0x60000; // 0xA0000 - 0x40000
 pub const FANTASY_EMS_SIZE: usize = 0x800000;
 
-pub const FANTASY_PAGE_MASK: usize                  = 0b1111_1100_0000_0000_0000;pub const FANTASY_BASE_MASK: usize                  = 0b0000_0011_1111_1111_1111;
+pub const FANTASY_PAGE_MASK: usize = 0b1111_1100_0000_0000_0000;
+pub const FANTASY_BASE_MASK: usize = 0b0000_0011_1111_1111_1111;
 pub const FANTASY_PAGE_SHIFT: usize = 14;
 
 // SCAMP MODE
@@ -79,8 +80,6 @@ pub const FANTASY_PAGE_SET_REGISTER_LO: u16 = 0xEA;
 pub const FANTASY_PAGE_SET_REGISTER_HI: u16 = 0xEB;
 pub const FANTASY_AUTOINCREMENT_PAGE_FLAG: u8 = 0x40;
 
-
-
 pub const FANTASY_PAGE_SET_MASK: u8 = 0x3F;
 // pages above 36 are not port-accessible and are read only for the sake of page_lookup_table
 pub const FANTASY_WRITABLE_PAGE_COUNT: u8 = 36;
@@ -88,41 +87,30 @@ pub const FANTASY_PAGE_COUNT: u8 = 52;
 
 // translates the 0x400 of the memory address into the appropriate page
 static PAGE_LOOKUP_TABLE: &'static [u8] = &[
-    36, 37, 38, 39,     // 0x00000 (inaccessible)
-    40, 41, 42, 43,     // 0x10000 (inaccessible)
-    44, 45, 46, 47,     // 0x20000 (inaccessible)
-    48, 49, 50, 51,     // 0x30000 (inaccessible)
+    36, 37, 38, 39, // 0x00000 (inaccessible)
+    40, 41, 42, 43, // 0x10000 (inaccessible)
+    44, 45, 46, 47, // 0x20000 (inaccessible)
+    48, 49, 50, 51, // 0x30000 (inaccessible)
     12, 13, 14, 15, // 0x40000
     16, 17, 18, 19, // 0x50000
     20, 21, 22, 23, // 0x60000
     24, 25, 26, 27, // 0x70000
     28, 29, 30, 31, // 0x80000
     32, 33, 34, 35, // 0x90000
-    0, 0, 0, 0,     // 0xA0000
-    0, 0, 0, 0,     // 0xB0000
-    0, 1, 2, 3,     // 0xC0000
-    4, 5, 6, 7,     // 0xD0000
-    8, 9, 10, 11,   // 0xE0000
-    0, 0, 0, 0      // 0xF0000
-
+    0, 0, 0, 0, // 0xA0000
+    0, 0, 0, 0, // 0xB0000
+    0, 1, 2, 3, // 0xC0000
+    4, 5, 6, 7, // 0xD0000
+    8, 9, 10, 11, // 0xE0000
+    0, 0, 0, 0, // 0xF0000
 ];
 
 static PAGE_SEGMENT_LOOKUP: &'static [u16] = &[
-    0xC000, 0xC400, 0xC800, 0xCC00,
-    0xD000, 0xD400, 0xD800, 0xDC00,
-    0xE000, 0xE400, 0xE800, 0xEC00,
-    0x4000, 0x4400, 0x4800, 0x4C00,
-    0x5000, 0x5400, 0x5800, 0x5C00,
-    0x6000, 0x6400, 0x6800, 0x6C00,
-    0x7000, 0x7400, 0x7800, 0x7C00,
-    0x8000, 0x8400, 0x8800, 0x8C00,
-    0x9000, 0x9400, 0x9800, 0x9C00,
-    0x0000, 0x0400, 0x0800, 0x0C00,
-    0x1000, 0x1400, 0x1800, 0x1C00,
-    0x2000, 0x2400, 0x2800, 0x2C00,
-    0x3000, 0x3400, 0x3800, 0x3C00,
+    0xC000, 0xC400, 0xC800, 0xCC00, 0xD000, 0xD400, 0xD800, 0xDC00, 0xE000, 0xE400, 0xE800, 0xEC00, 0x4000, 0x4400,
+    0x4800, 0x4C00, 0x5000, 0x5400, 0x5800, 0x5C00, 0x6000, 0x6400, 0x6800, 0x6C00, 0x7000, 0x7400, 0x7800, 0x7C00,
+    0x8000, 0x8400, 0x8800, 0x8C00, 0x9000, 0x9400, 0x9800, 0x9C00, 0x0000, 0x0400, 0x0800, 0x0C00, 0x1000, 0x1400,
+    0x1800, 0x1C00, 0x2000, 0x2400, 0x2800, 0x2C00, 0x3000, 0x3400, 0x3800, 0x3C00,
 ];
-
 
 #[derive(Clone, Default)]
 pub struct EMSDebugState {
@@ -132,12 +120,10 @@ pub struct EMSDebugState {
     pub page_register_state: Vec<(u8, u16, usize)>,
 }
 
-
-
 #[derive(Debug, Clone, Copy, Default)]
 pub struct PageRegister {
     page_addr: usize,
-    unmapped_default: u8
+    unmapped_default: u8,
 }
 
 pub struct FantasyEmsCard {
@@ -166,216 +152,214 @@ impl Default for FantasyEmsCard {
                 // conventional page frame points to the first pages on the device
                 PageRegister {
                     page_addr: 0x28 << FANTASY_PAGE_SHIFT,
-                    unmapped_default : 0x28
+                    unmapped_default: 0x28,
                 },
                 PageRegister {
                     page_addr: 0x29 << FANTASY_PAGE_SHIFT,
-                    unmapped_default : 0x29
+                    unmapped_default: 0x29,
                 },
                 PageRegister {
                     page_addr: 0x2A << FANTASY_PAGE_SHIFT,
-                    unmapped_default : 0x2A
+                    unmapped_default: 0x2A,
                 },
                 PageRegister {
                     page_addr: 0x2B << FANTASY_PAGE_SHIFT,
-                    unmapped_default : 0x2B
+                    unmapped_default: 0x2B,
                 },
                 PageRegister {
                     page_addr: 0x2C << FANTASY_PAGE_SHIFT,
-                    unmapped_default : 0x2C
+                    unmapped_default: 0x2C,
                 },
                 PageRegister {
                     page_addr: 0x2D << FANTASY_PAGE_SHIFT,
-                    unmapped_default : 0x2D
+                    unmapped_default: 0x2D,
                 },
                 PageRegister {
                     page_addr: 0x2E << FANTASY_PAGE_SHIFT,
-                    unmapped_default : 0x2E
+                    unmapped_default: 0x2E,
                 },
                 PageRegister {
                     page_addr: 0x2F << FANTASY_PAGE_SHIFT,
-                    unmapped_default : 0x2F
+                    unmapped_default: 0x2F,
                 },
                 PageRegister {
                     page_addr: 0x30 << FANTASY_PAGE_SHIFT,
-                    unmapped_default : 0x30
+                    unmapped_default: 0x30,
                 },
                 PageRegister {
                     page_addr: 0x31 << FANTASY_PAGE_SHIFT,
-                    unmapped_default : 0x31
+                    unmapped_default: 0x31,
                 },
                 PageRegister {
                     page_addr: 0x32 << FANTASY_PAGE_SHIFT,
-                    unmapped_default : 0x32
+                    unmapped_default: 0x32,
                 },
                 PageRegister {
                     page_addr: 0x33 << FANTASY_PAGE_SHIFT,
-                    unmapped_default : 0x33
+                    unmapped_default: 0x33,
                 },
-// conventional here
-
+                // conventional here
                 PageRegister {
                     page_addr: 0x10 << FANTASY_PAGE_SHIFT,
-                    unmapped_default : 0x10
+                    unmapped_default: 0x10,
                 },
                 PageRegister {
                     page_addr: 0x11 << FANTASY_PAGE_SHIFT,
-                    unmapped_default : 0x11
+                    unmapped_default: 0x11,
                 },
                 PageRegister {
                     page_addr: 0x12 << FANTASY_PAGE_SHIFT,
-                    unmapped_default : 0x12
+                    unmapped_default: 0x12,
                 },
                 PageRegister {
                     page_addr: 0x13 << FANTASY_PAGE_SHIFT,
-                    unmapped_default : 0x13
+                    unmapped_default: 0x13,
                 },
                 PageRegister {
                     page_addr: 0x14 << FANTASY_PAGE_SHIFT,
-                    unmapped_default : 0x14
+                    unmapped_default: 0x14,
                 },
                 PageRegister {
                     page_addr: 0x15 << FANTASY_PAGE_SHIFT,
-                    unmapped_default : 0x15
+                    unmapped_default: 0x15,
                 },
                 PageRegister {
                     page_addr: 0x16 << FANTASY_PAGE_SHIFT,
-                    unmapped_default : 0x16
+                    unmapped_default: 0x16,
                 },
                 PageRegister {
                     page_addr: 0x17 << FANTASY_PAGE_SHIFT,
-                    unmapped_default : 0x17
+                    unmapped_default: 0x17,
                 },
                 PageRegister {
                     page_addr: 0x18 << FANTASY_PAGE_SHIFT,
-                    unmapped_default : 0x18
+                    unmapped_default: 0x18,
                 },
                 PageRegister {
                     page_addr: 0x19 << FANTASY_PAGE_SHIFT,
-                    unmapped_default : 0x19
+                    unmapped_default: 0x19,
                 },
                 PageRegister {
                     page_addr: 0x1A << FANTASY_PAGE_SHIFT,
-                    unmapped_default : 0x1A
+                    unmapped_default: 0x1A,
                 },
                 PageRegister {
                     page_addr: 0x1B << FANTASY_PAGE_SHIFT,
-                    unmapped_default : 0x1B
+                    unmapped_default: 0x1B,
                 },
                 PageRegister {
                     page_addr: 0x1C << FANTASY_PAGE_SHIFT,
-                    unmapped_default : 0x1C
+                    unmapped_default: 0x1C,
                 },
                 PageRegister {
                     page_addr: 0x1D << FANTASY_PAGE_SHIFT,
-                    unmapped_default : 0x1D
+                    unmapped_default: 0x1D,
                 },
                 PageRegister {
                     page_addr: 0x1E << FANTASY_PAGE_SHIFT,
-                    unmapped_default : 0x1E
+                    unmapped_default: 0x1E,
                 },
                 PageRegister {
                     page_addr: 0x1F << FANTASY_PAGE_SHIFT,
-                    unmapped_default : 0x1F
+                    unmapped_default: 0x1F,
                 },
                 PageRegister {
                     page_addr: 0x20 << FANTASY_PAGE_SHIFT,
-                    unmapped_default : 0x20
+                    unmapped_default: 0x20,
                 },
                 PageRegister {
                     page_addr: 0x21 << FANTASY_PAGE_SHIFT,
-                    unmapped_default : 0x21
+                    unmapped_default: 0x21,
                 },
                 PageRegister {
                     page_addr: 0x22 << FANTASY_PAGE_SHIFT,
-                    unmapped_default : 0x22
+                    unmapped_default: 0x22,
                 },
                 PageRegister {
                     page_addr: 0x23 << FANTASY_PAGE_SHIFT,
-                    unmapped_default : 0x23
+                    unmapped_default: 0x23,
                 },
                 PageRegister {
                     page_addr: 0x24 << FANTASY_PAGE_SHIFT,
-                    unmapped_default : 0x24
+                    unmapped_default: 0x24,
                 },
                 PageRegister {
                     page_addr: 0x25 << FANTASY_PAGE_SHIFT,
-                    unmapped_default : 0x25
+                    unmapped_default: 0x25,
                 },
                 PageRegister {
                     page_addr: 0x26 << FANTASY_PAGE_SHIFT,
-                    unmapped_default : 0x26
+                    unmapped_default: 0x26,
                 },
                 PageRegister {
                     page_addr: 0x27 << FANTASY_PAGE_SHIFT,
-                    unmapped_default : 0x27
+                    unmapped_default: 0x27,
                 },
-// non-pageable conventional
+                // non-pageable conventional
                 PageRegister {
                     page_addr: 0x00 << FANTASY_PAGE_SHIFT,
-                    unmapped_default : 0x00
+                    unmapped_default: 0x00,
                 },
                 PageRegister {
                     page_addr: 0x01 << FANTASY_PAGE_SHIFT,
-                    unmapped_default : 0x01
+                    unmapped_default: 0x01,
                 },
                 PageRegister {
                     page_addr: 0x02 << FANTASY_PAGE_SHIFT,
-                    unmapped_default : 0x02
+                    unmapped_default: 0x02,
                 },
                 PageRegister {
                     page_addr: 0x03 << FANTASY_PAGE_SHIFT,
-                    unmapped_default : 0x03
+                    unmapped_default: 0x03,
                 },
                 PageRegister {
                     page_addr: 0x04 << FANTASY_PAGE_SHIFT,
-                    unmapped_default : 0x04
+                    unmapped_default: 0x04,
                 },
                 PageRegister {
                     page_addr: 0x05 << FANTASY_PAGE_SHIFT,
-                    unmapped_default : 0x05
+                    unmapped_default: 0x05,
                 },
                 PageRegister {
                     page_addr: 0x06 << FANTASY_PAGE_SHIFT,
-                    unmapped_default : 0x06
+                    unmapped_default: 0x06,
                 },
                 PageRegister {
                     page_addr: 0x07 << FANTASY_PAGE_SHIFT,
-                    unmapped_default : 0x07
+                    unmapped_default: 0x07,
                 },
                 PageRegister {
                     page_addr: 0x08 << FANTASY_PAGE_SHIFT,
-                    unmapped_default : 0x08
+                    unmapped_default: 0x08,
                 },
                 PageRegister {
                     page_addr: 0x09 << FANTASY_PAGE_SHIFT,
-                    unmapped_default : 0x09
+                    unmapped_default: 0x09,
                 },
                 PageRegister {
                     page_addr: 0x0A << FANTASY_PAGE_SHIFT,
-                    unmapped_default : 0x0A
+                    unmapped_default: 0x0A,
                 },
                 PageRegister {
                     page_addr: 0x0B << FANTASY_PAGE_SHIFT,
-                    unmapped_default : 0x0B
+                    unmapped_default: 0x0B,
                 },
                 PageRegister {
                     page_addr: 0x0C << FANTASY_PAGE_SHIFT,
-                    unmapped_default : 0x0C
+                    unmapped_default: 0x0C,
                 },
                 PageRegister {
                     page_addr: 0x0D << FANTASY_PAGE_SHIFT,
-                    unmapped_default : 0x0D
+                    unmapped_default: 0x0D,
                 },
                 PageRegister {
                     page_addr: 0x0E << FANTASY_PAGE_SHIFT,
-                    unmapped_default : 0x0E
+                    unmapped_default: 0x0E,
                 },
                 PageRegister {
                     page_addr: 0x0F << FANTASY_PAGE_SHIFT,
-                    unmapped_default : 0x0F
+                    unmapped_default: 0x0F,
                 },
-
             ],
             mem: vec![0xAA; FANTASY_EMS_SIZE],
         }
@@ -386,7 +370,8 @@ impl FantasyEmsCard {
     pub fn new(window_seg: Option<usize>, base_addr: Option<usize>) -> Self {
         FantasyEmsCard {
             window_addr: window_seg.unwrap_or(FANTASY_DEFAULT_EMS_WINDOW_SEG) << 4,
-            non_pageable_conventional_base_addr: base_addr.unwrap_or(FANTASY_NON_PAGEABLE_CONVENTIONAL_WINDOW_START_SEG),
+            non_pageable_conventional_base_addr: base_addr
+                .unwrap_or(FANTASY_NON_PAGEABLE_CONVENTIONAL_WINDOW_START_SEG),
             ..Default::default()
         }
     }
@@ -398,9 +383,9 @@ impl FantasyEmsCard {
 
     pub fn page_reg_unmap(&mut self, port_num: u8) {
         //self.pages[port_num as usize].page_addr = ((data & 0x7F) as usize) << 14;
-        self.pages[port_num as usize].page_addr = (self.pages[port_num as usize].unmapped_default as usize) << FANTASY_PAGE_SHIFT;
+        self.pages[port_num as usize].page_addr =
+            (self.pages[port_num as usize].unmapped_default as usize) << FANTASY_PAGE_SHIFT;
     }
-
 
     pub fn dump_fantasy_stats(&mut self) -> Vec<Vec<SyntaxToken>> {
         let mut token_vec = Vec::new();
@@ -411,12 +396,10 @@ impl FantasyEmsCard {
             token_vec.push(tokens);
         }
 
-
         token_vec.clone()
     }
 
     pub fn get_ems_debug_state(&self) -> EMSDebugState {
-
         let mut state = EMSDebugState {
             current_page_index_state: self.current_page_index,
             current_page_set_register_lo_value_state: self.current_page_set_register_lo_value,
@@ -425,11 +408,9 @@ impl FantasyEmsCard {
         };
 
         for (i, page) in self.pages.iter().enumerate() {
-            state.page_register_state.push((
-                i as u8,
-                PAGE_SEGMENT_LOOKUP[i],
-                page.page_addr
-            ));
+            state
+                .page_register_state
+                .push((i as u8, PAGE_SEGMENT_LOOKUP[i], page.page_addr));
         }
         state
     }
@@ -437,7 +418,6 @@ impl FantasyEmsCard {
     pub fn get_mem_blob(&self) -> Vec<u8> {
         self.mem.clone()
     }
-
 
     // // todo this should be in a more generic EMS class perhaps?
     pub fn eval_virtual_address(&self, expr: &str) -> Option<CpuAddress> {
@@ -451,20 +431,16 @@ impl FantasyEmsCard {
                 Err(_) => None,
             }
         }
-
         else {
             None
         }
     }
 
-
     pub(crate) fn peek_virtual_u8(&self, address: usize) -> u8 {
         self.mem[address]
     }
 
-
     pub fn reset(&mut self) {
-
         // fill doesn't seem to work?
         // self.mem.fill(0xAA);    // reset memory
         // self.mem.iter_mut().map(|x| *x = 0xAA).count();
@@ -474,27 +450,22 @@ impl FantasyEmsCard {
         self.current_page_index = 0;
 
         // reset page registers
-        for (i, page) in self.pages.iter_mut().enumerate() {
-            page.page_addr =  (page.unmapped_default as usize) << FANTASY_PAGE_SHIFT;
+        for page in &mut self.pages {
+            page.page_addr = (page.unmapped_default as usize) << FANTASY_PAGE_SHIFT;
         }
-
-
     }
-
 
     pub fn reset_warm(&mut self) {
         // dont reset memory.
-
         self.page_index_auto_increment_on = false;
         self.current_page_set_register_lo_value = 0;
         self.current_page_index = 0;
 
         // reset page registers
-        for (i, page) in self.pages.iter_mut().enumerate() {
-            page.page_addr =  (page.unmapped_default as usize) << FANTASY_PAGE_SHIFT;
-        }    }
-
-
+        for page in &mut self.pages {
+            page.page_addr = (page.unmapped_default as usize) << FANTASY_PAGE_SHIFT;
+        }
+    }
 }
 
 impl IoDevice for FantasyEmsCard {
@@ -502,17 +473,15 @@ impl IoDevice for FantasyEmsCard {
         // Catch up to CPU state.
         //let _ticks = self.catch_up(delta, false);
         //self.rw_op(ticks, 0, port as u32, RwSlotType::Io);
-
-
-        if (port == FANTASY_PAGE_SELECT_REGISTER) {
-            self.current_page_index
-        } else if (port == FANTASY_PAGE_SET_REGISTER_LO) {
-            (self.pages[self.current_page_index as usize].page_addr >> FANTASY_PAGE_SHIFT) as u8
-        } else if (port == FANTASY_PAGE_SET_REGISTER_HI) {
-            (self.pages[self.current_page_index as usize].page_addr >> (FANTASY_PAGE_SHIFT + 8)) as u8
-        } else {
-            NO_IO_BYTE
-
+        match port {
+            FANTASY_PAGE_SELECT_REGISTER => self.current_page_index,
+            FANTASY_PAGE_SET_REGISTER_LO => {
+                (self.pages[self.current_page_index as usize].page_addr >> FANTASY_PAGE_SHIFT) as u8
+            }
+            FANTASY_PAGE_SET_REGISTER_HI => {
+                (self.pages[self.current_page_index as usize].page_addr >> (FANTASY_PAGE_SHIFT + 8)) as u8
+            }
+            _ => NO_IO_BYTE,
         }
     }
 
@@ -524,41 +493,41 @@ impl IoDevice for FantasyEmsCard {
         _delta: DeviceRunTimeUnit,
         _analyzer: Option<&mut LogicAnalyzer>,
     ) {
-        if (port == FANTASY_PAGE_SELECT_REGISTER) {
-            if (data >= FANTASY_WRITABLE_PAGE_COUNT){
-                log::warn!("Out of range page select register write! {}", data);
-                self.current_page_index = 0;
-            } else {
-                self.current_page_index = data;
-            }
-
-            if ((data & FANTASY_AUTOINCREMENT_PAGE_FLAG) == FANTASY_AUTOINCREMENT_PAGE_FLAG){
-                self.page_index_auto_increment_on = true;
-            } else {
-                self.page_index_auto_increment_on = false;
-            }
-        }
-        else if (port == FANTASY_PAGE_SET_REGISTER_LO) {
-            self.current_page_set_register_lo_value = data;
-
-        }
-        else if (port == FANTASY_PAGE_SET_REGISTER_HI) {
-            let combined_data:u16 = ((data as u16) << 8) + (self.current_page_set_register_lo_value as u16);
-            if (combined_data == 0xFFFF){
-                //log::warn!("Page {} Unset!", self.current_page_index);
-                self.page_reg_unmap(self.current_page_index);
-            } else {
-                //log::warn!("Page set! {} as {}", self.current_page_index, data);
-                self.page_reg_write(self.current_page_index, combined_data);
-            }
-
-            if (self.page_index_auto_increment_on){
-                self.current_page_index += 1;
-                if (self.current_page_index >= FANTASY_WRITABLE_PAGE_COUNT){
+        match port {
+            FANTASY_PAGE_SELECT_REGISTER => {
+                if data >= FANTASY_WRITABLE_PAGE_COUNT {
+                    log::warn!("Out of range page select register write! {}", data);
                     self.current_page_index = 0;
                 }
+                else {
+                    self.current_page_index = data;
+                }
 
+                self.page_index_auto_increment_on =
+                    (data & FANTASY_AUTOINCREMENT_PAGE_FLAG) == FANTASY_AUTOINCREMENT_PAGE_FLAG;
             }
+            FANTASY_PAGE_SET_REGISTER_LO => {
+                self.current_page_set_register_lo_value = data;
+            }
+            FANTASY_PAGE_SET_REGISTER_HI => {
+                let combined_data: u16 = ((data as u16) << 8) + (self.current_page_set_register_lo_value as u16);
+                if combined_data == 0xFFFF {
+                    //log::warn!("Page {} Unset!", self.current_page_index);
+                    self.page_reg_unmap(self.current_page_index);
+                }
+                else {
+                    //log::warn!("Page set! {} as {}", self.current_page_index, data);
+                    self.page_reg_write(self.current_page_index, combined_data);
+                }
+
+                if self.page_index_auto_increment_on {
+                    self.current_page_index += 1;
+                    if self.current_page_index >= FANTASY_WRITABLE_PAGE_COUNT {
+                        self.current_page_index = 0;
+                    }
+                }
+            }
+            _ => {}
         }
     }
 
@@ -580,9 +549,9 @@ impl MemoryMappedDevice for FantasyEmsCard {
         let page = PAGE_LOOKUP_TABLE[(address & FANTASY_PAGE_MASK) >> FANTASY_PAGE_SHIFT] as usize;
         let ems_addr = self.pages[page].page_addr + (address & FANTASY_BASE_MASK);
 
-        if (ems_addr == 0x9C000){
-            // self.set_breakpoint_flag();
-        }
+        // if ems_addr == 0x9C000 {
+        //     // self.set_breakpoint_flag();
+        // }
 
         (self.mem[ems_addr], 0)
     }
@@ -648,7 +617,6 @@ impl MemoryMappedDevice for FantasyEmsCard {
             priority: 0,
         });
 
-
         mapping.push(MemRangeDescriptor {
             address: self.pageable_conventional_base_addr,
             size: FANTASY_PAGEABLE_CONVENTIONAL_WINDOW_SIZE,
@@ -659,7 +627,4 @@ impl MemoryMappedDevice for FantasyEmsCard {
 
         mapping
     }
-
-
-
 }
