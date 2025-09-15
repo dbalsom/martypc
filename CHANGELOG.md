@@ -4,6 +4,7 @@
 ## Core Bug Fixes / Improvements
  - Add Fantasy EMS device (thanks sqpat)
  - VGA: Fix Miscellaneous Output Register not being readable
+ - V20: Fix bug in BINS instruction
 
 ## [0.4.1](https://github.com/dbalsom/martypc/releases/tag/0.4.1) (2025-05-31)
 
