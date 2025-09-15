@@ -1,3 +1,10 @@
+
+## [0.4.2](https://github.com/dbalsom/martypc/releases/tag/0.4.2) (2025-XX-XX)
+
+## Core Bug Fixes / Improvements
+ - Add Fantasy EMS device (thanks sqpat)
+ - VGA: Fix Miscellaneous Output Register not being readable
+
 ## [0.4.1](https://github.com/dbalsom/martypc/releases/tag/0.4.1) (2025-05-31)
 
 This is mostly a bugfix release, although there is one new feature: the V20's 8080 emulation mode is now supported.
