@@ -38,6 +38,7 @@ use crate::{
 impl IoDevice for VGACard {
     fn read_u8(&mut self, port: u16, _delta: DeviceRunTimeUnit) -> u8 {
         match port {
+            MISC_OUTPUT_REGISTER_READ => self.misc_output_register.into_bytes()[0],
             INPUT_STATUS_REGISTER_0 => self.read_input_status_register_0(),
             INPUT_STATUS_REGISTER_1 => {
                 // Don't answer this port if we are in MDA compatibility mode
@@ -161,7 +162,8 @@ impl IoDevice for VGACard {
             vec![
                 (String::from("VGA Attribute Register"), VGA_ATTRIBUTE_REGISTER),
                 (String::from("VGA Attribute Register"), VGA_ATTRIBUTE_REGISTER_ALT),
-                (String::from("VGA Misc Output Register"), MISC_OUTPUT_REGISTER),
+                (String::from("VGA Misc Output Register R"), MISC_OUTPUT_REGISTER_READ),
+                (String::from("VGA Misc Output Register W"), MISC_OUTPUT_REGISTER),
                 (String::from("VGA Input Status Register 0"), INPUT_STATUS_REGISTER_0),
                 (String::from("VGA Input Status Register 1"), INPUT_STATUS_REGISTER_1),
                 (

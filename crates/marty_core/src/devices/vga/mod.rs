@@ -146,6 +146,7 @@ pub const VGA_ATTRIBUTE_REGISTER: u16 = 0x3C0;
 pub const VGA_ATTRIBUTE_REGISTER_ALT: u16 = 0x3C1;
 
 pub const MISC_OUTPUT_REGISTER: u16 = 0x3C2; // Write-only to 3C2
+pub const MISC_OUTPUT_REGISTER_READ: u16 = 0x3CC; // Write-only to 3C2
 pub const INPUT_STATUS_REGISTER_0: u16 = 0x3C2; // Read-only from 3C2
 pub const INPUT_STATUS_REGISTER_1: u16 = 0x3DA;
 pub const FEATURE_CONTROL_REGISTER: u16 = 0x3DA; // Write-only to 3DA
