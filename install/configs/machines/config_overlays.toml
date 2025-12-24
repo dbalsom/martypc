@@ -132,6 +132,15 @@ name = "pcxt_2_serial_ports"
         io_base = 0x2F8
         irq = 3
 
+[[overlay]]
+name = "pc_serial_port"
+    # Serial card
+    [[overlay.serial]]
+    bus_type = "ISA"
+    type = "IbmAsync"
+        [[overlay.serial.port]]
+            io_base = 0x3F8
+            irq = 4
 
 [[overlay]]
 name = "ibm_xebec"
