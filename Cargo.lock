@@ -1259,7 +1259,7 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "117725a109d387c937a1533ce01b450cbde6b88abceea8473c4d7a85853cda3c"
 dependencies = [
  "lazy_static",
- "windows-sys 0.48.0",
+ "windows-sys 0.59.0",
 ]
 
 [[package]]
@@ -1268,7 +1268,7 @@ version = "3.0.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "fde0e0ec90c9dfb3b4b1a0891a7dcd0e2bffde2f7efed5fe7c9bb00e5bfb915e"
 dependencies = [
- "windows-sys 0.48.0",
+ "windows-sys 0.59.0",
 ]
 
 [[package]]
@@ -2335,7 +2335,7 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "33d852cb9b869c2a9b3df2f71a3074817f01e1844f839a144f5fcef059a4eb5d"
 dependencies = [
  "libc",
- "windows-sys 0.52.0",
+ "windows-sys 0.59.0",
 ]
 
 [[package]]
@@ -3387,7 +3387,7 @@ checksum = "e19b23d53f35ce9f56aebc7d1bb4e6ac1e9c0db7ac85c8d1760c04379edced37"
 dependencies = [
  "hermit-abi",
  "libc",
- "windows-sys 0.52.0",
+ "windows-sys 0.59.0",
 ]
 
 [[package]]
@@ -3558,7 +3558,7 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "fc2f4eb4bc735547cfed7c0a4922cbd04a4655978c09b54f1f7b228750664c34"
 dependencies = [
  "cfg-if",
- "windows-targets 0.48.5",
+ "windows-targets 0.52.6",
 ]
 
 [[package]]
@@ -3733,7 +3733,7 @@ dependencies = [
  "serde",
  "serde_derive",
  "serde_with",
- "serialport 4.3.1-alpha.0",
+ "serialport 4.8.1",
  "strum 0.26.3",
  "strum_macros 0.26.4",
  "toml 0.5.11",
@@ -3790,7 +3790,7 @@ dependencies = [
  "regex",
  "rfd",
  "serde",
- "serialport 4.3.1-alpha.0",
+ "serialport 4.8.1",
  "strum 0.27.1",
  "strum_macros 0.27.1",
  "toml 0.8.19",
@@ -3817,7 +3817,7 @@ dependencies = [
  "log",
  "marty_egui",
  "marty_frontend_common",
- "serialport 4.3.1-alpha.0",
+ "serialport 4.8.1",
  "wgpu 23.0.1",
 ]
 
@@ -3832,7 +3832,7 @@ dependencies = [
  "log",
  "marty_egui",
  "marty_frontend_common",
- "serialport 4.3.1-alpha.0",
+ "serialport 4.8.1",
  "web-time 1.1.0",
  "wgpu 23.0.1",
  "wgpu_wrapper",
@@ -3897,7 +3897,7 @@ dependencies = [
  "regex",
  "resize",
  "rgb",
- "serialport 4.7.0",
+ "serialport 4.8.1",
  "wasm-bindgen",
  "wasm-bindgen-futures",
  "web-sys",
@@ -4011,7 +4011,7 @@ dependencies = [
  "serde",
  "serde_derive",
  "serde_json",
- "serialport 4.3.1-alpha.0",
+ "serialport 4.8.1",
  "strum 0.26.3",
  "strum_macros 0.26.4",
  "wasm-bindgen",
@@ -4053,7 +4053,7 @@ dependencies = [
  "rfd",
  "rodio",
  "serde",
- "serialport 4.3.1-alpha.0",
+ "serialport 4.8.1",
  "strum 0.27.1",
  "thiserror 2.0.11",
  "url",
@@ -4091,7 +4091,7 @@ dependencies = [
  "serde",
  "serde_derive",
  "serde_json",
- "serialport 4.3.1-alpha.0",
+ "serialport 4.8.1",
  "strum 0.27.1",
  "strum_macros 0.27.1",
 ]
@@ -4122,7 +4122,7 @@ dependencies = [
  "rfd",
  "rodio",
  "serde",
- "serialport 4.3.1-alpha.0",
+ "serialport 4.8.1",
  "strum 0.27.1",
  "thiserror 2.0.11",
  "url",
@@ -5534,7 +5534,7 @@ dependencies = [
  "errno",
  "libc",
  "linux-raw-sys",
- "windows-sys 0.52.0",
+ "windows-sys 0.59.0",
 ]
 
 [[package]]
@@ -5716,9 +5716,9 @@ dependencies = [
 
 [[package]]
 name = "serialport"
-version = "4.7.0"
+version = "4.8.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "5ecfc4858c2266c7695d8b8460bbd612fa81bd2e250f5f0dd16195e4b4f8b3d8"
+checksum = "21f60a586160667241d7702c420fc223939fb3c0bb8d3fac84f78768e8970dee"
 dependencies = [
  "bitflags 2.8.0",
  "cfg-if",
@@ -5728,9 +5728,10 @@ dependencies = [
  "libudev",
  "mach2",
  "nix 0.26.4",
+ "quote",
  "scopeguard",
  "unescaper",
- "winapi",
+ "windows-sys 0.52.0",
 ]
 
 [[package]]
@@ -6068,7 +6069,7 @@ dependencies = [
  "getrandom 0.2.15",
  "once_cell",
  "rustix",
- "windows-sys 0.52.0",
+ "windows-sys 0.59.0",
 ]
 
 [[package]]
@@ -6822,7 +6823,7 @@ dependencies = [
  "js-sys",
  "log",
  "naga 0.12.3",
- "parking_lot 0.11.2",
+ "parking_lot 0.12.3",
  "profiling",
  "raw-window-handle 0.5.2",
  "smallvec",
@@ -6872,7 +6873,7 @@ dependencies = [
  "codespan-reporting",
  "log",
  "naga 0.12.3",
- "parking_lot 0.11.2",
+ "parking_lot 0.12.3",
  "profiling",
  "raw-window-handle 0.5.2",
  "rustc-hash",
@@ -6936,7 +6937,7 @@ dependencies = [
  "metal 0.24.0",
  "naga 0.12.3",
  "objc",
- "parking_lot 0.11.2",
+ "parking_lot 0.12.3",
  "profiling",
  "range-alloc",
  "raw-window-handle 0.5.2",
@@ -7080,7 +7081,7 @@ version = "0.1.9"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "cf221c93e13a30d793f7645a0e7762c55d169dbb0a49671918a2319d289b10bb"
 dependencies = [
- "windows-sys 0.48.0",
+ "windows-sys 0.59.0",
 ]
 
 [[package]]
