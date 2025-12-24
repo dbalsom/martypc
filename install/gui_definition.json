@@ -144,7 +144,7 @@
                         },
                         {
                             "label": "CGA",
-                            "value": "ibm_vga,"
+                            "value": "ibm_cga,"
                         },
                         {
                             "label": "EGA (Requires ROM)",
