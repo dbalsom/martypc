@@ -58,9 +58,7 @@ use marty_common::types::joystick::ControllerLayout;
 use serde_derive::Deserialize;
 use strum::IntoEnumIterator;
 
-// Clock derivation from reenigne
-// See https://www.vogons.org/viewtopic.php?t=55049
-pub const IBM_PC_SYSTEM_CLOCK: f64 = 157.5 / 11.0;
+pub const IBM_PC_SYSTEM_CLOCK: f64 = 315.0 / 22.0;
 pub const PIT_DIVISOR: u32 = 12;
 pub const GAME_PORT_DEFAULT_IO: u16 = 0x201;
 
