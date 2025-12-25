@@ -304,6 +304,7 @@ pub struct SerialPort {
     rx_overrun_count: usize,
     rx_was_read: bool,
     tx_holding_reg: u8,
+    tx_last_byte: u8,
     tx_holding_empty: bool,
     rx_queue: VecDeque<u8>,
     rx_timer: f64,
@@ -348,6 +349,7 @@ impl Default for SerialPort {
             rx_count: 0,
             rx_overrun_count: 0,
             rx_was_read: false,
+            tx_last_byte: 0,
             tx_holding_reg: 0,
             tx_holding_empty: true,
             rx_queue: VecDeque::new(),
@@ -355,7 +357,7 @@ impl Default for SerialPort {
             tx_count: 0,
             tx_queue: VecDeque::new(),
             tx_timer: 0.0,
-            us_per_byte: 833.333, // 9600 baud
+            us_per_byte: 1041.66, //833.333, // 9600 baud
 
             #[cfg(feature = "serial")]
             bridge_cfg: None,
@@ -478,8 +480,6 @@ impl SerialPort {
     }
 
     /// Send a byte to the serial port tx buffer register.
-    /// For COM1, COM1 is always attached to Mouse which ignores input.
-    /// COM2 may be bridged to a host serial port.
     fn tx_buffer_write(&mut self, byte: u8) {
         // If DSLAB, set Divisor Latch LSB
         if self.divisor_latch_access {
@@ -502,6 +502,7 @@ impl SerialPort {
             }
 
             self.tx_count += 1;
+            self.tx_last_byte = byte;
             self.tx_holding_reg = byte;
             self.tx_holding_empty = false;
             self.line_status_reg &= !STATUS_TRANSMIT_EMPTY;
@@ -877,8 +878,11 @@ impl SerialPort {
             FlowControlType::None => serialport::FlowControl::None,
         };
 
-        let port_result = serialport::new(port_name.clone(), bridge_cfg.baud_rate)
+        let dtr_on_open = false;
+
+        let mut port_result = serialport::new(port_name.clone(), bridge_cfg.baud_rate)
             .timeout(Duration::from_millis(1))
+            .dtr_on_open(dtr_on_open)
             .stop_bits(stop_bits)
             .data_bits(data_bits)
             .parity(parity)
@@ -886,8 +890,14 @@ impl SerialPort {
             .open();
 
         match port_result {
-            Ok(bridge_port) => {
+            Ok(mut bridge_port) => {
                 log::debug!("Successfully opened host port {}", port_name);
+
+                if !dtr_on_open {
+                    // Explicitly turn off DTR (com0com will keep it set)
+                    _ = bridge_port.write_data_terminal_ready(false);
+                }
+
                 self.bridge_port = Some(bridge_port);
                 self.bridge_port_id = Some(port_id);
                 self.set_modem_status_connected();
@@ -946,7 +956,7 @@ impl SerialPort {
         );
         state.insert(
             "TX Last Byte:",
-            SyntaxToken::StateString(format!("{:02X}", self.tx_holding_reg), false, 0),
+            SyntaxToken::StateString(format!("{:02X}", self.tx_last_byte), false, 0),
         );
         state.insert(
             "RX Count:",
@@ -1111,6 +1121,7 @@ impl SerialPortController {
                     }
 
                     port.tx_count += 1;
+                    port.tx_last_byte = port.tx_holding_reg;
                     port.tx_holding_reg = 0;
                     port.tx_holding_empty = true;
                     port.line_status_reg |= STATUS_TRANSMIT_EMPTY;
@@ -1139,9 +1150,9 @@ impl SerialPortController {
         for port in &mut self.port {
             if let Some(bridge_port) = &mut port.bridge_port {
                 // Set state of DTR and RTS
-
                 let new_dtr = port.modem_control_reg & MODEM_CONTROL_DTR != 0;
                 let new_rts = port.modem_control_reg & MODEM_CONTROL_RTS != 0;
+
                 if new_dtr != port.last_dtr {
                     log::trace!("{}: DTR changed to {}", port.name, new_dtr);
                     _ = bridge_port.write_data_terminal_ready(new_dtr);
@@ -1154,25 +1165,28 @@ impl SerialPortController {
                     port.last_rts = new_rts;
                 }
 
+                // Explicitly assert DTR and RTS
+                //_ = bridge_port.write_data_terminal_ready(true);
+                //_ = bridge_port.write_request_to_send(true);
+
                 // Write any pending bytes
                 if !port.tx_queue.is_empty() {
+                    //log::warn!("Have {} bytes to write to serial port", port.tx_queue.len());
                     port.tx_queue.make_contiguous();
                     let (tx1, _) = port.tx_queue.as_slices();
 
                     match bridge_port.write(tx1) {
                         Ok(_) => {
-                            //log::trace!("Wrote bytes: {:?}", tx1);
+                            log::trace!("Wrote bytes: {:?}", tx1);
                         }
-                        Err(ref e) if e.kind() == std::io::ErrorKind::TimedOut => (),
+                        Err(ref e) if e.kind() == std::io::ErrorKind::TimedOut => {
+                            log::error!("Timeout writing bytes: {:?}", tx1);
+                        }
                         Err(e) => log::error!("Error writing byte: {:?}", e),
                     }
 
                     port.tx_queue.clear();
                 }
-
-                // Explicitly assert DTR and RTS
-                //_ = bridge_port.write_data_terminal_ready(true);
-                //_ = bridge_port.write_request_to_send(true);
 
                 // Read any pending bytes
                 match bridge_port.bytes_to_read() {
