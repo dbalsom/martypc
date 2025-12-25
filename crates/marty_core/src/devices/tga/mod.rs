@@ -2617,7 +2617,7 @@ impl TGACard {
                         std::cmp::min(12, self.crtc_sync_width)
                     }
                     else {
-                        6
+                        std::cmp::min(6, self.crtc_sync_width)
                     }
                 }
                 _ => {
@@ -2630,7 +2630,7 @@ impl TGACard {
                         std::cmp::min(10, self.crtc_sync_width)
                     }
                     else {
-                        5
+                        std::cmp::min(5, self.crtc_sync_width)
                     }
                 }
             };
