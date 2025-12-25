@@ -2082,7 +2082,7 @@ impl CGACard {
                 std::cmp::min(10, self.crtc_sync_width)
             }
             else {
-                5
+                std::cmp::min(5, self.crtc_sync_width)
             };
 
             // Do a horizontal sync
@@ -2097,7 +2097,7 @@ impl CGACard {
                 // END OF LOGICAL SCANLINE
                 if self.in_crtc_vblank {
                     //if self.vsc_c3h == CRTC_VBLANK_HEIGHT || self.beam_y == CGA_MONITOR_VSYNC_POS {
-                    if self.vsc_c3h == CRTC_VSYNC_HEIGHT {
+                    if self.vsc_c3h >= CRTC_VSYNC_HEIGHT {
                         // We are leaving vblank period. Generate a frame.
 
                         // Previously, we generated frames upon reaching vertical total. This was convenient as
