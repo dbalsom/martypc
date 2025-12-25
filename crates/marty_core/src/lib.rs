@@ -52,7 +52,6 @@ pub mod machine;
 pub mod machine_config;
 pub mod machine_types;
 pub mod memerror;
-pub mod motherboards;
 #[cfg(feature = "sound")]
 pub mod sound;
 pub mod syntax_token;
