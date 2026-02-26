@@ -18,7 +18,7 @@ Builds are available through periodic [releases](https://github.com/dbalsom/mart
 
 MartyPC began as a hobby project to see if I could write an emulator from scratch while learning the Rust programming language. My original goals for MartyPC were modest, but it has reached a level of functionality that I could have never imagined.
 
-MartyPC's intended niche in the emulation world is an aide for retro PC development. It is packed with debugging tools and logging facilities, with many more planned. It may not be as user-friendly to set up as other emulators, but if you are familiar with edting configuration files you shouldn't have any major problems. Programmers writing software for the Intel 8088 can see and measure the exact cycle-by-cycle execution of their code.
+MartyPC's intended niche in the emulation world is an aide for retro PC development. It is packed with debugging tools and logging facilities, with many more planned. It may not be as user-friendly to set up as other emulators, but if you are familiar with editing configuration files you shouldn't have any major problems. Programmers writing software for the Intel 8088 can see and measure the exact cycle-by-cycle execution of their code.
 
 ## Accuracy
 
