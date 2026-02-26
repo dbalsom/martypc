@@ -880,7 +880,7 @@ impl SerialPort {
 
         let dtr_on_open = false;
 
-        let mut port_result = serialport::new(port_name.clone(), bridge_cfg.baud_rate)
+        let port_result = serialport::new(port_name.clone(), bridge_cfg.baud_rate)
             .timeout(Duration::from_millis(1))
             .dtr_on_open(dtr_on_open)
             .stop_bits(stop_bits)
