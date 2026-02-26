@@ -1,9 +1,3 @@
-
-# Daniel's opinionated rustfmt settings.
-# I was somewhat reluctant to use rustfmt at first as I am fairly opinionated about certain code formatting choices
-# and early tests on MartyPC mangled some very long match arms, especially in the instruction decoder.  But I'm biting
-# the bullet and implementing it.
-
 max_width = 120
 
 # Keep 'if' and 'else' in the same column.
