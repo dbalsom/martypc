@@ -59,6 +59,7 @@ pub mod tracelogger;
 pub mod updatable;
 pub mod util;
 pub mod vhd;
+pub mod video_pll;
 
 #[cfg(feature = "arduino_validator")]
 #[macro_use]

@@ -53,6 +53,7 @@ use crate::{
     bus::{BusInterface, DeviceRunTimeUnit},
     device_traits::videocard::*,
     tracelogger::TraceLogger,
+    video_pll::VideoHoldPll,
 };
 
 #[derive(Copy, Clone, Default)]
@@ -125,45 +126,67 @@ const DEFAULT_CURSOR_END_LINE: u8 = 0;
 
 // 80 column mode defaults
 const DEFAULT_CLOCK_DIVISOR: u8 = 1;
-const DEFAULT_CHAR_CLOCK: u32 = 8;
-const DEFAULT_CHAR_CLOCK_MASK: u64 = 0x07;
+const DEFAULT_CHAR_CLOCK: u32 = CGA_HCHAR_CLOCK as u32;
+const DEFAULT_CHAR_CLOCK_MASK: u64 = CGA_HCHAR_CLOCK_MASK;
 const DEFAULT_CHAR_CLOCK_ODD_MASK: u64 = 0x0F;
-
-// CGA is clocked at 14.318180Mhz, which is the main clock of the entire PC system.
-// The original CGA card did not have its own crystal.
-const CGA_CLOCK: f64 = 14.318180;
-const US_PER_CLOCK: f64 = 1.0 / CGA_CLOCK;
 
 /*
     We can calculate the maximum theoretical size of a CGA display by working from the
-    14.31818Mhz CGA clock. We are limited to 262 scanlines per NTSC (525/2)
-    This gives us 262 maximum scanlines.
-    The CGA gets programmed with a Horizontal Character total of 113(+1)=114 characters
-    in standard 80 column text mode. This is total - not displayed characters.
+    14.31818Mhz CGA clock. We are limited to 262.5 scanlines per NTSC (525/2)
+
+    This gives us 262 maximum integer scanlines.
+
+    The CGA gets programmed with a Horizontal Total of 113(+1)=114 characters
+    in standard 80 column text mode. This is a total line - not displayed characters.
+
     So a single scan line is 114 * 8 or 912 clocks wide.
     912 clocks * 262 scanlines = 238,944 clocks per frame.
     14,318,180Hz / 238,944 clocks equals a 59.92Hz refresh rate.
+
     So our final numbers are 912x262 @ 59.92Hz. This is a much higher resolution than
-    the expected maximum of 640x200, but it includes overscan and retrace periods.
+    the expected maximum of 640x200, but it includes overscan and retrace periods (front
+    and back porches) in composite signal).
+
     With a default horizontal sync width of 10(*8), and a fixed (on the Motorola at least)
-    vsync 'width' of 16, this brings us down to a visible area of 832x246.
-    This produces vertical overscan borders of 26 pixels and horizontal borders of 96 pixels
+    vsync height of 16 scanlines, this brings us down to a visible area of 832x246.
+    This produces vertical overscan borders of 26 pixels and horizontal borders of 96 pixels.
+
     The Area5150 demo manages to squeeze out a 768 pixel horizontal resolution mode from
-    the CGA. This is accomplished with a HorizontalDisplayed value of 96. (96 * 8 = 768)
+    the CGA. This is accomplished with a Horizontal Displayed value of 96. (96 * 8 = 768)
+    This already leaves the edges of the picture underneath the bezels of an IBM 5153 monitor.
     I am assuming this is the highest value we will actually ever encounter and anything
     wider might not sync to a real monitor.
+
+    Update 12/25/2025 - Demosceners are at again. reenigne of Area 5150 fame has figured out
+    a way to manually correct the CGA's vertical sync logic that otherwise makes true interlaced
+    modes impossible.  By manipulating the CRTC registers on the last visible scanline, we can
+    achieve the half-scanline vsync that the CGA attempts to suppress.
+
+    By precisely controlling the vsync position on the last scanline, sub-pixel vertical scrolling
+    can be achieved. This will be handled in a shader.
 */
 
-// Calculate the maximum possible area of buf field (including refresh period)
-const CGA_XRES_MAX: u32 = (CRTC_R0_HORIZONTAL_MAX + 1) * CGA_HCHAR_CLOCK as u32;
-const CGA_YRES_MAX: u32 = CRTC_SCANLINE_MAX;
-pub const CGA_MAX_CLOCK: usize = (CGA_XRES_MAX * CGA_YRES_MAX) as usize; // Should be 238944
+// CGA is clocked at 14.318180Mhz, which is the main clock of the entire PC system.
+// The original CGA card did not have its own crystal.
+const CGA_CLOCK: f64 = 315.0 / 22.0;
+const US_PER_CLOCK: f64 = 1.0 / CGA_CLOCK;
 
-// Monitor sync position. The monitor will eventually perform an hsync at a fixed position
-// if hsync signal is late from the CGA card.
-const CGA_MONITOR_HSYNC_POS: u32 = 832;
-const CGA_MONITOR_HSYNC_WIDTH: u32 = 80;
-const CGA_MONITOR_VSYNC_POS: u32 = 246;
+const NTSC_SCANLINE_MAX: u32 = 262;
+
+// Calculate the maximum possible area of buf field
+// (including refresh period)
+const CGA_XRES_MAX: u32 = (CRTC_R0_HORIZONTAL_MAX + 1) * CGA_HCHAR_CLOCK as u32;
+const CGA_YRES_MAX_PROGRESSIVE: u32 = NTSC_SCANLINE_MAX;
+const CGA_YRES_MAX_INTERLACED: u32 = NTSC_SCANLINE_MAX * 2 + 1;
+pub const CGA_MAX_CLOCK: usize = (CGA_XRES_MAX * CGA_YRES_MAX_PROGRESSIVE) as usize; // Should be 238944
+const CGA_HORIZ_REFRESH: f64 = CGA_CLOCK / CGA_XRES_MAX as f64 * 1_000_000.0; // ~15.69KHz
+const CGA_VERT_REFRESH: f64 = CGA_CLOCK / CGA_MAX_CLOCK as f64 * 1_000_000.0; // ~59.92Hz
+
+// Monitor flyback position. The monitor will eventually perform a flyback at the extent of maximum
+// beam deflection if a sync signal is late from the CGA card.
+const MONITOR_HORIZ_FLYBACK_POS: u32 = 832;
+const MONITOR_HORIZ_FLYBACK_WIDTH: u32 = 80;
+const MONITOR_VERT_FLYBACK_POS: u32 = 246;
 // Minimum scanline value after which we can perform a vsync. A vsync before this scanline will be ignored.
 const CGA_MONITOR_VSYNC_MIN: u32 = 127;
 
@@ -221,12 +244,13 @@ const CGA_FONT: &[u8] = include_bytes!("../../../assets/cga_8by8.bin");
 const CGA_FONT_SPAN: usize = 256; // Font bitmap is 2048 bits wide (256 * 8 characters)
 
 const CGA_HCHAR_CLOCK: u8 = 8;
+const CGA_HCHAR_CLOCK_MASK: u64 = 0x07;
 const CGA_LCHAR_CLOCK: u8 = 16;
+const CGA_LCHAR_CLOCK_MASK: u64 = 0x0F;
 const CRTC_FONT_HEIGHT: u8 = 8;
 const CRTC_VSYNC_HEIGHT: u8 = 16;
 
 const CRTC_R0_HORIZONTAL_MAX: u32 = 113;
-const CRTC_SCANLINE_MAX: u32 = 262;
 
 // The CGA card decodes different numbers of address lines from the CRTC depending on
 // whether it is in text or graphics modes. This causes wrapping at 0x2000 bytes in
@@ -428,6 +452,7 @@ macro_rules! trace_regs {
     };
 }
 
+use crate::video_pll::{SyncPolarity, VideoPllParams};
 pub(crate) use trace_regs;
 
 pub struct CGACard {
@@ -469,7 +494,8 @@ pub struct CGACard {
 
     cursor_frames: u32,
 
-    frame_count:  u64,
+    v_flyback_count: u64,
+    frame_count: u64,
     status_reads: u64,
 
     cursor_status: bool,
@@ -506,10 +532,10 @@ pub struct CGACard {
     crtc_ticks_since_vsync: u32,
     in_crtc_hblank: bool,
     in_crtc_vblank: bool,
-    in_crtc_vsync: bool,
+    in_card_vblank: bool,
     in_last_vblank_line: bool,
-    hborder: bool,
-    vborder: bool,
+    border: bool,
+    border_override: bool,
 
     cc_register: u8,
     clock_divisor: u8, // Clock divisor is 1 in high resolution text mode, 2 in all other modes
@@ -523,6 +549,7 @@ pub struct CGACard {
     beam_y: u32,
     in_monitor_hsync: bool,
     in_monitor_vblank: bool,
+    in_monitor_vsync: bool,
     monitor_hsc: u32,
     scanline: u32,
     missed_hsyncs: u32,
@@ -532,6 +559,7 @@ pub struct CGACard {
     overscan_right: u32,
     vsync_len: u32,
 
+    in_display_rows: bool, // This flag is set when C4 == 0 and cleared when C4 == C6
     in_display_area: bool,
     cur_char: u8,    // Current character being drawn
     cur_attr: u8,    // Current attribute byte being drawn
@@ -582,7 +610,11 @@ pub struct CGACard {
     lightpen_addr: usize,
     lightpen_switch: bool,
 
-    out_of_sync: bool,
+    emulate_vsync:  bool,
+    emulate_hsync:  bool,
+    horizontal_pll: VideoHoldPll,
+    vertical_pll:   VideoHoldPll,
+    out_of_sync:    bool,
 }
 
 #[derive(Debug)]
@@ -618,7 +650,7 @@ impl CgaDefault for DisplayExtents {
         Self {
             apertures: CGA_APERTURES.to_vec(),
             field_w: CGA_XRES_MAX,
-            field_h: CGA_YRES_MAX,
+            field_h: CGA_YRES_MAX_INTERLACED,
             row_stride: CGA_XRES_MAX as usize,
             double_scan: true,
             mode_byte: 0,
@@ -667,7 +699,8 @@ impl Default for CGACard {
             cursor_frames: 0,
             scanline_us:   0.0,
 
-            frame_count:  0,
+            v_flyback_count: 0,
+            frame_count: 0,
             status_reads: 0,
 
             cursor_status: false,
@@ -704,15 +737,15 @@ impl Default for CGACard {
 
             in_crtc_hblank: false,
             in_crtc_vblank: false,
-            in_crtc_vsync: false,
+            in_card_vblank: false,
             in_last_vblank_line: false,
-            hborder: true,
-            vborder: true,
+            border: true,
+            border_override: false,
 
             cc_register: CC_PALETTE_BIT | CC_BRIGHT_BIT,
 
             clock_divisor: DEFAULT_CLOCK_DIVISOR,
-            clock_mode: ClockingMode::Dynamic,
+            clock_mode: ClockingMode::Character,
             char_clock: DEFAULT_CHAR_CLOCK,
             char_clock_mask: DEFAULT_CHAR_CLOCK_MASK,
             char_clock_odd_mask: DEFAULT_CHAR_CLOCK_ODD_MASK,
@@ -720,6 +753,7 @@ impl Default for CGACard {
             beam_y: 0,
             in_monitor_hsync: false,
             in_monitor_vblank: false,
+            in_monitor_vsync: false,
             monitor_hsc: 0,
             scanline: 0,
             missed_hsyncs: 0,
@@ -728,6 +762,7 @@ impl Default for CGACard {
             overscan_right_start: 0,
             overscan_right: 0,
             vsync_len: 0,
+            in_display_rows: false,
             in_display_area: false,
             cur_char: 0,
             cur_attr: 0,
@@ -768,7 +803,7 @@ impl Default for CGACard {
             //buf: vec![vec![0; (CGA_XRES_MAX * CGA_YRES_MAX) as usize]; 2],
 
             // Theoretically, boxed arrays may have some performance advantages over
-            // vectors due to having a fixed size known by the compiler.  However they
+            // vectors due to having a fixed size known by the compiler. However, they
             // are a pain to initialize without overflowing the stack.
             buf: [
                 vec![0; CGA_MAX_CLOCK].into_boxed_slice().try_into().unwrap(),
@@ -787,7 +822,23 @@ impl Default for CGACard {
             lightpen_addr: 0,
             lightpen_switch: false,
 
-            out_of_sync: false,
+            emulate_vsync:  true,
+            emulate_hsync:  true,
+            out_of_sync:    false,
+            horizontal_pll: VideoHoldPll::new(
+                CGA_CLOCK * 1_000_000.0,
+                CGA_HORIZ_REFRESH, // ~15.699Khz
+                VideoPllParams {
+                    range: 0.10,
+                    kp: 0.5,
+                    ki: 1.0e-6,
+                    max_error: 0.05,
+                    free_drift_term: 0.15,
+                    window_size: 0.20,
+                    polarity: SyncPolarity::Positive,
+                },
+            ),
+            vertical_pll:   VideoHoldPll::new(CGA_CLOCK * 1_000_000.0, CGA_VERT_REFRESH, Default::default()),
         }
     }
 }
@@ -838,13 +889,6 @@ impl CGACard {
     }
 
     fn catch_up(&mut self, delta: DeviceRunTimeUnit, debug: bool) -> u32 {
-        /*
-        if self.sink_cycles > 0 {
-            // Don't catch up when sinking;
-            return
-        }
-        */
-
         // Catch up to CPU state.
         if let DeviceRunTimeUnit::SystemTicks(ticks) = delta {
             //log::debug!("Ticking {} clocks on IO read.", ticks);
@@ -1078,6 +1122,7 @@ impl CGACard {
             }
             CRTCRegister::InterlaceMode => {
                 self.crtc_interlace_mode = byte;
+                log::warn!("CGA: Write to unsupported CRTC InterlaceMode register: {:02X}", byte);
             }
             CRTCRegister::MaximumScanLineAddress => {
                 self.crtc_maximum_scanline_address = byte & 0x1F;
@@ -1291,25 +1336,7 @@ impl CGACard {
                 (1, CGA_HCHAR_CLOCK as u32, 0x07, 0x0F)
             }
             else {
-                // Don't enable clock divisor if CRTC isn't programmed for it. This is probably
-                // not accurate and what would really happen is loss of video sync, but for the time
-                // being it keeps us from drawing screens with funky scanlines.
-                // TODO: Come up with a better way to handle this or do hardware research to see
-                //       if 'scanline effect' happens on real CGA
-
-                // Removed: This just caused more problems than what it was intending to fix.
-
-                /*
-                if !self.mode_hires_gfx && self.crtc_horizontal_total > 56 {
-                    self.out_of_sync = true;
-                    (1, CGA_HCHAR_CLOCK as u32, 0x07, 0x0F)
-                }
-                else {
-                    self.out_of_sync = false;
-                    (2, (CGA_HCHAR_CLOCK as u32) * 2, 0x0F, 0x1F)
-                }
-                */
-                (2, (CGA_HCHAR_CLOCK as u32) * 2, 0x0F, 0x1F)
+                (2, CGA_LCHAR_CLOCK as u32, 0x0F, 0x1F)
             };
 
             self.clock_pending = false;
@@ -1355,7 +1382,7 @@ impl CGACard {
             0xF0 | STATUS_DISPLAY_ENABLE
         }
         else {
-            if self.vborder || self.hborder {
+            if self.border {
                 log::warn!("in border but returning 0");
             }
             0xF0
@@ -1605,80 +1632,6 @@ impl CGACard {
         self.cur_screen_cycles
     }
 
-    /*
-
-    /// Execute one CGA character.
-    pub fn tick_char(&mut self) {
-
-        // sink_cycles must be factor of 8
-        //assert!((self.sink_cycles & 0x07) == 0);
-
-        if self.sink_cycles & 0x07 != 0 {
-            log::error!("sink_cycles: {} not divisible by 8", self.sink_cycles);
-        }
-
-        if self.sink_cycles > 0 {
-            self.sink_cycles = self.sink_cycles.saturating_sub(8);
-            return
-        }
-
-        self.cycles += 8;
-        self.cur_screen_cycles += 8;
-
-        // Don't execute even character clocks in low-res mode
-        if self.clock_divisor == 2 && (self.cycles & 0x0F == 0) {
-            log::trace!("skipping odd hchar: {:X}", self.cycles);
-            return
-        }
-
-        // Only draw if marty_render buffer address is in bounds.
-        if self.rba < (CGA_MAX_CLOCK - (8 * self.clock_divisor) as usize) {
-            if self.in_display_area {
-                // Draw current character row
-                if !self.mode_graphics {
-                    self.draw_text_mode_char();
-                }
-                else if self.mode_hires_gfx {
-                    self.draw_hires_gfx_mode_char();
-                }
-                else {
-                    self.draw_lowres_gfx_mode_char();
-                }
-            }
-            else if self.in_crtc_hblank {
-                // Draw hblank in debug color
-                self.draw_solid_char(self.hblank_color);
-            }
-            else if self.in_crtc_vblank {
-                // Draw vblank in debug color
-                self.draw_solid_char(self.vblank_color);
-            }
-            else if self.vborder | self.hborder {
-                // Draw overscan
-                self.draw_solid_char(self.cc_overscan_color);
-            }
-            else {
-                log::warn!("invalid display state...");
-            }
-        }
-
-        // Update position to next pixel and character column.
-        self.beam_x += 8 * self.clock_divisor as u32;
-        self.rba += 8 * self.clock_divisor as usize;
-
-        // If we have reached the right edge of the 'monitor', return the raster position
-        // to the left side of the screen.
-        if self.beam_x == CGA_XRES_MAX {
-            self.beam_x = 0;
-            self.beam_y += 1;
-            self.in_monitor_hsync = false;
-            self.rba = (CGA_XRES_MAX * self.beam_y) as usize;
-        }
-
-        self.tick_crtc_char();
-    }
-    */
-
     /// Execute a hires or lowres character clock as appropriate.
     #[inline]
     pub fn tick_char(&mut self) {
@@ -1692,18 +1645,6 @@ impl CGACard {
 
     /// Execute one high resolution character clock.
     pub fn tick_hchar(&mut self) {
-        // sink_cycles must be a factor of 8
-        // assert_eq!(self.sink_cycles & 0x07, 0);
-
-        if self.sink_cycles & 0x07 != 0 {
-            log::warn!("sink_cycles: {} not divisible by 8", self.sink_cycles);
-        }
-
-        if self.sink_cycles > 0 {
-            self.sink_cycles = self.sink_cycles.saturating_sub(8);
-            return;
-        }
-
         // Cycles must be a factor of 8 and char_clock == 8
         assert_eq!(self.cycles & 0x07, 0);
         assert_eq!(self.char_clock, 8);
@@ -1742,7 +1683,7 @@ impl CGACard {
                     self.draw_solid_hchar(CGA_VBLANK_DEBUG_COLOR);
                 }
             }
-            else if self.vborder | self.hborder {
+            else if self.border {
                 // Draw overscan
                 self.draw_solid_hchar(self.cc_overscan_color);
             }
@@ -1762,15 +1703,6 @@ impl CGACard {
         self.beam_x += 8 * self.clock_divisor as u32;
         self.rba += 8 * self.clock_divisor as usize;
 
-        // If we have reached the right edge of the 'monitor', return the raster position
-        // to the left side of the screen.
-        if self.beam_x >= CGA_XRES_MAX {
-            self.beam_x = 0;
-            self.beam_y += 1;
-            self.in_monitor_hsync = false;
-            self.rba = (CGA_XRES_MAX * self.beam_y) as usize;
-        }
-
         if self.cycles & self.char_clock_mask != 0 {
             log::error!(
                 "tick_hchar(): calling tick_crtc_char but out of phase with cclock: cycles: {} mask: {}",
@@ -1780,6 +1712,12 @@ impl CGACard {
         }
 
         self.tick_crtc_char();
+        if self.horizontal_pll.run(8, self.in_crtc_hblank) {
+            self.do_horizontal_flyback();
+        }
+        if self.vertical_pll.run(8, self.in_card_vblank) {
+            self.do_vertical_flyback();
+        }
         self.char_col = 0;
         self.set_char_addr();
         self.update_clock();
@@ -1800,10 +1738,10 @@ impl CGACard {
         }
         */
 
-        if self.sink_cycles > 0 {
-            self.sink_cycles = self.sink_cycles.saturating_sub(16);
-            return;
-        }
+        // if self.sink_cycles > 0 {
+        //     self.sink_cycles = self.sink_cycles.saturating_sub(16);
+        //     return;
+        // }
 
         self.cycles += 16;
         self.cur_screen_cycles += 16;
@@ -1835,7 +1773,7 @@ impl CGACard {
                     self.draw_solid_lchar(CGA_VBLANK_DEBUG_COLOR);
                 }
             }
-            else if self.vborder | self.hborder {
+            else if self.border {
                 // Draw overscan
                 self.draw_solid_lchar(self.cc_overscan_color);
             }
@@ -1848,15 +1786,6 @@ impl CGACard {
         self.beam_x += 16;
         self.rba += 16;
 
-        // If we have reached the right edge of the 'monitor', return the raster position
-        // to the left side of the screen.
-        if self.beam_x >= CGA_XRES_MAX {
-            self.beam_x = 0;
-            self.beam_y += 1;
-            self.in_monitor_hsync = false;
-            self.rba = (CGA_XRES_MAX * self.beam_y) as usize;
-        }
-
         if self.cycles & self.char_clock_mask != 0 {
             log::error!(
                 "tick_lchar(): calling tick_crtc_char but out of phase with cclock: cycles: {} mask: {}",
@@ -1866,6 +1795,12 @@ impl CGACard {
         }
 
         self.tick_crtc_char();
+        if self.horizontal_pll.run(16, self.in_crtc_hblank) {
+            self.do_horizontal_flyback();
+        }
+        if self.vertical_pll.run(16, self.in_card_vblank) {
+            self.do_vertical_flyback();
+        }
         self.set_char_addr();
         self.char_col = 0;
         self.update_clock();
@@ -1916,10 +1851,6 @@ impl CGACard {
 
     /// Execute one CGA clock cycle.
     pub fn tick(&mut self) {
-        if self.sink_cycles > 0 {
-            self.sink_cycles = self.sink_cycles.saturating_sub(1);
-            return;
-        }
         self.cycles += 1;
         self.cur_screen_cycles += 1;
 
@@ -1955,7 +1886,7 @@ impl CGACard {
                     self.buf[self.back_buf][self.rba] = CGA_VBLANK_DEBUG_COLOR;
                 }
             }
-            else if self.vborder | self.hborder {
+            else if self.border {
                 // Draw overscan
                 if self.debug_draw {
                     self.draw_overscan_pixel();
@@ -2007,13 +1938,6 @@ impl CGACard {
         }
         */
 
-        if self.beam_x == CGA_XRES_MAX {
-            self.beam_x = 0;
-            self.beam_y += 1;
-            self.in_monitor_hsync = false;
-            self.rba = (CGA_XRES_MAX * self.beam_y) as usize;
-        }
-
         if self.rba != saved_rba + self.clock_divisor as usize {
             log::warn!("bad rba increment");
         }
@@ -2032,16 +1956,29 @@ impl CGACard {
             self.char_col = 0;
             self.update_clock();
         }
+
+        // if self.beam_x > CGA_XRES_MAX {
+        //     self.do_horizontal_flyback();
+        // }
+
+        // Update PLLs for this cycle
+        if self.horizontal_pll.run(self.clock_divisor.into(), self.in_crtc_hblank) {
+            self.do_horizontal_flyback();
+        }
+        if self.vertical_pll.run(self.clock_divisor.into(), self.in_card_vblank) {
+            self.do_vertical_flyback();
+        }
     }
 
     /// Update the CRTC logic for next character.
     pub fn tick_crtc_char(&mut self) {
-        if self.hcc_c0 == 0 {
-            self.hborder = false;
-            if self.vcc_c4 == 0 {
-                // We are at the first character of a CRTC frame. Update start address.
-                self.vma = self.crtc_frame_address;
-            }
+        self.border_override = false;
+
+        if self.hcc_c0 == 0 && self.vcc_c4 == 0 {
+            // We are at the first character of a CRTC frame. Update start address.
+            self.in_display_area = true;
+
+            self.vma = self.crtc_frame_address;
         }
 
         if self.hcc_c0 < 2 {
@@ -2053,7 +1990,7 @@ impl CGACard {
                 self.vtac_c5 = 0;
             }
             else {
-                //self.last_row = false;
+                self.last_line = false;
             }
         }
 
@@ -2108,20 +2045,21 @@ impl CGACard {
                         // like a monitor would.
                         self.in_last_vblank_line = true;
                         self.vsc_c3h = 0;
+
                         self.do_vsync();
                     }
                 }
 
                 self.scanline += 1;
-
-                // Reset beam to left of screen if we haven't already
-                if self.beam_x > 0 {
-                    self.beam_y += 1;
-                }
-                self.beam_x = 0;
-
-                let new_rba = (CGA_XRES_MAX * self.beam_y) as usize;
-                self.rba = new_rba;
+                //
+                // // Reset beam to left of screen if we haven't already
+                // if self.beam_x > 0 {
+                //     self.beam_y += 1;
+                // }
+                // self.beam_x = 0;
+                //
+                // let new_rba = (CGA_XRES_MAX * self.beam_y) as usize;
+                // self.rba = new_rba;
             }
 
             // End horizontal blank when we reach R3
@@ -2143,7 +2081,6 @@ impl CGACard {
             // Save right overscan start position to calculate width of right overscan later
             self.overscan_right_start = self.beam_x;
             self.in_display_area = false;
-            self.hborder = true;
         }
 
         if self.hcc_c0 == self.crtc_horizontal_sync_pos {
@@ -2155,7 +2092,7 @@ impl CGACard {
         if self.hcc_c0 == self.crtc_horizontal_total && self.in_last_vblank_line {
             // We are one char away from the beginning of the new frame.
             // Draw one char of border
-            self.hborder = true;
+            self.border_override = true;
         }
 
         if self.hcc_c0 == self.crtc_horizontal_total + 1 {
@@ -2173,7 +2110,6 @@ impl CGACard {
 
             // Reset Horizontal Character Counter and increment character row counter
             self.hcc_c0 = 0;
-            self.hborder = false;
             self.vlc_c9 += 1;
             if self.vlc_c9 == 32 {
                 self.vlc_c9 = 0;
@@ -2184,10 +2120,9 @@ impl CGACard {
             // Reset the current character glyph to start of row
             //self.set_char_addr();
 
-            if !self.in_crtc_vblank && (self.vcc_c4 < self.crtc_vertical_displayed) {
+            if !self.in_crtc_vblank && self.in_display_rows {
                 // Start the new row
                 self.in_display_area = true;
-                self.hborder = false;
             }
 
             if self.vlc_c9 == self.crtc_maximum_scanline_address + 1 {
@@ -2204,7 +2139,7 @@ impl CGACard {
                 if self.vcc_c4 == self.crtc_vertical_sync_pos {
                     // C4 == R7: We've reached vertical sync
                     trace_regs!(self);
-                    trace!(self, "Entering vsync");
+                    trace!(self, "Entering vblank");
                     self.in_crtc_vblank = true;
                     self.in_display_area = false;
                 }
@@ -2220,8 +2155,8 @@ impl CGACard {
 
             if self.vcc_c4 == self.crtc_vertical_displayed {
                 // C4 == R6: Enter lower overscan area.
+                self.in_display_rows = false;
                 self.in_display_area = false;
-                self.vborder = true;
             }
 
             if self.vcc_c4 == self.crtc_vertical_total + 1 {
@@ -2242,15 +2177,16 @@ impl CGACard {
                     // We have reached vertical total adjust. We are at the end of the top overscan.
                     self.in_vta = false;
                     self.vtac_c5 = 0;
-                    self.hcc_c0 = 0;
+                    //self.hcc_c0 = 0;
                     self.vcc_c4 = 0;
                     self.vlc_c9 = 0;
                     self.crtc_frame_address = self.crtc_start_address;
                     self.vma = self.crtc_start_address;
                     self.vma_t = self.vma;
                     self.in_display_area = true;
-                    self.vborder = false;
+                    self.in_display_rows = true;
                     self.in_crtc_vblank = false;
+                    self.frame_count += 1;
                 }
                 else {
                     self.vtac_c5 += 1;
@@ -2266,6 +2202,11 @@ impl CGACard {
                 self.lightpen_trigger_tick = None;
             }
         }
+
+        self.border = !self.in_display_area || self.border_override;
+
+        // Delay vsync until next LCLOCK
+        self.in_card_vblank = self.in_crtc_vblank && !self.in_card_vblank && (self.cycles & CGA_LCHAR_CLOCK_MASK == 0);
     }
 
     fn latch_lightpen(&mut self) {
@@ -2277,69 +2218,47 @@ impl CGACard {
         self.crtc_lightpen_latch_ho = ((self.lightpen_addr >> 8) & 0xFF) as u8;
     }
 
+    /// Perform a vertical flyback - the beam does not actually reset directly to the upper left,
+    /// but is pulled back to the top of the screen while horizontal deflection continues.  Ideally
+    /// this completes with the horizontal position at the point where the vsync started.
+    pub fn do_vertical_flyback(&mut self) {
+        self.beam_x %= CGA_XRES_MAX;
+        self.beam_y = 0;
+        self.scanline = 0;
+        self.in_monitor_vblank = false;
+        self.rba = self.hcc_c0.saturating_sub(1) as usize * self.char_clock as usize;
+
+        //self.rba = self.beam_x as usize;
+
+        trace_regs!(self);
+        trace!(self, "Flipping buffers");
+
+        self.v_flyback_count += 1;
+
+        // Save the current mode byte, used for composite rendering.
+        // The mode could have changed several times per frame, but I am not sure how the composite rendering should
+        // really handle that...
+        self.extents.mode_byte = self.mode_byte;
+
+        // Swap the display buffers
+        self.swap();
+    }
+
+    // Return the raster to the left side of the screen at the edge of the horizontal deflection
+    // range.
+    fn do_horizontal_flyback(&mut self) {
+        self.beam_x = 0;
+        self.beam_y += 1;
+        self.in_monitor_hsync = false;
+        self.rba = (CGA_XRES_MAX * self.beam_y) as usize;
+    }
+
     pub fn do_vsync(&mut self) {
         self.crtc_ticks_since_vsync = 0;
-        self.in_crtc_vsync = false;
 
         self.cycles_per_vsync = self.cur_screen_cycles;
         self.cur_screen_cycles = 0;
         self.last_vsync_cycles = self.cycles;
-
-        // if self.cycles_per_vsync > 300000 {
-        //     log::trace!(
-        //         "do_vsync(): Excessively long frame. char_clock: {} cycles: {} beam_y: {}",
-        //         self.char_clock,
-        //         self.cycles_per_vsync,
-        //         self.beam_y
-        //     );
-        // }
-
-        // Only do a vsync if we are past the minimum scanline #.
-        // A monitor will refuse to vsync too quickly.
-        if self.beam_y > CGA_MONITOR_VSYNC_MIN {
-            // vblank remains set through the entire last line, including the right overscan of the new screen.
-            // So we need to delay resetting vblank flag until then.
-            //self.in_crtc_vblank = false;
-
-            if self.beam_y > 258 && self.beam_y < 262 {
-                // This is a "short" frame. Calculate delta.
-                //let delta_y = 262 - self.beam_y;
-                //self.sink_cycles = delta_y * 912;
-
-                if self.cycles & self.char_clock_mask != 0 {
-                    log::error!(
-                        "vsync out of phase with cclock: cycles: {} mask: {}",
-                        self.cycles,
-                        self.char_clock_mask
-                    );
-                }
-                //log::trace!("sink_cycles: {}", self.sink_cycles);
-            }
-
-            self.beam_x = 0;
-            self.beam_y = 0;
-            self.rba = 0;
-            // Write out preliminary DisplayExtents data for new front buffer based on current crtc values.
-
-            trace_regs!(self);
-            trace!(self, "Leaving vsync and flipping buffers");
-
-            self.scanline = 0;
-            self.frame_count += 1;
-
-            // Save the current mode byte, used for composite rendering.
-            // The mode could have changed several times per frame, but I am not sure how the composite rendering should
-            // really handle that...
-            self.extents.mode_byte = self.mode_byte;
-
-            // Swap the display buffers
-            self.swap();
-        }
-        else {
-            // Don't do vsync but reset scanline # so we can keep track in Area5150
-            self.scanline = 0;
-            self.frame_count += 1;
-        }
     }
 
     pub fn dump_status(&self) {

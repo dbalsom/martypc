@@ -341,9 +341,18 @@ const CGA_TO_EGA_U8: [u8; 16] = [
     0x00, 0x01, 0x02, 0x03, 0x04, 0x05, 0x14, 0x07, 0x38, 0x39, 0x3A, 0x3B, 0x3C, 0x3D, 0x3E, 0x3F,
 ];
 
-// This lookup table holds the values for the first color register that should
-// trigger the switch sense bit to be set. I am not sure of the actual triggering
-// condition, but we model what the BIOS expects
+// DAC Probing Table
+// ------------------------------------------------------------------------------------------------
+// The VGA can detect a color or monochrome monitor by setting specific colors in the first DAC
+// color register and checking the switch sense bit in the Input Status Register 0.
+// This line is tied to a voltage comparator and the DAC's 'IREF' output to detect whether anything
+// is attached to the Red and Blue outputs of the DAC.
+// In this manner the VGA BIOS can determine whether a color or monochrome monitor is attached, or
+// if no monitor is attached at all.  Logically inconsistent values will cause the VGA BIOS to halt
+// with beep codes.
+
+// This lookup table holds the values for the first color register that should trigger the switch
+// sense bit to be set when a color monitor is used.
 const SWITCH_SENSE_LUT: [[u8; 3]; 6] = [
     [0x14, 0x14, 0x14],
     [0x04, 0x12, 0x04],
@@ -774,7 +783,7 @@ impl Default for VGACard {
             aperture:  0,
 
             // Theoretically, boxed arrays may have some performance advantages over
-            // vectors due to having a fixed size known by the compiler.  However they
+            // vectors due to having a fixed size known by the compiler. However, they
             // are a pain to initialize without overflowing the stack.
             buf: [
                 vec![0; VGA_MAX_CLOCK28].into_boxed_slice().try_into().unwrap(),
@@ -915,21 +924,11 @@ impl VGACard {
 
     /// Handle a read from the Input Status Register Zero, 0x3C2
     ///
-    /// The Switch Sense bit 4 has the state of the DIP switches on the card
-    /// depending on the Clock Select set in the Misc Output Register.
+    /// The Switch Sense bit 4 represents the state of the DAC sense line.
+    /// This bit will be set depending on whether loading of the RGB color outputs is detected, ie,
+    /// whether a color or monochrome monitor is connected.
     fn read_input_status_register_0(&mut self) -> u8 {
         let mut byte = 0x0F;
-
-        // // Note: DIP switches are wired up in reverse order
-        // let switch_status = match self.misc_output_register.clock_select() {
-        //     ClockSelect::Unused => self.dip_sw.read() & 0x01,
-        //     ClockSelect::ExternalClock => self.dip_sw.read() >> 1 & 0x01,
-        //     ClockSelect::Clock28 => self.dip_sw.read() >> 2 & 0x01,
-        //     ClockSelect::Clock25 => self.dip_sw.read() >> 3 & 0x01,
-        // };
-        //
-        // // Set switch sense bit
-        // byte |= switch_status << 4;
 
         for i in 0..SWITCH_SENSE_LUT.len() {
             if SWITCH_SENSE_LUT[i][0] == self.ac.color_registers[0][0]

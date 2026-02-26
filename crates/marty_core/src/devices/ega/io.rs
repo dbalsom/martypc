@@ -61,7 +61,7 @@ impl IoDevice for EGACard {
                 // Don't answer this port if we are in MDA compatibility mode
                 match self.misc_output_register.io_address_select() {
                     IoAddressSelect::CompatMonochrome => 0xFF,
-                    IoAddressSelect::CompatCGA => self.read_input_status_register_1(),
+                    IoAddressSelect::CompatCGA => self.crtc.read_crtc_register(),
                 }
             }
             CRTC_REGISTER_MDA => {

@@ -69,9 +69,12 @@ impl VideoCard for CGACard {
                 log::debug!("VideoOption::DebugDraw set to: {}", state);
                 self.debug_draw = state;
             }
-            VideoOption::EmulateSync(state) => {
-                log::debug!("VideoOption::EmulateSync set to: {}", state);
-                self.emulate_sync = state;
+            VideoOption::EmulateSync { v: v_state, h: h_state } => {
+                log::debug!("VideoOption::EmulateSync set to: v: {}, h: {}", v_state, h_state);
+                self.emulate_vsync = v_state;
+                self.vertical_pll.enable(v_state);
+                self.emulate_hsync = h_state;
+                self.horizontal_pll.enable(h_state);
             }
         }
     }

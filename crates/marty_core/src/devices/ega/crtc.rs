@@ -85,13 +85,14 @@ pub enum CRTCRegister {
     CursorAddressL,
     VerticalRetraceStart, // These replace the CGA lightpen registers on EGA
     VerticalRetraceEnd,   //
-    VerticalDisplayEnd,
+    VerticalDisplayEnd,   // R18 / R12h - Readable on ET2000?
     Offset,
     UnderlineLocation,
     StartVerticalBlank,
     EndVerticalBlank,
     ModeControl,
     LineCompare,
+    Invalid,
 }
 
 #[bitfield]
@@ -349,8 +350,7 @@ impl EgaCrtc {
             0x18 => CRTCRegister::LineCompare,
             _ => {
                 log::debug!("Select to invalid CRTC register: {:02X}", byte);
-                self.register_select_byte = 0;
-                CRTCRegister::HorizontalTotal
+                CRTCRegister::Invalid
             }
         }
     }
@@ -519,6 +519,13 @@ impl EgaCrtc {
                 // Bit 8 in overflow register. Set only lower 8 bits here.
                 self.crtc_line_compare &= 0xFF00;
                 self.crtc_line_compare |= byte as u16;
+            }
+            CRTCRegister::Invalid => {
+                log::debug!(
+                    "Write to invalid CRTC register [{:02X}]: {:02X}",
+                    self.register_select_byte,
+                    byte
+                );
             }
         }
         (true, clear_intr)
@@ -1024,7 +1031,9 @@ impl EgaCrtc {
             }
         }
 
-        if self.status.vsync && (self.slc & EGA_VSYNC_MASK) == self.crtc_vertical_retrace_end.vertical_retrace_end() as u16 {
+        if self.status.vsync
+            && (self.slc & EGA_VSYNC_MASK) == self.crtc_vertical_retrace_end.vertical_retrace_end() as u16
+        {
             // We are leaving vsync period, generate a frame
             self.status.begin_vsync = true;
             self.status.vsync = false;

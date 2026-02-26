@@ -134,13 +134,12 @@ const MDA_COMPAT_IO_ADJUST: u16 = 0x20;
    The flip-flop can be cleared by reading from Input Status Register 1 (0x3DA)
 */
 pub const ATTRIBUTE_REGISTER: u16 = 0x3C0;
+
 /* Incomplete address decoding for the Attribute Register means it can also be
    accessed at 0x3C1. The EGA BIOS requires emulating this behavior.
    See: https://www.vogons.org/viewtopic.php?f=9&t=82050&start=60
 */
 pub const ATTRIBUTE_REGISTER_ALT: u16 = 0x3C1;
-//ub const ATTRIBUTE_ADDRESS_REGISTER: u16   = 0x3C0;
-//pub const ATTRIBUTE_DATA_REGISTER: u16      = 0x3C0;
 
 pub const MISC_OUTPUT_REGISTER: u16 = 0x3C2; // Write-only to 3C2
 pub const INPUT_STATUS_REGISTER_0: u16 = 0x3C2; // Read-only from 3C2
