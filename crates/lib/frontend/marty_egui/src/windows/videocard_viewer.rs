@@ -132,6 +132,7 @@ impl GuiState {
 
             ui.vertical(|ui| {
                 GuiState::draw_register_file(ui, videocard_state, false, "CRTC Counters", "CRTC Counters".to_string());
+                GuiState::draw_register_file(ui, videocard_state, false,"Monitor", "Monitor Simulation".to_string());
                 GuiState::draw_register_file(ui, videocard_state, false,"Internal", "Internal Registers".to_string());
                 GuiState::draw_register_file(ui, videocard_state, false,"External", "External Registers".to_string());
                 GuiState::draw_register_file(ui, videocard_state, false,"Light Pen", "Light Pen".to_string());
