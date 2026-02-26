@@ -4,7 +4,7 @@
 # This is the ROM from the original IBM EGA card.
 [[romset]]
 alias = "ibm_ega"
-priority = 1
+priority = 10
 provides = ["ibm_ega"]
 oem = true
 requires = ["expansion"]
@@ -22,3 +22,15 @@ checkpoint = [
     { addr = 0xC0480, lvl = 3, desc = "EGA Mem Test" },
     { addr = 0xC068F, lvl = 3, desc = "EGA How Big Test" },
 ]
+
+
+[[romset]]
+alias = "et2000"
+priority = 1
+provides = ["ibm_ega"]
+oem = true
+requires = ["expansion"]
+rom = [
+    { md5 = "cc6ae47022f7095454627e0c6d6aab77", addr = 0xC0000, size = 32768, chip = "1", org = "Normal" },
+]
+
