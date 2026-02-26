@@ -63,7 +63,7 @@ icon.png
 # Dev machines not completed or functional
 /install/configs/machines/acid88.toml
 /install/configs/machines/s100.toml
-
+/install/configs/machines/seequa_chameleon.toml
 
 # Files to include for distribution
 !/install/gui_definition.json
@@ -85,6 +85,7 @@ icon.png
 !/frontends/martypc_eframe/assets/martypc.toml
 
 # Experimental rom definitions
+/install/configs/rom_definitions/romdef_seequa.toml
 /install/configs/rom_definitions/romdef_s100.toml
 /install/configs/rom_definitions/romdef_ast.toml
 /install/configs/rom_definitions/romdef_ibm_ps2.toml
