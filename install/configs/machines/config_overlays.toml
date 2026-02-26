@@ -202,6 +202,15 @@ name = "ibm_ega"
     type = "EGA"
     clock_mode = "Default"
     dip_switch = 0b1001
+
+[[overlay]]
+name = "et2000_ega"
+    # Video card
+    [[overlay.video]]
+    bus_type = "ISA"
+    type = "EGA"
+    clock_mode = "Default"
+    dip_switch = 0b1110
     
 [[overlay]]
 name = "ibm_ega_on_cga"
