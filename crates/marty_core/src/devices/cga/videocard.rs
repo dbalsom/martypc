@@ -69,6 +69,10 @@ impl VideoCard for CGACard {
                 log::debug!("VideoOption::DebugDraw set to: {}", state);
                 self.debug_draw = state;
             }
+            VideoOption::EmulateSync(state) => {
+                log::debug!("VideoOption::EmulateSync set to: {}", state);
+                self.emulate_sync = state;
+            }
         }
     }
 
@@ -155,7 +159,7 @@ impl VideoCard for CGACard {
             self.in_crtc_vblank,
             self.in_crtc_hblank,
             self.in_display_area,
-            self.hborder | self.vborder,
+            self.border
         )
     }
 
@@ -291,6 +295,22 @@ impl VideoCard for CGACard {
 
         map.insert("CRTC".to_string(), crtc_vec);
 
+        let mut monitor_vec = Vec::new();
+
+        monitor_vec.push((String::from("hhold:"), VideoCardStateEntry::String(format!("{}", self.horizontal_pll.is_locked()))));
+        monitor_vec.push((String::from("h_pll_freq:"), VideoCardStateEntry::String(format!("{:.2}Hz", self.horizontal_pll.current_freq()))));
+        monitor_vec.push((String::from("h_pll_phase:"), VideoCardStateEntry::String(format!("{:.3}", self.horizontal_pll.sync_phase()))));
+        monitor_vec.push((String::from("h_pll_error:"), VideoCardStateEntry::String(format!("{:.3}", self.horizontal_pll.error()))));
+        monitor_vec.push((String::from("vhold:"), VideoCardStateEntry::String(format!("{}", self.vertical_pll.is_locked()))));
+        monitor_vec.push((String::from("v_pll_freq:"), VideoCardStateEntry::String(format!("{:.2}Hz", self.vertical_pll.current_freq()))));
+        monitor_vec.push((String::from("v_pll_phase:"), VideoCardStateEntry::String(format!("{:.3}", self.vertical_pll.sync_phase()))));
+        monitor_vec.push((String::from("v_flybacks:"), VideoCardStateEntry::String(format!("{}", self.v_flyback_count))));
+        monitor_vec.push((String::from("beam_x:"), VideoCardStateEntry::String(format!("{}", self.beam_x))));
+        monitor_vec.push((String::from("beam_y:"), VideoCardStateEntry::String(format!("{}", self.beam_y))));
+
+
+        map.insert("Monitor".to_string(), monitor_vec);
+
         let mut internal_vec = Vec::new();
 
         internal_vec.push((String::from("hcc_c0:"), VideoCardStateEntry::String(format!("{}", self.hcc_c0))));
@@ -308,9 +328,8 @@ impl VideoCard for CGACard {
         internal_vec.push((String::from("de:"), VideoCardStateEntry::String(format!("{}", self.in_display_area))));
         internal_vec.push((String::from("crtc_hblank:"), VideoCardStateEntry::String(format!("{}", self.in_crtc_hblank))));
         internal_vec.push((String::from("crtc_vblank:"), VideoCardStateEntry::String(format!("{}", self.in_crtc_vblank))));
-        internal_vec.push((String::from("beam_x:"), VideoCardStateEntry::String(format!("{}", self.beam_x))));
-        internal_vec.push((String::from("beam_y:"), VideoCardStateEntry::String(format!("{}", self.beam_y))));
-        internal_vec.push((String::from("border:"), VideoCardStateEntry::String(format!("{}", self.hborder))));
+
+        internal_vec.push((String::from("border:"), VideoCardStateEntry::String(format!("{}", self.border))));
         internal_vec.push((String::from("s_reads:"), VideoCardStateEntry::String(format!("{}", self.status_reads))));
         internal_vec.push((String::from("missed_hsyncs:"), VideoCardStateEntry::String(format!("{}", self.missed_hsyncs))));
         internal_vec.push((String::from("vsync_cycles:"), VideoCardStateEntry::String(format!("{}", self.cycles_per_vsync))));
@@ -494,6 +513,17 @@ impl VideoCard for CGACard {
             _ => {
                 panic!("Unsupported ClockingMode: {:?}", self.clock_mode);
             }
+        }
+
+        // If we have reached the right edge of the 'monitor', force a horizontal
+        // flyback as this represents the farthest extent of horizontal deflection.
+        if self.beam_x > CGA_XRES_MAX {
+            self.do_horizontal_flyback();
+        }
+        // If we have reached the bottom edge of the 'monitor', force a vertical
+        // flyback as this represents the farthest extent of vertical deflection.
+        if self.beam_y > CGA_YRES_MAX_PROGRESSIVE + 2 {
+            self.do_vertical_flyback();
         }
 
         // Reset rwop slots for next CPU step.

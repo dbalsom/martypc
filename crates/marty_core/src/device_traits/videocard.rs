@@ -174,11 +174,19 @@ pub struct VideoCardInterface<'a> {
     pub id:   VideoCardId,
 }
 
-// Video options that can be sent to a VideoCard device. Not all adapters will support
-// each option. For example, CGA snow is of course only specific to the CGA card.
+// Video options that can be sent to a VideoCard device. Not all adapters will support each option.
+#[derive(Copy, Clone, Debug)]
 pub enum VideoOption {
+    // Emit colors during hblank/vblank for debugging purposes.
     DebugDraw(bool),
+    // Enable 'snow' emulation on cards with single-ported VRAM and inadequate wait-state logic
+    // (Currently only CGA).
     EnableSnow(bool),
+    // Enable video sync emulation for cards that support it.
+    EmulateSync{
+        v: bool,
+        h: bool,
+    },
 }
 
 // This enum determines the rendering method of the given videocard device.

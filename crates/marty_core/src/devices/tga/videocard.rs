@@ -74,13 +74,12 @@ impl VideoCard for TGACard {
 
     fn set_video_option(&mut self, opt: VideoOption) {
         match opt {
-            VideoOption::EnableSnow(state) => {
-                log::debug!("VideoOption::EnableSnow set to: {}", state);
-                self.enable_snow = state;
-            }
             VideoOption::DebugDraw(state) => {
                 log::debug!("VideoOption::DebugDraw set to: {}", state);
                 self.debug_draw = state;
+            }
+            _ => {
+                log::warn!("VideoOption::{:?} not supported for TGA", opt);
             }
         }
     }

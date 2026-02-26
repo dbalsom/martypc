@@ -41,12 +41,12 @@ impl VideoCard for EGACard {
 
     fn set_video_option(&mut self, opt: VideoOption) {
         match opt {
-            VideoOption::EnableSnow(_state) => {
-                log::warn!("VideoOption::EnableSnow not supported for EGA");
-            }
             VideoOption::DebugDraw(state) => {
                 log::debug!("VideoOption::DebugDraw set to: {}", state);
                 self.debug_draw = state;
+            }
+            _ => {
+                log::warn!("VideoOption::{:?} not supported for EGA", opt);
             }
         }
     }
