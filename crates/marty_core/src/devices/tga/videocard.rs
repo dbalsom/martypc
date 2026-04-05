@@ -637,7 +637,7 @@ impl VideoCard for TGACard {
     }
 
     fn light_pen_trigger(&mut self, x: u32, y: u32) {
-        log::debug!("Setting light pen trigger.");
+        //log::trace!("Setting light pen trigger.");
         self.set_light_pen_pos(x, y);
         self.lightpen_trigger_tick = Some(self.lightpen_tick);
     }
