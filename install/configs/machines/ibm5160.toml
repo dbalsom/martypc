@@ -125,7 +125,6 @@ overlays = [
     "us_modelf_keyboard",
     "microsoft_serial_mouse",
     "lotech_ems",
-    "fantasy_ems",
     "game_port",
 ]
 
