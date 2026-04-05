@@ -942,7 +942,7 @@ impl CGACard {
         self.cursor_data.fill(false);
 
         // Start line must be reached when iterating through character rows to draw a cursor at all.
-        // Therefore if start_line > maximum_scanline, the cursor is disabled.
+        // Therefore, if start_line > maximum_scanline, the cursor is disabled.
         if self.crtc_cursor_start_line > self.crtc_maximum_scanline_address {
             return;
         }
@@ -1716,7 +1716,7 @@ impl CGACard {
             if self.in_display_area {
                 // Draw current character row
                 if !self.mode_graphics {
-                    if self.lightpen_tick == self.crtc_ticks_since_vsync {
+                    if self.debug_draw && (self.lightpen_tick == self.crtc_ticks_since_vsync) {
                         self.draw_solid_hchar(CGA_LIGHTPEN_DEBUG_COLOR);
                     }
                     else {
