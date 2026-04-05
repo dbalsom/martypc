@@ -72,6 +72,11 @@ pub mod draw;
 pub mod resize;
 // Reenigne composite
 pub mod composite_new;
+pub mod sample;
+
+pub const LP_LUMA_THRESHOLD: f32 = 0.125;
+pub const OSD_CURSOR_SIZE: i32 = 16;
+pub const OSD_CURSOR_APERTURE: i32 = 4;
 
 /// Events that the renderer can return. These must be read and handled every frame to avoid
 /// memory leaks.
@@ -108,6 +113,7 @@ pub struct VideoParams {
     pub aspect_correction: AspectCorrectionMode, // Determines how to handle aspect correction.
     pub aperture: DisplayApertureType, // Selected display aperture for renderer
     pub debug_aperture: bool,
+    pub luma_sampling: bool,
     pub composite_params: CompositeParams, // Parameters used for composite emulation.
     pub bpp: RenderBpp,
 }
@@ -123,6 +129,7 @@ impl Default for VideoParams {
             aspect_correction: AspectCorrectionMode::None,
             aperture: DisplayApertureType::Cropped,
             debug_aperture: false,
+            luma_sampling: false,
             composite_params: Default::default(),
             bpp: Default::default(),
         }
@@ -227,6 +234,7 @@ pub struct VideoRenderer {
     last_render_time: Duration,
     event_queue: VecDeque<RendererEvent>,
 
+    sampled_luma: f32,
     osd_cursor: bool,
     osd_cursor_pos: (u32, u32),
     osd_cursor_latch: Option<(u32, u32)>,
@@ -280,6 +288,7 @@ impl VideoRenderer {
             last_render_time: Duration::from_secs(0),
             event_queue: VecDeque::new(),
 
+            sampled_luma: 0.0,
             osd_cursor: false,
             osd_cursor_pos: (100, 100),
             osd_cursor_latch: None,
@@ -352,6 +361,14 @@ impl VideoRenderer {
         self.aperture_dirty = true;
     }
 
+    pub fn set_luma_sampling(&mut self, state: bool) {
+        self.params.luma_sampling = state;
+    }
+
+    pub fn luma_sampling(&self) -> bool {
+        self.params.luma_sampling
+    }
+
     pub fn set_debug(&mut self, state: bool) {
         self.params.debug_aperture = state;
     }
@@ -402,8 +419,27 @@ impl VideoRenderer {
         (self.osd_cursor_pos.0 + aperture.x, self.osd_cursor_pos.1 + y_offset)
     }
 
-    pub fn cursor_latch_absolute(&mut self, extents: &DisplayExtents) -> Option<(u32, u32)> {
+    // Simulate latching the light pen position, if the light pen sees light this frame.
+    // Light is determined via the sampled luma at the cursor position during frame rendering.
+    // The 'thresh' parameter can be used to adjust the luma threshold for latching.
+    // If 'thresh' is None, a default threshold of 0.25 will be used.
+    pub fn cursor_latch_absolute(&mut self, extents: &DisplayExtents, thresh: Option<f32>) -> Option<(u32, u32)> {
+        let threshold = thresh.unwrap_or(LP_LUMA_THRESHOLD);
+
         if let Some(latch_pos) = self.osd_cursor_latch {
+            if self.params.luma_sampling {
+                log::trace!(
+                    "cursor_latch_absolute(): Sampled luma at cursor position: {}",
+                    self.sampled_luma
+                );
+                if self.sampled_luma < threshold {
+                    // Luma is below threshold, light pen does not see light, do not latch.
+                    //log::trace!("cursor_latch_absolute(): Luma below threshold, not latching.");
+                    self.osd_cursor_latch = None;
+                    return None;
+                }
+            }
+
             let aperture = &extents.apertures[self.params.aperture as usize];
             let y_offset = if extents.double_scan {
                 aperture.y * 2

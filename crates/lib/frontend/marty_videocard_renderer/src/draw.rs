@@ -138,6 +138,18 @@ impl VideoRenderer {
 
         // Draw OSD cursor (light pen, etc)
         if self.osd_cursor {
+            // Sample luma before drawing cursor.
+            if self.params.luma_sampling {
+                self.sampled_luma = VideoRenderer::sample_luma(
+                    first_pass_buf,
+                    self.params.render.w,
+                    self.params.render.w,
+                    self.params.render.h,
+                    self.osd_cursor_pos.0,
+                    self.osd_cursor_pos.1,
+                );
+            }
+
             VideoRenderer::draw_cursor(
                 first_pass_buf,
                 self.params.render.w,
@@ -348,11 +360,8 @@ impl VideoRenderer {
     }
 
     pub fn draw_cursor(frame: &mut [u8], w: u32, span: u32, h: u32, x: u32, y: u32) {
-        const CURSOR_SIZE: i32 = 32;
-        const CURSOR_APERTURE: i32 = 4;
-
-        let half_aperture = CURSOR_APERTURE / 2;
-        let half_cursor: i32 = CURSOR_SIZE / 2;
+        let half_aperture = OSD_CURSOR_APERTURE / 2;
+        let half_cursor: i32 = OSD_CURSOR_SIZE / 2;
 
         let horiz_start0: i32 = x as i32 - (half_cursor + 1);
         let horiz_end0 = horiz_start0 + half_cursor - half_aperture + 1;
