@@ -381,7 +381,7 @@ impl VideoRenderer {
         self.osd_cursor_pos.1 = std::cmp::min(new_y as u32, self.params.backend.h);
 
         if latch {
-            log::debug!("update_cursor(): Latching cursor position.");
+            //log::trace!("update_cursor(): Latching cursor position.");
             self.osd_cursor_latch = Some(self.osd_cursor_pos);
         }
     }
