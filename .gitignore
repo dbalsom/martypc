@@ -12,9 +12,10 @@ Thumbs.db
 /.vscode/settings.json
 
 # Jetbrains stuff
-/.idea/shelf/
-/.idea/dictionaries/Daniel.xml
+/.idea/shelf
+/.idea/dictionaries
 /.idea/workspace.xml
+/.idea/*data.migration*
 
 # Emulator files
 /archive
@@ -90,6 +91,10 @@ icon.png
 /install/configs/rom_definitions/romdef_ibm_ps2.toml
 /install/configs/rom_definitions/romdef_ibm_misc.toml
 /install/configs/rom_definitions/romdef_custom.toml
+/install/configs/rom_definitions/romdef_seequa.toml
+
+# Experimental machines
+/install/configs/machines/seequa_chameleon.toml
 
 # Miscellaneous GlaBIOS ROMs
 /install/media/roms/GLaBIOS/parking
@@ -114,3 +119,4 @@ icon.png
 /exo_demo/
 /util/mquit/mquit.com
 /install/media/roms/GLaBIOS/OPTROM.BIN
+
