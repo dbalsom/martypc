@@ -328,7 +328,6 @@ impl BusInterface {
                         fantasy_ems.write_u8(port, data, None, NULL_DELTA_US, analyzer);
                         resolved = true;
                     }
-
                 }
                 IoDeviceType::GamePort => {
                     if let Some(game_port) = &mut self.game_port {
@@ -369,6 +368,7 @@ impl BusInterface {
         self.io_stats
             .entry(port)
             .and_modify(|e| {
+                e.1.last_write = data;
                 e.1.writes += 1;
                 e.1.writes_dirty = true;
             })

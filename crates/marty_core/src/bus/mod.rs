@@ -56,12 +56,12 @@ use crate::{
         cartridge_slots::CartridgeSlot,
         cga::CGACard,
         dma::*,
+        fantasy_ems::FantasyEmsCard,
         fdc::FloppyController,
         game_port::GamePort,
         hdc::{xebec::HardDiskController, xtide::XtIdeController},
         keyboard::{KeyboardType, *},
         lotech_ems::LotechEmsCard,
-        fantasy_ems::FantasyEmsCard,
         lpt_card::ParallelController,
         mda::MDACard,
         mouse::*,
@@ -456,7 +456,7 @@ pub struct BusInterface {
     ppi: Option<Box<Ppi>>,
     a0: Option<A0Register>,
     a0_data: u8,
-    nmi_latch: bool,
+    nmi_gate: bool,
     pit: Option<Pit>,
     speaker_src: Option<usize>,
     dma_counter: u16,
@@ -545,7 +545,7 @@ impl Default for BusInterface {
             ppi: None,
             a0: None,
             a0_data: 0,
-            nmi_latch: false,
+            nmi_gate: false,
             pit: None,
             speaker_src: None,
             dma_counter: 0,
@@ -1209,7 +1209,6 @@ impl BusInterface {
                 add_mmio_device!(self, fantasy_ems, MmioDeviceType::Ems);
                 self.fantasy_ems = Some(fantasy_ems);
             }
-
         }
 
         // Create PCJr cartridge slot
@@ -1406,7 +1405,7 @@ impl BusInterface {
                         MachineType::IbmPCJr => {
                             // The PCJr is an odd duck and uses NMI for keyboard interrupts.
                             if let Some(a0) = &mut self.a0 {
-                                a0.set_nmi_latch(true);
+                                a0.set_kbd_latch(true);
                             }
                         }
                         _ => {
@@ -1471,26 +1470,28 @@ impl BusInterface {
         let mut pit = self.pit.take().unwrap();
 
         // Run the A0 register. It doesn't need a time delta.
-        let mut ppi_nmi_latch = None;
+        let mut ppi_kbd_latch = None;
         if let Some(a0) = &mut self.a0 {
-            let new_nmi_latch = a0.run(&mut pit, 0.0);
+            let (new_kbd_latch, new_nmi) = a0.run(&mut pit, 0.0);
             self.a0_data = a0.read();
 
-            if !self.nmi_latch && new_nmi_latch {
+            if !self.nmi_gate && new_nmi {
+                // NMI gate was low, is now high, rising edge of NMI.
                 event = Some(DeviceEvent::NmiTransition(true));
             }
-            else if self.nmi_latch && !new_nmi_latch {
+            else if self.nmi_gate && !new_nmi {
+                // NMI gate was high, is now low, falling edge of NMI.
                 log::debug!("Clearing NMI line to CPU.");
                 event = Some(DeviceEvent::NmiTransition(false));
             }
 
-            ppi_nmi_latch = Some(new_nmi_latch);
-            self.nmi_latch = new_nmi_latch;
+            ppi_kbd_latch = Some(new_nmi);
+            self.nmi_gate = new_nmi;
         }
 
         // Run the PPI if present. PPI takes PIC to generate keyboard interrupts.
         if let Some(ppi) = &mut self.ppi {
-            if let Some(latch_state) = ppi_nmi_latch {
+            if let Some(latch_state) = ppi_kbd_latch {
                 ppi.set_nmi_latch_bit(latch_state);
             }
             ppi.run(pic, us);
@@ -1738,12 +1739,10 @@ impl BusInterface {
             a0.reset();
         }
 
-
         // Reset fantasy ems registers, memory
         if let Some(fantasy_ems) = self.fantasy_ems.as_mut() {
             fantasy_ems.reset();
         }
-
     }
 
     /// Call the reset methods for devices to be reset on warm boot
@@ -1756,6 +1755,10 @@ impl BusInterface {
             fantasy_ems.reset_warm();
         }
 
+        // Reset the A0 register
+        if let Some(a0) = self.a0.as_mut() {
+            a0.reset();
+        }
     }
 
     /// Return a boolean indicating whether a timer interrupt is imminent.
@@ -2012,7 +2015,9 @@ impl BusInterface {
                 ));
                 tokens.push(SyntaxToken::Comma);
                 tokens.push(SyntaxToken::Formatter(SyntaxFormatType::Tab));
-                //tokens.push(SyntaxToken::Formatter(SyntaxFormatType::Tab));
+                tokens.push(SyntaxToken::OpenBracket);
+                tokens.push(SyntaxToken::Text(format!("{:02X}", stats.1.last_write)));
+                tokens.push(SyntaxToken::CloseBracket);
                 tokens.push(SyntaxToken::StateString(
                     format!("{}", stats.1.writes),
                     stats.1.writes_dirty,
@@ -2039,5 +2044,4 @@ impl BusInterface {
             stats.1.writes_dirty = false;
         }
     }
-
 }
