@@ -32,7 +32,6 @@ toml = "0.5.10"
 uuid = { version = "1.1.2", features = ["v4"] }
 anyhow.workspace = true
 serialport = { workspace = true, optional = true }
-fxhash.workspace = true
 enum_dispatch.workspace = true
 crossbeam-channel.workspace = true
 web-time.workspace = true

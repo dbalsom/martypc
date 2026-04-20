@@ -40,9 +40,12 @@ pub use crate::{
     types::{cartridge::CartImage, video_dimensions::VideoDimensions},
 };
 
-/// Use FxHashMap and FxHashSet for faster hashing.
-/// Export these as MartyHashMap and MartyHashSet so that we can easily switch to a different
-/// implementation if needed.
-pub use fxhash::FxBuildHasher;
+// Use FxBuildHasher for faster hashing primitives.
+// Export these as MartyHashMap and MartyHashSet so that we can easily switch to a different
+// implementation if needed.
+pub use indexmap::{IndexMap, IndexSet};
+pub use rustc_hash::FxBuildHasher;
 pub type MartyHashMap<K, V> = std::collections::HashMap<K, V, FxBuildHasher>;
-pub type MartyHashSet<K> = std::collections::HashMap<K, FxBuildHasher>;
+pub type MartyHashSet<K> = std::collections::HashSet<K, FxBuildHasher>;
+pub type MartyIndexMap<K, V> = IndexMap<K, V, FxBuildHasher>;
+pub type MartyIndexSet<T> = IndexSet<T, FxBuildHasher>;

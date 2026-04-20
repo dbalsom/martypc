@@ -78,6 +78,7 @@ use crate::{
     syntax_token::{SyntaxFormatType, SyntaxToken},
     tracelogger::TraceLogger,
 };
+use marty_common::MartyHashMap;
 
 #[cfg(feature = "opl")]
 use crate::devices::adlib::AdLibCard;
@@ -86,6 +87,10 @@ use crate::devices::ega::EGACard;
 #[cfg(feature = "vga")]
 use crate::devices::vga::VGACard;
 
+use crate::{
+    bus::dispatch::MemoryDispatch,
+    devices::{conventional_memory::ConventionalMemory, hdc::jr_ide::JrIdeController, sn76489::Sn76489},
+};
 #[cfg(feature = "sound")]
 use crate::{
     device_traits::sounddevice::SoundDevice,
@@ -95,16 +100,9 @@ use crate::{
     sound::{SoundOutputConfig, SoundSourceDescriptor},
 };
 
-use crate::devices::sn76489::Sn76489;
-
-use crate::{
-    bus::dispatch::MemoryDispatch,
-    devices::{conventional_memory::ConventionalMemory, hdc::jr_ide::JrIdeController},
-};
 use anyhow::Error;
 #[cfg(feature = "sound")]
 use crossbeam_channel::unbounded;
-use fxhash::FxHashMap;
 
 pub(crate) const NO_IO_BYTE: u8 = 0xFF; // This is the byte read from an unconnected IO address.
 pub(crate) const OPEN_BUS_BYTE: u8 = 0xFF; // This is the byte read from an unmapped memory address.
@@ -448,9 +446,9 @@ pub struct BusInterface {
     cursor: usize,
     intr_imminent: bool,
 
-    io_map: FxHashMap<u16, IoDeviceType>,
-    io_desc_map: FxHashMap<u16, String>,
-    io_stats: FxHashMap<u16, (bool, IoDeviceStats)>,
+    io_map: MartyHashMap<u16, IoDeviceType>,
+    io_desc_map: MartyHashMap<u16, String>,
+    io_stats: MartyHashMap<u16, (bool, IoDeviceStats)>,
 
     memory_expansions: Vec<MemoryDispatch>,
     ppi: Option<Box<Ppi>>,
@@ -480,7 +478,7 @@ pub struct BusInterface {
     sound_source: Option<DSoundSource>,
     sn76489: Option<Sn76489>,
 
-    videocards:    FxHashMap<VideoCardId, VideoCardDispatch>,
+    videocards:    MartyHashMap<VideoCardId, VideoCardDispatch>,
     videocard_ids: Vec<VideoCardId>,
 
     cycles_to_ticks:   [u32; 256], // TODO: Benchmarks don't show any faster than raw multiplication. It's not slower either though.
@@ -537,9 +535,9 @@ impl Default for BusInterface {
             cursor: 0,
             intr_imminent: false,
 
-            io_map: FxHashMap::default(),
-            io_desc_map: FxHashMap::default(),
-            io_stats: FxHashMap::default(),
+            io_map: MartyHashMap::default(),
+            io_desc_map: MartyHashMap::default(),
+            io_stats: MartyHashMap::default(),
 
             memory_expansions: Vec::new(),
             ppi: None,
@@ -568,7 +566,7 @@ impl Default for BusInterface {
             adlib: None,
             sound_source: None,
             sn76489: None,
-            videocards: FxHashMap::default(),
+            videocards: MartyHashMap::default(),
             videocard_ids: Vec::new(),
 
             cycles_to_ticks:   [0; 256],
