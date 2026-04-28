@@ -197,8 +197,10 @@ fn fs_main(@location(0) tex_coord: vec2<f32>) -> @location(0) vec4<f32> {
     let is_outside = any(curved_tex_coord < vec2<f32>(0.0, 0.0)) || any(curved_tex_coord > vec2<f32>(1.0, 1.0));
     let is_inside_corner = is_inside_corner_radius(curved_tex_coord, scaler_opts.crt_params.corner_radius * 0.1);
 
-    //var bg = textureSample(r_tex_color, r_tex_sampler, tex_coord);
     var color = textureSample(r_tex_color, r_tex_sampler, curved_tex_coord);
+    if scaler_opts.texture_order != 0 {
+        color = color.bgra;
+    }
 
     if (is_outside || !is_inside_corner) {
         if (true) { discard; } // trick naga DX12 backend into thinking we return a color from each control path
@@ -219,9 +221,6 @@ fn fs_main(@location(0) tex_coord: vec2<f32>) -> @location(0) vec4<f32> {
 
         // We can emit a solid color for debugging...
         // return vec4<f32>(0.0, 0.0, 1.0, 1.0);
-        if scaler_opts.texture_order == 0 {
-            return color;
-        }
-        return color.bgra;
+        return color;
     }
 }
