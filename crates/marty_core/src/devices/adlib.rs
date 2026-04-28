@@ -86,7 +86,7 @@ impl SoundDevice for AdLibCard {
         if self.usec_accum_second >= 1_000_000.0 {
             self.samples_per_second = self.sample_accum_second;
             self.sample_accum_second = 0;
-            self.usec_accum_second = self.usec_accum_second - 1_000_000.0;
+            self.usec_accum_second -= 1_000_000.0;
 
             //log::debug!("Adlib samples per second: {}", self.samples_per_second);
         }
