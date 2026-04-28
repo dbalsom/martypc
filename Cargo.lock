@@ -4210,6 +4210,41 @@ dependencies = [
 [[package]]
 name = "martypc_launcher"
 version = "0.4.1"
+dependencies = [
+ "anyhow",
+ "async-std",
+ "crossbeam-channel",
+ "eframe",
+ "egui 0.30.0",
+ "egui-notify",
+ "egui-winit 0.30.0",
+ "egui_commonmark",
+ "egui_extras 0.30.0 (git+https://github.com/dbalsom/egui_martypc.git?branch=0.30.0_raw_winit_hook)",
+ "env_logger 0.11.9",
+ "fluxfox",
+ "getrandom 0.3.4",
+ "gilrs",
+ "log",
+ "marty_config",
+ "marty_core",
+ "marty_egui_common",
+ "marty_frontend_common",
+ "marty_web_helpers",
+ "rfd",
+ "rodio",
+ "serde",
+ "serialport 4.3.1-alpha.0",
+ "strum 0.27.2",
+ "thiserror 2.0.18",
+ "url",
+ "wasm-bindgen",
+ "wasm-bindgen-futures",
+ "web-sys",
+ "web-time 1.1.0",
+ "wgpu 23.0.1",
+ "winit 0.30.12",
+ "winres",
+]
 
 [[package]]
 name = "md5"
