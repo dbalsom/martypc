@@ -1,3 +1,18 @@
+## [0.4.2](https://github.com/dbalsom/martypc/releases/tag/0.4.1) (2026-05-XX)
+
+## Frontend Bug Fixes / Improvements
+ - Fixed a bug where alternate ROM dumps were not handled correctly (mostly encountered with EGA ROMs)
+ - Fixed the Amber CRT shader being blue
+ - Added IBM PCjr keyboard mapping
+ - Fixed bad md5 in PCjr ROM definition for 64K ROM image
+ - Updated GLaBIOS to 0.4
+
+## Core Bug Fixes / Improvements
+ - Improved Light Pen emulation
+ - Implemented IBM PCjr keyboard including the `Function` key (Mapped to F12)
+ - Fixed a rendering bug in PCjr low-resolution 2bpp mode
+ - Fixed a keyboard handling bug that prevented movement in PCjr Keyboard Adventure
+
 ## [0.4.1](https://github.com/dbalsom/martypc/releases/tag/0.4.1) (2025-05-31)
 
 This is mostly a bugfix release, although there is one new feature: the V20's 8080 emulation mode is now supported.
