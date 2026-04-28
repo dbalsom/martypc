@@ -56,14 +56,14 @@ use crate::{
         device_control::DeviceControl,
         disassembly_viewer::DisassemblyControl,
         dma_viewer::DmaViewerControl,
+        ems_virtual_memory_viewer::EMSVirtualMemoryViewerControl,
+        fantasy_ems_stats_viewer::FantasyEMSStatsViewerControl,
         fdc_viewer::FdcViewerControl,
         floppy_viewer::FloppyViewerControl,
         instruction_history_viewer::InstructionHistoryControl,
         io_stats_viewer::IoStatsViewerControl,
-        fantasy_ems_stats_viewer::FantasyEMSStatsViewerControl,
         ivt_viewer::IvtViewerControl,
         memory_viewer::MemoryViewerControl,
-        ems_virtual_memory_viewer::EMSVirtualMemoryViewerControl,
         performance_viewer::PerformanceViewerControl,
         pic_viewer::PicViewerControl,
         pit_viewer::PitViewerControl,
@@ -80,16 +80,14 @@ use crate::{
     GuiEvent,
     GuiEventQueue,
     GuiFloat,
-    GuiVariable,
     GuiVariableContext,
     GuiWindow,
+    GuiWindow::EMSVirtualMemoryViewer,
     MediaTrayState,
     PerformanceStats,
 };
 
-#[cfg(feature = "markdown")]
-use crate::windows::info_viewer::InfoViewer;
-
+use marty_common::types::{joystick::ControllerLayout, ui::MouseCaptureMode};
 use marty_core::{
     device_traits::videocard::{DisplayApertureDesc, VideoCardState, VideoCardStateEntry},
     devices::{pit::PitDisplayState, serial::SerialPortDescriptor},
@@ -102,24 +100,29 @@ use marty_display_common::{
     display_manager::{DisplayTargetInfo, DtHandle},
     display_scaler::{ScalerMode, ScalerPreset},
 };
+
 use marty_frontend_common::{
     resource_manager::PathTreeNode,
     thread_events::FrontendThreadEvent,
-    types::sound::SoundSourceInfo,
+    types::{
+        gamepad::{GamepadInfo, JoystickMapping},
+        sound::SoundSourceInfo,
+    },
     RelativeDirectory,
 };
+
+#[cfg(feature = "markdown")]
+use crate::windows::info_viewer::InfoViewer;
 
 use egui::ColorImage;
 use egui_notify::{Anchor, Toasts};
 use fluxfox::{DiskImage, DiskImageFileFormat, StandardFormat};
 use fluxfox_egui::RenderCallback;
-use marty_common::types::{joystick::ControllerLayout, ui::MouseCaptureMode};
-use marty_frontend_common::types::gamepad::{GamepadId, GamepadInfo, JoystickMapping};
+
 use serde::{Deserialize, Serialize};
 #[cfg(feature = "use_serialport")]
 use serialport::SerialPortInfo;
 use strum::IntoEnumIterator;
-use crate::GuiWindow::EMSVirtualMemoryViewer;
 
 pub enum FloppyDriveSelection {
     None,

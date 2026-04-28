@@ -9,7 +9,7 @@
 [[romset]]
 alias = "ibm_pcjr"
 desc = "IBM 4860 PCJr"
-priority = 0
+priority = 1
 provides = ["bios", "ibm_pcjr", "ibm_basic", "expansion"]
 oem_for = ["ibm_pcjr"]
 rom = [

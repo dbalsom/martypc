@@ -41,13 +41,14 @@ pub mod dipswitch;
 pub mod dma;
 #[cfg(feature = "ega")]
 pub mod ega;
+pub mod fantasy_ems;
 pub mod fdc;
 pub mod floppy_drive;
 pub mod game_port;
 pub mod hdc;
-pub mod keyboard;
+pub mod keyboard_common;
+pub mod keyboards;
 pub mod lotech_ems;
-pub mod fantasy_ems;
 pub mod lpt_card;
 pub mod lpt_port;
 pub mod mc6845;

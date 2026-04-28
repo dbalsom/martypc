@@ -282,3 +282,11 @@ keycode_mappings = [
     # Generate a pipe character. There is no equivalent on the italian model F.
     {keycode="Backquote", modifiers=["shift"], key_macro=["+AltLeft", "+Numpad1", "+Numpad2", "+Numpad4", "-AltLeft",  "-Numpad1", "-Numpad2", "-Numpad4"], macro_translate=false, scancodes=[]},      
 ]
+
+# -----------------------------------------------------------------------------
+# PCjr - the IBM PCjr keyboard (both variations)
+# -----------------------------------------------------------------------------
+# The IBM PCjr keyboard has single-byte scancodes, so scancodes defined here
+# should only have one element.
+[keyboard.pcjr]
+keycode_mappings = []

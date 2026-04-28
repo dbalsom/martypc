@@ -24,14 +24,12 @@
 
     --------------------------------------------------------------------------
 
-    device_types::mod.rs
+    devices::keyboards::mod.rs
+
+    Module to organize all keyboard device implementations
+
 */
 
-//! Module containing device-specific types.
-
-pub mod chs;
-pub mod disk;
-pub mod fdc;
-pub mod geometry;
-pub mod hdc;
-pub mod keyboard;
+pub mod model_f;
+pub mod pcjr;
+pub mod tandy1000;

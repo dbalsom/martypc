@@ -30,5 +30,6 @@
 
 */
 
+pub mod keyboard;
 pub mod sounddevice;
 pub mod videocard;

@@ -24,59 +24,53 @@
 
     --------------------------------------------------------------------------
 
-    device_types::hdc.rs
+    device_types::keyboard.rs
 
     Defines types common to implementations of a Hard Disk Controller
 */
 
-use std::fmt::{Debug, Display, Formatter};
+use std::str::FromStr;
 
-use crate::device_types::geometry::DriveGeometry;
+use crate::{
+    device_traits::keyboard::MartyKeyboard,
+    devices::keyboards::{model_f::ModelF, pcjr::PcJrKeyboard, tandy1000::Tandy1000Keyboard},
+    keys::MartyKey,
+};
 
-pub const HDC_SECTOR_SIZE: usize = 512;
+use serde_derive::Deserialize;
 
-#[derive(Clone, Default, Eq, PartialEq)]
-pub struct HardDiskFormat {
-    pub geometry: DriveGeometry,
-    pub wpc: Option<u16>,
-    pub desc: String,
+// Define the various types of keyboard we can emulate.
+#[derive(Copy, Clone, Debug, Deserialize, PartialEq)]
+pub enum KeyboardType {
+    ModelF,
+    ModelM,
+    Tandy1000,
+    Pcjr,
 }
 
-impl HardDiskFormat {
-    pub fn total_size(&self) -> usize {
-        self.geometry.total_sectors() * HDC_SECTOR_SIZE
+impl KeyboardType {
+    pub fn keycode_to_scancodes(&self, key_code: MartyKey) -> Vec<u8> {
+        match self {
+            KeyboardType::ModelF => ModelF::keycode_to_scancodes(key_code),
+            KeyboardType::Tandy1000 => Tandy1000Keyboard::keycode_to_scancodes(key_code),
+            KeyboardType::Pcjr => PcJrKeyboard::keycode_to_scancodes(key_code),
+            _ => unimplemented!(),
+        }
     }
 }
 
-impl Display for HardDiskFormat {
-    fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
-        let size = self.total_size() as f32;
-        let size_in_mb = (size / 1024.0 / 1024.0).floor() as u32;
-        write!(
-            f,
-            "{}MB: (CHS: {}, {}, {})",
-            size_in_mb,
-            self.geometry.c(),
-            self.geometry.h(),
-            self.geometry.s()
-        )
-    }
-}
-
-impl Debug for HardDiskFormat {
-    fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
-        let size = self.total_size() as f32;
-        let size_in_mb = size / 1024.0 / 1024.0;
-
-        write!(
-            f,
-            "geometry: {} wpc:{} ({:.1})",
-            self.geometry,
-            match self.wpc {
-                Some(wpc) => wpc.to_string(),
-                None => "N/A".to_string(),
-            },
-            size_in_mb
-        )
+impl FromStr for KeyboardType {
+    type Err = String;
+    fn from_str(s: &str) -> anyhow::Result<Self, String>
+    where
+        Self: Sized,
+    {
+        match s {
+            "ModelF" => Ok(KeyboardType::ModelF),
+            "ModelM" => Ok(KeyboardType::ModelM),
+            "Tandy1000" => Ok(KeyboardType::Tandy1000),
+            "PCjr" => Ok(KeyboardType::Pcjr),
+            _ => Err("Bad value for keyboard_type".to_string()),
+        }
     }
 }

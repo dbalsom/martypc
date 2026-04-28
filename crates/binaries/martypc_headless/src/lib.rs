@@ -59,7 +59,7 @@ use crate::cpu_test::run_tests::run_runtests;
 use marty_config::TestMode;
 
 use marty_core::{
-    devices::keyboard::KeyboardModifiers,
+    devices::keyboard_common::KeyboardModifiers,
     keys::MartyKey,
     machine::MachineBuilder,
     supported_floppy_extensions,

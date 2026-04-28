@@ -38,12 +38,6 @@
     to know whether it is operating on an in-memory image or file.
 */
 
-use crate::{
-    floppy_manager::{ArchiveType, FloppyError},
-    resource_manager::{PathTreeNode, ResourceItem, ResourceManager},
-    types::floppy::FloppyImageSource,
-};
-use anyhow::Error;
 use std::{
     collections::{BTreeMap, BTreeSet, HashMap},
     ffi::{OsStr, OsString},
@@ -51,6 +45,10 @@ use std::{
     fs::File,
     path::{Path, PathBuf},
 };
+
+use crate::resource_manager::{PathTreeNode, ResourceItem, ResourceManager};
+
+use anyhow::Error;
 
 #[derive(Debug)]
 pub enum VhdManagerError {

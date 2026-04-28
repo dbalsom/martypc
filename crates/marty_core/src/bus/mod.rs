@@ -60,7 +60,7 @@ use crate::{
         fdc::FloppyController,
         game_port::GamePort,
         hdc::{xebec::HardDiskController, xtide::XtIdeController},
-        keyboard::{KeyboardType, *},
+        keyboard_common::*,
         lotech_ems::LotechEmsCard,
         lpt_card::ParallelController,
         mda::MDACard,
@@ -72,13 +72,16 @@ use crate::{
         sound_source::DSoundSource,
         tga::TGACard,
     },
-    machine::{KeybufferEntry, MachineCheckpoint, MachinePatch},
+    machine::KeybufferEntry,
     machine_config::{normalize_conventional_memory, MachineConfiguration, MachineDescriptor},
     machine_types::{EmsType, FdcType, HardDiskControllerType, MachineType, SerialControllerType, SerialMouseType},
     syntax_token::{SyntaxFormatType, SyntaxToken},
     tracelogger::TraceLogger,
 };
-use marty_common::MartyHashMap;
+use marty_common::{
+    types::rom::{MachineCheckpoint, MachinePatch},
+    MartyHashMap,
+};
 
 #[cfg(feature = "opl")]
 use crate::devices::adlib::AdLibCard;
@@ -100,6 +103,7 @@ use crate::{
     sound::{SoundOutputConfig, SoundSourceDescriptor},
 };
 
+use crate::device_types::keyboard::KeyboardType;
 use anyhow::Error;
 #[cfg(feature = "sound")]
 use crossbeam_channel::unbounded;
@@ -1470,7 +1474,7 @@ impl BusInterface {
         // Run the A0 register. It doesn't need a time delta.
         let mut ppi_kbd_latch = None;
         if let Some(a0) = &mut self.a0 {
-            let (new_kbd_latch, new_nmi) = a0.run(&mut pit, 0.0);
+            let (_new_kbd_latch, new_nmi) = a0.run(&mut pit, 0.0);
             self.a0_data = a0.read();
 
             if !self.nmi_gate && new_nmi {

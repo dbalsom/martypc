@@ -283,3 +283,11 @@ keycode_mappings = [
     # There appears to be a bug with AltGr-A. the KeyA keydown event does not fire :(
     #{ keycode = "KeyA", modifiers = ["control", "alt"], key_macro = ["+AltLeft", "+Numpad1", "+Numpad6", "+Numpad0", "-AltLeft", "-Numpad1", "-Numpad6", "-Numpad0"], macro_translate = false, scancodes = [] },
 ]
+
+# -----------------------------------------------------------------------------
+# PCjr - the IBM PCjr keyboard (both variations)
+# -----------------------------------------------------------------------------
+# The IBM PCjr keyboard has single-byte scancodes, so scancodes defined here
+# should only have one element.
+[keyboard.pcjr]
+keycode_mappings = []

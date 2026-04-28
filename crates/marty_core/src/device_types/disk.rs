@@ -23,6 +23,8 @@
     DEALINGS IN THE SOFTWARE.
 
     --------------------------------------------------------------------------
+
+    device_types::disk.rs
 */
 
 //! A generic representation of a disk drive.

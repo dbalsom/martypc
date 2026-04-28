@@ -33,8 +33,11 @@ use std::{collections::hash_map::Entry, ffi::OsStr, fmt::Display, path::PathBuf}
 
 use crate::resource_manager::{ResourceItemType, ResourceManager};
 
-use marty_common::{MartyHashMap, MartyHashSet};
-use marty_core::machine::{MachineCheckpoint, MachinePatch, MachineRomEntry, MachineRomManifest};
+use marty_common::{
+    types::rom::{MachineCheckpoint, MachinePatch, MachineRomEntry, MachineRomManifest},
+    MartyHashMap,
+    MartyHashSet,
+};
 
 use anyhow::Error;
 use serde::Deserialize;
@@ -875,12 +878,12 @@ impl RomManager {
 
                         new_manifest.roms.push(MachineRomEntry {
                             name:   rom_desc.filename.clone().unwrap_or_default(),
+                            path:   rom_file.path.clone(),
                             md5:    rom_desc.md5.clone().unwrap(),
                             addr:   rom_desc.addr,
                             repeat: rom_desc.repeat.unwrap_or(1),
                             data:   rom_vec,
                         });
-                        new_manifest.rom_paths.push(rom_file.path.clone());
                     }
                     Some(RomOrganization::Reversed) => {
                         rom_vec.reverse();
@@ -906,12 +909,12 @@ impl RomManager {
 
                         new_manifest.roms.push(MachineRomEntry {
                             name:   rom_desc.filename.clone().unwrap_or_default(),
+                            path:   rom_file.path.clone(),
                             md5:    rom_desc.md5.clone().unwrap(),
                             addr:   rom_desc.addr,
                             repeat: rom_desc.repeat.unwrap_or(1),
                             data:   rom_vec,
                         });
-                        new_manifest.rom_paths.push(rom_file.path.clone());
                     }
                     _ => {
                         return Err(anyhow::anyhow!(
@@ -1010,12 +1013,12 @@ impl RomManager {
 
                         new_manifest.roms.push(MachineRomEntry {
                             name:   rom_desc.filename.clone().unwrap_or_default(),
+                            path:   rom_file.path.clone(),
                             md5:    rom_desc.md5.clone().unwrap(),
                             addr:   rom_desc.addr,
                             repeat: rom_desc.repeat.unwrap_or(1),
                             data:   rom_vec,
                         });
-                        new_manifest.rom_paths.push(rom_file.path.clone());
                     }
                     Some(RomOrganization::Reversed) => {
                         rom_vec.reverse();
@@ -1041,12 +1044,12 @@ impl RomManager {
 
                         new_manifest.roms.push(MachineRomEntry {
                             name:   rom_desc.filename.clone().unwrap_or_default(),
+                            path:   rom_file.path.clone(),
                             md5:    rom_desc.md5.clone().unwrap(),
                             addr:   rom_desc.addr,
                             repeat: rom_desc.repeat.unwrap_or(1),
                             data:   rom_vec,
                         });
-                        new_manifest.rom_paths.push(rom_file.path.clone());
                     }
                     _ => {
                         return Err(anyhow::anyhow!(

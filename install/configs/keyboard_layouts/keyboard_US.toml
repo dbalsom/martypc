@@ -264,3 +264,11 @@ keycode_mappings = []
 # should only have one element.
 [keyboard.tandy1000]
 keycode_mappings = []
+
+# -----------------------------------------------------------------------------
+# PCjr - the IBM PCjr keyboard (both variations)
+# -----------------------------------------------------------------------------
+# The IBM PCjr keyboard has single-byte scancodes, so scancodes defined here
+# should only have one element.
+[keyboard.pcjr]
+keycode_mappings = []

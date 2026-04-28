@@ -1,4 +1,4 @@
-use marty_core::devices::keyboard::KeyboardModifiers;
+use marty_core::devices::keyboard_common::KeyboardModifiers;
 
 pub struct KeyboardData {
     pub modifiers:    KeyboardModifiers,
