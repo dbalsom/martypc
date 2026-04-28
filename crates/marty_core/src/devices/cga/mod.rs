@@ -1042,9 +1042,11 @@ impl CGACard {
                 // (R3) 8 bit write only
 
                 if self.in_crtc_hblank {
-                    log::warn!("Warning: SyncWidth modified during hsync!");
+                    // Not sure that this is actually an issue.
+                    //log::warn!("Warning: SyncWidth modified during hsync!");
                 }
-                self.crtc_sync_width = byte;
+                // TODO: Let this roll over naturally starting at 0 in CRTC impl.
+                self.crtc_sync_width = if byte == 0 { 16 } else { byte & 0x0F };
             }
             CRTCRegister::VerticalTotal => {
                 // (R4) 7 bit write only
@@ -2331,6 +2333,17 @@ impl CGACard {
             // The mode could have changed several times per frame, but I am not sure how the composite rendering should
             // really handle that...
             self.extents.mode_byte = self.mode_byte;
+
+            // Force the BW bit on if 80 column mode, but only if the overscan color is black, and hsync width is < 15.
+            if self.clock_divisor == 1 && self.cc_altcolor == 0 && self.crtc_sync_width < 15 {
+                // log::trace!(
+                //     "Forcing BW bit on in extents for 80 column mode with black alt color: {:02X}",
+                //     self.cc_altcolor
+                // );
+                self.extents.mode_byte |= 0x04;
+            }
+
+            //log::debug!("Mode byte for extents: {:02X}", self.extents.mode_byte);
 
             // Swap the display buffers
             self.swap();
