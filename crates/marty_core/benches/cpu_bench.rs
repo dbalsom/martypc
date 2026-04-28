@@ -36,6 +36,8 @@ use rand::Rng;
 
 use criterion::{black_box, criterion_group, criterion_main, Criterion};
 
+#[cfg(feature = "sound")]
+use marty_core::sound::SoundOutputConfig;
 use marty_core::{
     bytequeue::ByteQueue,
     cpu_808x::Cpu,
@@ -59,7 +61,7 @@ pub fn cpu_decode_bench<'a>(c: &mut Criterion) {
 
     let mut rng = rand::thread_rng();
     cpu.randomize_seed(0);
-    cpu.randomize_mem();
+    cpu.randomize_mem(false);
 
     c.bench_function("cpu_decode_bench", |b| {
         // Per-sample (note that a sample can be many iterations) setup goes here
@@ -119,6 +121,8 @@ pub fn cpu_random_baseline<'a>(c: &mut Criterion) {
 pub fn cpu_bus_write_bench<'a>(c: &mut Criterion) {
     let machine_desc = MACHINE_DESCS[&MachineType::Ibm5150v256K];
     let machine_config = MachineConfiguration::default();
+    #[cfg(feature = "sound")]
+    let sound_config = SoundOutputConfig::default();
     //let mut bus = BusInterface::new(ClockFactor::Divisor(3), machine_desc);
 
     let mut trace_logger = TraceLogger::None;
@@ -128,13 +132,18 @@ pub fn cpu_bus_write_bench<'a>(c: &mut Criterion) {
     };
 
     // Install devices
-    let _ = cpu
-        .bus_mut()
-        .install_devices(&machine_desc, &machine_config, None, false);
+    let _ = cpu.bus_mut().install_devices(
+        &machine_desc,
+        &machine_config,
+        #[cfg(feature = "sound")]
+        &sound_config,
+        None,
+        false,
+    );
 
     let mut rng = rand::thread_rng();
     cpu.randomize_seed(0);
-    cpu.randomize_mem();
+    cpu.randomize_mem(false);
 
     c.bench_function("cpu_bus_write_bench", |b| {
         // Per-sample (note that a sample can be many iterations) setup goes here
@@ -151,6 +160,8 @@ pub fn cpu_bus_write_bench<'a>(c: &mut Criterion) {
 pub fn cpu_bus_read_cga_bench<'a>(c: &mut Criterion) {
     let machine_desc = MACHINE_DESCS[&MachineType::Ibm5150v256K];
     let machine_config = MachineConfiguration::default();
+    #[cfg(feature = "sound")]
+    let sound_config = SoundOutputConfig::default();
     //let mut bus = BusInterface::new(ClockFactor::Divisor(3), machine_desc);
 
     let mut trace_logger = TraceLogger::None;
@@ -162,13 +173,18 @@ pub fn cpu_bus_read_cga_bench<'a>(c: &mut Criterion) {
     let machine_desc = MACHINE_DESCS[&MachineType::Ibm5150v256K];
 
     // Install devices
-    let _ = cpu
-        .bus_mut()
-        .install_devices(&machine_desc, &machine_config, None, false);
+    let _ = cpu.bus_mut().install_devices(
+        &machine_desc,
+        &machine_config,
+        #[cfg(feature = "sound")]
+        &sound_config,
+        None,
+        false,
+    );
 
     let mut rng = rand::thread_rng();
     cpu.randomize_seed(0);
-    cpu.randomize_mem();
+    cpu.randomize_mem(false);
 
     c.bench_function("cpu_bus_read_cga_bench", |b| {
         // Per-sample (note that a sample can be many iterations) setup goes here
@@ -186,6 +202,8 @@ pub fn cpu_bus_read_cga_bench<'a>(c: &mut Criterion) {
 pub fn cpu_bus_write_cga_bench<'a>(c: &mut Criterion) {
     let machine_desc = MACHINE_DESCS[&MachineType::Ibm5150v256K];
     let machine_config = MachineConfiguration::default();
+    #[cfg(feature = "sound")]
+    let sound_config = SoundOutputConfig::default();
 
     let mut cpu = match CpuBuilder::new().with_cpu_type(CpuType::Intel8088).build() {
         Ok(cpu) => cpu,
@@ -193,13 +211,18 @@ pub fn cpu_bus_write_cga_bench<'a>(c: &mut Criterion) {
     };
 
     // Install devices
-    let _ = cpu
-        .bus_mut()
-        .install_devices(&machine_desc, &machine_config, None, false);
+    let _ = cpu.bus_mut().install_devices(
+        &machine_desc,
+        &machine_config,
+        #[cfg(feature = "sound")]
+        &sound_config,
+        None,
+        false,
+    );
 
     let mut rng = rand::thread_rng();
     cpu.randomize_seed(0);
-    cpu.randomize_mem();
+    cpu.randomize_mem(false);
 
     c.bench_function("cpu_bus_write_cga_bench", |b| {
         // Per-sample (note that a sample can be many iterations) setup goes here
