@@ -54,6 +54,7 @@ impl BusInterface {
             ClockFactor::Divisor(d) => d as u32 * cycles,
             ClockFactor::Multiplier(m) => cycles / m as u32,
         };
+        let _delta_us = self.cpu_cycles_to_us(cycles);
         let nul_delta = DeviceRunTimeUnit::Microseconds(0.0);
         let mut byte = None;
         if let Some(device_id) = self.io_map.get(&port) {
@@ -144,7 +145,7 @@ impl BusInterface {
                 {
                     #[cfg(feature = "opl")]
                     if let Some(adlib) = &mut self.adlib {
-                        byte = Some(adlib.read_u8(port, nul_delta));
+                        byte = Some(adlib.read_u8(port, DeviceRunTimeUnit::Microseconds(_delta_us)));
                     }
                 }
                 _ => {}
@@ -214,6 +215,7 @@ impl BusInterface {
             ClockFactor::Divisor(n) => cycles * (n as u32),
             ClockFactor::Multiplier(n) => cycles / (n as u32),
         };
+        let delta_us = self.cpu_cycles_to_us(cycles);
 
         // Handle terminal debug port
         if let Some(terminal_port) = self.terminal_port {
@@ -351,7 +353,14 @@ impl BusInterface {
                 {
                     #[cfg(feature = "opl")]
                     if let Some(adlib) = &mut self.adlib {
-                        IoDevice::write_u8(adlib, port, data, None, NULL_DELTA_US, analyzer);
+                        IoDevice::write_u8(
+                            adlib,
+                            port,
+                            data,
+                            None,
+                            DeviceRunTimeUnit::Microseconds(delta_us),
+                            analyzer,
+                        );
                         resolved = true;
                     }
                 }

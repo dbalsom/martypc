@@ -801,6 +801,23 @@ impl BusInterface {
     }
 
     #[inline]
+    /// Convert a count of CPU cycles to elapsed microseconds based on the current CPU
+    /// clock divisor and machine system crystal.
+    pub(crate) fn cpu_cycles_to_us(&self, cycles: u32) -> f64 {
+        let Some(machine_desc) = self.machine_desc
+        else {
+            return 0.0;
+        };
+
+        let mhz = match self.cpu_factor {
+            ClockFactor::Divisor(n) => machine_desc.system_crystal / (n as f64),
+            ClockFactor::Multiplier(n) => machine_desc.system_crystal * (n as f64),
+        };
+
+        cycles as f64 / mhz
+    }
+
+    #[inline]
     /// Convert a count of system clock ticks to CPU cycles based on the current CPU
     /// clock divisor. If a clock Divisor is set, the dividend will be rounded upwards.
     pub(crate) fn system_ticks_to_cpu_cycles(&self, ticks: u32) -> u32 {
@@ -1286,7 +1303,7 @@ impl BusInterface {
                             2,
                             r,
                         ));
-                        let adlib = AdLibCard::new(card.io_base.unwrap_or(0x388), 48000, s);
+                        let adlib = AdLibCard::new(card.io_base.unwrap_or(0x388), sound_config.sample_rate, s);
                         add_io_device!(self, adlib, IoDeviceType::Sound);
                         self.adlib = Some(adlib);
                     }
