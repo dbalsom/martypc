@@ -241,12 +241,13 @@ impl TGACard {
     #[inline]
     pub fn palette_lookup(&self, color: u8) -> u8 {
         let color_in = color & 0x03;
-        //let color = BIT_REVERSE_2BPP[color_in as usize] << 1;
-        let mut color = color_in << 1;
+        let mut color = color_in;
+
         if matches!(
             self.subtype,
             VideoCardSubType::Tandy1000 | VideoCardSubType::Tandy1000_256
         ) {
+            color = color_in << 1;
             if color_in == 0 {
                 return self.cc_overscan_color;
             }

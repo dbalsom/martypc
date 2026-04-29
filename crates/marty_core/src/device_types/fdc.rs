@@ -24,10 +24,10 @@
 
     --------------------------------------------------------------------------
 
-    devices::types::fdc.rs
-
-    Defines types common to implementations of a Floppy Disk Controller
+    device_types::fdc.rs
 */
+
+//! Defines types common to implementations of a Floppy Disk Controller
 
 use crate::machine_types::FloppyDriveType;
 use fluxfox::prelude::*;
@@ -101,7 +101,6 @@ lazy_static! {
 
 lazy_static! {
     pub static ref DISK_FORMATS: HashMap<usize, DiskFormat> = {
-        
         HashMap::from([
             (
                 163_840,

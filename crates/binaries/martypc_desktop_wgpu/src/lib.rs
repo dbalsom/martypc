@@ -68,7 +68,7 @@ use marty_core::cpu_validator::ValidatorType;
 use marty_config::TestMode;
 
 use marty_core::{
-    devices::keyboard::KeyboardModifiers,
+    devices::keyboard_common::KeyboardModifiers,
     machine::{ExecutionControl, ExecutionState, MachineBuilder},
     supported_floppy_extensions,
 };

@@ -35,11 +35,15 @@ jobs:
           pacboy: >-
             toolchain:p
 
-      - name: Install Rust
+      - name: Install nightly Rust
         run: |
           curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs -o rustup-init.sh
-          sh rustup-init.sh -y --default-host x86_64-pc-windows-gnu --default-toolchain stable --profile complete
-          $USERPROFILE/.cargo/bin/cargo version
+          sh rustup-init.sh -y --default-toolchain none --profile minimal
+          "$USERPROFILE/.cargo/bin/rustup" toolchain install stable-x86_64-pc-windows-gnu --profile minimal
+          "$USERPROFILE/.cargo/bin/rustup" default stable-x86_64-pc-windows-gnu
+          "$USERPROFILE/.cargo/bin/rustup" show
+          "$USERPROFILE/.cargo/bin/cargo" version
+          "$USERPROFILE/.cargo/bin/rustc" -vV
 
       - name: Checkout repository
         uses: actions/checkout@v4

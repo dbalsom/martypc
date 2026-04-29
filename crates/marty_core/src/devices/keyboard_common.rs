@@ -30,50 +30,27 @@
 
 */
 
-use anyhow::{bail, Result};
 use std::{
     collections::{HashMap, VecDeque},
     str::FromStr,
     vec::Vec,
 };
-use strum::IntoEnumIterator;
 
+use crate::{device_types::keyboard::KeyboardType, keys::MartyKey, machine::KeybufferEntry};
+
+use crate::devices::keyboards::{model_f::ModelF, pcjr::PcJrKeyboard, tandy1000::Tandy1000Keyboard};
+use anyhow::{bail, Result};
 use serde_derive::Deserialize;
+use strum::IntoEnumIterator;
 use toml;
 
-use crate::{keys::MartyKey, machine::KeybufferEntry};
-
-// Define the various types of keyboard we can emulate.
-#[derive(Copy, Clone, Debug, Deserialize, PartialEq)]
-pub enum KeyboardType {
-    ModelF,
-    ModelM,
-    Tandy1000,
-}
-
-impl FromStr for KeyboardType {
-    type Err = String;
-    fn from_str(s: &str) -> Result<Self, String>
-    where
-        Self: Sized,
-    {
-        match s {
-            "ModelF" => Ok(KeyboardType::ModelF),
-            "ModelM" => Ok(KeyboardType::ModelM),
-            "Tandy1000" => Ok(KeyboardType::Tandy1000),
-            _ => Err("Bad value for keyboard_type".to_string()),
-        }
-    }
-}
-#[derive(Copy, Clone, Debug, PartialEq)]
-#[derive(Default)]
+#[derive(Copy, Clone, Debug, PartialEq, Default)]
 pub struct KeyboardModifiers {
     pub control: bool,
     pub alt: bool,
     pub shift: bool,
     pub meta: bool,
 }
-
 
 impl KeyboardModifiers {
     pub fn have_any(&self) -> bool {
@@ -125,18 +102,9 @@ pub struct KeyboardMappingFile {
 
 #[derive(Debug, Deserialize)]
 pub struct KeyboardDefinition {
-    modelf:    ModelF,
-    tandy1000: Tandy1000,
-}
-
-#[derive(Debug, Deserialize)]
-pub struct ModelF {
-    keycode_mappings: Vec<KeycodeMapping>,
-}
-
-#[derive(Debug, Deserialize)]
-pub struct Tandy1000 {
-    keycode_mappings: Vec<KeycodeMapping>,
+    modelf: ModelF,
+    tandy1000: Tandy1000Keyboard,
+    pcjr: PcJrKeyboard,
 }
 
 #[derive(Debug, Deserialize)]
@@ -242,6 +210,9 @@ impl Keyboard {
             }
             KeyboardType::Tandy1000 => {
                 self.keycode_mappings = toml_mapping.keyboard.tandy1000.keycode_mappings;
+            }
+            KeyboardType::Pcjr => {
+                self.keycode_mappings = toml_mapping.keyboard.pcjr.keycode_mappings;
             }
             _ => unimplemented!(),
         }
@@ -790,7 +761,7 @@ impl Keyboard {
     fn translate_keyup(&self, kb_type: KeyboardType, translation: &mut [u8]) {
         match kb_type {
             KeyboardType::ModelF | KeyboardType::Tandy1000 => {
-                // ModelF has no keyboard buffer, therefore, translations should only have one keycode.
+                // Translations should only have one keycode.
                 assert_eq!(translation.len(), 1);
 
                 if self.debug {

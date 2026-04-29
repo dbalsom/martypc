@@ -56,12 +56,12 @@ use crate::{
         cartridge_slots::CartridgeSlot,
         cga::CGACard,
         dma::*,
+        fantasy_ems::FantasyEmsCard,
         fdc::FloppyController,
         game_port::GamePort,
         hdc::{xebec::HardDiskController, xtide::XtIdeController},
-        keyboard::{KeyboardType, *},
+        keyboard_common::*,
         lotech_ems::LotechEmsCard,
-        fantasy_ems::FantasyEmsCard,
         lpt_card::ParallelController,
         mda::MDACard,
         mouse::*,
@@ -72,11 +72,15 @@ use crate::{
         sound_source::DSoundSource,
         tga::TGACard,
     },
-    machine::{KeybufferEntry, MachineCheckpoint, MachinePatch},
+    machine::KeybufferEntry,
     machine_config::{normalize_conventional_memory, MachineConfiguration, MachineDescriptor},
     machine_types::{EmsType, FdcType, HardDiskControllerType, MachineType, SerialControllerType, SerialMouseType},
     syntax_token::{SyntaxFormatType, SyntaxToken},
     tracelogger::TraceLogger,
+};
+use marty_common::{
+    types::rom::{MachineCheckpoint, MachinePatch},
+    MartyHashMap,
 };
 
 #[cfg(feature = "opl")]
@@ -86,6 +90,10 @@ use crate::devices::ega::EGACard;
 #[cfg(feature = "vga")]
 use crate::devices::vga::VGACard;
 
+use crate::{
+    bus::dispatch::MemoryDispatch,
+    devices::{conventional_memory::ConventionalMemory, hdc::jr_ide::JrIdeController, sn76489::Sn76489},
+};
 #[cfg(feature = "sound")]
 use crate::{
     device_traits::sounddevice::SoundDevice,
@@ -95,16 +103,10 @@ use crate::{
     sound::{SoundOutputConfig, SoundSourceDescriptor},
 };
 
-use crate::devices::sn76489::Sn76489;
-
-use crate::{
-    bus::dispatch::MemoryDispatch,
-    devices::{conventional_memory::ConventionalMemory, hdc::jr_ide::JrIdeController},
-};
+use crate::device_types::keyboard::KeyboardType;
 use anyhow::Error;
 #[cfg(feature = "sound")]
 use crossbeam_channel::unbounded;
-use fxhash::FxHashMap;
 
 pub(crate) const NO_IO_BYTE: u8 = 0xFF; // This is the byte read from an unconnected IO address.
 pub(crate) const OPEN_BUS_BYTE: u8 = 0xFF; // This is the byte read from an unmapped memory address.
@@ -448,15 +450,15 @@ pub struct BusInterface {
     cursor: usize,
     intr_imminent: bool,
 
-    io_map: FxHashMap<u16, IoDeviceType>,
-    io_desc_map: FxHashMap<u16, String>,
-    io_stats: FxHashMap<u16, (bool, IoDeviceStats)>,
+    io_map: MartyHashMap<u16, IoDeviceType>,
+    io_desc_map: MartyHashMap<u16, String>,
+    io_stats: MartyHashMap<u16, (bool, IoDeviceStats)>,
 
     memory_expansions: Vec<MemoryDispatch>,
     ppi: Option<Box<Ppi>>,
     a0: Option<A0Register>,
     a0_data: u8,
-    nmi_latch: bool,
+    nmi_gate: bool,
     pit: Option<Pit>,
     speaker_src: Option<usize>,
     dma_counter: u16,
@@ -480,7 +482,7 @@ pub struct BusInterface {
     sound_source: Option<DSoundSource>,
     sn76489: Option<Sn76489>,
 
-    videocards:    FxHashMap<VideoCardId, VideoCardDispatch>,
+    videocards:    MartyHashMap<VideoCardId, VideoCardDispatch>,
     videocard_ids: Vec<VideoCardId>,
 
     cycles_to_ticks:   [u32; 256], // TODO: Benchmarks don't show any faster than raw multiplication. It's not slower either though.
@@ -537,15 +539,15 @@ impl Default for BusInterface {
             cursor: 0,
             intr_imminent: false,
 
-            io_map: FxHashMap::default(),
-            io_desc_map: FxHashMap::default(),
-            io_stats: FxHashMap::default(),
+            io_map: MartyHashMap::default(),
+            io_desc_map: MartyHashMap::default(),
+            io_stats: MartyHashMap::default(),
 
             memory_expansions: Vec::new(),
             ppi: None,
             a0: None,
             a0_data: 0,
-            nmi_latch: false,
+            nmi_gate: false,
             pit: None,
             speaker_src: None,
             dma_counter: 0,
@@ -568,7 +570,7 @@ impl Default for BusInterface {
             adlib: None,
             sound_source: None,
             sn76489: None,
-            videocards: FxHashMap::default(),
+            videocards: MartyHashMap::default(),
             videocard_ids: Vec::new(),
 
             cycles_to_ticks:   [0; 256],
@@ -796,6 +798,23 @@ impl BusInterface {
             ClockFactor::Divisor(n) => cycles * (n as u32),
             ClockFactor::Multiplier(n) => cycles / (n as u32),
         }
+    }
+
+    #[inline]
+    /// Convert a count of CPU cycles to elapsed microseconds based on the current CPU
+    /// clock divisor and machine system crystal.
+    pub(crate) fn cpu_cycles_to_us(&self, cycles: u32) -> f64 {
+        let Some(machine_desc) = self.machine_desc
+        else {
+            return 0.0;
+        };
+
+        let mhz = match self.cpu_factor {
+            ClockFactor::Divisor(n) => machine_desc.system_crystal / (n as f64),
+            ClockFactor::Multiplier(n) => machine_desc.system_crystal * (n as f64),
+        };
+
+        cycles as f64 / mhz
     }
 
     #[inline]
@@ -1209,7 +1228,6 @@ impl BusInterface {
                 add_mmio_device!(self, fantasy_ems, MmioDeviceType::Ems);
                 self.fantasy_ems = Some(fantasy_ems);
             }
-
         }
 
         // Create PCJr cartridge slot
@@ -1285,7 +1303,7 @@ impl BusInterface {
                             2,
                             r,
                         ));
-                        let adlib = AdLibCard::new(card.io_base.unwrap_or(0x388), 48000, s);
+                        let adlib = AdLibCard::new(card.io_base.unwrap_or(0x388), sound_config.sample_rate, s);
                         add_io_device!(self, adlib, IoDeviceType::Sound);
                         self.adlib = Some(adlib);
                     }
@@ -1406,7 +1424,7 @@ impl BusInterface {
                         MachineType::IbmPCJr => {
                             // The PCJr is an odd duck and uses NMI for keyboard interrupts.
                             if let Some(a0) = &mut self.a0 {
-                                a0.set_nmi_latch(true);
+                                a0.set_kbd_latch(true);
                             }
                         }
                         _ => {
@@ -1471,26 +1489,28 @@ impl BusInterface {
         let mut pit = self.pit.take().unwrap();
 
         // Run the A0 register. It doesn't need a time delta.
-        let mut ppi_nmi_latch = None;
+        let mut ppi_kbd_latch = None;
         if let Some(a0) = &mut self.a0 {
-            let new_nmi_latch = a0.run(&mut pit, 0.0);
+            let (_new_kbd_latch, new_nmi) = a0.run(&mut pit, 0.0);
             self.a0_data = a0.read();
 
-            if !self.nmi_latch && new_nmi_latch {
+            if !self.nmi_gate && new_nmi {
+                // NMI gate was low, is now high, rising edge of NMI.
                 event = Some(DeviceEvent::NmiTransition(true));
             }
-            else if self.nmi_latch && !new_nmi_latch {
+            else if self.nmi_gate && !new_nmi {
+                // NMI gate was high, is now low, falling edge of NMI.
                 log::debug!("Clearing NMI line to CPU.");
                 event = Some(DeviceEvent::NmiTransition(false));
             }
 
-            ppi_nmi_latch = Some(new_nmi_latch);
-            self.nmi_latch = new_nmi_latch;
+            ppi_kbd_latch = Some(new_nmi);
+            self.nmi_gate = new_nmi;
         }
 
         // Run the PPI if present. PPI takes PIC to generate keyboard interrupts.
         if let Some(ppi) = &mut self.ppi {
-            if let Some(latch_state) = ppi_nmi_latch {
+            if let Some(latch_state) = ppi_kbd_latch {
                 ppi.set_nmi_latch_bit(latch_state);
             }
             ppi.run(pic, us);
@@ -1738,12 +1758,10 @@ impl BusInterface {
             a0.reset();
         }
 
-
         // Reset fantasy ems registers, memory
         if let Some(fantasy_ems) = self.fantasy_ems.as_mut() {
             fantasy_ems.reset();
         }
-
     }
 
     /// Call the reset methods for devices to be reset on warm boot
@@ -1756,6 +1774,10 @@ impl BusInterface {
             fantasy_ems.reset_warm();
         }
 
+        // Reset the A0 register
+        if let Some(a0) = self.a0.as_mut() {
+            a0.reset();
+        }
     }
 
     /// Return a boolean indicating whether a timer interrupt is imminent.
@@ -2012,7 +2034,9 @@ impl BusInterface {
                 ));
                 tokens.push(SyntaxToken::Comma);
                 tokens.push(SyntaxToken::Formatter(SyntaxFormatType::Tab));
-                //tokens.push(SyntaxToken::Formatter(SyntaxFormatType::Tab));
+                tokens.push(SyntaxToken::OpenBracket);
+                tokens.push(SyntaxToken::Text(format!("{:02X}", stats.1.last_write)));
+                tokens.push(SyntaxToken::CloseBracket);
                 tokens.push(SyntaxToken::StateString(
                     format!("{}", stats.1.writes),
                     stats.1.writes_dirty,
@@ -2039,5 +2063,4 @@ impl BusInterface {
             stats.1.writes_dirty = false;
         }
     }
-
 }

@@ -47,6 +47,25 @@ use marty_videocard_renderer::RendererEvent;
     Emulator,
 };*/
 
+pub fn update_mouse_buttons(emu: &mut Emulator) {
+    let l_button_state = if emu.mouse_data.l_button_was_released {
+        false
+    }
+    else {
+        emu.mouse_data.l_button_was_pressed
+    };
+
+    let r_button_state = if emu.mouse_data.r_button_was_released {
+        false
+    }
+    else {
+        emu.mouse_data.r_button_was_pressed
+    };
+
+    emu.mouse_data.l_button_is_pressed = l_button_state;
+    emu.mouse_data.r_button_is_pressed = r_button_state;
+}
+
 pub fn process_update(emu: &mut Emulator, dm: &mut EFrameDisplayManager, tm: &mut TimestepManager) {
     tm.wm_update(
         emu,
@@ -81,51 +100,39 @@ pub fn process_update(emu: &mut Emulator, dm: &mut EFrameDisplayManager, tm: &mu
             // Per frame freq
             emuc.perf = perf;
 
-            if let Some(mouse) = emuc.machine.mouse_mut() {
-                // Send any pending mouse update to machine if mouse is captured
-                if emuc.mouse_data.is_captured && emuc.mouse_data.have_update {
-                    let l_button_state = if emuc.mouse_data.l_button_was_released {
-                        false
-                    }
-                    else {
-                        emuc.mouse_data.l_button_was_pressed
-                    };
-
-                    let r_button_state = if emuc.mouse_data.r_button_was_released {
-                        false
-                    }
-                    else {
-                        emuc.mouse_data.r_button_was_pressed
-                    };
-
-                    emuc.mouse_data.l_button_is_pressed = l_button_state;
-                    emuc.mouse_data.r_button_is_pressed = r_button_state;
-
-                    match emuc.mouse_data.capture_mode {
-                        MouseCaptureMode::Mouse => {
+            match emuc.mouse_data.capture_mode {
+                MouseCaptureMode::Mouse => {
+                    update_mouse_buttons(emuc);
+                    if let Some(mouse) = emuc.machine.mouse_mut() {
+                        // If we're in mouse capture mode, only update if we have a mouse update.
+                        if emuc.mouse_data.is_captured && emuc.mouse_data.have_update {
                             mouse.update(
-                                l_button_state,
-                                r_button_state,
+                                emuc.mouse_data.l_button_is_pressed,
+                                emuc.mouse_data.r_button_is_pressed,
                                 emuc.mouse_data.frame_delta_x,
                                 emuc.mouse_data.frame_delta_y,
                             );
                         }
-                        MouseCaptureMode::LightPen => {
-                            // Update renderer here
-                            dmc.with_primary_renderer_mut(|renderer| {
-                                renderer.update_cursor(
-                                    emuc.mouse_data.frame_delta_x,
-                                    emuc.mouse_data.frame_delta_y,
-                                    l_button_state,
-                                )
-                            });
-                        }
                     }
+                }
+                MouseCaptureMode::LightPen => {
+                    // In light pen mode, we want to update the mouse state every frame, even if we don't have an update,
+                    // so that the renderer can update the light pen position and latching.
+                    update_mouse_buttons(emuc);
 
-                    // Reset mouse for next frame
-                    emuc.mouse_data.reset();
+                    // Update renderer here
+                    dmc.with_primary_renderer_mut(|renderer| {
+                        renderer.update_cursor(
+                            emuc.mouse_data.frame_delta_x,
+                            emuc.mouse_data.frame_delta_y,
+                            true, // Light pen should always latch if reset, independent of button
+                        )
+                    });
                 }
             }
+
+            // Reset mouse for next frame
+            emuc.mouse_data.reset();
 
             // Do gamepad events
             #[cfg(feature = "use_gilrs")]

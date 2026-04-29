@@ -520,6 +520,60 @@ impl MartyScaler {
         queue.write_buffer(&self.transform_uniform_buffer, 0, transform_bytes);
     }
 
+    fn output_height(&self) -> f32 {
+        let texture_width = self.texture_width as f32;
+        let texture_height = self.texture_height as f32;
+        let target_width = self.target_width as f32;
+        let target_height = self.target_height as f32;
+        let screen_width = self.screen_width as f32;
+        let screen_height = self.screen_height as f32;
+        let margin_y = self.screen_margin_y as f32;
+
+        if texture_width <= 0.0 || texture_height <= 0.0 || target_height <= 0.0 || screen_height <= 0.0 {
+            return 0.0;
+        }
+
+        match self.mode {
+            ScalerMode::Null | ScalerMode::Fixed => target_height,
+            ScalerMode::Stretch => (screen_height - margin_y).max(0.0),
+            ScalerMode::Windowed => {
+                Self::fit_output_height(texture_width, target_height, target_width, target_height, margin_y)
+            }
+            ScalerMode::Integer => {
+                let adjusted_screen_h = screen_height - margin_y;
+                let max_height_factor = (adjusted_screen_h / screen_height).max(1.0);
+                let width_ratio = (screen_width / texture_width).max(1.0);
+                let height_ratio = (adjusted_screen_h / target_height).max(max_height_factor);
+                target_height * width_ratio.clamp(1.0, height_ratio).floor()
+            }
+            ScalerMode::Fit => {
+                Self::fit_output_height(texture_width, target_height, screen_width, screen_height, margin_y)
+            }
+        }
+    }
+
+    fn fit_output_height(
+        texture_width: f32,
+        target_height: f32,
+        screen_width: f32,
+        screen_height: f32,
+        margin_y: f32,
+    ) -> f32 {
+        if texture_width <= 0.0 || target_height <= 0.0 || screen_height <= 0.0 {
+            return 0.0;
+        }
+
+        let adjusted_screen_h = screen_height - margin_y;
+        let max_height_factor = (adjusted_screen_h / screen_height).max(1.0);
+        let width_ratio = (screen_width / texture_width).max(1.0);
+        let height_ratio = (adjusted_screen_h / target_height).max(max_height_factor);
+        target_height * width_ratio.min(height_ratio)
+    }
+
+    fn scanlines_allowed(&self) -> bool {
+        self.texture_height > 0 && self.output_height() >= (self.texture_height as f32 * 2.0)
+    }
+
     fn get_default_param_uniform() -> Vec<u8> {
         let crt_params = Default::default();
 
@@ -571,7 +625,12 @@ impl MartyScaler {
             h_curvature: self.h_curvature,
             v_curvature: self.v_curvature,
             corner_radius: self.corner_radius,
-            scanlines: if self.do_scanlines { self.scanlines as u32 } else { 0 },
+            scanlines: if self.do_scanlines && self.scanlines_allowed() {
+                self.scanlines as u32
+            }
+            else {
+                0
+            },
 
             gamma: self.gamma,
             brightness: self.brightness,
@@ -597,17 +656,7 @@ impl MartyScaler {
     fn update_uniforms(&mut self, queue: &wgpu::Queue) {
         //println!("Updating uniform data...");
 
-        // Calculate current scaling matrix.
-        let matrix = ScalingMatrix::new(
-            self.mode,
-            (self.texture_width as f32, self.texture_height as f32),
-            (self.target_width as f32, self.target_height as f32),
-            (self.screen_width as f32, self.screen_height as f32),
-            self.screen_margin_y as f32,
-        );
-
-        let transform_bytes = matrix.as_bytes();
-        queue.write_buffer(&self.transform_uniform_buffer, 0, transform_bytes);
+        self.update_matrix(queue);
 
         // Calculate shader parameters
         let uniform_vec = self.get_param_uniform_bytes();
@@ -724,16 +773,6 @@ impl DisplayScaler<wgpu::Device, wgpu::Queue, wgpu::Texture> for MartyScaler {
             &self.params_uniform_buffer,
         );
 
-        //println!("screen_margin_y: {}", self.screen_margin_y);
-        let matrix = ScalingMatrix::new(
-            self.mode,
-            (texture_width as f32, texture_height as f32),
-            (target_width as f32, target_height as f32),
-            (screen_width as f32, screen_height as f32),
-            self.screen_margin_y as f32,
-        );
-        let transform_bytes = matrix.as_bytes();
-
         self.texture_width = texture_width;
         self.texture_height = texture_height;
         self.target_width = target_width;
@@ -741,7 +780,7 @@ impl DisplayScaler<wgpu::Device, wgpu::Queue, wgpu::Texture> for MartyScaler {
         self.screen_width = screen_width;
         self.screen_height = screen_height;
 
-        queue.write_buffer(&self.transform_uniform_buffer, 0, transform_bytes);
+        self.update_uniforms(queue);
     }
 
     fn resize_surface(
@@ -774,16 +813,8 @@ impl DisplayScaler<wgpu::Device, wgpu::Queue, wgpu::Texture> for MartyScaler {
 
         self.screen_width = screen_width;
         self.screen_height = screen_height;
-        let matrix = ScalingMatrix::new(
-            self.mode,
-            (self.texture_width as f32, self.texture_height as f32),
-            (self.target_width as f32, self.target_height as f32),
-            (self.screen_width as f32, self.screen_height as f32),
-            self.screen_margin_y as f32,
-        );
-        let transform_bytes = matrix.as_bytes();
 
-        queue.write_buffer(&self.transform_uniform_buffer, 0, transform_bytes);
+        self.update_uniforms(queue);
     }
 
     fn mode(&self) -> ScalerMode {
@@ -793,7 +824,7 @@ impl DisplayScaler<wgpu::Device, wgpu::Queue, wgpu::Texture> for MartyScaler {
     fn set_mode(&mut self, _device: &wgpu::Device, queue: &wgpu::Queue, new_mode: ScalerMode) {
         //println!(">>> set_mode(): {:?}", new_mode);
         self.mode = new_mode;
-        self.update_matrix(queue);
+        self.update_uniforms(queue);
     }
 
     fn geometry(&self) -> ScalerGeometry {

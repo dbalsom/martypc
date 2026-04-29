@@ -84,6 +84,8 @@ pub enum ScalerOption {
     FillColor { r: u8, g: u8, b: u8, a: u8 },
     Mono { enabled: bool, r: f32, g: f32, b: f32, a: f32 },
     Geometry { h_curvature: f32, v_curvature: f32, corner_radius: f32 },
+    // `lines` is the number of desired CRT scanline bands. For doubled render textures this is
+    // typically half the backing/render texture height.
     Scanlines { enabled: Option<bool>, lines: Option<u32>, intensity: Option<f32> },
     Effect(ScalerEffect),
 }

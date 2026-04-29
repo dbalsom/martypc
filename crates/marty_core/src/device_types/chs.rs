@@ -23,6 +23,8 @@
     DEALINGS IN THE SOFTWARE.
 
     --------------------------------------------------------------------------
+
+    device_types::chs.rs
 */
 
 //! Define a [DiskChs] that represents cylinder, head, sector addressing.

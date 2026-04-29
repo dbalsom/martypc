@@ -24,14 +24,12 @@
 
     --------------------------------------------------------------------------
 
-    device_types::mod.rs
+    device_traits::keyboard.rs
+
+    Keyboard trait to provide an interface for scancode mappings.
 */
+use crate::keys::MartyKey;
 
-//! Module containing device-specific types.
-
-pub mod chs;
-pub mod disk;
-pub mod fdc;
-pub mod geometry;
-pub mod hdc;
-pub mod keyboard;
+pub trait MartyKeyboard {
+    fn keycode_to_scancodes(key_code: MartyKey) -> Vec<u8>;
+}

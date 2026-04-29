@@ -84,7 +84,7 @@ pub fn render_frame(emu: &mut Emulator, dm: &mut EFrameDisplayManager) {
             if renderer.cursor_state() {
                 let light_pen_pos = renderer.cursor_pos_absolute(&extents);
 
-                if let Some(light_pen_latch_pos) = renderer.cursor_latch_absolute(&extents) {
+                if let Some(light_pen_latch_pos) = renderer.cursor_latch_absolute(&extents, None) {
                     videocard.light_pen_trigger(light_pen_latch_pos.0, light_pen_latch_pos.1);
                 }
                 else {

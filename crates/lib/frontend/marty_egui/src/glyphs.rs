@@ -20,6 +20,7 @@ impl Default for FontInfo {
     }
 }
 
+#[allow(dead_code)]
 // Draw a font glyph at an arbitrary location at normal resolution
 pub fn draw_glyph(
     glyph: u8,

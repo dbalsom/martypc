@@ -12,9 +12,10 @@ Thumbs.db
 /.vscode/settings.json
 
 # Jetbrains stuff
-/.idea/shelf/
-/.idea/dictionaries/Daniel.xml
+/.idea/shelf
+/.idea/dictionaries
 /.idea/workspace.xml
+/.idea/*data.migration*
 
 # Emulator files
 /archive
@@ -81,8 +82,9 @@ icon.png
 !/install/martypc.toml
 !/install/martypc_launcher.exe
 
-# Files to include as wasm assets
-!/frontends/martypc_eframe/assets/martypc.toml
+# Experimental GLaBIOS
+/install/media/roms/GLaBIOS/OPTROM.BIN
+/install/media/roms/GLaBIOS/GLABIOS_0.8b0_8XY.ROM
 
 # Experimental rom definitions
 /install/configs/rom_definitions/romdef_s100.toml
@@ -90,6 +92,10 @@ icon.png
 /install/configs/rom_definitions/romdef_ibm_ps2.toml
 /install/configs/rom_definitions/romdef_ibm_misc.toml
 /install/configs/rom_definitions/romdef_custom.toml
+/install/configs/rom_definitions/romdef_seequa.toml
+
+# Experimental machines
+/install/configs/machines/seequa_chameleon.toml
 
 # Miscellaneous GlaBIOS ROMs
 /install/media/roms/GLaBIOS/parking
@@ -113,4 +119,5 @@ icon.png
 /test-gen/
 /exo_demo/
 /util/mquit/mquit.com
-/install/media/roms/GLaBIOS/OPTROM.BIN
+
+

@@ -24,7 +24,7 @@
 
     --------------------------------------------------------------------------
 
-    videocard.rs
+    device_traits::videocard.rs
 
     Defines the VideoCard trait which any video card device (CGA, EGA, VGA)
     must implement.

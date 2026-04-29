@@ -30,11 +30,14 @@
 
 */
 
+use std::collections::HashMap;
+
 use crate::{
     bus::ClockFactor,
     cpu_common::CpuType,
-    device_traits::videocard::VideoType,
-    devices::{keyboard::KeyboardType, pit::PitType},
+    device_traits::videocard::{VideoCardSubType, VideoType},
+    device_types::keyboard::KeyboardType,
+    devices::{a0::A0Type, pit::PitType},
     machine_types::{
         EmsType,
         FdcType,
@@ -49,12 +52,10 @@ use crate::{
     },
     tracelogger::TraceLogger,
 };
+use marty_common::types::joystick::ControllerLayout;
+
 use anyhow::{anyhow, Error};
 use lazy_static::lazy_static;
-use std::collections::HashMap;
-
-use crate::{device_traits::videocard::VideoCardSubType, devices::a0::A0Type};
-use marty_common::types::joystick::ControllerLayout;
 use serde_derive::Deserialize;
 use strum::IntoEnumIterator;
 

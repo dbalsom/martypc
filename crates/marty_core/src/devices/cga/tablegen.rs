@@ -35,7 +35,7 @@ use super::*;
 
 /// Constant initializer to unpack the CGA font by glyph into
 /// 8 rows of 64 bit values. These values are then AND'd with
-/// 64 bit color constants and then OR'd together to produce
+/// 64-bit color constants and then OR'd together to produce
 /// the final 64 bit drawing value for drawing by one entire
 /// character row.
 pub const CGA_HIRES_GLYPH_TABLE: [[u64; 8]; 256] = {
@@ -89,7 +89,7 @@ pub const CGA_HIRES_GLYPH_TABLE: [[u64; 8]; 256] = {
 
 /// Constant initializer to unpack the CGA font by glyph into
 /// 8 rows of 64 bit values. These values are then AND'd with
-/// 64 bit color constants and then OR'd together to produce
+/// 64-bit color constants and then OR'd together to produce
 /// the final 64 bit drawing value for drawing by one entire
 /// character row.
 ///

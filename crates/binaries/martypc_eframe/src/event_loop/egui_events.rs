@@ -65,7 +65,10 @@ use crate::wasm::file_open;
 #[cfg(target_arch = "wasm32")]
 use crate::wasm::worker::spawn_closure_worker as spawn;
 use marty_display_common::display_manager::{DisplayManager, DtHandle};
-use marty_frontend_common::timestep_manager::{TimestepManager, TimestepUpdate};
+use marty_frontend_common::{
+    marty_common::types::ui::MouseCaptureMode,
+    timestep_manager::{TimestepManager, TimestepUpdate},
+};
 #[cfg(target_arch = "wasm32")]
 use std::path::PathBuf;
 
@@ -228,6 +231,19 @@ pub fn handle_egui_event(
                 GuiVariableContext::Global => match op {
                     GuiEnum::MouseCaptureMode(mode) => {
                         log::debug!("Got mouse capture mode update event: {:?}", mode);
+
+                        match mode {
+                            MouseCaptureMode::Mouse => {
+                                dm.with_renderer(DtHandle::MAIN, |renderer| {
+                                    renderer.set_luma_sampling(false);
+                                });
+                            }
+                            MouseCaptureMode::LightPen => {
+                                dm.with_renderer(DtHandle::MAIN, |renderer| {
+                                    renderer.set_luma_sampling(true);
+                                });
+                            }
+                        }
                         emu.mouse_data.capture_mode = *mode;
                     }
                     GuiEnum::GamepadMapping(mapping) => {
@@ -255,7 +271,8 @@ pub fn handle_egui_event(
                             match hdc.set_vhd(*drive_idx, vhd) {
                                 Ok(_) => true,
                                 Err(err) => {
-                                    error_str = Some(format!("Error mounting VHD '{}': {}", vhd_name.to_string_lossy(), err));
+                                    error_str =
+                                        Some(format!("Error mounting VHD '{}': {}", vhd_name.to_string_lossy(), err));
                                     false
                                 }
                             }
@@ -264,7 +281,8 @@ pub fn handle_egui_event(
                             match hdc.set_vhd(*drive_idx, vhd) {
                                 Ok(_) => true,
                                 Err(err) => {
-                                    error_str = Some(format!("Error mounting VHD '{}': {}", vhd_name.to_string_lossy(), err));
+                                    error_str =
+                                        Some(format!("Error mounting VHD '{}': {}", vhd_name.to_string_lossy(), err));
                                     false
                                 }
                             }
@@ -1071,14 +1089,6 @@ pub fn handle_egui_event(
             match state {
                 MachineState::Off | MachineState::Rebooting => {
                     // Clear the screen if rebooting or turning off
-
-                    // TODO: Fix this (2024)
-
-                    // emu.dm.for_each_renderer(|renderer, _card_id, buf| {
-                    //     renderer.clear();
-                    //     buf.fill(0);
-                    // });
-
                     if emu.config.machine.reload_roms {
                         // Tell the Machine to wait on execution until ROMs are reloaded
                         emu.machine.set_reload_pending(true);

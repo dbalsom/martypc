@@ -9,7 +9,7 @@
 [[romset]]
 alias = "ibm_pcjr"
 desc = "IBM 4860 PCJr"
-priority = 0
+priority = 1
 provides = ["bios", "ibm_pcjr", "ibm_basic", "expansion"]
 oem_for = ["ibm_pcjr"]
 rom = [
@@ -72,7 +72,7 @@ priority = 0
 provides = ["bios", "ibm_pcjr", "ibm_basic", "expansion"]
 oem_for = ["ibm_pcjr"]
 rom = [
-    { md5 = "6338a9808445de12109a2389b71ee2eb", addr = 0xF0000, size = 65536, chip = "u33" }
+    { md5 = "c66b49cd7082d1b81442fb2704542401", addr = 0xF0000, size = 65536, chip = "u33" }
 ]
 
     [[romset.patch]]

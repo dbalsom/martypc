@@ -43,9 +43,9 @@ serde_derive = "1.0"
 serialport = { git = "https://github.com/dbalsom/serialport-rs", branch = "arduino-fix" }
 web-time = "1.1.0"
 toml = "0.8"
-fxhash = "0.2.1"
+rustc-hash = "2.1"
 enum_dispatch = "0.3.13"
-indexmap = "2.2.6"
+indexmap = "2.14"
 crossbeam-channel = "0.5.15"
 zip = { version = "2.3", default-features = false }
 strum = {  version = "0.27", features = ["derive"] }

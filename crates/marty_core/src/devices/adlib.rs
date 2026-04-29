@@ -47,11 +47,10 @@ pub struct AdLibCard {
     pub sender: Sender<AudioSample>,
     pub in_buf: [i16; 2],
     pub out_buf: [i16; SAMPLE_BUF_LEN * 2],
-    pub sample_accum: usize,
     pub sample_accum_second: usize,
     pub samples_per_second: usize,
     pub usec_accum_second: f64,
-    pub usec_accum: f64,
+    pub timewarp_usec: f64,
     pub addr: u8,
 }
 
@@ -65,40 +64,56 @@ impl AdLibCard {
             sender,
             in_buf: [0; 2],
             out_buf: [0; SAMPLE_BUF_LEN * 2],
-            sample_accum: 0,
             sample_accum_second: 0,
             samples_per_second: 0,
             usec_accum_second: 0.0,
-            usec_accum: 0.0,
+            timewarp_usec: 0.0,
             addr: 0,
         }
     }
-}
 
-impl SoundDevice for AdLibCard {
-    fn run(&mut self, usec: f64) {
+    fn advance(&mut self, usec: f64) {
+        if usec <= 0.0 {
+            return;
+        }
+
         let samples_run = self.opl3.run(usec);
-        self.sample_accum += samples_run;
         self.sample_accum_second += samples_run;
-        self.usec_accum += usec;
         self.usec_accum_second += usec;
 
         if self.usec_accum_second >= 1_000_000.0 {
             self.samples_per_second = self.sample_accum_second;
             self.sample_accum_second = 0;
-            self.usec_accum_second = self.usec_accum_second - 1_000_000.0;
+            self.usec_accum_second -= 1_000_000.0;
 
             //log::debug!("Adlib samples per second: {}", self.samples_per_second);
         }
 
-        while self.sample_accum >= SAMPLE_BUF_LEN {
-            //log::debug!("Reached {} samples in {}", self.sample_accum, self.usec_accum);
-            self.sample_accum -= SAMPLE_BUF_LEN;
-            self.usec_accum = 0.0;
+        self.emit_samples(samples_run);
+    }
 
-            _ = self.opl3.generate_samples(&mut self.out_buf);
+    fn catch_up(&mut self, delta: DeviceRunTimeUnit) {
+        let DeviceRunTimeUnit::Microseconds(delta_usec) = delta
+        else {
+            return;
+        };
 
-            for s in self.out_buf.chunks_exact(2) {
+        if delta_usec > self.timewarp_usec {
+            let run_usec = delta_usec - self.timewarp_usec;
+            self.advance(run_usec);
+            self.timewarp_usec = delta_usec;
+        }
+    }
+
+    fn emit_samples(&mut self, mut samples: usize) {
+        while samples > 0 {
+            let chunk_len = samples.min(SAMPLE_BUF_LEN);
+            let buffer_len = chunk_len * 2;
+            samples -= chunk_len;
+
+            _ = self.opl3.generate_samples(&mut self.out_buf[..buffer_len]);
+
+            for s in self.out_buf[..buffer_len].chunks_exact(2) {
                 let samp0 = if s[0] == -1 { 0 } else { s[0] };
                 let samp1 = if s[1] == -1 { 0 } else { s[1] };
                 self.sender.send(samp0 as f32 / i16::MAX as f32).unwrap();
@@ -108,8 +123,18 @@ impl SoundDevice for AdLibCard {
     }
 }
 
+impl SoundDevice for AdLibCard {
+    fn run(&mut self, usec: f64) {
+        let run_usec = (usec - self.timewarp_usec).max(0.0);
+        self.advance(run_usec);
+        self.timewarp_usec = 0.0;
+    }
+}
+
 impl IoDevice for AdLibCard {
-    fn read_u8(&mut self, port: u16, _delta: DeviceRunTimeUnit) -> u8 {
+    fn read_u8(&mut self, port: u16, delta: DeviceRunTimeUnit) -> u8 {
+        self.catch_up(delta);
+
         //log::debug!("Read from Adlib port {:04X}", port - self.io_base);
         match port - self.io_base {
             0 => self.opl3.read_status(),
@@ -123,9 +148,11 @@ impl IoDevice for AdLibCard {
         port: u16,
         data: u8,
         _bus: Option<&mut BusInterface>,
-        _delta: DeviceRunTimeUnit,
+        delta: DeviceRunTimeUnit,
         _analyzer: Option<&mut LogicAnalyzer>,
     ) {
+        self.catch_up(delta);
+
         match port - self.io_base {
             0 => {
                 //log::debug!("Write to Adlib address port {:02X}", data);

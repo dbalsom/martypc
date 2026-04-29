@@ -45,6 +45,7 @@ use std::sync::{Arc, RwLock};
 use log;
 use anyhow::{anyhow, Error};
 use fluxfox::DiskImage;
+pub use marty_common::types::rom::{MachineCheckpoint, MachinePatch, MachineRomEntry, MachineRomManifest};
 
 #[cfg(feature = "sound")]
 use crate::sound::{SoundOutputConfig, SoundOutput, SoundSourceDescriptor};
@@ -61,7 +62,7 @@ use crate::{
         fdc::controller::FloppyController,
         hdc::xebec::HardDiskController,
         hdc::xtide::XtIdeController,
-        keyboard::KeyboardModifiers,
+        keyboard_common::KeyboardModifiers,
         mouse::Mouse,
         pic::PicStringState,
         pit::{PitDisplayState},
@@ -272,39 +273,6 @@ pub struct PitData {
     next_sample_size: usize,
 }
 
-#[derive(Clone, Default, Debug)]
-pub struct MachineRomEntry {
-    pub name: String,
-    pub md5: String,
-    pub addr: u32,
-    pub repeat: u32,
-    pub data: Vec<u8>,
-}
-
-#[derive(Clone, Default, Debug)]
-pub struct MachineCheckpoint {
-    pub addr: u32,
-    pub lvl: u32,
-    pub desc: String,
-}
-
-#[derive(Clone, Default, Debug)]
-pub struct MachinePatch {
-    pub desc: String,
-    pub trigger: u32,
-    pub addr: u32,
-    pub bytes: Vec<u8>,
-    pub installed: bool,
-}
-
-#[derive(Clone, Default, Debug)]
-pub struct MachineRomManifest {
-    pub checkpoints: Vec<MachineCheckpoint>,
-    pub patches: Vec<MachinePatch>,
-    pub roms: Vec<MachineRomEntry>,
-    pub rom_paths: Vec<PathBuf>,
-}
-
 #[derive(Default, Debug)]
 pub struct MachineOptions {
     pub record_listing: bool,
@@ -316,45 +284,6 @@ pub struct MachineRunResult {
     pub instructions: u64,
     #[cfg(feature = "sound")]
     pub sound_output: SoundOutput,
-}
-
-impl MachineRomManifest {
-    pub fn new() -> Self {
-        Default::default()
-    }
-
-    /// Return true if the specified address range is not covered by any ROM in the manifest.
-    /// Return false if the specified address range conflicts with an existing rom.
-    pub fn check_load(&self, addr: usize, len: usize) -> bool {
-        let _check_start = addr;
-        let check_end = addr + len;
-
-        for rom in self.roms.iter() {
-            let rom_start = rom.addr as usize;
-            let rom_end = rom_start + rom.data.len();
-
-            if (check_end > rom_start) && (check_end < rom_end) {
-                return false;
-            }
-        }
-        true
-    }
-
-    pub fn checkpoint_map(&self) -> HashMap<u32, usize> {
-        let mut map = HashMap::new();
-        for (idx, cp) in self.checkpoints.iter().enumerate() {
-            map.insert(cp.addr, idx);
-        }
-        map
-    }
-
-    pub fn patch_map(&self) -> HashMap<u32, usize> {
-        let mut map = HashMap::new();
-        for (idx, patch) in self.patches.iter().enumerate() {
-            map.insert(patch.trigger, idx);
-        }
-        map
-    }
 }
 
 #[derive(Default)]

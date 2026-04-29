@@ -33,9 +33,9 @@ use crate::{
     device_traits::videocard::VideoCardDispatch,
     devices::{
         conventional_memory::ConventionalMemory,
+        fantasy_ems::FantasyEmsCard,
         hdc::{jr_ide::JrIdeController, xebec::HardDiskController, xtide::XtIdeController},
         lotech_ems::LotechEmsCard,
-        fantasy_ems::FantasyEmsCard,
     },
 };
 
