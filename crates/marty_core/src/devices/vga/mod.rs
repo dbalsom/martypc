@@ -672,7 +672,7 @@ struct EMiscellaneousOutputRegister {
 
 /// IO Address Select field of External Miscellaneous Register:
 /// Bit 0
-#[derive(Debug, BitfieldSpecifier)]
+#[derive(Debug, Specifier)]
 pub enum IoAddressSelect {
     CompatMonochrome,
     CompatCGA,
@@ -680,7 +680,7 @@ pub enum IoAddressSelect {
 
 /// Clock Select field of External Miscellaneous Register:
 /// Bits 2-3
-#[derive(Debug, BitfieldSpecifier, PartialEq, Clone, Copy)]
+#[derive(Debug, Specifier, PartialEq, Clone, Copy)]
 pub enum ClockSelect {
     Clock25 = 0,
     Clock28 = 1,
@@ -689,13 +689,13 @@ pub enum ClockSelect {
 }
 
 /// Odd/Even Page Select field of External Miscellaneous Register:
-#[derive(Debug, BitfieldSpecifier)]
+#[derive(Debug, Specifier)]
 pub enum PageSelect {
     LowPage,
     HighPage,
 }
 
-#[derive(Debug, BitfieldSpecifier)]
+#[derive(Debug, Specifier)]
 pub enum RetracePolarity {
     Positive,
     Negative,

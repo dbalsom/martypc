@@ -131,13 +131,13 @@ pub struct CVerticalRetraceEnd {
     unused: B2,
 }
 
-#[derive(Debug, BitfieldSpecifier)]
+#[derive(Debug, Specifier)]
 pub enum WordOrByteMode {
     Word,
     Byte,
 }
 
-#[derive(Debug, BitfieldSpecifier)]
+#[derive(Debug, Specifier)]
 pub enum CompatibilityMode {
     Cga,
     Ega,

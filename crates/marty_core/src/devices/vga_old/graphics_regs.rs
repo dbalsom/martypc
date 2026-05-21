@@ -79,7 +79,7 @@ pub struct GMiscellaneousRegister {
     unused: B4,
 }
 
-#[derive(Copy, Clone, Debug, BitfieldSpecifier)]
+#[derive(Copy, Clone, Debug, Specifier)]
 pub enum MemoryMap {
     A0000_128k,
     A0000_64K,
@@ -87,7 +87,7 @@ pub enum MemoryMap {
     B8000_32K,
 }
 
-#[derive(Copy, Clone, Debug, PartialEq, BitfieldSpecifier)]
+#[derive(Copy, Clone, Debug, PartialEq, Specifier)]
 pub enum RotateFunction {
     Unmodified,
     And,
@@ -95,7 +95,7 @@ pub enum RotateFunction {
     Xor,
 }
 
-#[derive(Copy, Clone, Debug, BitfieldSpecifier)]
+#[derive(Copy, Clone, Debug, Specifier)]
 pub enum WriteMode {
     Mode0,
     Mode1,
@@ -103,13 +103,13 @@ pub enum WriteMode {
     Mode3,
 }
 
-#[derive(Copy, Clone, Debug, BitfieldSpecifier)]
+#[derive(Copy, Clone, Debug, Specifier)]
 pub enum ReadMode {
     ReadSelectedPlane,
     ReadComparedPlanes,
 }
 
-#[derive(Copy, Clone, Debug, BitfieldSpecifier)]
+#[derive(Copy, Clone, Debug, Specifier)]
 pub enum ShiftMode {
     Standard,
     CGACompatible,

@@ -257,7 +257,7 @@ impl MartyScaler {
             address_mode_w: wgpu::AddressMode::ClampToEdge,
             mag_filter: wgpu::FilterMode::Nearest,
             min_filter: wgpu::FilterMode::Nearest,
-            mipmap_filter: wgpu::FilterMode::Nearest,
+            mipmap_filter: wgpu::MipmapFilterMode::Nearest,
             lod_min_clamp: 0.0,
             lod_max_clamp: 1.0,
             compare: None,
@@ -273,7 +273,7 @@ impl MartyScaler {
             address_mode_w: wgpu::AddressMode::ClampToEdge,
             mag_filter: wgpu::FilterMode::Linear,
             min_filter: wgpu::FilterMode::Linear,
-            mipmap_filter: wgpu::FilterMode::Linear,
+            mipmap_filter: wgpu::MipmapFilterMode::Linear,
             lod_min_clamp: 0.0,
             lod_max_clamp: 1.0,
             compare: None,
@@ -414,8 +414,8 @@ impl MartyScaler {
         // Create pipeline
         let pipeline_layout = device.create_pipeline_layout(&wgpu::PipelineLayoutDescriptor {
             label: Some("marty_renderer_pipeline_layout"),
-            bind_group_layouts: &[&bind_group_layout],
-            push_constant_ranges: &[],
+            bind_group_layouts: &[Some(&bind_group_layout)],
+            immediate_size: 0,
         });
 
         let mut primitive = wgpu::PrimitiveState::default();
@@ -446,7 +446,7 @@ impl MartyScaler {
                     write_mask: wgpu::ColorWrites::ALL,
                 })],
             }),
-            multiview: None,
+            multiview_mask: None,
             cache: None,
         });
 
@@ -681,6 +681,7 @@ impl DisplayScaler<wgpu::Device, wgpu::Queue, wgpu::Texture> for MartyScaler {
             label: Some("marty_renderer marty_render pass"),
             color_attachments: &[Some(wgpu::RenderPassColorAttachment {
                 view: render_target,
+                depth_slice: None,
                 resolve_target: None,
                 ops: wgpu::Operations {
                     load:  wgpu::LoadOp::Clear(MartyColor::from(self.fill_color).to_wgpu_color_linear()),
@@ -690,6 +691,7 @@ impl DisplayScaler<wgpu::Device, wgpu::Queue, wgpu::Texture> for MartyScaler {
             depth_stencil_attachment: None,
             timestamp_writes: None,
             occlusion_query_set: None,
+            multiview_mask: None,
         });
 
         render_pass.set_pipeline(&self.render_pipeline);

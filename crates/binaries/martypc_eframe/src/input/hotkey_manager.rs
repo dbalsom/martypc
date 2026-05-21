@@ -122,8 +122,7 @@ impl HotkeyManager {
 
         if events.is_empty() {
             None
-        }
-        else {
+        } else {
             Some(events)
         }
     }

@@ -51,8 +51,7 @@ pub fn render_frame(emu: &mut Emulator, dm: &mut EFrameDisplayManager) {
                         if emu.gui.get_option(GuiBoolean::ShowRasterPosition).unwrap_or(false) {
                             beam_pos = videocard.beam_pos();
                         }
-                    }
-                    else {
+                    } else {
                         renderer.select_buffer(BufferSelect::Front);
                     }
                 }
@@ -86,8 +85,7 @@ pub fn render_frame(emu: &mut Emulator, dm: &mut EFrameDisplayManager) {
 
                 if let Some(light_pen_latch_pos) = renderer.cursor_latch_absolute(&extents, None) {
                     videocard.light_pen_trigger(light_pen_latch_pos.0, light_pen_latch_pos.1);
-                }
-                else {
+                } else {
                     videocard.set_light_pen_pos(light_pen_pos.0, light_pen_pos.1);
                 }
                 videocard.set_light_pen_state(emu.mouse_data.l_button_is_pressed);

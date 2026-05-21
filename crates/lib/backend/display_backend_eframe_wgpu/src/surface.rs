@@ -78,14 +78,14 @@ impl DisplayTargetSurface for EFrameBackendSurface {
 
             let bytes_per_row = (self.pixel_dimensions.w as f32 * self.texture_format_size) as u32;
             queue.write_texture(
-                wgpu::ImageCopyTexture {
+                wgpu::TexelCopyTextureInfo {
                     texture:   &self.backing,
                     mip_level: 0,
                     origin:    wgpu::Origin3d { x: 0, y: 0, z: 0 },
                     aspect:    wgpu::TextureAspect::All,
                 },
                 &self.pixels,
-                wgpu::ImageDataLayout {
+                wgpu::TexelCopyBufferLayout {
                     offset: 0,
                     bytes_per_row: Some(bytes_per_row),
                     rows_per_image: Some(self.pixel_dimensions.h),

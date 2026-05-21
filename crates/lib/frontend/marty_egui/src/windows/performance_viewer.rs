@@ -218,7 +218,7 @@ impl PerformanceViewerControl {
                 .map(|(i, fe)| [i as f64, fe.frame_time.as_secs_f64() * 1000.0])
                 .collect();
 
-            let line = Line::new(points);
+            let line = Line::new("frame time", points);
             let _x_mag = self.frame_history.len();
             Plot::new("frame_time_plot")
                 .height(96.0)

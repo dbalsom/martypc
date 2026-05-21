@@ -145,10 +145,12 @@ pub const fn texture_format_size(texture_format: wgpu::TextureFormat) -> f32 {
         | Rg11b10Ufloat
         | Depth32Float
         | Depth24Plus
-        | Depth24PlusStencil8 => 4.0, // 32.0 / 8.0
+        | Depth24PlusStencil8
+        | P010 => 4.0, // 32.0 / 8.0
 
         // 64-bit formats, 8 bits per component
-        Rg32Uint
+        R64Uint
+        | Rg32Uint
         | Rg32Sint
         | Rg32Float
         | Rgba16Uint

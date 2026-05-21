@@ -182,7 +182,7 @@ impl<T> ThreadSafe for T where T: Send + Sync {} // Implement it for all Send + 
 #[cfg(target_arch = "wasm32")]
 impl<T> ThreadSafe for T where T: Sized {} // Implement it for all types on WASM
 
-pub trait DisplayScaler<D, Q, T>: Send + Sync {
+pub trait DisplayScaler<D, Q, T>: ThreadSafe {
     type NativeContext;
     type NativeRenderPass;
 

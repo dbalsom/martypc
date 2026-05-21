@@ -387,7 +387,7 @@ use crate::devices::{
     mda::io::LPT_DEFAULT_IO_BASE,
 };
 
-#[derive(Copy, Clone, Debug, PartialEq, Eq, BitfieldSpecifier)]
+#[derive(Copy, Clone, Debug, PartialEq, Eq, Specifier)]
 pub enum PageSelect {
     PageB000,
     PageB800,

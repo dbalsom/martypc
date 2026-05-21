@@ -5,7 +5,7 @@ version.workspace = true
 authors.workspace = true
 edition.workspace = true
 include = ["LICENSE-MIT", "**/*.rs", "Cargo.toml"]
-rust-version = "1.81"
+rust-version = "1.92"
 
 [package.metadata.docs.rs]
 all-features = true
@@ -40,7 +40,6 @@ fluxfox_egui = { workspace = true }
 winit = { workspace = true }
 #winit = { version = "0.30", default-features = false }
 egui = { workspace = true, default-features = false }
-eframe = { workspace = true, default-features = false }
 egui_extras = { workspace = true, default-features = false, features = ["file", "image"] }
 web-time = { workspace = true }
 log.workspace = true
@@ -58,7 +57,7 @@ rfd.workspace = true
 # ---------------------------------------------------------------------------------------------------------------------
 rodio = {  workspace = true, optional = true }
 # gilrs is used to provide gamepad support
-gilrs = { workspace = true, default-features = false, optional = true, package = "gilrs" }
+gilrs = { workspace = true, default-features = false, optional = true }
 # wgpu is used if the `use_wgpu` feature is enabled.
 wgpu = { workspace = true, optional = true }
 egui_commonmark = { workspace = true, optional = true }
@@ -79,10 +78,6 @@ serialport  = { workspace = true }
 marty_config = { path = "../../lib/frontend/marty_config", features = ["use_bpaf"] }
 # async runtime
 async-std = { version = "1.10", features = ["attributes"] }
-
-# Enable DX12 backend on windows
-[target.'cfg(target_os = "windows")'.dependencies]
-wgpu = { version = "23.0", features = ["dx12"], optional = true }
 
 # Wasm dependencies
 # ---------------------------------------------------------------------------------------------------------------------
@@ -111,8 +106,8 @@ winres = "0.1"
 
 [features]
 default = ["all_video_cards", "use_winit", "use_wgpu", "use_gilrs", "gilrs_default", "sound", "opl", "use_serialport"]
-wasm_glow = ["all_video_cards","sound","use_glow","use_gilrs"]
-wasm_wgpu = ["all_video_cards","sound","use_wgpu","use_gilrs"]
+wasm_glow = ["all_video_cards", "sound", "use_glow", "use_gilrs", "gilrs_default"]
+wasm_wgpu = ["all_video_cards", "sound", "use_wgpu", "use_gilrs", "gilrs_default"]
 shader_ui = ["marty_egui/scaler_ui"]
 all_video_cards = ["ega", "vga"]
 sound = ["dep:rodio", "rodio/wasm-bindgen", "marty_core/sound"]
@@ -122,7 +117,7 @@ markdown = ["dep:egui_commonmark", "marty_egui/markdown"]
 use_winit = ["dep:egui-winit"]
 # Use the wgpu backend
 use_wgpu = [
-    "eframe/wgpu",
+    "eframe/wgpu_no_default_features",
     "marty_frontend_common/use_wgpu",
     "marty_display_common/use_wgpu",
     "display_manager_eframe/use_wgpu",

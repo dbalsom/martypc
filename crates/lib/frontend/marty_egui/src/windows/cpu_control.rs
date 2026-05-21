@@ -312,7 +312,7 @@ impl CpuControl {
         self.step_over_target = target;
     }
 
-    pub fn get_breakpoints(&mut self) -> BreakpointSet {
+    pub fn get_breakpoints(&mut self) -> BreakpointSet<'_> {
         BreakpointSet {
             breakpoint: &self.breakpoint,
             mem_breakpoint: &self.mem_breakpoint,

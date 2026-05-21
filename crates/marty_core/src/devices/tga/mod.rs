@@ -546,7 +546,6 @@ macro_rules! trace_regs {
 }
 
 use crate::devices::pic::Pic;
-pub(crate) use trace_regs;
 
 pub struct TGACard {
     subtype: VideoCardSubType,

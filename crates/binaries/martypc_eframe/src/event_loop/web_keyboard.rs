@@ -47,13 +47,11 @@ pub fn handle_web_key_event(
         if !gui_focus {
             if event.pressed {
                 emu.machine.key_press(marty_key, emu.kb_data.modifiers);
-            }
-            else {
+            } else {
                 emu.machine.key_release(marty_key);
             }
         }
-    }
-    else {
+    } else {
         log::warn!("Couldn't convert key: {} to MartyKey", event.key);
     }
 }

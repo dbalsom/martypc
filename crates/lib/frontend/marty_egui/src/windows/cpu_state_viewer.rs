@@ -299,7 +299,8 @@ impl CpuViewerControl {
 
         egui::Grid::new("reg_flags")
             .striped(true)
-            .max_col_width(10.0)
+            .min_col_width(18.0)
+            .max_col_width(22.0)
             .show(ui, |ui| {
                 if self.cpu_state.cpu_type.is_nec() {
                     Self::show_flagbit(ui, &mut self.cpu_state.m_fl,  "M", "Mode");    
@@ -448,7 +449,8 @@ impl CpuViewerControl {
 
         egui::Grid::new("reg_flags_grid")
             .striped(true)
-            .max_col_width(10.0)
+            .min_col_width(18.0)
+            .max_col_width(22.0)
             .show(ui, |ui| {
                 if self.cpu_state.cpu_type.is_nec() {
                     Self::show_flagbit(ui, &mut self.cpu_state.m_fl.as_str(), "M", "Mode");
@@ -474,28 +476,20 @@ impl CpuViewerControl {
             ui.add(
                 egui::TextEdit::singleline(text)
                     .char_limit(1)
+                    .desired_width(18.0)
                     .horizontal_align(egui::Align::Center)
                     .font(egui::TextStyle::Monospace),
             );
             ui.centered_and_justified(|ui| {
-                if ui
-                    .add(
-                        egui::Label::new(egui::RichText::new(label).text_style(egui::TextStyle::Monospace))
-                            .selectable(false),
-                    )
-                    .hovered()
-                {
-                    egui::containers::popup::show_tooltip(
-                        ui.ctx(),
-                        ui.layer_id(),
-                        egui::Id::new("flag_tooltip"),
-                        |ui| {
-                            ui.horizontal(|ui| {
-                                ui.label(tip);
-                            });
-                        },
-                    );
-                }
+                let response = ui.add(
+                    egui::Label::new(egui::RichText::new(label).text_style(egui::TextStyle::Monospace))
+                        .selectable(false),
+                );
+                response.on_hover_ui(|ui| {
+                    ui.horizontal(|ui| {
+                        ui.label(tip);
+                    });
+                });
             });
         });
     }
@@ -506,6 +500,7 @@ impl CpuViewerControl {
             let edit_response = ui.add(
                 egui::TextEdit::singleline(text)
                     .char_limit(1)
+                    .desired_width(18.0)
                     .horizontal_align(egui::Align::Center)
                     .char_limit(1)
                     .font(egui::TextStyle::Monospace),
@@ -526,28 +521,18 @@ impl CpuViewerControl {
             }
 
             ui.centered_and_justified(|ui| {
-                if ui
-                    .add(
-                        egui::Label::new(egui::RichText::new(label).text_style(egui::TextStyle::Monospace))
-                            .selectable(false),
-                    )
-                    .hovered()
-                {
-                    egui::containers::popup::show_tooltip(
-                        ui.ctx(),
-                        ui.layer_id(),
-                        egui::Id::new("flag_tooltip"),
-                        |ui| {
-                            ui.horizontal(|ui| {
-                                ui.label(tip);
-                            });
-                        },
-                    );
-                }
+                let response = ui.add(
+                    egui::Label::new(egui::RichText::new(label).text_style(egui::TextStyle::Monospace))
+                        .selectable(false),
+                );
+                response.on_hover_ui(|ui| {
+                    ui.horizontal(|ui| {
+                        ui.label(tip);
+                    });
+                });
             });
         });
     }
-
     /// Calculate the flag value from the current string state.
     /// Note we don't have to account for reserved fields, as the cpu's set_flags method will
     /// enforce the correct bit values.

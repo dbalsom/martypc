@@ -33,11 +33,7 @@
 use crate::{
     counter::Counter,
     emulator::{
-        joystick_state::JoystickState,
-        keyboard_state::KeyboardData,
-        mouse_state::MouseState,
-        EmuFlags,
-        Emulator,
+        joystick_state::JoystickState, keyboard_state::KeyboardData, mouse_state::MouseState, EmuFlags, Emulator,
     },
     input,
     input::HotkeyManager,
@@ -64,12 +60,8 @@ use marty_core::{
 };
 use marty_egui::state::GuiState;
 use marty_frontend_common::{
-    cartridge_manager::CartridgeManager,
-    floppy_manager::FloppyManager,
-    machine_manager::MachineManager,
-    resource_manager::ResourceManager,
-    rom_manager::RomManager,
-    types::resource_location::ResourceLocation,
+    cartridge_manager::CartridgeManager, floppy_manager::FloppyManager, machine_manager::MachineManager,
+    resource_manager::ResourceManager, rom_manager::RomManager, types::resource_location::ResourceLocation,
     vhd_manager::VhdManager,
 };
 
@@ -230,8 +222,7 @@ impl EmulatorBuilder {
 
         let config_location = if self.toml_config_path.is_some() {
             ResourceLocation::FilePath(self.toml_config_path.as_ref().unwrap().clone())
-        }
-        else {
+        } else {
             ResourceLocation::Url(self.toml_config_url.as_ref().unwrap().clone())
         };
 
@@ -331,8 +322,7 @@ impl EmulatorBuilder {
 
             sound_config = sound_player.config();
             Some(sound_player)
-        }
-        else {
+        } else {
             None
         };
 
@@ -663,8 +653,7 @@ impl EmulatorBuilder {
 
         if let Some(global_kb_string) = &config.machine.input.keyboard_layout {
             kb_string = global_kb_string.clone()
-        }
-        else {
+        } else {
             if let Some(keyboard) = machine_config.keyboard.as_ref() {
                 kb_string = keyboard.layout.clone();
             }
@@ -796,8 +785,7 @@ impl EmulatorBuilder {
                     if let Some(index) = serial_ports.iter().position(|p| p.port_name == *port.host_port_name) {
                         // Set the host port id to the resolved index.
                         port.host_port_id = Some(index);
-                    }
-                    else if port.host_port_name != "default" {
+                    } else if port.host_port_name != "default" {
                         // Print a warning if the port name was not found - user may have typo'd or the configuration has changed
                         log::warn!(
                             "Serial port name '{}' not found in host serial ports. Bridge configuration not set.",
@@ -845,8 +833,7 @@ impl EmulatorBuilder {
                                 }
                             }
                         }
-                    }
-                    else {
+                    } else {
                         log::warn!(
                             "Serial port name '{}' not found in host serial ports. Bridge connection not created.",
                             connection.host_port_name

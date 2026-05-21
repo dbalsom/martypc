@@ -363,6 +363,12 @@ pub struct DisplayTargetCallback {
     pub lock: Arc<RwLock<DisplayTargetContext>>,
 }
 
+#[cfg(all(target_arch = "wasm32", feature = "use_wgpu"))]
+unsafe impl Send for DisplayTargetCallback {}
+
+#[cfg(all(target_arch = "wasm32", feature = "use_wgpu"))]
+unsafe impl Sync for DisplayTargetCallback {}
+
 #[cfg(feature = "use_wgpu")]
 impl egui_wgpu::CallbackTrait for DisplayTargetCallback {
     // Required method

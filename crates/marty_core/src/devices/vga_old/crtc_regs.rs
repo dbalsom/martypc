@@ -65,43 +65,43 @@ pub enum CRTCRegister {
     LineCompare,
 }
 
-#[derive(Debug, BitfieldSpecifier)]
+#[derive(Debug, Specifier)]
 pub enum DRAMBandwidth {
     ThreeCycles,
     FiveCycles,
 }
 
-#[derive(Debug, BitfieldSpecifier)]
+#[derive(Debug, Specifier)]
 pub enum CompatibilityMode {
     SubstituteA0,
     Normal,
 }
 
-#[derive(Debug, BitfieldSpecifier)]
+#[derive(Debug, Specifier)]
 pub enum SelectRowScanCounter {
     SubstituteA14,
     Sequential,
 }
 
-#[derive(Debug, BitfieldSpecifier)]
+#[derive(Debug, Specifier)]
 pub enum HorizontalRetraceSelect {
     ClockOnce,
     ClockDividedByTwo,
 }
 
-#[derive(Debug, BitfieldSpecifier)]
+#[derive(Debug, Specifier)]
 pub enum AddressWrap {
     AddressBit13,
     AddressBit15,
 }
 
-#[derive(Debug, BitfieldSpecifier)]
+#[derive(Debug, Specifier)]
 pub enum WordByteMode {
     WordMode,
     ByteMode,
 }
 
-#[derive(Debug, BitfieldSpecifier)]
+#[derive(Debug, Specifier)]
 pub enum HardwareReset {
     ResetHold,
     Enable,

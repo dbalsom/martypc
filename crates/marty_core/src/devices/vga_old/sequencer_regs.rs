@@ -79,19 +79,19 @@ pub struct SMemoryMode {
     unused: B4,
 }
 
-#[derive(Copy, Clone, Debug, BitfieldSpecifier)]
+#[derive(Copy, Clone, Debug, Specifier)]
 pub enum ShiftFour {
     EveryClock,
     EightDots,
 }
 
-#[derive(Copy, Clone, Debug, BitfieldSpecifier)]
+#[derive(Copy, Clone, Debug, Specifier)]
 pub enum CharacterClock {
     EightDots,
     NineDots,
 }
 
-#[derive(Copy, Clone, Debug, BitfieldSpecifier)]
+#[derive(Copy, Clone, Debug, Specifier)]
 pub enum DotClock {
     Native,
     HalfClock,

@@ -5,7 +5,7 @@ version.workspace = true
 authors.workspace = true
 edition.workspace = true
 include = ["LICENSE-MIT", "**/*.rs", "Cargo.toml"]
-rust-version = "1.81"
+rust-version = "1.92"
 
 [package.metadata.docs.rs]
 all-features = true
@@ -35,7 +35,6 @@ fluxfox = { workspace = true, features = ["core", "viz", "tiny_skia", "fat", "ib
 winit = { workspace = true }
 #winit = { version = "0.30", default-features = false }
 egui = { workspace = true, default-features = false }
-eframe = { workspace = true, default-features = false }
 egui_extras = { workspace = true, default-features = false, features = ["file", "image"] }
 web-time = { workspace = true }
 log.workspace = true
@@ -77,10 +76,6 @@ marty_config = { path = "../../lib/frontend/marty_config", features = ["use_bpaf
 # async runtime
 async-std = { version = "1.10", features = ["attributes"] }
 
-# Enable DX12 backend on windows
-[target.'cfg(target_os = "windows")'.dependencies]
-wgpu = { version = "23.0", features = ["dx12"], optional = true }
-
 # Wasm dependencies
 # ---------------------------------------------------------------------------------------------------------------------
 [target.'cfg(target_arch = "wasm32")'.dependencies]
@@ -113,7 +108,7 @@ sound = ["dep:rodio", "rodio/wasm-bindgen", "marty_core/sound"]
 use_winit = ["dep:egui-winit"]
 # Use the wgpu backend
 use_wgpu = [
-    "eframe/wgpu",
+    "eframe/wgpu_no_default_features",
     "marty_frontend_common/use_wgpu",
     #"marty_display_common/use_wgpu",
     #"display_manager_eframe/use_wgpu",

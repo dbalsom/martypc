@@ -200,7 +200,7 @@ impl PixelCanvas {
     }
 
     pub fn create_default_colorimage(dims: (u32, u32)) -> ColorImage {
-        ColorImage::new([dims.0 as usize, dims.1 as usize], Color32::BLACK)
+        ColorImage::filled([dims.0 as usize, dims.1 as usize], Color32::BLACK)
     }
 
     pub fn create_default_imagedata(dims: (u32, u32)) -> ImageData {
@@ -212,7 +212,8 @@ impl PixelCanvas {
             log::warn!("PixelCanvas::update_imagedata(): Data not unpacked.");
         }
         let color_image = ColorImage {
-            size:   [self.view_dimensions.0 as usize, self.view_dimensions.1 as usize],
+            size: [self.view_dimensions.0 as usize, self.view_dimensions.1 as usize],
+            source_size: egui::vec2(self.view_dimensions.0 as f32, self.view_dimensions.1 as f32),
             pixels: self.backing_buf.clone(),
         };
         self.image_data = ImageData::Color(Arc::new(color_image));

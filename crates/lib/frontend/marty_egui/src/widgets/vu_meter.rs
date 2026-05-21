@@ -53,11 +53,7 @@ impl Widget for VuMeter {
                 x: ui.spacing().interact_size.y / 2.0,
                 y: ui.spacing().interact_size.y,
             };
-            let sense = Sense {
-                click: false,
-                drag: false,
-                focusable: false,
-            };
+            let sense = Sense::hover();
 
             for i in 0..self.segments {
                 // Compute color
@@ -75,10 +71,11 @@ impl Widget for VuMeter {
 
                     //painter.rect_filled(rect, 0.0, color);
 
-                    let rounding = visuals.rounding.at_most(2.0);
+                    let rounding = visuals.corner_radius.at_most(2);
 
                     ui.painter().rect_filled(rect, rounding, color);
-                    ui.painter().rect_stroke(rect, rounding, (2.0, visuals.bg_fill));
+                    ui.painter()
+                        .rect_stroke(rect, rounding, (2.0, visuals.bg_fill), StrokeKind::Inside);
                     // fill is intentional, because default style has no border
                 }
             }

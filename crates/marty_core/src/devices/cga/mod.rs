@@ -463,7 +463,6 @@ macro_rules! trace_regs {
 }
 
 use crate::{device_traits::monitor::Monitor, devices::monitors::fifteen_hertz::FifteenHertzMonitor};
-pub(crate) use trace_regs;
 
 pub struct CGACard {
     debug: bool,
