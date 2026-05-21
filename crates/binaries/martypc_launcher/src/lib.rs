@@ -5,7 +5,7 @@
     Copyright 2022-2026 Daniel Balsom
 
     Permission is hereby granted, free of charge, to any person obtaining a
-    copy of this software and associated documentation files (the “Software”),
+    copy of this software and associated documentation files (the "Software"),
     to deal in the Software without restriction, including without limitation
     the rights to use, copy, modify, merge, publish, distribute, sublicense,
     and/or sell copies of the Software, and to permit persons to whom the
@@ -14,34 +14,18 @@
     The above copyright notice and this permission notice shall be included in
     all copies or substantial portions of the Software.
 
-    THE SOFTWARE IS PROVIDED “AS IS”, WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
+    THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
     IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
     FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
     AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
     LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING
     FROM, OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER
     DEALINGS IN THE SOFTWARE.
-
-    --------------------------------------------------------------------------
 */
 #![warn(clippy::all, rust_2018_idioms)]
-#![feature(duration_millis_float)]
 
 pub mod app;
-pub mod counter;
-pub mod emulator;
-pub mod emulator_builder;
-pub mod event_loop;
-//pub mod floppy;
-pub mod gui;
-pub mod input;
-pub mod sound;
-pub mod timestep_update;
 
-pub mod native;
-pub use native::worker;
+pub use app::MartyLauncherApp;
 
-pub use app::MartyApp;
-
-// Embed default icon
 pub const MARTY_ICON: &[u8] = include_bytes!("../../../../assets/martypc_icon_small.png");
