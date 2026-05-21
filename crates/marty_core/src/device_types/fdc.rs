@@ -32,6 +32,7 @@
 use crate::machine_types::FloppyDriveType;
 use fluxfox::prelude::*;
 use lazy_static::lazy_static;
+pub use marty_common::types::floppy::FloppyImageType;
 use std::collections::HashMap;
 
 pub struct DiskFormat {
@@ -39,21 +40,19 @@ pub struct DiskFormat {
 }
 
 #[derive(Copy, Clone, Debug)]
-pub enum FloppyImageType {
-    Image160K,
-    Image180K,
-    Image320K,
-    Image360K,
-    Image720K,
-    Image12M,
-    Image144M,
+pub struct CoreFloppyImageType(pub FloppyImageType);
+
+impl From<FloppyImageType> for CoreFloppyImageType {
+    fn from(value: FloppyImageType) -> Self {
+        Self(value)
+    }
 }
 
-impl TryFrom<FloppyImageType> for StandardFormat {
+impl TryFrom<CoreFloppyImageType> for StandardFormat {
     type Error = &'static str;
 
-    fn try_from(value: FloppyImageType) -> Result<Self, Self::Error> {
-        match value {
+    fn try_from(value: CoreFloppyImageType) -> Result<Self, Self::Error> {
+        match value.0 {
             FloppyImageType::Image160K => Ok(StandardFormat::PcFloppy160),
             FloppyImageType::Image180K => Ok(StandardFormat::PcFloppy180),
             FloppyImageType::Image320K => Ok(StandardFormat::PcFloppy320),

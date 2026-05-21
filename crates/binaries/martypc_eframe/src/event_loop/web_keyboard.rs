@@ -35,7 +35,7 @@ use std::str::FromStr;
 use crate::emulator::Emulator;
 use display_manager_eframe::EFrameDisplayManager;
 use eframe::WebKeyboardEvent;
-use marty_core::keys::MartyKey;
+use marty_common::types::keys::MartyKey;
 
 pub fn handle_web_key_event(
     emu: &mut Emulator,

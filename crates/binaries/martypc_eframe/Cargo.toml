@@ -23,6 +23,7 @@ bench = false
 # Internal crates
 # --------------
 marty_core = { path = "../../marty_core", default-features = false, features = ["sound"] }
+marty_common = { path = "../../marty_common" }
 marty_config = { path = "../../lib/frontend/marty_config", default-features = false, features = ["use_display"]}
 display_manager_eframe = { path = "../../lib/frontend/display_manager_eframe" }
 marty_videocard_renderer = { path = "../../lib/frontend/marty_videocard_renderer" }

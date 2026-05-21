@@ -38,7 +38,7 @@ pub mod keyboard;
 pub mod mouse;
 
 use crate::types::hotkeys::{HotkeyConfigEntry, HotkeyEvent, HotkeyScope};
-use marty_core::keys::MartyKey;
+use marty_common::types::keys::MartyKey;
 use std::{
     collections::{HashMap, HashSet},
     env::consts::OS,

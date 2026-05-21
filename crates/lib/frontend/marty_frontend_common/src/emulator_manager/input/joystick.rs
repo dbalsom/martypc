@@ -1,5 +1,5 @@
 use crate::{types::joykeys::JoyKeyInput, JoyKeyEntry};
-use marty_core::keys::MartyKey;
+use marty_common::types::keys::MartyKey;
 use std::collections::HashMap;
 
 /// This structure is only used to maintain the state for keyboard joystick emulation.

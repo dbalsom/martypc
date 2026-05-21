@@ -56,11 +56,11 @@ use crate::{cpu_test::gen_tests::run_gentests, cpu_test::process_tests::run_proc
 #[cfg(feature = "cpu_tests")]
 use crate::cpu_test::run_tests::run_runtests;
 
+use marty_common::types::keys::MartyKey;
 use marty_config::TestMode;
 
 use marty_core::{
     devices::keyboard_common::KeyboardModifiers,
-    keys::MartyKey,
     machine::MachineBuilder,
     supported_floppy_extensions,
 };

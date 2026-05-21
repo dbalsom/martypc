@@ -31,6 +31,7 @@
 */
 
 pub mod bytebuf;
+pub mod keys;
 pub mod path;
 pub mod types;
 pub mod util;

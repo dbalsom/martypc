@@ -37,7 +37,7 @@ use marty_frontend_common::thread_events::FileOpenContext;
 
 use crate::emulator::Emulator;
 use fluxfox::{DiskImage, LoadingStatus};
-use marty_core::device_types::fdc::FloppyImageType;
+use marty_common::types::floppy::FloppyImageType;
 use marty_egui::state::FloppyDriveSelection;
 use marty_frontend_common::{
     constants::NORMAL_NOTIFICATION_TIME,

@@ -42,7 +42,7 @@ use crate::{
 };
 use anyhow::Error;
 use fatfs::{Dir, OemCpConverter, TimeProvider};
-use marty_core::device_types::fdc::FloppyImageType;
+use marty_common::types::floppy::FloppyImageType;
 use std::{
     collections::{HashMap, HashSet},
     ffi::OsString,
