@@ -41,7 +41,11 @@
 use super::{tga::tablegen::*, *};
 use crate::{
     bus::{BusInterface, DeviceRunTimeUnit},
-    device_traits::videocard::*,
+    device_traits::{monitor::Monitor, videocard::*},
+    devices::{
+        mc6845::{Crtc6845, CrtcRegister, CrtcStatus},
+        monitors::fifteen_hertz::FifteenHertzMonitor,
+    },
     tracelogger::TraceLogger,
 };
 use bytemuck;
@@ -398,28 +402,28 @@ const CGA_DEBUG_U64: [u64; 16] = [
 // Anything more is likely to be hidden by the monitor bezel or not shown for some other reason.
 // FULL will show the entire overscan area - this is nice for Area 5150 to see the entire extent
 // of each effect, although it will display more than a monitor would.
-// DEBUG will show the entire display field and will enable coloring of hblank and vblank
+// DEBUG will show the entire display field and will enable coloring of hsync and vsync
 // periods.
 const TGA_APERTURE_CROPPED_W: u32 = 640;
 const TGA_APERTURE_CROPPED_H: u32 = 200;
 const TGA_APERTURE_CROPPED_TALL_H: u32 = 225;
-const TGA_APERTURE_CROPPED_X: u32 = 112;
-const TGA_APERTURE_CROPPED_Y: u32 = 22;
-const TGA_APERTURE_CROPPED_TALL_Y: u32 = 12;
+const TGA_APERTURE_CROPPED_X: u32 = 192;
+const TGA_APERTURE_CROPPED_Y: u32 = 38;
+const TGA_APERTURE_CROPPED_TALL_Y: u32 = 38;
 
 const TGA_APERTURE_ACCURATE_W: u32 = 704;
 const TGA_APERTURE_ACCURATE_H: u32 = 224;
 const TGA_APERTURE_ACCURATE_TALL_H: u32 = 236;
-const TGA_APERTURE_ACCURATE_X: u32 = 80;
-const TGA_APERTURE_ACCURATE_Y: u32 = 10;
-const TGA_APERTURE_ACCURATE_TALL_Y: u32 = 7;
+const TGA_APERTURE_ACCURATE_X: u32 = 160;
+const TGA_APERTURE_ACCURATE_Y: u32 = 26;
+const TGA_APERTURE_ACCURATE_TALL_Y: u32 = 26;
 
 const TGA_APERTURE_FULL_W: u32 = 768;
 const TGA_APERTURE_FULL_H: u32 = 235;
 const TGA_APERTURE_FULL_TALL_H: u32 = 250;
-const TGA_APERTURE_FULL_X: u32 = 48;
-const TGA_APERTURE_FULL_Y: u32 = 1;
-const TGA_APERTURE_FULL_TALL_Y: u32 = 7;
+const TGA_APERTURE_FULL_X: u32 = 128;
+const TGA_APERTURE_FULL_Y: u32 = 17;
+const TGA_APERTURE_FULL_TALL_Y: u32 = 17;
 
 const TGA_APERTURE_DEBUG_W: u32 = 912;
 const TGA_APERTURE_DEBUG_H: u32 = 262;
@@ -538,8 +542,11 @@ macro_rules! trace_regs {
     ($self:ident) => {
         if $self.trace_logger.is_some() {
             $self.trace_logger.print(&format!(
-                "[SL:{:03} HCC:{:03} VCC:{:03} VT:{:03} VS:{:03}] ",
-                $self.scanline, $self.hcc_c0, $self.vcc_c4, $self.crtc_vertical_total, $self.crtc_vertical_sync_pos
+                "[SL:{:03} {} VT:{:03} VS:{:03}] ",
+                $self.scanline,
+                $self.crtc.debug_string(),
+                $self.crtc.reg[CrtcRegister::VerticalTotal],
+                $self.crtc.reg[CrtcRegister::VerticalSync]
             ));
         }
     };
@@ -592,39 +599,11 @@ pub struct TGACard {
     frame_count:  u64,
     status_reads: u64,
 
-    cursor_status: bool,
-    cursor_slowblink: bool,
     cursor_blink_rate: f64,
-    cursor_data: [bool; CGA_CURSOR_MAX],
-    cursor_attr: u8,
 
-    crtc_register_select_byte: u8,
-    crtc_register_selected:    CRTCRegister,
-
-    crtc_horizontal_total: u8,
-    crtc_horizontal_displayed: u8,
-    crtc_horizontal_sync_pos: u8,
-    crtc_sync_width: u8,
-    crtc_vertical_total: u8,
-    crtc_vertical_total_adjust: u8,
-    crtc_vertical_displayed: u8,
-    crtc_vertical_sync_pos: u8,
-    crtc_interlace_mode: u8,
-    crtc_maximum_scanline_address: u8,
-    crtc_cursor_start_line: u8,
-    crtc_cursor_end_line: u8,
-    crtc_start_address: usize,
-    crtc_start_address_ho: u8,
-    crtc_start_address_lo: u8,
-    crtc_cursor_address_ho: u8,
-    crtc_cursor_address_lo: u8,
-    crtc_lightpen_latch_ho: u8,
-    crtc_lightpen_latch_lo: u8,
-    crtc_cursor_address: usize,
-    crtc_frame_address: usize,
+    crtc: Crtc6845,
     crtc_ticks_since_vsync: u32,
-    in_crtc_hblank: bool,
-    in_crtc_vblank: bool,
+    in_crtc_hsync: bool,
     in_crtc_vsync: bool,
     in_last_vblank_line: bool,
     hborder: bool,
@@ -643,6 +622,11 @@ pub struct TGACard {
     in_monitor_hsync: bool,
     in_monitor_vblank: bool,
     monitor_hsc: u32,
+    monitor_emulation: bool,
+    monitor: FifteenHertzMonitor,
+    last_card_hsync: bool,
+    last_card_vsync: bool,
+    v_flyback_count: u64,
     scanline: u32,
     missed_hsyncs: u32,
 
@@ -724,28 +708,6 @@ pub struct TGACard {
     lightpen_switch: bool,
 }
 
-#[derive(Debug)]
-pub enum CRTCRegister {
-    HorizontalTotal,
-    HorizontalDisplayed,
-    HorizontalSyncPosition,
-    SyncWidth,
-    VerticalTotal,
-    VerticalTotalAdjust,
-    VerticalDisplayed,
-    VerticalSync,
-    InterlaceMode,
-    MaximumScanLineAddress,
-    CursorStartLine,
-    CursorEndLine,
-    StartAddressH,
-    StartAddressL,
-    CursorAddressH,
-    CursorAddressL,
-    LightPenPositionH,
-    LightPenPositionL,
-}
-
 // TGA implementation of Default for DisplayExtents.
 // Each videocard implementation should implement sensible defaults.
 // In TGA's case we know the maximum field size and thus row_stride.
@@ -812,40 +774,12 @@ impl Default for TGACard {
             frame_count:  0,
             status_reads: 0,
 
-            cursor_status: false,
-            cursor_slowblink: false,
             cursor_blink_rate: CGA_DEFAULT_CURSOR_BLINK_RATE,
-            cursor_data: [false; CGA_CURSOR_MAX],
-            cursor_attr: 0,
 
-            crtc_register_selected:    CRTCRegister::HorizontalTotal,
-            crtc_register_select_byte: 0,
-
-            crtc_horizontal_total: DEFAULT_HORIZONTAL_TOTAL,
-            crtc_horizontal_displayed: DEFAULT_HORIZONTAL_DISPLAYED,
-            crtc_horizontal_sync_pos: DEFAULT_HORIZONTAL_SYNC_POS,
-            crtc_sync_width: DEFAULT_HORIZONTAL_SYNC_WIDTH,
-            crtc_vertical_total: DEFAULT_VERTICAL_TOTAL,
-            crtc_vertical_total_adjust: DEFAULT_VERTICAL_TOTAL_ADJUST,
-            crtc_vertical_displayed: DEFAULT_VERTICAL_DISPLAYED,
-            crtc_vertical_sync_pos: DEFAULT_VERTICAL_SYNC_POS,
-            crtc_interlace_mode: 0,
-            crtc_maximum_scanline_address: DEFAULT_MAXIMUM_SCANLINE,
-            crtc_cursor_start_line: DEFAULT_CURSOR_START_LINE,
-            crtc_cursor_end_line: DEFAULT_CURSOR_END_LINE,
-            crtc_start_address: 0,
-            crtc_start_address_ho: 0,
-            crtc_start_address_lo: 0,
-            crtc_cursor_address_ho: 0,
-            crtc_cursor_address_lo: 0,
-            crtc_lightpen_latch_ho: 0,
-            crtc_lightpen_latch_lo: 0,
-            crtc_cursor_address: 0,
-            crtc_frame_address: 0,
+            crtc: Crtc6845::new(TraceLogger::None),
             crtc_ticks_since_vsync: 0,
 
-            in_crtc_hblank: false,
-            in_crtc_vblank: false,
+            in_crtc_hsync: false,
             in_crtc_vsync: false,
             in_last_vblank_line: false,
             hborder: true,
@@ -863,6 +797,11 @@ impl Default for TGACard {
             in_monitor_hsync: false,
             in_monitor_vblank: false,
             monitor_hsc: 0,
+            monitor_emulation: true,
+            monitor: FifteenHertzMonitor::default(),
+            last_card_hsync: false,
+            last_card_vsync: false,
+            v_flyback_count: 0,
             scanline: 0,
             missed_hsyncs: 0,
 
@@ -1143,251 +1082,7 @@ impl TGACard {
         // Latch lightpen address
         self.lightpen_latch = true;
         self.lightpen_addr = self.vma;
-        self.crtc_lightpen_latch_lo = (self.lightpen_addr & 0xFF) as u8;
-        self.crtc_lightpen_latch_ho = ((self.lightpen_addr >> 8) & 0xFF) as u8;
-    }
-
-    fn get_cursor_span(&self) -> (u8, u8) {
-        (self.crtc_cursor_start_line, self.crtc_cursor_end_line)
-    }
-
-    /// Update the cursor data array based on the values of cursor_start_line, cursor_end_line, and
-    /// crtc_maximum_scanline_address.
-    fn update_cursor_data(&mut self) {
-        // Reset cursor data to 0.
-        self.cursor_data.fill(false);
-
-        // Start line must be reached when iterating through character rows to draw a cursor at all.
-        // Therefore if start_line > maximum_scanline, the cursor is disabled.
-        if self.crtc_cursor_start_line > self.crtc_maximum_scanline_address {
-            return;
-        }
-
-        if self.crtc_cursor_start_line <= self.crtc_cursor_end_line {
-            // Normal cursor definition. Cursor runs from start_line to end_line.
-            for i in self.crtc_cursor_start_line..=self.crtc_cursor_end_line {
-                self.cursor_data[i as usize] = true;
-            }
-        }
-        else {
-            // "Split" cursor.
-            for i in 0..=self.crtc_cursor_end_line {
-                // First part of cursor is 0->end_line
-                self.cursor_data[i as usize] = true;
-            }
-
-            for i in (self.crtc_cursor_start_line as usize)..CGA_CURSOR_MAX {
-                // Second part of cursor is start_line->max
-                self.cursor_data[i] = true;
-            }
-        }
-    }
-
-    fn get_cursor_address(&self) -> usize {
-        self.crtc_cursor_address
-    }
-
-    /// Update the CRTC cursor address. Usually called after a CRTC register write updates the HO or LO byte.
-    fn update_cursor_address(&mut self) {
-        self.crtc_cursor_address = (self.crtc_cursor_address_ho as usize) << 8 | self.crtc_cursor_address_lo as usize
-    }
-
-    /// Update the CRTC start address. Usually called after a CRTC register write updates the HO or LO byte.
-    fn update_start_address(&mut self) {
-        // HO is already masked to 6 bits when set
-        self.crtc_start_address = (self.crtc_start_address_ho as usize) << 8 | self.crtc_start_address_lo as usize;
-
-        trace_regs!(self);
-        trace!(self, "Start address updated: {:04X}", self.crtc_start_address)
-    }
-
-    fn get_cursor_status(&self) -> bool {
-        self.cursor_status
-    }
-
-    fn handle_crtc_register_select(&mut self, byte: u8) {
-        //log::trace!("CGA: CRTC register {:02X} selected", byte);
-        self.crtc_register_select_byte = byte;
-        self.crtc_register_selected = match byte {
-            0x00 => CRTCRegister::HorizontalTotal,
-            0x01 => CRTCRegister::HorizontalDisplayed,
-            0x02 => CRTCRegister::HorizontalSyncPosition,
-            0x03 => CRTCRegister::SyncWidth,
-            0x04 => CRTCRegister::VerticalTotal,
-            0x05 => CRTCRegister::VerticalTotalAdjust,
-            0x06 => CRTCRegister::VerticalDisplayed,
-            0x07 => CRTCRegister::VerticalSync,
-            0x08 => CRTCRegister::InterlaceMode,
-            0x09 => CRTCRegister::MaximumScanLineAddress,
-            0x0A => CRTCRegister::CursorStartLine,
-            0x0B => CRTCRegister::CursorEndLine,
-            0x0C => CRTCRegister::StartAddressH,
-            0x0D => CRTCRegister::StartAddressL,
-            0x0E => CRTCRegister::CursorAddressH,
-            0x0F => CRTCRegister::CursorAddressL,
-            0x10 => CRTCRegister::LightPenPositionH,
-            0x11 => CRTCRegister::LightPenPositionL,
-            _ => {
-                log::debug!("CGA: Select to invalid CRTC register");
-                self.crtc_register_select_byte = 0;
-                CRTCRegister::HorizontalTotal
-            }
-        }
-    }
-
-    fn handle_crtc_register_write(&mut self, byte: u8) {
-        //log::debug!("CGA: Write to CRTC register: {:?}: {:02}", self.crtc_register_selected, byte );
-        match self.crtc_register_selected {
-            CRTCRegister::HorizontalTotal => {
-                // (R0) 8 bit write only
-                self.crtc_horizontal_total = byte;
-            }
-            CRTCRegister::HorizontalDisplayed => {
-                // (R1) 8 bit write only
-                self.crtc_horizontal_displayed = byte;
-            }
-            CRTCRegister::HorizontalSyncPosition => {
-                // (R2) 8 bit write only
-
-                //if byte == 2 {
-                //    log::debug!("R2=2, HCC: {}", self.hcc_c0);
-                //}
-                self.crtc_horizontal_sync_pos = byte;
-            }
-            CRTCRegister::SyncWidth => {
-                // (R3) 8 bit write only
-
-                if self.in_crtc_hblank {
-                    log::warn!("Warning: SyncWidth modified during hsync!");
-                }
-                self.crtc_sync_width = byte;
-            }
-            CRTCRegister::VerticalTotal => {
-                // (R4) 7 bit write only
-                self.crtc_vertical_total = byte & 0x7F;
-
-                trace_regs!(self);
-                trace!(
-                    self,
-                    "CRTC Register Write (04h): VerticalTotal updated: {}",
-                    self.crtc_vertical_total
-                )
-            }
-            CRTCRegister::VerticalTotalAdjust => {
-                // (R5) 5 bit write only
-                self.crtc_vertical_total_adjust = byte & 0x1F;
-            }
-            CRTCRegister::VerticalDisplayed => {
-                // (R6) 7 bit write only
-                self.crtc_vertical_displayed = byte;
-            }
-            CRTCRegister::VerticalSync => {
-                // (R7) 7 bit write only
-                self.crtc_vertical_sync_pos = byte & 0x7F;
-
-                trace_regs!(self);
-                trace!(
-                    self,
-                    "CRTC Register Write (07h): VerticalSync updated: {}",
-                    self.crtc_vertical_sync_pos
-                )
-            }
-            CRTCRegister::InterlaceMode => {
-                self.crtc_interlace_mode = byte;
-            }
-            CRTCRegister::MaximumScanLineAddress => {
-                self.crtc_maximum_scanline_address = byte;
-                self.update_cursor_data();
-            }
-            CRTCRegister::CursorStartLine => {
-                self.crtc_cursor_start_line = byte & CURSOR_LINE_MASK;
-                self.cursor_attr = (byte & CURSOR_ATTR_MASK) >> 5;
-
-                match (byte & CURSOR_ATTR_MASK) >> 5 {
-                    0b00 => {
-                        self.cursor_status = true;
-                        self.cursor_slowblink = false;
-                    }
-                    0b01 => {
-                        self.cursor_status = false;
-                        self.cursor_slowblink = false;
-                    }
-                    0b10 => {
-                        self.cursor_status = true;
-                        self.cursor_slowblink = false;
-                    }
-                    _ => {
-                        self.cursor_status = true;
-                        self.cursor_slowblink = true;
-                    }
-                }
-
-                self.update_cursor_data();
-            }
-            CRTCRegister::CursorEndLine => {
-                self.crtc_cursor_end_line = byte & CURSOR_LINE_MASK;
-                self.update_cursor_data();
-            }
-            CRTCRegister::CursorAddressH => {
-                self.crtc_cursor_address_ho = byte;
-                self.update_cursor_address();
-            }
-            CRTCRegister::CursorAddressL => {
-                self.crtc_cursor_address_lo = byte;
-                self.update_cursor_address();
-            }
-            CRTCRegister::StartAddressH => {
-                // Start Address HO register is only 6 bits wide.
-                // Entire Start Address register is 14 bits.
-                self.crtc_start_address_ho = byte & 0x3F;
-                trace_regs!(self);
-                trace!(self, "CRTC Register Write (0Ch): StartAddressH updated: {:02X}", byte);
-                self.update_start_address();
-            }
-            CRTCRegister::StartAddressL => {
-                self.crtc_start_address_lo = byte;
-                trace_regs!(self);
-                trace!(self, "CRTC Register Write (0Dh): StartAddressL updated: {:02X}", byte);
-                self.update_start_address();
-            }
-            _ => {
-                trace!(
-                    self,
-                    "Write to unsupported CRTC register {:?}: {:02X}",
-                    self.crtc_register_selected,
-                    byte
-                );
-                log::warn!(
-                    "CGA: Write to unsupported CRTC register {:?}: {:02X}",
-                    self.crtc_register_selected,
-                    byte
-                );
-            }
-        }
-    }
-
-    fn handle_crtc_register_read(&mut self) -> u8 {
-        match self.crtc_register_selected {
-            CRTCRegister::CursorStartLine => self.crtc_cursor_start_line,
-            CRTCRegister::CursorEndLine => self.crtc_cursor_end_line,
-            CRTCRegister::CursorAddressH => {
-                //log::debug!("CGA: Read from CRTC register: {:?}: {:02}", self.crtc_register_selected, self.crtc_cursor_address_ho );
-                self.crtc_cursor_address_ho
-            }
-            CRTCRegister::CursorAddressL => {
-                //log::debug!("CGA: Read from CRTC register: {:?}: {:02}", self.crtc_register_selected, self.crtc_cursor_address_lo );
-                self.crtc_cursor_address_lo
-            }
-            CRTCRegister::LightPenPositionL => self.crtc_lightpen_latch_lo,
-            CRTCRegister::LightPenPositionH => self.crtc_lightpen_latch_ho,
-            _ => {
-                log::debug!(
-                    "TGA: Read from unsupported CRTC register: {:?}",
-                    self.crtc_register_selected
-                );
-                0
-            }
-        }
+        self.crtc.latch_lightpen();
     }
 
     /// Return true if the pending mode change defined by mode_byte would change from text mode to
@@ -1661,12 +1356,12 @@ impl TGACard {
     }
 
     /// Handle a read from the CGA status register. This register has bits to indicate whether
-    /// we are in vblank or if the display is in the active display area (enabled)
+    /// we are in vertical retrace or if the display is in the active display area (enabled).
     fn handle_status_register_read(&mut self) -> u8 {
         self.status_reads += 1;
 
-        if self.in_crtc_vblank {
-            trace!(self, "in vblank: vsc: {:03}", self.vsc_c3h);
+        if self.in_crtc_vsync {
+            trace!(self, "in vsync");
         }
 
         let byte = self.calc_status_register();
@@ -1674,10 +1369,10 @@ impl TGACard {
         trace_regs!(self);
         trace!(
             self,
-            "Status register read: byte: {:02X} in_display_area: {} vblank: {} ",
+            "Status register read: byte: {:02X} in_display_area: {} vsync: {} ",
             byte,
             self.in_display_area,
-            self.in_crtc_vblank
+            self.in_crtc_vsync
         );
 
         // The PCJr's vga address flip-flop is reset on status register reads.
@@ -1693,7 +1388,7 @@ impl TGACard {
         // https://www.vogons.org/viewtopic.php?t=47052
 
         // Base register value is now 0xE0 to make room for mux bit on TGA
-        let mut byte = if self.in_crtc_vblank {
+        let mut byte = if self.in_crtc_vsync {
             //0xF0 | STATUS_VERTICAL_RETRACE | STATUS_DISPLAY_ENABLE
             0xE0 | STATUS_VERTICAL_RETRACE
         }
@@ -2022,12 +1717,12 @@ impl TGACard {
                     self.draw_lowres_gfx_mode_char();
                 }
             }
-            else if self.in_crtc_hblank {
-                // Draw hblank in debug color
+            else if self.in_crtc_hsync {
+                // Draw hsync in debug color
                 self.draw_solid_char(self.hblank_color);
             }
-            else if self.in_crtc_vblank {
-                // Draw vblank in debug color
+            else if self.in_crtc_vsync {
+                // Draw vsync in debug color
                 self.draw_solid_char(self.vblank_color);
             }
             else if self.vborder | self.hborder {
@@ -2126,14 +1821,14 @@ impl TGACard {
                     //self.draw_gfx_mode_2bpp_mchar(cpumem);
                 }
             }
-            else if self.in_crtc_hblank {
-                // Draw hblank in debug color
+            else if self.in_crtc_hsync {
+                // Draw hsync in debug color
                 if self.debug_draw {
                     self.draw_solid_hchar(CGA_HBLANK_DEBUG_COLOR);
                 }
             }
-            else if self.in_crtc_vblank {
-                // Draw vblank in debug color
+            else if self.in_crtc_vsync {
+                // Draw vsync in debug color
                 if self.debug_draw {
                     self.draw_solid_hchar(CGA_VBLANK_DEBUG_COLOR);
                 }
@@ -2164,15 +1859,6 @@ impl TGACard {
         self.beam_x += 8 * self.clock_divisor as u32;
         self.rba += 8 * self.clock_divisor as usize;
 
-        // If we have reached the right edge of the 'monitor', return the raster position
-        // to the left side of the screen.
-        if self.beam_x >= CGA_XRES_MAX {
-            self.beam_x = 0;
-            self.beam_y += 1;
-            self.in_monitor_hsync = false;
-            self.rba = (CGA_XRES_MAX * self.beam_y) as usize;
-        }
-
         if self.cycles & self.char_clock_mask != 0 {
             log::error!(
                 "tick_hchar(): calling tick_crtc_char but out of phase with cclock: cycles: {} mask: {}",
@@ -2184,7 +1870,7 @@ impl TGACard {
         if self.update_char_tick(cpumem) && self.intr_enabled() {
             self.intr = true;
         }
-        else if !self.in_crtc_vblank {
+        else if !self.in_crtc_vsync {
             self.intr = false;
         }
 
@@ -2235,8 +1921,8 @@ impl TGACard {
                     self.draw_gfx_mode_2bpp_mchar(cpumem);
                 }
             }
-            else if self.in_crtc_hblank {
-                // Draw hblank in debug color
+            else if self.in_crtc_hsync {
+                // Draw hsync in debug color
                 if self.debug_draw && self.mode_4bpp {
                     self.draw_solid_4bpp_char(CGA_HBLANK_DEBUG_COLOR);
                 }
@@ -2244,8 +1930,8 @@ impl TGACard {
                     self.draw_solid_mchar(CGA_HBLANK_DEBUG_COLOR);
                 }
             }
-            else if self.in_crtc_vblank {
-                // Draw vblank in debug color
+            else if self.in_crtc_vsync {
+                // Draw vsync in debug color
                 if self.debug_draw && self.mode_4bpp {
                     self.draw_solid_4bpp_char(CGA_HBLANK_DEBUG_COLOR);
                 }
@@ -2277,15 +1963,6 @@ impl TGACard {
             self.rba += 8 * self.clock_divisor as usize;
         }
 
-        // If we have reached the right edge of the 'monitor', return the raster position
-        // to the left side of the screen.
-        if self.beam_x >= CGA_XRES_MAX {
-            self.beam_x = 0;
-            self.beam_y += 1;
-            self.in_monitor_hsync = false;
-            self.rba = (CGA_XRES_MAX * self.beam_y) as usize;
-        }
-
         if self.cycles & self.char_clock_mask != 0 {
             log::error!(
                 "tick_mchar(): calling tick_crtc_char but out of phase with cclock: cycles: {} mask: {}",
@@ -2297,7 +1974,7 @@ impl TGACard {
         if self.update_char_tick(cpumem) && self.intr_enabled() {
             self.intr = true;
         }
-        else if !self.in_crtc_vblank {
+        else if !self.in_crtc_vsync {
             self.intr = false;
         }
         self.char_col = 0;
@@ -2332,14 +2009,14 @@ impl TGACard {
             if self.in_display_area {
                 self.draw_gfx_mode_4bpp_lchar(cpumem);
             }
-            else if self.in_crtc_hblank {
-                // Draw hblank in debug color
+            else if self.in_crtc_hsync {
+                // Draw hsync in debug color
                 if self.debug_draw {
                     self.draw_solid_lchar(CGA_HBLANK_DEBUG_COLOR);
                 }
             }
-            else if self.in_crtc_vblank {
-                // Draw vblank in debug color
+            else if self.in_crtc_vsync {
+                // Draw vsync in debug color
                 if self.debug_draw {
                     self.draw_solid_lchar(CGA_VBLANK_DEBUG_COLOR);
                 }
@@ -2357,15 +2034,6 @@ impl TGACard {
         self.beam_x += 4 * self.clock_divisor as u32;
         self.rba += 4 * self.clock_divisor as usize;
 
-        // If we have reached the right edge of the 'monitor', return the raster position
-        // to the left side of the screen.
-        if self.beam_x >= CGA_XRES_MAX {
-            self.beam_x = 0;
-            self.beam_y += 1;
-            self.in_monitor_hsync = false;
-            self.rba = (CGA_XRES_MAX * self.beam_y) as usize;
-        }
-
         if self.cycles & self.char_clock_mask != 0 {
             log::error!(
                 "tick_lchar(): calling tick_crtc_char but out of phase with cclock: cycles: {} mask: {}",
@@ -2377,7 +2045,7 @@ impl TGACard {
         if self.update_char_tick(cpumem) && self.intr_enabled() {
             self.intr = true;
         }
-        else if !self.in_crtc_vblank {
+        else if !self.in_crtc_vsync {
             self.intr = false;
         }
         self.char_col = 0;
@@ -2473,14 +2141,14 @@ impl TGACard {
                     self.draw_lowres_gfx_mode_pixel();
                 }
             }
-            else if self.in_crtc_hblank {
-                // Draw hblank in debug color
+            else if self.in_crtc_hsync {
+                // Draw hsync in debug color
                 if self.debug_draw {
                     self.buf[self.back_buf][self.rba] = CGA_HBLANK_DEBUG_COLOR;
                 }
             }
-            else if self.in_crtc_vblank {
-                // Draw vblank in debug color
+            else if self.in_crtc_vsync {
+                // Draw vsync in debug color
                 if self.debug_draw {
                     self.buf[self.back_buf][self.rba] = CGA_VBLANK_DEBUG_COLOR;
                 }
@@ -2566,242 +2234,37 @@ impl TGACard {
 
     /// Update the CRTC logic for next character.
     pub fn tick_crtc_char(&mut self) {
-        if self.hcc_c0 == 0 {
-            self.hborder = false;
-            if self.vcc_c4 == 0 {
-                // We are at the first character of a CRTC frame. Update start address.
-                self.vma = self.crtc_frame_address;
-            }
+        let (status, vma) = self.crtc.tick();
+        let CrtcStatus {
+            den,
+            hborder,
+            vborder,
+            hsync,
+            vsync,
+            ..
+        } = *status;
+
+        if hsync && !self.catching_up && self.mode_pending {
+            self.update_mode();
+            self.mode_pending = false;
         }
 
-        if self.hcc_c0 == 0 {
-            // When C0 < 2 evaluate last_line flag status.
-            // LOGON SYSTEM v1.6 pg 73
-            if self.vcc_c4 == self.crtc_vertical_total {
-                self.last_row = true;
-                self.vtac_c5 = 0;
-            }
-            else {
-                //self.last_row = false;
-            }
+        let last_crtc_vsync = self.in_crtc_vsync;
+        self.in_crtc_hsync = hsync;
+        self.in_crtc_vsync = vsync;
+        self.in_display_area = den;
+        self.hborder = hborder;
+        self.vborder = vborder;
+        self.vma = vma as usize;
+        self.vma_t = self.vma;
+        self.vlc_c9 = self.crtc.vlc();
+
+        if vsync && !last_crtc_vsync {
+            self.do_vsync();
+            self.do_vsync = true;
         }
 
-        // Update horizontal character counter
-        self.hcc_c0 = self.hcc_c0.wrapping_add(1);
-
-        // Advance video memory address offset
-        self.vma += 1;
-
-        // Process horizontal blanking period
-        if self.in_crtc_hblank {
-            // Increment horizontal sync counter (wrapping)
-
-            /*
-            if ((self.hsc_c3l + 1) & 0x0F) != self.hsc_c3l.wrapping_add(1) {
-                log::warn!("hsc0: {} hsc1: {}", ((self.hsc_c3l + 1) & 0x0F), self.hsc_c3l.wrapping_add(1));
-            }
-            */
-
-            //self.hsc_c3l = (self.hsc_c3l + 1) & 0x0F;
-            self.hsc_c3l = self.hsc_c3l.wrapping_add(1);
-
-            // Implement a fixed hsync width from the monitor's perspective -
-            // A wider programmed hsync width than these values shifts the displayed image to the right.
-            // in 4bpp low res mode, clock divisor is 2 but the effective character width is halved.
-
-            let hsync_target: u8 = match self.subtype {
-                VideoCardSubType::IbmPCJr => {
-                    // PCjr uses wider hsyncs than Tandy or CGA
-                    if (self.clock_divisor == 1) || self.mode_4bpp {
-                        std::cmp::min(12, self.crtc_sync_width)
-                    }
-                    else {
-                        std::cmp::min(6, self.crtc_sync_width)
-                    }
-                }
-                _ => {
-                    if self.clock_divisor == 4 {
-                        // The tandy has a longer syncwidth in 160x200 mode than pcjr.
-                        // Adjust it to match the pcjr so that our aperture lines up.
-                        5
-                    }
-                    else if (self.clock_divisor == 1) || self.mode_4bpp {
-                        std::cmp::min(10, self.crtc_sync_width)
-                    }
-                    else {
-                        std::cmp::min(5, self.crtc_sync_width)
-                    }
-                }
-            };
-
-            // Do a horizontal sync
-            if self.hsc_c3l == hsync_target {
-                // Update the video mode, if an update is pending.
-                // It is important not to change graphics mode while we are catching up during an IO instruction.
-                if !self.catching_up && self.mode_pending {
-                    self.update_mode();
-                    self.mode_pending = false;
-                }
-
-                // END OF LOGICAL SCANLINE
-                if self.in_crtc_vblank {
-                    //if self.vsc_c3h == CRTC_VBLANK_HEIGHT || self.beam_y == CGA_MONITOR_VSYNC_POS {
-                    if self.vsc_c3h == CRTC_VSYNC_HEIGHT {
-                        // We are leaving vblank period. Generate a frame.
-
-                        // Previously, we generated frames upon reaching vertical total. This was convenient as
-                        // the display area would be at the top of the marty_render buffer and both overscan periods
-                        // beneath it.
-                        // However, CRTC tricks like 8088mph rewrite vertical total; this causes multiple
-                        // 'screens' per frame in between vsyncs. To enable these tricks to work, we must marty_render
-                        // like a monitor would.
-                        self.in_last_vblank_line = true;
-                        self.vsc_c3h = 0;
-                        self.do_vsync();
-                        self.do_vsync = true;
-                    }
-                }
-
-                self.scanline += 1;
-
-                // Reset beam to left of screen if we haven't already
-                if self.beam_x > 0 {
-                    self.beam_y += 1;
-                }
-                self.beam_x = 0;
-
-                let new_rba = (CGA_XRES_MAX * self.beam_y) as usize;
-                self.rba = new_rba;
-            }
-
-            // End horizontal blank when we reach R3
-            if self.hsc_c3l == self.crtc_sync_width {
-                self.in_crtc_hblank = false;
-                self.hsc_c3l = 0;
-            }
-        }
-
-        if self.hcc_c0 == self.crtc_horizontal_displayed {
-            // C0 == R1. Entering right overscan.
-
-            if self.vlc_c9 == self.crtc_maximum_scanline_address {
-                // Save VMA in VMA'
-                //log::debug!("Updating vma_t: {:04X}", self.vma_t);
-                self.vma_t = self.vma;
-            }
-
-            // Save right overscan start position to calculate width of right overscan later
-            self.overscan_right_start = self.beam_x;
-            self.in_display_area = false;
-            self.hborder = true;
-        }
-
-        if self.hcc_c0 == self.crtc_horizontal_sync_pos {
-            // We entered horizontal blank
-            self.in_crtc_hblank = true;
-            self.hsc_c3l = 0;
-        }
-
-        if self.hcc_c0 == self.crtc_horizontal_total && self.in_last_vblank_line {
-            // We are one char away from the beginning of the new frame.
-            // Draw one char of border
-            self.hborder = true;
-        }
-
-        if self.hcc_c0 == self.crtc_horizontal_total + 1 {
-            // C0 == R0: Leaving left overscan, finished scanning row
-
-            if self.in_crtc_vblank {
-                // If we are in vblank, advance Vertical Sync Counter
-                self.vsc_c3h += 1;
-            }
-
-            if self.in_last_vblank_line {
-                self.in_last_vblank_line = false;
-                self.in_crtc_vblank = false;
-            }
-
-            // Reset Horizontal Character Counter and increment character row counter
-            self.hcc_c0 = 0;
-            self.hborder = false;
-            self.vlc_c9 += 1;
-            // Return video memory address to starting position for next character row
-            self.vma = self.vma_t;
-
-            // Reset the current character glyph to start of row
-            //self.set_char_addr();
-
-            if !self.in_crtc_vblank && (self.vcc_c4 < self.crtc_vertical_displayed) {
-                // Start the new row
-                self.in_display_area = true;
-            }
-
-            if self.vlc_c9 > self.crtc_maximum_scanline_address {
-                // C9 == R9 We finished drawing this row of characters
-
-                self.vlc_c9 = 0;
-                // Increment Vertical Character Counter for next row
-                self.vcc_c4 = self.vcc_c4.wrapping_add(1);
-
-                // Set vma to starting position for next character row
-                //self.vma = (self.vcc_c4 as usize) * (self.crtc_horizontal_displayed as usize) + self.crtc_frame_address;
-                self.vma = self.vma_t;
-
-                if self.vcc_c4 == self.crtc_vertical_sync_pos {
-                    // C4 == R7: We've reached vertical sync
-                    trace_regs!(self);
-                    trace!(self, "Entering vsync");
-                    self.in_crtc_vblank = true;
-                    self.in_display_area = false;
-                }
-
-                if self.last_row {
-                    // C4 == R4 We are at vertical total, start incrementing vertical total adjust counter.
-                    //log::debug!("setting vta at : {}", self.vcc_c4);
-                    self.in_vta = true;
-                    self.last_row = false;
-                }
-            }
-
-            if self.vcc_c4 == self.crtc_vertical_displayed {
-                // C4 == R6: Enter lower overscan area.
-                self.in_display_area = false;
-                self.vborder = true;
-            }
-
-            if self.vcc_c4 == self.crtc_vertical_total + 1 {
-                // We are at vertical total, start incrementing vertical total adjust counter.
-                //self.in_vta = true;
-                if !self.in_vta {
-                    log::debug!(
-                        "in last row but no vta? vcc: {} vt: {}",
-                        self.vcc_c4,
-                        self.crtc_vertical_total
-                    );
-                }
-            }
-
-            if self.in_vta {
-                // We are in vertical total adjust.
-                if self.vtac_c5 == self.crtc_vertical_total_adjust {
-                    // We have reached vertical total adjust. We are at the end of the top overscan.
-                    self.in_vta = false;
-                    self.vtac_c5 = 0;
-                    self.hcc_c0 = 0;
-                    self.vcc_c4 = 0;
-                    self.vlc_c9 = 0;
-                    self.crtc_frame_address = self.crtc_start_address;
-                    self.vma = self.crtc_start_address;
-                    self.vma_t = self.vma;
-                    self.in_display_area = true;
-                    self.vborder = false;
-                    self.in_crtc_vblank = false;
-                }
-                else {
-                    self.vtac_c5 += 1;
-                }
-            }
-        }
+        self.tick_monitor(self.char_clock, hsync, vsync);
 
         self.crtc_ticks_since_vsync = self.crtc_ticks_since_vsync.wrapping_add(1);
         if let Some(trigger_tick) = self.lightpen_trigger_tick {
@@ -2813,9 +2276,76 @@ impl TGACard {
         }
     }
 
-    pub fn do_vsync(&mut self) {
-        self.in_crtc_vsync = false;
+    #[inline]
+    pub fn tick_monitor(&mut self, ticks: u32, hsync: bool, vsync: bool) {
+        if !self.monitor_emulation {
+            if hsync && !self.last_card_hsync {
+                self.do_horizontal_flyback();
+            }
+            if vsync && !self.last_card_vsync {
+                self.do_vertical_flyback();
+            }
+            self.last_card_hsync = hsync;
+            self.last_card_vsync = vsync;
+            return;
+        }
 
+        let mut do_horizontal_flyback = false;
+        let mut do_vertical_flyback = false;
+        self.monitor.run(
+            ticks,
+            hsync,
+            vsync,
+            &mut || {
+                do_horizontal_flyback = true;
+            },
+            &mut || {
+                do_vertical_flyback = true;
+            },
+        );
+
+        if do_horizontal_flyback {
+            self.do_horizontal_flyback();
+        }
+        if do_vertical_flyback {
+            self.do_vertical_flyback();
+        }
+    }
+
+    fn do_horizontal_flyback(&mut self) {
+        self.beam_x = 0;
+        self.beam_y += 1;
+        self.scanline += 1;
+        self.in_monitor_hsync = false;
+        self.rba = (CGA_XRES_MAX * self.beam_y) as usize;
+    }
+
+    pub fn do_vertical_flyback(&mut self) {
+        self.in_monitor_vblank = false;
+
+        if self.beam_y > CGA_MONITOR_VSYNC_MIN {
+            self.beam_x = 0;
+            self.beam_y = 0;
+            self.rba = 0;
+
+            trace!(self, "Leaving vsync and flipping buffers");
+
+            self.scanline = 0;
+            self.frame_count += 1;
+            self.v_flyback_count += 1;
+
+            // Save the current mode byte, used for composite rendering.
+            self.extents.mode_byte = self.mode_byte;
+
+            self.swap();
+        }
+        else {
+            self.scanline = 0;
+            self.frame_count += 1;
+        }
+    }
+
+    pub fn do_vsync(&mut self) {
         self.crtc_ticks_since_vsync = 0;
         self.cycles_per_vsync = self.cur_screen_cycles;
         self.cur_screen_cycles = 0;
@@ -2828,53 +2358,6 @@ impl TGACard {
                 self.cycles_per_vsync,
                 self.beam_y
             );
-        }
-
-        // Only do a vsync if we are past the minimum scanline #.
-        // A monitor will refuse to vsync too quickly.
-        if self.beam_y > CGA_MONITOR_VSYNC_MIN {
-            // vblank remains set through the entire last line, including the right overscan of the new screen.
-            // So we need to delay resetting vblank flag until then.
-            //self.in_crtc_vblank = false;
-
-            if self.beam_y > 258 && self.beam_y < 262 {
-                // This is a "short" frame. Calculate delta.
-                //let delta_y = 262 - self.beam_y;
-                //self.sink_cycles = delta_y * 912;
-
-                if self.cycles & self.char_clock_mask != 0 {
-                    log::error!(
-                        "vsync out of phase with cclock: cycles: {} mask: {}",
-                        self.cycles,
-                        self.char_clock_mask
-                    );
-                }
-                //log::trace!("sink_cycles: {}", self.sink_cycles);
-            }
-
-            self.beam_x = 0;
-            self.beam_y = 0;
-            self.rba = 0;
-            // Write out preliminary DisplayExtents data for new front buffer based on current crtc values.
-
-            trace_regs!(self);
-            trace!(self, "Leaving vsync and flipping buffers");
-
-            self.scanline = 0;
-            self.frame_count += 1;
-
-            // Save the current mode byte, used for composite rendering.
-            // The mode could have changed several times per frame, but I am not sure how the composite rendering should
-            // really handle that...
-            self.extents.mode_byte = self.mode_byte;
-
-            // Swap the display buffers
-            self.swap();
-        }
-        else {
-            // Don't do vsync but reset scanline # so we can keep track in Area5150
-            self.scanline = 0;
-            self.frame_count += 1;
         }
     }
 
@@ -2962,7 +2445,7 @@ impl TGACard {
     // is changed, so that the screen can be enlarged for the Tandy's 8x9 character cell mode.
     pub fn recalc_extents(&mut self) {
         // TGA: Modify apertures for text mode if we are using 9 pixel height glyphs
-        if self.crtc_maximum_scanline_address == 8 {
+        if self.crtc.maximum_scanline() == 8 {
             self.extents.apertures = TGA_APERTURES[1].to_vec();
         }
         else {

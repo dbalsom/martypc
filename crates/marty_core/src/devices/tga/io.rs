@@ -71,10 +71,10 @@ impl IoDevice for TGACard {
             }
             // Read is from CRTC register.
             else if port & 0x01 != 0 {
-                self.handle_crtc_register_read()
+                self.crtc.port_read(port)
             }
             else {
-                0
+                self.crtc.port_read(port)
             }
         }
         else {
@@ -118,10 +118,10 @@ impl IoDevice for TGACard {
                 // Ports 3D0-3D7 disabled by A0 register.
             }
             else if port & 0x01 == 0 {
-                self.handle_crtc_register_select(data);
+                self.crtc.port_write(port, data);
             }
             else {
-                self.handle_crtc_register_write(data);
+                self.crtc.port_write(port, data);
                 self.recalc_extents();
             }
         }

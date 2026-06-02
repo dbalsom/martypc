@@ -31,7 +31,7 @@
 */
 
 use super::*;
-use crate::devices::pic::Pic;
+use crate::devices::{mc6845::CrtcRegister, pic::Pic};
 
 // Helper macro for pushing video card state entries.
 // For CGA, we put the decorator first as there is only one register file an we use it to show the register index.
@@ -61,8 +61,8 @@ macro_rules! push_reg_str_enum {
 impl VideoCard for TGACard {
     fn sync(&self) -> (bool, bool, bool, bool) {
         (
-            self.in_crtc_vblank,
-            self.in_crtc_hblank,
+            self.in_crtc_vsync,
+            self.in_crtc_hsync,
             self.in_display_area,
             self.hborder | self.vborder,
         )
@@ -74,10 +74,20 @@ impl VideoCard for TGACard {
                 log::debug!("VideoOption::DebugDraw set to: {}", state);
                 self.debug_draw = state;
             }
+            VideoOption::EmulateSync(state) => {
+                log::debug!("VideoOption::EmulateSync set to: {}", state);
+                self.monitor.set_enabled(state);
+            }
             _ => {
                 log::warn!("VideoOption::{:?} not supported for TGA", opt);
             }
         }
+    }
+
+    fn set_monitor_emulation(&mut self, enabled: bool) {
+        self.monitor_emulation = enabled;
+        self.last_card_hsync = false;
+        self.last_card_vsync = false;
     }
 
     fn video_type(&self) -> VideoType {
@@ -109,8 +119,9 @@ impl VideoCard for TGACard {
         // CGA supports a single fixed 8x8 font. The size of the displayed window
         // is always HorizontalDisplayed * (VerticalDisplayed * (MaximumScanlineAddress + 1))
         // (Excepting fancy CRTC tricks that delay vsync)
-        let mut width = self.crtc_horizontal_displayed as u32 * TGA_HCHAR_CLOCK as u32;
-        let height = self.crtc_vertical_displayed as u32 * (self.crtc_maximum_scanline_address as u32 + 1);
+        let mut width = self.crtc.reg[CrtcRegister::HorizontalDisplayed] as u32 * TGA_HCHAR_CLOCK as u32;
+        let height =
+            self.crtc.reg[CrtcRegister::VerticalDisplayed] as u32 * (self.crtc.maximum_scanline() as u32 + 1);
 
         if self.mode_hires_gfx {
             width *= 2;
@@ -235,28 +246,29 @@ impl VideoCard for TGACard {
 
     /// Return the 16-bit value computed from the CRTC's pair of Page Address registers.
     fn start_address(&self) -> u16 {
-        (self.crtc_start_address_ho as u16) << 8 | self.crtc_start_address_lo as u16
+        self.crtc.start_address()
     }
 
     fn cursor_info(&self) -> CursorInfo {
-        let addr = self.get_cursor_address();
+        let addr = self.crtc.cursor_address() as usize;
+        let (line_start, line_end) = self.crtc.cursor_extents();
 
         match self.display_mode {
             DisplayMode::Mode0TextBw40 | DisplayMode::Mode1TextCo40 => CursorInfo {
                 addr,
                 pos_x: (addr % 40) as u32,
                 pos_y: (addr / 40) as u32,
-                line_start: self.crtc_cursor_start_line,
-                line_end: self.crtc_cursor_end_line,
-                visible: self.get_cursor_status(),
+                line_start,
+                line_end,
+                visible: self.crtc.cursor_status(),
             },
             DisplayMode::Mode2TextBw80 | DisplayMode::Mode3TextCo80 => CursorInfo {
                 addr,
                 pos_x: (addr % 80) as u32,
                 pos_y: (addr / 80) as u32,
-                line_start: self.crtc_cursor_start_line,
-                line_end: self.crtc_cursor_end_line,
-                visible: self.get_cursor_status(),
+                line_start,
+                line_end,
+                visible: self.crtc.cursor_status(),
             },
             _ => {
                 // Not a valid text mode
@@ -285,7 +297,7 @@ impl VideoCard for TGACard {
     }
 
     fn character_height(&self) -> u8 {
-        self.crtc_maximum_scanline_address + 1
+        self.crtc.maximum_scanline() + 1
     }
 
     fn palette(&self) -> Option<Vec<[u8; 4]>> {
@@ -305,45 +317,32 @@ impl VideoCard for TGACard {
         general_vec.push(("Frame Count:".to_string(), VideoCardStateEntry::String(format!("{}", self.frame_count))));
         map.insert("General".to_string(), general_vec);
 
-        let mut crtc_vec = Vec::new();
-
-        push_reg_str!(crtc_vec, CRTCRegister::HorizontalTotal, "[R0]", self.crtc_horizontal_total);
-        push_reg_str!(crtc_vec, CRTCRegister::HorizontalDisplayed, "[R1]", self.crtc_horizontal_displayed);
-        push_reg_str!(crtc_vec, CRTCRegister::HorizontalSyncPosition, "[R2]", self.crtc_horizontal_sync_pos);
-        push_reg_str!(crtc_vec, CRTCRegister::SyncWidth, "[R3]", self.crtc_sync_width);
-        push_reg_str!(crtc_vec, CRTCRegister::VerticalTotal, "[R4]", self.crtc_vertical_total);
-        push_reg_str!(crtc_vec, CRTCRegister::VerticalTotalAdjust, "[R5]", self.crtc_vertical_total_adjust);
-        push_reg_str!(crtc_vec, CRTCRegister::VerticalDisplayed, "[R6]", self.crtc_vertical_displayed);
-        push_reg_str!(crtc_vec, CRTCRegister::VerticalSync, "[R7]", self.crtc_vertical_sync_pos);
-        push_reg_str!(crtc_vec, CRTCRegister::InterlaceMode, "[R8]", self.crtc_interlace_mode);
-        push_reg_str!(crtc_vec, CRTCRegister::MaximumScanLineAddress, "[R9]", self.crtc_maximum_scanline_address);
-        push_reg_str!(crtc_vec, CRTCRegister::CursorStartLine, "[R10]", self.crtc_cursor_start_line);
-        push_reg_str!(crtc_vec, CRTCRegister::CursorEndLine, "[R11]", self.crtc_cursor_end_line);
-        push_reg_str!(crtc_vec, CRTCRegister::StartAddressH, "[R12]", self.crtc_start_address_ho);
-        push_reg_str!(crtc_vec, CRTCRegister::StartAddressL, "[R13]", self.crtc_start_address_lo);
-        crtc_vec.push(("Start Address".to_string(), VideoCardStateEntry::String(format!("{:04X}", self.crtc_start_address))));
-        push_reg_str!(crtc_vec, CRTCRegister::CursorAddressH, "[R14]", self.crtc_cursor_address_ho);
-        push_reg_str!(crtc_vec, CRTCRegister::CursorAddressL, "[R15]", self.crtc_cursor_address_lo);
+        let mut crtc_vec = self.crtc.get_reg_state();
+        push_reg_str!(crtc_vec, CrtcRegister::LightPenPositionH, "[R16]", self.crtc.reg[CrtcRegister::LightPenPositionH]);
+        push_reg_str!(crtc_vec, CrtcRegister::LightPenPositionL, "[R17]", self.crtc.reg[CrtcRegister::LightPenPositionL]);
         map.insert("CRTC".to_string(), crtc_vec);
+
+        let monitor_vec = if self.monitor_emulation {
+            self.monitor.debug_state()
+        }
+        else {
+            vec![("Monitor emulation:".to_string(), VideoCardStateEntry::String("Disabled".to_string()))]
+        };
+        map.insert("Monitor".to_string(), monitor_vec);
+        map.insert("CRTC Counters".to_string(), self.crtc.get_counter_state());
 
         let mut internal_vec = Vec::new();
         internal_vec.push((String::from("char_clock"), VideoCardStateEntry::String(format!("{}", self.char_clock))));
         internal_vec.push((String::from("status"), VideoCardStateEntry::String(format!("{:08b}", self.calc_status_register()))));
         internal_vec.push((String::from("mode"), VideoCardStateEntry::String(format!("{:08b}", self.mode_byte))));
-        internal_vec.push((String::from("hcc_c0:"), VideoCardStateEntry::String(format!("{}", self.hcc_c0))));
-        internal_vec.push((String::from("vlc_c9:"), VideoCardStateEntry::String(format!("{}", self.vlc_c9))));
-        internal_vec.push((String::from("vcc_c4:"), VideoCardStateEntry::String(format!("{}", self.vcc_c4))));
         internal_vec.push((String::from("scanline:"), VideoCardStateEntry::String(format!("{}", self.scanline))));
-        internal_vec.push((String::from("vsc_c3h:"), VideoCardStateEntry::String(format!("{}", self.vsc_c3h))));
-        internal_vec.push((String::from("hsc_c3l:"), VideoCardStateEntry::String(format!("{}", self.hsc_c3l))));
-        internal_vec.push((String::from("vtac_c5:"), VideoCardStateEntry::String(format!("{}", self.vtac_c5))));
         internal_vec.push((String::from("vma:"), VideoCardStateEntry::String(format!("{:04X}", self.vma))));
         internal_vec.push((String::from("vma':"), VideoCardStateEntry::String(format!("{:04X}", self.vma_t))));
         internal_vec.push((String::from("vmws:"), VideoCardStateEntry::String(format!("{}", self.vmws))));
         internal_vec.push((String::from("rba:"), VideoCardStateEntry::String(format!("{:04X}", self.rba))));
         internal_vec.push((String::from("de:"), VideoCardStateEntry::String(format!("{}", self.in_display_area))));
-        internal_vec.push((String::from("crtc_hblank:"), VideoCardStateEntry::String(format!("{}", self.in_crtc_hblank))));
-        internal_vec.push((String::from("crtc_vblank:"), VideoCardStateEntry::String(format!("{}", self.in_crtc_vblank))));
+        internal_vec.push((String::from("crtc_hsync:"), VideoCardStateEntry::String(format!("{}", self.in_crtc_hsync))));
+        internal_vec.push((String::from("crtc_vsync:"), VideoCardStateEntry::String(format!("{}", self.in_crtc_vsync))));
         internal_vec.push((String::from("beam_x:"), VideoCardStateEntry::String(format!("{}", self.beam_x))));
         internal_vec.push((String::from("beam_y:"), VideoCardStateEntry::String(format!("{}", self.beam_y))));
         internal_vec.push((String::from("border:"), VideoCardStateEntry::String(format!("{}", self.hborder))));
@@ -352,7 +351,7 @@ impl VideoCard for TGACard {
         internal_vec.push((String::from("vsync_cycles:"), VideoCardStateEntry::String(format!("{}", self.cycles_per_vsync))));
         internal_vec.push((String::from("cur_screen_cycles:"), VideoCardStateEntry::String(format!("{}", self.cur_screen_cycles))));
         internal_vec.push((String::from("phase:"), VideoCardStateEntry::String(format!("{}", self.cycles & 0x0F))));
-        internal_vec.push((String::from("cursor attr:"), VideoCardStateEntry::String(format!("{:02b}", self.cursor_attr))));
+        internal_vec.push((String::from("cursor attr:"), VideoCardStateEntry::String(format!("{:02b}", (self.crtc.reg[CrtcRegister::CursorStartLine] & CURSOR_ATTR_MASK) >> 5))));
         internal_vec.push((String::from("snowflakes:"), VideoCardStateEntry::String(format!("{}", self.snow_count))));
         map.insert("Internal".to_string(), internal_vec);
 

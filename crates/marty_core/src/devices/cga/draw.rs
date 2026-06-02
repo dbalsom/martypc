@@ -113,11 +113,9 @@ impl CGACard {
         };
 
         // Do cursor
-        if (self.vma == self.crtc_cursor_address) && self.cursor_status && self.blink_state {
+        if self.cga_cursor_active() {
             // This cell has the cursor address, cursor is enabled and not blinking
-            if self.cursor_data[(self.vlc_c9 & 0x1F) as usize] {
-                new_pixel = self.cur_fg;
-            }
+            new_pixel = self.cur_fg;
         }
 
         if !self.mode_enable {
@@ -135,11 +133,7 @@ impl CGACard {
     /// Draw an entire character row in high resolution text mode (8 pixels)
     pub fn draw_text_mode_hchar(&mut self) {
         // Do cursor if visible, enabled and defined
-        if self.vma == self.crtc_cursor_address
-            && self.cursor_status
-            && self.blink_state
-            && self.cursor_data[(self.vlc_c9 & 0x1F) as usize]
-        {
+        if self.cga_cursor_active() {
             self.draw_solid_hchar(self.cur_fg);
         }
         else if self.mode_enable {
@@ -160,11 +154,7 @@ impl CGACard {
         //let draw_span = (8 * self.clock_divisor) as usize;
 
         // Do cursor if visible, enabled and defined
-        if self.vma == self.crtc_cursor_address
-            && self.cursor_status
-            && self.blink_state
-            && self.cursor_data[(self.vlc_c9 & 0x1F) as usize]
-        {
+        if self.cga_cursor_active() {
             self.draw_solid_lchar(self.cur_fg);
         }
         else if self.mode_enable {
