@@ -185,7 +185,7 @@ const MDA_FONT: &[u8] = include_bytes!("../../../assets/mda_8by14.bin");
 const MDA_FONT_SPAN: usize = 256; // Font bitmap is 2048 bits wide (256 * 8 characters)
 
 const MDA_CHAR_CLOCK: u8 = 9;
-const HGC_CHAR_CLOCK: u8 = 8;
+const HGC_CHAR_CLOCK: u8 = 16;
 const CRTC_FONT_HEIGHT: u8 = 14;
 const CRTC_VBLANK_HEIGHT: u8 = 16;
 
@@ -278,18 +278,18 @@ const CGA_DEBUG_U64: [u64; 16] = [
 // periods.
 const MDA_APERTURE_CROPPED_W: u32 = 720;
 const MDA_APERTURE_CROPPED_H: u32 = 350;
-const MDA_APERTURE_CROPPED_X: u32 = 9;
+const MDA_APERTURE_CROPPED_X: u32 = 9 + 135;
 const MDA_APERTURE_CROPPED_Y: u32 = 20;
 
 const MDA_APERTURE_NORMAL_W: u32 = 738;
 const MDA_APERTURE_NORMAL_H: u32 = 354;
-const MDA_APERTURE_NORMAL_X: u32 = 0;
-const MDA_APERTURE_NORMAL_Y: u32 = 18;
+const MDA_APERTURE_NORMAL_X: u32 = 135;
+const MDA_APERTURE_NORMAL_Y: u32 = 16;
 
 const MDA_APERTURE_FULL_W: u32 = 738;
 const MDA_APERTURE_FULL_H: u32 = 354;
-const MDA_APERTURE_FULL_X: u32 = 0;
-const MDA_APERTURE_FULL_Y: u32 = 18;
+const MDA_APERTURE_FULL_X: u32 = 135;
+const MDA_APERTURE_FULL_Y: u32 = 16;
 
 const MDA_APERTURE_DEBUG_W: u32 = MDA_XRES_MAX;
 const MDA_APERTURE_DEBUG_H: u32 = MDA_SCANLINE_MAX;
@@ -453,8 +453,6 @@ pub struct MDACard {
 
     cursor_status: bool,
     cursor_slowblink: bool,
-    cursor_blink_rate: f64,
-    cursor_data: [bool; MDA_CURSOR_MAX],
     cursor_attr: u8,
     last_bit: bool,
 
@@ -610,8 +608,6 @@ impl Default for MDACard {
 
             cursor_status: false,
             cursor_slowblink: false,
-            cursor_blink_rate: MDA_DEFAULT_CURSOR_BLINK_RATE,
-            cursor_data: [false; MDA_CURSOR_MAX],
             cursor_attr: 0,
             last_bit: false,
 
@@ -1162,7 +1158,7 @@ impl MDACard {
         // Destructure status so that we can drop the borrow
         let CrtcStatus { hsync, vsync, .. } = *status;
         self.in_card_vsync = vsync;
-        self.tick_monitor(self.char_clock, hsync, vsync);
+        self.tick_monitor(self.char_clock, hsync, !vsync);
         self.fetch_char(vma);
         self.vma = vma as usize;
     }
@@ -1398,9 +1394,10 @@ impl MDACard {
             self.scanline = 0;
             self.frame_count += 1;
 
+            // TODO: clean this up, artifacts left over from CGA.
             // Save the current mode byte, used for composite rendering.
-            // The mode could have changed several times per frame, but I am not sure how the composite rendering should
-            // really handle that...
+            // The mode could have changed several times per frame, but I am not sure how the
+            // composite rendering should really handle that...
             self.extents.mode_byte = self.mode_byte;
 
             // Toggle blink state. This is toggled every 8 frames by default.

@@ -23,30 +23,65 @@
     DEALINGS IN THE SOFTWARE.
 
     --------------------------------------------------------------------------
-
-    devices::mc6845.rs
-
-    Implementation of the Motorola MC6845 CRT controller.
-    Used internally by the MDA and CGA video cards.
-
 */
+
+//! Implementation of the Motorola MC6845 CRT controller.
+//! Used internally by the MDA, CGA, and TGA adapters.
+//! EGA & VGA have custom LSI CRTC's more suited for graphics modes.
+//!
+//! This implementation is accurate enough to run demanding PC demos such as "8088 MPH" and
+//! "Area 5150". A great deal of troubleshooting was done against logic analyzer captures
+//! of the 6845's outputs while these demos were running.
+//!
+//! More recently, direct die analysis of the MC6845 has been performed, thanks to excellent
+//! photography by InfosecDJ:
+//! https://siliconprawn.org/map/motorola/mc6845p-jr5/infosecdj_mz_nikpa20x/
+//!
+//! Major credits go to Longshot of LOGON SYSTEM for the essential CRTC COMPENDIUM:
+//! https://logonsystem.eu/html/downloadlogon.htm without which this would not have been possible.
+//!
+//! Thanks to reenigne and VileR for essential clarifications and corrections.
 
 use std::ops::{Index, IndexMut};
 
 use crate::{device_traits::videocard::VideoCardStateEntry, tracelogger::TraceLogger};
 use strum::EnumCount;
 
-const CURSOR_LINE_MASK: u8 = 0b0000_1111;
-const CURSOR_ATTR_MASK: u8 = 0b0011_0000;
+const CURSOR_LINE_MASK: u8 = 0b0001_1111;
+const CURSOR_ATTR_MASK: u8 = 0b0110_0000;
 
-const BLINK_FAST_RATE: u8 = 8;
-const BLINK_SLOW_RATE: u8 = 16;
+const BLINK_FAST_RATE: u16 = 8;
+const BLINK_SLOW_RATE: u16 = 16;
 
 const CRTC_VBLANK_HEIGHT: u8 = 16;
 const CRTC_ROW_MAX: usize = 32;
 const HORIZONTAL_SYNC_WIDTH_MASK: u8 = 0x0F;
 
 const REGISTER_UNREADABLE_VALUE: u8 = 0xFF;
+
+#[derive(Copy, Clone, Debug, Default)]
+pub enum InterlacedParity {
+    #[default]
+    Even,
+    Odd,
+}
+
+impl InterlacedParity {
+    pub fn next(&self) -> InterlacedParity {
+        match self {
+            InterlacedParity::Even => InterlacedParity::Odd,
+            InterlacedParity::Odd => InterlacedParity::Even,
+        }
+    }
+    #[inline]
+    pub fn is_even(&self) -> bool {
+        matches!(self, InterlacedParity::Even)
+    }
+    #[inline]
+    pub fn is_odd(&self) -> bool {
+        matches!(self, InterlacedParity::Odd)
+    }
+}
 
 #[derive(Copy, Clone, Debug)]
 pub enum CursorStatus {
@@ -59,52 +94,52 @@ pub enum CursorStatus {
 #[derive(Copy, Clone, Debug, PartialEq, strum_macros::EnumCount)]
 #[repr(usize)]
 pub enum CrtcRegister {
-    HorizontalTotal,
-    HorizontalDisplayed,
-    HorizontalSyncPosition,
-    SyncWidth,
-    VerticalTotal,
-    VerticalTotalAdjust,
-    VerticalDisplayed,
-    VerticalSync,
-    InterlaceMode,
-    MaximumScanlineAddress,
-    CursorStartLine,
-    CursorEndLine,
-    StartAddressH,
-    StartAddressL,
-    CursorAddressH,
-    CursorAddressL,
-    LightPenPositionH,
-    LightPenPositionL,
+    HorizontalTotal,        // R0
+    HorizontalDisplayed,    // R1
+    HorizontalSyncPosition, // R2
+    SyncWidth,              // R3
+    VerticalTotal,          // R4
+    VerticalTotalAdjust,    // R5
+    VerticalDisplayed,      // R6
+    VerticalSync,           // R7
+    InterlaceMode,          // R8
+    MaximumScanlineAddress, // R9
+    CursorStartLine,        // R10
+    CursorEndLine,          // R11
+    StartAddressH,          // R12
+    StartAddressL,          // R13
+    CursorAddressH,         // R14
+    CursorAddressL,         // R15
+    LightPenPositionH,      // R16
+    LightPenPositionL,      // R17
+    InvalidRegister,
 }
 
 use crate::devices::mc6845::CrtcRegister::*;
 
-impl TryFrom<usize> for CrtcRegister {
-    type Error = ();
-
-    fn try_from(value: usize) -> Result<Self, Self::Error> {
+// Implement From<usize> for CrtcRegister to allow indexing into CrtcRegisterFile via enum.
+impl From<usize> for CrtcRegister {
+    fn from(value: usize) -> Self {
         match value {
-            0 => Ok(HorizontalTotal),
-            1 => Ok(HorizontalDisplayed),
-            2 => Ok(HorizontalSyncPosition),
-            3 => Ok(SyncWidth),
-            4 => Ok(VerticalTotal),
-            5 => Ok(VerticalTotalAdjust),
-            6 => Ok(VerticalDisplayed),
-            7 => Ok(VerticalSync),
-            8 => Ok(InterlaceMode),
-            9 => Ok(MaximumScanlineAddress),
-            10 => Ok(CursorStartLine),
-            11 => Ok(CursorEndLine),
-            12 => Ok(StartAddressH),
-            13 => Ok(StartAddressL),
-            14 => Ok(CursorAddressH),
-            15 => Ok(CursorAddressL),
-            16 => Ok(LightPenPositionH),
-            17 => Ok(LightPenPositionL),
-            _ => Err(()),
+            0 => HorizontalTotal,
+            1 => HorizontalDisplayed,
+            2 => HorizontalSyncPosition,
+            3 => SyncWidth,
+            4 => VerticalTotal,
+            5 => VerticalTotalAdjust,
+            6 => VerticalDisplayed,
+            7 => VerticalSync,
+            8 => InterlaceMode,
+            9 => MaximumScanlineAddress,
+            10 => CursorStartLine,
+            11 => CursorEndLine,
+            12 => StartAddressH,
+            13 => StartAddressL,
+            14 => CursorAddressH,
+            15 => CursorAddressL,
+            16 => LightPenPositionH,
+            17 => LightPenPositionL,
+            _ => InvalidRegister,
         }
     }
 }
@@ -167,6 +202,38 @@ macro_rules! push_reg_str {
 }
 
 #[derive(Copy, Clone, Default, Debug)]
+pub enum CrtcInterlacedMode {
+    #[default]
+    NormalVideo,
+    InterlacedSync,
+    InterlacedSyncAndVideo,
+}
+
+impl From<u8> for CrtcInterlacedMode {
+    fn from(val: u8) -> Self {
+        match val {
+            0b01 => CrtcInterlacedMode::InterlacedSync,
+            0b11 => CrtcInterlacedMode::InterlacedSyncAndVideo,
+            _ => CrtcInterlacedMode::NormalVideo,
+        }
+    }
+}
+
+impl CrtcInterlacedMode {
+    #[inline]
+    pub fn is_interlaced_sync(&self) -> bool {
+        matches!(
+            self,
+            CrtcInterlacedMode::InterlacedSyncAndVideo | CrtcInterlacedMode::InterlacedSync
+        )
+    }
+    #[inline]
+    pub fn is_interlaced_video(&self) -> bool {
+        matches!(self, CrtcInterlacedMode::InterlacedSyncAndVideo)
+    }
+}
+
+#[derive(Copy, Clone, Default, Debug)]
 pub struct CrtcStatus {
     pub den: bool, // Display Enable. True if we are in counting in the display area, false otherwise
     pub hborder: bool,
@@ -180,31 +247,43 @@ pub struct Crtc6845 {
     pub reg:    CrtcRegisterFile, // Externally-accessible CRTC register file
     reg_select: CrtcRegister,     // Selected CRTC register
 
-    start_address: u16,       // Calculated value from R12 & R13
-    start_address_latch: u16, // start address, latched per frame
+    ticks: usize, // Number of CRTC ticks.
+
+    start_address: u16,       // Immediate value calculated from R12 & R13
+    start_address_latch: u16, // Start address, latched per frame
     lightpen_position: u16,   // Calculated value from R16 & R17
 
-    cursor_address: u16, // Calculated value from R14 & R15
+    cursor_address: u16, // Immediate value calculated from R14 & R15
     cursor_enabled: bool,
     cursor_start_line: u8,
     cursor_end_line: u8,
     cursor_active: bool, // Whether cursor is between cursor_start_line and curse_end_line
-    blink_state: bool,
-    cursor_blink_ct: u8,
-    cursor_blink_rate: Option<u8>,
+    blink_state: bool,   // State of cursor blink (true => displayed), (false => not displayed)
+    cursor_blink_rate: Option<u16>,
 
-    hcc_c0: u8,   // Horizontal character counter (x pos of character)
-    char_col: u8, // Character column counter (x pos of bit in glyph)
-    vlc_c9: u8,   // Vertical line counter - counts during vsync period
-    vcc_c4: u8,   // Vertical character counter (y pos of character)
+    // Internal counters and state.
+    // Counter values are hybrid names between "classical" emulator names and the names used in
+    // the CRTC Compendium.
+    hcc_c0:  u8, // Horizontal character counter (8 bits) (x pos of character)
+    vlc_c9:  u8, // Vertical line counter (5 bits) - counts scanlines within a character row.
+    vlc_c9i: u8, // Interlaced vertical line counter (4 bits) - counts scanlines within a character row when interlaced video is enabled.
+    vcc_c4:  u8, // Vertical character counter (7 bits) (y pos of character)
+    vsc_c3h: u8, // Vertical scan counter (4 bits) - counts during vsync period
+    hsc_c3l: u8, // Horizontal sync counter (4 bits) - counts during hsync period
+    vtac_c5: u8, // Vertical total adjust counter (5 bits) - counts during vertical total adjust period.
+
     last_row: bool,
-    last_line: bool,
-    vsc_c3h: u8,
-    hsc_c3l: u8,
-    vtac_c5: u8,
+    previous_last_line: bool, // Was the previous line the last line in a frame?
+    last_line: bool,          // Is the current line the last line in a frame?
+    last_line_mgmt: bool,     // "Last Line Management" state bit. Controls whether last line flag can be set.
     in_vta: bool,
     vma: u16,   // VMA register - Video memory address
     vma_t: u16, // VMA' register - Video memory address temporary
+
+    // Interlaced mode stuff.
+    interlaced_mode: CrtcInterlacedMode,
+    scanline_parity: InterlacedParity,
+    frame_parity:    InterlacedParity,
 
     status: CrtcStatus,
     in_hblank: bool,
@@ -221,6 +300,8 @@ impl Crtc6845 {
             reg: Default::default(),
             reg_select: HorizontalTotal,
 
+            ticks: 0,
+
             start_address: 0,
             start_address_latch: 0,
             lightpen_position: 0,
@@ -231,21 +312,27 @@ impl Crtc6845 {
             cursor_end_line: 0,
             cursor_active: false,
             blink_state: false,
-            cursor_blink_ct: 0,
             cursor_blink_rate: Some(BLINK_FAST_RATE),
 
             hcc_c0: 0,
-            char_col: 0,
             vlc_c9: 0,
+            vlc_c9i: 0,
             vcc_c4: 0,
             last_row: false,
+            previous_last_line: false,
             last_line: false,
+            last_line_mgmt: false,
+
             vsc_c3h: 0,
             hsc_c3l: 0,
             vtac_c5: 0,
             in_vta: false,
             vma: 0,
             vma_t: 0,
+
+            interlaced_mode: CrtcInterlacedMode::default(),
+            scanline_parity: InterlacedParity::default(),
+            frame_parity: InterlacedParity::default(),
 
             status: Default::default(),
             in_hblank: false,
@@ -257,20 +344,7 @@ impl Crtc6845 {
         }
     }
 
-    pub fn port_write(&mut self, port: u16, data: u8) {
-        match port & 0x01 {
-            0 => {
-                // CRTC register select
-                self.select_register(data as usize);
-            }
-            1 => {
-                // CRTC register write
-                self.write_register(data);
-            }
-            _ => {}
-        }
-    }
-
+    // Convenience wrapper to read from the CRTC's address or data register based on A0.
     pub fn port_read(&mut self, port: u16) -> u8 {
         match port & 0x01 {
             0 => {
@@ -285,21 +359,41 @@ impl Crtc6845 {
         }
     }
 
-    pub fn select_register(&mut self, idx: usize) {
-        let Ok(reg) = CrtcRegister::try_from(idx)
-        else {
-            return;
-        };
+    // Convenience wrapper to write to the CRTC's address or data register based on A0.
+    pub fn port_write(&mut self, port: u16, data: u8) {
+        match port & 0x01 {
+            0 => {
+                // CRTC register select
+                self.select_register(data as usize);
+            }
+            1 => {
+                // CRTC register write
+                self.write_register(data);
+            }
+            _ => {}
+        }
+    }
 
-        self.reg_select = reg;
+    // Select a CRTC register.
+    // The 6845 has an 5-bit address register will hold any value 0-13. This feeds into a address
+    // decoding PLA with 18 outputs, one for each valid register.
+    // So invalid registers can indeed be specified and the address register will accept them, but
+    // nothing will happen when writing to a register out of range as no output from the PLA will
+    // be activated.
+    pub fn select_register(&mut self, idx: usize) {
+        self.reg_select = CrtcRegister::from(idx);
+        // Very noisy in certain games and demo effects. Enable with caution.
         //log::trace!("CRTC register selected: {:?}", self.reg_select);
     }
 
+    // Helper function to both select a register and write a value to it.
+    // Mostly used by tests.
     pub fn write_register_direct(&mut self, reg: CrtcRegister, byte: u8) {
         self.reg_select = reg;
         self.write_register(byte);
     }
 
+    // Write the specified data to the currently selected CRTC register.
     pub fn write_register(&mut self, byte: u8) {
         //log::trace!("crtc write register: {:02X}", byte);
         match self.reg_select {
@@ -352,6 +446,7 @@ impl Crtc6845 {
             InterlaceMode => {
                 // (R8) 2 bit write only
                 self.reg[InterlaceMode] = byte & 0x03;
+                self.interlaced_mode = CrtcInterlacedMode::from(self.reg[InterlaceMode]);
             }
             MaximumScanlineAddress => {
                 // (R9) 5 bit write only
@@ -362,16 +457,18 @@ impl Crtc6845 {
                 self.reg[CursorStartLine] = byte & 0x7F;
 
                 self.cursor_start_line = byte & CURSOR_LINE_MASK;
-                match (byte & CURSOR_ATTR_MASK) >> 5 {
+                match self.reg[CursorStartLine] >> 5 {
                     0b00 => {
+                        // 6845 documentation specifies that this value will disable cursor blink.
+                        // We can disable cursor blink on the CRTC chip, but some cards like the
+                        // IBM CGA will stubbornly continue blinking as they add their own blink
+                        // logic. Some systems like the Amstrad CPC do not use the CRTC cursor at
+                        // all.
                         self.cursor_enabled = true;
                         self.cursor_blink_rate = None;
                     }
-
                     0b01 => {
                         self.cursor_enabled = false;
-                        // We can disable cursor blink on the CRTC chip, but some cards like the IBM CGA
-                        // will stubbornly continue blinking.
                         self.cursor_blink_rate = None;
                     }
                     0b10 => {
@@ -418,9 +515,16 @@ impl Crtc6845 {
             LightPenPositionL => {
                 // (R17) 8 bit read only
             }
+            InvalidRegister => {
+                // Nothing happens due to lack of PLA activation when invalid register is selected.
+            }
         }
     }
 
+    // Attempt to read the currently selected register.
+    // On the 6845 only the Cursor Address and Light Pen Position registers are readable.
+    // On some systems that do not use the 6845's hardware cursor, you can stash values in the
+    // cursor address registers.
     pub fn read_register(&self) -> u8 {
         match self.reg_select {
             CursorAddressH | CursorAddressL | LightPenPositionH | LightPenPositionL => self.reg[self.reg_select],
@@ -450,7 +554,10 @@ impl Crtc6845 {
 
     #[inline]
     pub fn vlc(&self) -> u8 {
-        self.vlc_c9
+        match self.interlaced_mode {
+            CrtcInterlacedMode::InterlacedSyncAndVideo => self.vlc_c9i,
+            _ => self.vlc_c9,
+        }
     }
 
     #[inline]
@@ -493,6 +600,7 @@ impl Crtc6845 {
         self.in_vta
     }
 
+    #[inline]
     pub fn status(&self) -> &CrtcStatus {
         &self.status
     }
@@ -502,53 +610,23 @@ impl Crtc6845 {
         self.reg[MaximumScanlineAddress]
     }
 
+    // Emulate the cursor strobe by taking the current VMA and splitting it into the two light
+    // pen registers, R16 & R17.
     pub fn latch_lightpen(&mut self) {
         self.lightpen_position = self.vma;
         self.reg[LightPenPositionH] = ((self.lightpen_position >> 8) & 0x3F) as u8;
         self.reg[LightPenPositionL] = (self.lightpen_position & 0xFF) as u8;
     }
 
+    // Combine R12 & R13 into a single 16-bit value.
     fn update_start_address(&mut self) {
         self.start_address = (self.reg[StartAddressH] as u16) << 8 | self.reg[StartAddressL] as u16
     }
 
+    // Combine R14 & R15 into a single 16-bit value.
     fn update_cursor_address(&mut self) {
         self.cursor_address = (self.reg[CursorAddressH] as u16) << 8 | self.reg[CursorAddressL] as u16
     }
-
-    // Update the cursor data array based on the values of R9, R10 and R11.
-    // fn update_cursor_data(&mut self) {
-    //     // Reset cursor data to 0.
-    //     self.cursor_data.fill(false);
-    //     self.cursor_start_line = self.reg[CursorStartLine] & CURSOR_LINE_MASK;
-    //
-    //     if self.cursor_start_line > self.reg[MaximumScanlineAddress] {
-    //         // R10 CursorStartLine must be hit during row scan-out to start drawing a cursor.
-    //         // Therefore if R10 is > R9, the cursor will never be drawn.
-    //         return;
-    //     }
-    //
-    //     if self.cursor_start_line <= self.reg[CursorEndLine] {
-    //         // Normal cursor definition. Cursor runs from R10 CursorStartLine to R11 CursorEndLine
-    //         for i in self.cursor_start_line..=self.reg[CursorEndLine] {
-    //             self.cursor_data[i as usize] = true;
-    //         }
-    //         self.cursor_end_line = self.reg[CursorEndLine];
-    //     }
-    //     else {
-    //         // "Split" cursor.
-    //         for i in 0..=self.reg[CursorEndLine] {
-    //             // First part of cursor is 0->R11 CursorEndLine
-    //             self.cursor_data[i as usize] = true;
-    //         }
-    //
-    //         for i in (self.cursor_start_line as usize)..CRTC_ROW_MAX {
-    //             // Second part of cursor is R10 CursorStartLine->max
-    //             self.cursor_data[i] = true;
-    //             self.cursor_end_line = CRTC_ROW_MAX as u8 - 1;
-    //         }
-    //     }
-    // }
 
     #[inline]
     pub fn cursor_address(&self) -> u16 {
@@ -595,28 +673,71 @@ impl Crtc6845 {
         self.status.hborder | self.status.vborder
     }
 
+    #[inline]
+    fn tick_vlc(&mut self) {
+        // Increment 5-bit progressive VLC
+        self.vlc_c9 = (self.vlc_c9 + 1) & 0x1F;
+        // Increment 4-bit interlaced VLC
+        self.vlc_c9i = (self.vlc_c9i + 1) & 0x0F;
+
+        if self.vlc_c9 == self.cursor_start_line {
+            self.cursor_active = true;
+        }
+    }
+
+    fn frame_management(&mut self) {}
+
     /// Tick the CRTC to the next character.
     pub fn tick(&mut self) -> (&CrtcStatus, u16) {
-        if self.hcc_c0 == 0 && self.vcc_c4 == 0 {
-            // We are at the first character of a CRTC frame. Update start address.
-            self.status.den = true;
-            self.in_display_rows = true;
-            self.vma = self.start_address_latch;
+        // Evaluate coincidence circuits.
+        let c5_r5 = self.vtac_c5 == self.reg[VerticalTotalAdjust];
+        let c3l_r3 = self.hsc_c3l == self.reg[SyncWidth];
+        // C4 comparisons
+        let c4_r7 = self.vcc_c4 == self.reg[VerticalSync];
+        let c4_r6 = self.vcc_c4 == self.reg[VerticalDisplayed];
+        let c4_r4 = self.vcc_c4 == self.reg[VerticalTotal];
+        // C0 comparisons
+        let c0_r0 = self.hcc_c0 == self.reg[HorizontalTotal];
+        let c0_r2 = self.hcc_c0 == self.reg[HorizontalSyncPosition];
+        let c0_r1 = self.hcc_c0 == self.reg[HorizontalDisplayed];
+        // C9 comparisons
+        let c9x_r9 = if self.interlaced_mode.is_interlaced_video() {
+            self.vlc_c9i == (self.reg[MaximumScanlineAddress] >> 1)
         }
+        else {
+            self.vlc_c9 == self.reg[MaximumScanlineAddress]
+        };
+        let c9_r11 = self.vlc_c9 == self.reg[CursorEndLine];
+        let c9_r10 = self.vlc_c9 == self.cursor_start_line; // Coincidence circuit is 5 bit.
 
-        if self.hcc_c0 < 2 {
+        let vma_cursor = self.vma == self.cursor_address;
+
+        if self.hcc_c0 == 0 {
             // START-OF-LINE processing.
-            // Turn cursor on.
-            if self.vlc_c9 == self.reg[CursorStartLine] {
+            // Various logic is evalauated at the start of a line when C0 == 0.
+
+            // Turn cursor on if this line matches CursorStartLine.
+            if self.vlc_c9 == self.cursor_start_line {
                 self.cursor_active = true;
             }
 
-            // The vertical-total decision is sampled early in the scanline and
-            // consumed when that scanline completes. This preserves behavior when
-            // software rewrites vertical timing registers during the line.
+            if self.vcc_c4 == 0 {
+                // We are at the first character of a CRTC frame. Update start address.
+                self.status.den = true;
+                self.in_display_rows = true;
+                self.vma = self.start_address_latch;
+            }
+
+            // Evaluate the 'last_line' status.
             if self.vcc_c4 == self.reg[VerticalTotal] {
                 self.last_row = true;
+                // 'last_line' is true if (C4 == R4) && (C9 == R9),
+                // except:
+                //  - the previous line was a 'last line'
+                //  - if a HSYNC takes place on position C0==0 (v1.9 p94)
                 self.last_line = self.vlc_c9 == self.reg[MaximumScanlineAddress];
+                // 'last_line_mgmt' is false if (C4 == 0 && (C9 == 0)
+                self.last_line_mgmt = !(self.vcc_c4 == 0 && self.vlc_c9 == 0);
                 self.vtac_c5 = 0;
             }
             else {
@@ -630,29 +751,34 @@ impl Crtc6845 {
             // C0 has wrapped?
             self.status.hborder = false;
             if self.vcc_c4 == 0 {
+                // START-OF-FRAME processing.
                 // We are at the first character of a CRTC frame. Update start address.
                 self.vma = self.start_address_latch;
+
+                // Update cursor blink (I'm not actually sure when this is done).
+                // The cursor has no counter, it is based on a divided clock which we model here.
+                if let Some(rate) = self.cursor_blink_rate {
+                    if self.ticks.is_multiple_of(rate as usize) {
+                        self.blink_state = !self.blink_state;
+                    }
+                }
             }
         }
 
-        // Advance video memory address offset and grab the next character + attr
+        // Advance video memory address
         self.vma += 1;
-        //self.set_char_addr();
-
-        // Glyph column reset to 0 for next char
-        self.char_col = 0;
 
         // Process horizontal blanking period
         if self.in_hblank {
-            // The 6845 uses a 4-bit horizontal sync width counter. Loading zero naturally
+            // The MC6845 uses a 4-bit horizontal sync width down-counter. Loading zero naturally
             // produces a 16-character sync pulse after the first decrement wraps to 0x0F.
-            // This produces an hysnc width long enough to allow color-burst generation.
-            // This trick is used by the PC demo "8088 MPH".
+            // Conveniently, this produces an hsync width long enough to allow color-burst
+            // generation on the CGA in 80-column mode. This trick is used by the PC demo "8088 MPH"
+            // This only works on a Motorola 6845, not on Hitachi 6485s.
             self.hsc_c3l = self.hsc_c3l.wrapping_sub(1) & HORIZONTAL_SYNC_WIDTH_MASK;
 
             if self.hsc_c3l == 0 {
                 // C3L expired. End the horizontal sync pulse.
-                self.status.hsync = false;
 
                 // Update the video mode, if an update is pending.
                 // // It is important not to change graphics mode while we are catching up during an IO instruction.
@@ -675,11 +801,12 @@ impl Crtc6845 {
                 }
 
                 // We are leaving horizontal blanking period.
-                self.char_col = 0;
                 self.in_hblank = false;
+                self.status.hsync = false;
             }
         }
 
+        // [Coincidence circuit]: C0 == R1.
         if self.hcc_c0 == self.reg[HorizontalDisplayed] {
             // C0 == R1 (HorizontalDisplayed): Entering right overscan.
             if self.vlc_c9 == self.reg[MaximumScanlineAddress] {
@@ -691,6 +818,7 @@ impl Crtc6845 {
             self.status.hborder = true;
         }
 
+        // [Coincidence circuit]: C0 == R2
         if self.hcc_c0 == self.reg[HorizontalSyncPosition] {
             // C0 == R2 (HorizontalSyncPos) We entered horizontal sync.
             self.in_hblank = true;
@@ -698,12 +826,13 @@ impl Crtc6845 {
             self.hsc_c3l = self.horizontal_sync_width();
         }
 
-        if self.hcc_c0 == self.reg[HorizontalTotal] && self.in_last_vblank_line {
-            // C0 == R0 (HorizontalTotal): We are one char away from the beginning of the new frame.
-            // Draw one char of border
-            self.status.hborder = true;
-        }
+        // if self.hcc_c0 == self.reg[HorizontalTotal] && self.in_last_vblank_line {
+        //     // C0 == R0 (HorizontalTotal): We are one char away from the beginning of the new frame.
+        //     // Draw one char of border
+        //     self.status.hborder = true;
+        // }
 
+        // [Coincidence circuit]: C0 == R0
         if self.hcc_c0 == self.reg[HorizontalTotal] + 1 {
             // END-OF-LINE processing
             if self.vlc_c9 == self.reg[CursorEndLine] {
@@ -720,7 +849,7 @@ impl Crtc6845 {
             // Reset Horizontal Character Counter and increment character row counter
             self.hcc_c0 = 0;
             self.status.hborder = false;
-            self.vlc_c9 += 1;
+
             // Return video memory address to starting position for next character row
             self.vma = self.vma_t;
 
@@ -732,16 +861,14 @@ impl Crtc6845 {
                 self.status.den = true;
             }
 
-            if self.vlc_c9 > self.reg[MaximumScanlineAddress] {
+            // [Coincidence circuit]: C9(i) == R9
+            if c9x_r9 {
                 // C9 == R9 (MaxScanlineAddress): We finished drawing this row of characters
                 self.vlc_c9 = 0;
                 // Increment Vertical Character Counter
                 self.vcc_c4 = self.vcc_c4.wrapping_add(1);
                 // Set vma to starting position for next character row
                 self.vma = self.vma_t;
-
-                // Load next char + attr
-                //self.set_char_addr();
 
                 if self.vcc_c4 == self.reg[VerticalSync] {
                     // C4 == R7 (VerticalSyncPos): We've reached vertical sync
@@ -750,14 +877,6 @@ impl Crtc6845 {
                     self.in_vblank = true;
                     self.status.vsync = true;
                     self.status.den = false;
-
-                    if let Some(rate) = self.cursor_blink_rate {
-                        self.cursor_blink_ct = self.cursor_blink_ct.wrapping_add(1);
-                        if self.cursor_blink_ct == rate {
-                            self.cursor_blink_ct = 0;
-                            self.blink_state = !self.blink_state;
-                        }
-                    }
                 }
 
                 if self.last_line {
@@ -767,7 +886,11 @@ impl Crtc6845 {
                     self.last_line = false;
                 }
             }
+            else {
+                self.tick_vlc();
+            }
 
+            // [Coincidence circuit]: C4 == R6
             if self.vcc_c4 == self.reg[VerticalDisplayed] {
                 // C4 == R6 (VerticalDisplayed): Entering lower overscan area.
                 self.in_display_rows = false;
@@ -785,7 +908,6 @@ impl Crtc6845 {
                     self.vtac_c5 = 0;
                     self.vcc_c4 = 0;
                     self.vlc_c9 = 0;
-                    self.char_col = 0;
                     self.start_address_latch = self.start_address;
                     self.vma = self.start_address;
                     self.vma_t = self.vma;
@@ -802,6 +924,7 @@ impl Crtc6845 {
         }
 
         self.status.cursor = self.cursor();
+        self.ticks += 1;
 
         (&self.status, self.vma)
     }
@@ -974,7 +1097,7 @@ mod tests {
         let trace_logger = TraceLogger::None;
         let mut crtc = Crtc6845::new(trace_logger);
         crtc.select_register(18);
-        assert_eq!(crtc.reg_select, CrtcRegister::HorizontalTotal);
+        assert_eq!(crtc.reg_select, CrtcRegister::InvalidRegister);
     }
 
     #[test]

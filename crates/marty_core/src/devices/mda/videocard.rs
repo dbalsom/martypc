@@ -30,8 +30,10 @@
 
 */
 use super::*;
-use crate::devices::mc6845::CrtcRegister::*;
-use crate::{device_traits::videocard::*, devices::pic::Pic};
+use crate::{
+    device_traits::videocard::*,
+    devices::{mc6845::CrtcRegister::*, pic::Pic},
+};
 
 impl VideoCard for MDACard {
     fn set_video_option(&mut self, opt: VideoOption) {
@@ -229,7 +231,7 @@ impl VideoCard for MDACard {
         general_vec.push(("Adapter Type:".to_string(), VideoCardStateEntry::String(format!("{:?} ({:?})", self.video_type(), self.subtype))));
         general_vec.push(("Display Mode:".to_string(), VideoCardStateEntry::String(format!("{:?}", self.display_mode()))));
         general_vec.push(("Video Enable:".to_string(), VideoCardStateEntry::String(format!("{:?}", self.mode_enable))));
-        general_vec.push(("Clock Divisor:".to_string(), VideoCardStateEntry::String(format!("{}", self.clock_divisor))));
+        general_vec.push(("Clock Divisor:".to_string(), VideoCardStateEntry::String(format!("{}", self.char_clock))));
         general_vec.push(("Frame Count:".to_string(), VideoCardStateEntry::String(format!("{}", self.frame_count))));
         map.insert("General".to_string(), general_vec);
 
