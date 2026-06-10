@@ -1627,7 +1627,12 @@ impl CGACard {
                     self.draw_text_mode_pixel();
                 }
                 else if self.mode_hires_gfx {
-                    self.draw_hires_gfx_mode_pixel();
+                    if self.debug_draw && self.catching_up {
+                        self.buf[self.back_buf][self.rba] = CGA_DEBUG2_COLOR;
+                    }
+                    else {
+                        self.draw_hires_gfx_mode_pixel();
+                    }
                 }
                 else {
                     self.draw_lowres_gfx_mode_pixel();
@@ -1636,19 +1641,29 @@ impl CGACard {
             else if self.in_crtc_hblank {
                 // Draw hblank in debug color
                 if self.debug_draw {
-                    self.buf[self.back_buf][self.rba] = CGA_HBLANK_DEBUG_COLOR;
+                    if self.catching_up {
+                        self.buf[self.back_buf][self.rba] = CGA_DEBUG2_COLOR;
+                    }
+                    else {
+                        self.buf[self.back_buf][self.rba] = CGA_HBLANK_DEBUG_COLOR;
+                    }
                 }
             }
             else if self.in_crtc_vblank {
                 // Draw vblank in debug color
                 if self.debug_draw {
-                    self.buf[self.back_buf][self.rba] = CGA_VBLANK_DEBUG_COLOR;
+                    if self.catching_up {
+                        self.buf[self.back_buf][self.rba] = CGA_DEBUG2_COLOR;
+                    }
+                    else {
+                        self.buf[self.back_buf][self.rba] = CGA_VBLANK_DEBUG_COLOR;
+                    }
                 }
             }
             else if self.border {
                 // Draw overscan
-                if self.debug_draw {
-                    self.draw_overscan_pixel();
+                if self.debug_draw && self.catching_up {
+                    self.buf[self.back_buf][self.rba] = CGA_DEBUG2_COLOR;
                     //self.draw_pixel(CGA_OVERSCAN_DEBUG_COLOR);
                 }
                 else {
