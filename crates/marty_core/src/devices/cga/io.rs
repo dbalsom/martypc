@@ -32,17 +32,25 @@
 use super::*;
 use crate::{bus::IoDevice, cpu_common::LogicAnalyzer};
 
-// CRTC registers are mirrored from 0x3D0 - 0x3D5 due to incomplete
-// address decoding.
-pub const CRTC_REGISTER_SELECT0: u16 = 0x3D0;
-pub const CRTC_REGISTER0: u16 = 0x3D1;
-pub const CRTC_REGISTER_SELECT1: u16 = 0x3D2;
-pub const CRTC_REGISTER1: u16 = 0x3D3;
-pub const CRTC_REGISTER_SELECT2: u16 = 0x3D4;
-pub const CRTC_REGISTER2: u16 = 0x3D5;
+// The CGA decodes address lines A9-A4 for IO, testing against the following pattern:
+// A9 A8 A7 A6 A5 A4
+//  1  1  1  1  0  1
+// This means the CGA considers itself addressed for the IO range 3D0-3DF.
+// An A3 of 0 selects the CRTC registers. A2 and A1 are not considered, so the CRTC registers are
+// mirrored from 0x3D0 - 0x3D7 due to incomplete address decoding.
+// Why IBM chose '4' instead of '0' for the "official" port base is anyone's guess.
 
-pub const CRTC_REGISTER_BASE: u16 = 0x3D0;
-pub const CRTC_REGISTER_MASK: u16 = 0x007;
+pub const CRTC_ADDRESS0: u16 = 0x3D0;
+pub const CRTC_DATA0: u16 = 0x3D1;
+pub const CRTC_ADDRESS1: u16 = 0x3D2;
+pub const CRTC_DATA1: u16 = 0x3D3;
+pub const CRTC_ADDRESS2: u16 = 0x3D4;
+pub const CRTC_DATA2: u16 = 0x3D5;
+pub const CRTC_ADDRESS3: u16 = 0x3D4;
+pub const CRTC_DATA3: u16 = 0x3D5;
+
+pub const CGA_BASE: u16 = 0x3D0;
+pub const CRTC_ADDRESS_MASK: u16 = 0x008; // A3
 
 pub const CGA_MODE_CONTROL_REGISTER: u16 = 0x3D8;
 pub const CGA_COLOR_CONTROL_REGISTER: u16 = 0x3D9;
@@ -57,8 +65,8 @@ impl IoDevice for CGACard {
 
         //self.rw_op(ticks, 0, port as u32, RwSlotType::Io);
 
-        if (port & !CRTC_REGISTER_MASK) == CRTC_REGISTER_BASE {
-            // Read is from CRTC register.
+        if (port & CRTC_ADDRESS_MASK) == 0 {
+            // A3 == 0: Read is from CRTC register.
             if port & 0x01 != 0 {
                 self.handle_crtc_register_read()
             }
@@ -67,6 +75,7 @@ impl IoDevice for CGACard {
             }
         }
         else {
+            // A3 == 1: Read is from CGA register.
             match port {
                 CGA_MODE_CONTROL_REGISTER => {
                     log::error!("CGA: Read from Mode control register!");
@@ -101,8 +110,8 @@ impl IoDevice for CGACard {
 
         //self.rw_op(ticks, data, port as u32, RwSlotType::Io);
 
-        if (port & !CRTC_REGISTER_MASK) == CRTC_REGISTER_BASE {
-            // Write is to CRTC register.
+        if (port & CRTC_ADDRESS_MASK) == 0 {
+            // A3 == 0: Write is to CRTC register.
             if port & 0x01 == 0 {
                 self.handle_crtc_register_select(data);
             }
@@ -111,6 +120,7 @@ impl IoDevice for CGACard {
             }
         }
         else {
+            // A3 == 1: Write is to CGA register.
             match port {
                 CGA_MODE_CONTROL_REGISTER => {
                     self.handle_mode_register(data);
@@ -130,12 +140,14 @@ impl IoDevice for CGACard {
 
     fn port_list(&self) -> Vec<(String, u16)> {
         vec![
-            ("CRTC Address".into(), CRTC_REGISTER_SELECT0),
-            ("CRTC Data".into(), CRTC_REGISTER0),
-            ("CRTC Address".into(), CRTC_REGISTER_SELECT1),
-            ("CRTC Data".into(), CRTC_REGISTER1),
-            ("CRTC Address".into(), CRTC_REGISTER_SELECT2),
-            ("CRTC Data".into(), CRTC_REGISTER2),
+            ("CRTC Address".into(), CRTC_ADDRESS0),
+            ("CRTC Data".into(), CRTC_DATA0),
+            ("CRTC Address".into(), CRTC_ADDRESS1),
+            ("CRTC Data".into(), CRTC_DATA1),
+            ("CRTC Address".into(), CRTC_ADDRESS2),
+            ("CRTC Data".into(), CRTC_DATA2),
+            ("CRTC Address".into(), CRTC_ADDRESS3),
+            ("CRTC Data".into(), CRTC_DATA3),
             ("CGA Mode Control".into(), CGA_MODE_CONTROL_REGISTER),
             ("CGA Color Control".into(), CGA_COLOR_CONTROL_REGISTER),
             ("CGA LP Latch Reset".into(), CGA_LIGHTPEN_LATCH_RESET),
