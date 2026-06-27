@@ -190,7 +190,7 @@ impl VideoCard for MDACard {
                 pos_y: (addr / 80) as u32,
                 line_start: self.crtc.cursor_extents().0,
                 line_end: self.crtc.cursor_extents().1,
-                visible: self.crtc.cursor_status(),
+                visible: self.crtc.cursor_enabled(),
             },
             _ => {
                 // Not a valid text mode

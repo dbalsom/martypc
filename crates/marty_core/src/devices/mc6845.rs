@@ -247,7 +247,8 @@ pub struct Crtc6845 {
     pub reg:    CrtcRegisterFile, // Externally-accessible CRTC register file
     reg_select: CrtcRegister,     // Selected CRTC register
 
-    ticks: usize, // Number of CRTC ticks.
+    ticks:  usize, // Number of CRTC ticks.
+    frames: usize, // Number of CRTC frames.
 
     start_address: u16,       // Immediate value calculated from R12 & R13
     start_address_latch: u16, // Start address, latched per frame
@@ -255,10 +256,9 @@ pub struct Crtc6845 {
 
     cursor_address: u16, // Immediate value calculated from R14 & R15
     cursor_enabled: bool,
-    cursor_start_line: u8,
-    cursor_end_line: u8,
-    cursor_active: bool, // Whether cursor is between cursor_start_line and curse_end_line
-    blink_state: bool,   // State of cursor blink (true => displayed), (false => not displayed)
+    cursor_start_line: u8, // Latch for R10 sans extra state bits.
+    cursor_active: bool,   // Whether cursor is between cursor_start_line and curse_end_line
+    blink_state: bool,     // State of cursor blink (true => displayed), (false => not displayed)
     cursor_blink_rate: Option<u16>,
 
     // Internal counters and state.
@@ -294,13 +294,14 @@ pub struct Crtc6845 {
     trace_logger: TraceLogger,
 }
 
-impl Crtc6845 {
-    pub fn new(trace_logger: TraceLogger) -> Self {
+impl Default for Crtc6845 {
+    fn default() -> Self {
         Self {
             reg: Default::default(),
             reg_select: HorizontalTotal,
 
-            ticks: 0,
+            ticks:  0,
+            frames: 0,
 
             start_address: 0,
             start_address_latch: 0,
@@ -309,7 +310,6 @@ impl Crtc6845 {
             cursor_address: 0,
             cursor_enabled: false,
             cursor_start_line: 0,
-            cursor_end_line: 0,
             cursor_active: false,
             blink_state: false,
             cursor_blink_rate: Some(BLINK_FAST_RATE),
@@ -332,7 +332,7 @@ impl Crtc6845 {
 
             interlaced_mode: CrtcInterlacedMode::default(),
             scanline_parity: InterlacedParity::default(),
-            frame_parity: InterlacedParity::default(),
+            frame_parity:    InterlacedParity::default(),
 
             status: Default::default(),
             in_hblank: false,
@@ -340,7 +340,24 @@ impl Crtc6845 {
             in_display_rows: false,
             in_last_vblank_line: false,
 
+            trace_logger: Default::default(),
+        }
+    }
+}
+
+impl Crtc6845 {
+    pub fn new(trace_logger: TraceLogger) -> Self {
+        Self {
             trace_logger,
+            ..Default::default()
+        }
+    }
+
+    pub fn reset(&mut self) {
+        let trace_logger = std::mem::replace(&mut self.trace_logger, TraceLogger::None);
+        *self = Self {
+            trace_logger,
+            ..Default::default()
         }
     }
 
@@ -601,6 +618,11 @@ impl Crtc6845 {
     }
 
     #[inline]
+    pub fn blink_bits(&self) -> u8 {
+        (self.reg[CursorStartLine] & CURSOR_ATTR_MASK) >> 5
+    }
+
+    #[inline]
     pub fn status(&self) -> &CrtcStatus {
         &self.status
     }
@@ -634,7 +656,7 @@ impl Crtc6845 {
     }
 
     pub fn cursor_extents(&self) -> (u8, u8) {
-        (self.cursor_start_line, self.cursor_end_line)
+        (self.cursor_start_line, self.reg[CursorEndLine])
     }
 
     /// Return the immediate cursor status for the current character clock
@@ -649,7 +671,7 @@ impl Crtc6845 {
     }
 
     #[inline]
-    pub fn cursor_status(&self) -> bool {
+    pub fn cursor_enabled(&self) -> bool {
         self.cursor_enabled
     }
 
@@ -680,7 +702,7 @@ impl Crtc6845 {
         // Increment 4-bit interlaced VLC
         self.vlc_c9i = (self.vlc_c9i + 1) & 0x0F;
 
-        if self.vlc_c9 == self.cursor_start_line {
+        if (self.vlc_c9 == self.cursor_start_line) && !self.in_vta {
             self.cursor_active = true;
         }
     }
@@ -690,16 +712,16 @@ impl Crtc6845 {
     /// Tick the CRTC to the next character.
     pub fn tick(&mut self) -> (&CrtcStatus, u16) {
         // Evaluate coincidence circuits.
-        let c5_r5 = self.vtac_c5 == self.reg[VerticalTotalAdjust];
-        let c3l_r3 = self.hsc_c3l == self.reg[SyncWidth];
+        let _c5_r5 = self.vtac_c5 == self.reg[VerticalTotalAdjust];
+        let _c3l_r3 = self.hsc_c3l == self.reg[SyncWidth];
         // C4 comparisons
-        let c4_r7 = self.vcc_c4 == self.reg[VerticalSync];
-        let c4_r6 = self.vcc_c4 == self.reg[VerticalDisplayed];
-        let c4_r4 = self.vcc_c4 == self.reg[VerticalTotal];
+        let _c4_r7 = self.vcc_c4 == self.reg[VerticalSync];
+        let _c4_r6 = self.vcc_c4 == self.reg[VerticalDisplayed];
+        let _c4_r4 = self.vcc_c4 == self.reg[VerticalTotal];
         // C0 comparisons
-        let c0_r0 = self.hcc_c0 == self.reg[HorizontalTotal];
-        let c0_r2 = self.hcc_c0 == self.reg[HorizontalSyncPosition];
-        let c0_r1 = self.hcc_c0 == self.reg[HorizontalDisplayed];
+        let _c0_r0 = self.hcc_c0 == self.reg[HorizontalTotal];
+        let _c0_r2 = self.hcc_c0 == self.reg[HorizontalSyncPosition];
+        let _c0_r1 = self.hcc_c0 == self.reg[HorizontalDisplayed];
         // C9 comparisons
         let c9x_r9 = if self.interlaced_mode.is_interlaced_video() {
             self.vlc_c9i == (self.reg[MaximumScanlineAddress] >> 1)
@@ -707,25 +729,31 @@ impl Crtc6845 {
         else {
             self.vlc_c9 == self.reg[MaximumScanlineAddress]
         };
-        let c9_r11 = self.vlc_c9 == self.reg[CursorEndLine];
-        let c9_r10 = self.vlc_c9 == self.cursor_start_line; // Coincidence circuit is 5 bit.
+        let _c9_r11 = self.vlc_c9 == self.reg[CursorEndLine];
+        let _c9_r10 = self.vlc_c9 == self.cursor_start_line; // Coincidence circuit is 5 bit.
 
-        let vma_cursor = self.vma == self.cursor_address;
+        let _vma_cursor = self.vma == self.cursor_address;
 
         if self.hcc_c0 == 0 {
             // START-OF-LINE processing.
             // Various logic is evalauated at the start of a line when C0 == 0.
 
             // Turn cursor on if this line matches CursorStartLine.
-            if self.vlc_c9 == self.cursor_start_line {
+            if (self.vlc_c9 == self.cursor_start_line) && !self.in_vta {
                 self.cursor_active = true;
             }
 
             if self.vcc_c4 == 0 {
-                // We are at the first character of a CRTC frame. Update start address.
-                self.status.den = true;
+                // We are at the first character of the first character row
+                if self.vlc_c9 == 0 {
+                    // We are at the first scanline of the first character of the first character
+                    // row.
+                    // START-OF-FRAME processing
+                    self.frames = self.frames.wrapping_add(1);
+                    self.status.den = true;
+                    self.vma = self.start_address_latch;
+                }
                 self.in_display_rows = true;
-                self.vma = self.start_address_latch;
             }
 
             // Evaluate the 'last_line' status.
@@ -754,14 +782,6 @@ impl Crtc6845 {
                 // START-OF-FRAME processing.
                 // We are at the first character of a CRTC frame. Update start address.
                 self.vma = self.start_address_latch;
-
-                // Update cursor blink (I'm not actually sure when this is done).
-                // The cursor has no counter, it is based on a divided clock which we model here.
-                if let Some(rate) = self.cursor_blink_rate {
-                    if self.ticks.is_multiple_of(rate as usize) {
-                        self.blink_state = !self.blink_state;
-                    }
-                }
             }
         }
 
@@ -835,7 +855,7 @@ impl Crtc6845 {
         // [Coincidence circuit]: C0 == R0
         if self.hcc_c0 == self.reg[HorizontalTotal] + 1 {
             // END-OF-LINE processing
-            if self.vlc_c9 == self.reg[CursorEndLine] {
+            if (self.vlc_c9 == self.reg[CursorEndLine]) && !self.in_vta {
                 self.cursor_active = false;
             }
 
@@ -877,6 +897,18 @@ impl Crtc6845 {
                     self.in_vblank = true;
                     self.status.vsync = true;
                     self.status.den = false;
+
+                    // Update cursor blink (I'm not actually sure when this is done, but at vsync
+                    // is as good as any...)
+                    // The cursor has no counter, it is based on a divided clock which we model here.
+                    if let Some(rate) = self.cursor_blink_rate {
+                        //log::trace!("Cursor has blink rate. Frames: {0}, rate: {rate}", self.frames);
+
+                        if self.frames.is_multiple_of(rate as usize) {
+                            //log::trace!("Cursor blinking");
+                            self.blink_state = !self.blink_state;
+                        }
+                    }
                 }
 
                 if self.last_line {
@@ -950,7 +982,8 @@ impl Crtc6845 {
         crtc_vec.push(("Start Address".to_string(), VideoCardStateEntry::String(format!("{:04X}", self.start_address))));
         push_reg_str!(crtc_vec, CursorAddressH, "[R14]", self.reg[CursorAddressH]);
         push_reg_str!(crtc_vec, CursorAddressL, "[R15]", self.reg[CursorAddressL]);
-
+        push_reg_str!(crtc_vec, LightPenPositionH, "[R16]", self.reg[LightPenPositionH]);
+        push_reg_str!(crtc_vec, LightPenPositionL, "[R17]", self.reg[LightPenPositionL]);
         crtc_vec
     }
 
@@ -960,10 +993,11 @@ impl Crtc6845 {
 
         counter_vec.push(("hcc_c0:".to_string(), VideoCardStateEntry::String(format!("{}", self.hcc_c0))));
         counter_vec.push(("vcc_c4:".to_string(), VideoCardStateEntry::String(format!("{}", self.vcc_c4))));
+        counter_vec.push(("vlc_c9:".to_string(), VideoCardStateEntry::String(format!("{}", self.vlc_c9))));
         counter_vec.push(("last_row:".to_string(), VideoCardStateEntry::String(format!("{}", self.last_row))));
         counter_vec.push(("last_line:".to_string(), VideoCardStateEntry::String(format!("{}", self.last_line))));
         counter_vec.push(("vtac_c5:".to_string(), VideoCardStateEntry::String(format!("{}", self.vtac_c5))));
-
+        counter_vec.push(("cursor_active".to_string(), VideoCardStateEntry::String(format!("{}", self.cursor_active))));
         counter_vec
     }
 

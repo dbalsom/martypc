@@ -230,7 +230,7 @@ impl VideoCard for CGACard {
                 pos_y: (addr / 40) as u32,
                 line_start,
                 line_end,
-                visible: self.cga_cursor_visible(),
+                visible: self.is_cursor_active(),
             },
             DisplayMode::Mode2TextBw80 | DisplayMode::Mode3TextCo80 => CursorInfo {
                 addr,
@@ -238,7 +238,7 @@ impl VideoCard for CGACard {
                 pos_y: (addr / 80) as u32,
                 line_start,
                 line_end,
-                visible: self.cga_cursor_visible(),
+                visible: self.is_cursor_active(),
             },
             _ => {
                 // Not a valid text mode
@@ -279,15 +279,23 @@ impl VideoCard for CGACard {
         general_vec.push((String::from("Adapter Type:"), VideoCardStateEntry::String(format!("{:?}", self.video_type()))));
         general_vec.push((String::from("Display Mode:"), VideoCardStateEntry::String(format!("{:?}", self.display_mode()))));
         general_vec.push((String::from("Video Enable:"), VideoCardStateEntry::String(format!("{:?}", self.mode_enable))));
-        general_vec.push((String::from("Clock Divisor:"), VideoCardStateEntry::String(format!("{}", self.clock_divisor))));
+
+        let dot_clock_str = if self.clock_divisor == 1 {
+            VideoCardStateEntry::String("14.31818MHz".into())
+        }
+        else {
+            VideoCardStateEntry::String("7.15909MHz".into())
+        };
+        general_vec.push((String::from("Dot Clock:"), dot_clock_str));
+        general_vec.push((String::from("HSYNC Phase:"), VideoCardStateEntry::String(format!("{}", self.hsync_phase))));
         general_vec.push((String::from("Frame Count:"), VideoCardStateEntry::String(format!("{}", self.frame_count))));
         map.insert("General".to_string(), general_vec);
 
-        let mut crtc_vec = self.crtc.get_reg_state();
-        push_reg_str!(crtc_vec, CrtcRegister::LightPenPositionH, "[R16]", self.crtc.reg[CrtcRegister::LightPenPositionH]);
-        push_reg_str!(crtc_vec, CrtcRegister::LightPenPositionL, "[R17]", self.crtc.reg[CrtcRegister::LightPenPositionL]);
-
+        let crtc_vec = self.crtc.get_reg_state();
         map.insert("CRTC".to_string(), crtc_vec);
+
+        let crtc_counters_vec = self.crtc.get_counter_state();
+        map.insert("CRTC Counters".to_string(), crtc_counters_vec);
 
         let mut monitor_vec = if self.monitor_emulation {
             self.monitor.debug_state()
@@ -326,7 +334,6 @@ impl VideoCard for CGACard {
         internal_vec.push((String::from("vsync_cycles:"), VideoCardStateEntry::String(format!("{}", self.cycles_per_vsync))));
         internal_vec.push((String::from("cur_screen_cycles:"), VideoCardStateEntry::String(format!("{}", self.cur_screen_cycles))));
         internal_vec.push((String::from("phase:"), VideoCardStateEntry::String(format!("{}", self.cycles & 0x0F))));
-        internal_vec.push((String::from("cursor attr:"), VideoCardStateEntry::String(format!("{:02b}", self.cursor_attr()))));
         internal_vec.push((String::from("snowflakes:"), VideoCardStateEntry::String(format!("{}", self.snow_count))));
         map.insert("Internal".to_string(), internal_vec);
 
@@ -451,22 +458,9 @@ impl VideoCard for CGACard {
                 }
 
                 // Drain accumulator and tick by character clock.
-                while self.clocks_accum > self.char_clock {
+                while self.clocks_accum >= self.char_clock {
                     if self.clocks_accum > 10000 {
                         log::error!("excessive clocks in accumulator: {}", self.clocks_accum);
-                    }
-
-                    /*
-                    if self.debug_counter >= 3638297 {
-                        log::error!("Break on me");
-                    }
-                    */
-
-                    // Handle blinking. TODO: Move blink handling into tick().
-                    self.blink_accum_clocks += self.char_clock;
-                    if self.blink_accum_clocks > CGA_CURSOR_BLINK_RATE_CLOCKS {
-                        self.blink_state = !self.blink_state;
-                        self.blink_accum_clocks -= CGA_CURSOR_BLINK_RATE_CLOCKS;
                     }
 
                     // Char clock may update after tick_char() with deferred mode change, so save the
@@ -480,25 +474,11 @@ impl VideoCard for CGACard {
                         self.tick_hchar();
                     }
 
-                    /*
-                    if self.debug_counter >= 3638298 {
-                        log::error!("{} < {}", self.clocks_accum, self.char_clock);
-                    }
-                    self.debug_counter += 1;
-                    */
-
                     self.clocks_accum = self.clocks_accum.saturating_sub(old_char_clock);
                 }
             }
             ClockingMode::Cycle => {
                 while self.clocks_accum > 0 {
-                    // Handle blinking. TODO: Move blink handling into tick().
-                    self.blink_accum_clocks += 1;
-                    if self.blink_accum_clocks > CGA_CURSOR_BLINK_RATE_CLOCKS {
-                        self.blink_state = !self.blink_state;
-                        self.blink_accum_clocks -= CGA_CURSOR_BLINK_RATE_CLOCKS;
-                    }
-
                     self.tick();
                     self.clocks_accum = self.clocks_accum.saturating_sub(1);
                 }

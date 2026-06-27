@@ -206,19 +206,21 @@ const CGA_MONITOR_VSYNC_MIN: u32 = 127;
 
 // We run the CGA card independent of the CPU frequency.
 // Timings in 4.77Mhz CPU cycles are provided for reference.
-const FRAME_TIME_CLOCKS: u32 = 238944;
-const FRAME_TIME_US: f64 = 16_688.15452339;
-const FRAME_VBLANK_US: f64 = 14_732.45903422;
-//const FRAME_CPU_TIME: u32 = 79_648;
-//const FRAME_VBLANK_START: u32 = 70_314;
 
-const CGA_HBLANK: f64 = 0.1785714;
+//const FRAME_TIME_CLOCKS: u32 = 238944;
+// const FRAME_TIME_US: f64 = 16_688.15452339;
+// const FRAME_VBLANK_US: f64 = 14_732.45903422;
+// const FRAME_CPU_TIME: u32 = 79_648;
+// const FRAME_VBLANK_START: u32 = 70_314;
 
-const CGA_DEFAULT_CURSOR_BLINK_RATE: f64 = 0.0625;
-const CGA_CURSOR_BLINK_RATE_CLOCKS: u32 = FRAME_TIME_CLOCKS * 8;
-const CGA_CURSOR_BLINK_RATE_US: f64 = FRAME_TIME_US * 8.0;
+// const CGA_HBLANK: f64 = 0.1785714;
+//
+// const CGA_DEFAULT_CURSOR_BLINK_RATE: f64 = 0.0625;
+// const CGA_CURSOR_BLINK_RATE_CLOCKS: u32 = FRAME_TIME_CLOCKS * 8;
+// const CGA_CURSOR_BLINK_RATE_US: f64 = FRAME_TIME_US * 8.0;
 
-const CGA_DEFAULT_CURSOR_FRAME_CYCLE: u32 = 8;
+const CGA_CURSOR_BLINK_RATE: usize = 8;
+const CGA_TEXT_BLINK_RATE: usize = 16;
 
 const MODE_MATCH_MASK: u8 = 0b0001_1111;
 const MODE_HIRES_TEXT: u8 = 0b0000_0001;
@@ -228,8 +230,6 @@ const MODE_ENABLE: u8 = 0b0000_1000;
 const MODE_HIRES_GRAPHICS: u8 = 0b0001_0000;
 const MODE_BLINKING: u8 = 0b0010_0000;
 
-const CURSOR_LINE_MASK: u8 = 0b0001_1111;
-const CURSOR_ATTR_MASK: u8 = 0b0110_0000;
 const CURSOR_ENABLE_MASK: u8 = 0b0010_0000;
 
 // Color control register bits.
@@ -508,8 +508,6 @@ pub struct CGACard {
     frame_count: u64,
     status_reads: u64,
 
-    cursor_blink_rate: f64,
-
     crtc: Crtc6845,
 
     crtc_ticks_since_vsync: u32,
@@ -526,6 +524,7 @@ pub struct CGACard {
     char_clock: u32,
     char_clock_mask: u64,
     char_clock_odd_mask: u64,
+    hsync_phase: u8,
 
     // Monitor stuff
     beam_x: u32,
@@ -558,12 +557,16 @@ pub struct CGACard {
     hsc_c3l: u8,     // Horizontal sync counter - counts during hsync period
     vtac_c5: u8,
     in_vta: bool,
-    vma: usize,              // VMA register - Video memory address
-    vma_t: usize,            // VMA' register - Video memory address temporary
-    rba: usize,              // Render buffer address
-    blink_state: bool,       // Used to control blinking of cursor and text with blink attribute
-    blink_accum_us: f64,     // Microsecond accumulator for blink state flipflop
-    blink_accum_clocks: u32, // CGA Clock accumulator for blink state flipflop
+    vma: usize,   // VMA register - Video memory address
+    vma_t: usize, // VMA' register - Video memory address temporary
+    rba: usize,   // Render buffer address
+
+    // Blinking logic
+    blink_ticks: usize,                // Used to control curosr/text blinking signals.
+    internal_cursor_blink_state: bool, // Used to control blinking of cursor
+    text_blink_state: bool,            // Used to control blinking of text
+
+    // Timing signals
     accumulated_us: f64,
     ticks_advanced: u32, // Number of ticks we have advanced mid-instruction via port or mmio access.
     pixel_clocks_owed: u32,
@@ -663,8 +666,6 @@ impl Default for CGACard {
             frame_count: 0,
             status_reads: 0,
 
-            cursor_blink_rate: CGA_DEFAULT_CURSOR_BLINK_RATE,
-
             crtc: Crtc6845::new(TraceLogger::None),
             crtc_ticks_since_vsync: 0,
 
@@ -682,6 +683,8 @@ impl Default for CGACard {
             char_clock: DEFAULT_CHAR_CLOCK,
             char_clock_mask: DEFAULT_CHAR_CLOCK_MASK,
             char_clock_odd_mask: DEFAULT_CHAR_CLOCK_ODD_MASK,
+            hsync_phase: 0,
+
             beam_x: 0,
             beam_y: 0,
             in_monitor_hsync: false,
@@ -714,9 +717,10 @@ impl Default for CGACard {
             vma: 0,
             vma_t: 0,
             rba: 0,
-            blink_state: false,
-            blink_accum_us: 0.0,
-            blink_accum_clocks: 0,
+
+            blink_ticks: 0,                     // Used to control curosr/text blinking signals.
+            internal_cursor_blink_state: false, // Used to control blinking of cursor
+            text_blink_state: false,            // Used to control blinking of text
 
             accumulated_us: 0.0,
             ticks_advanced: 0,
@@ -896,36 +900,21 @@ impl CGACard {
         self.lightpen_latch = false;
     }
 
-    fn cursor_attr(&self) -> u8 {
-        (self.crtc.reg[CrtcRegister::CursorStartLine] & CURSOR_ATTR_MASK) >> 5
+    #[inline]
+    /// Returns whether the cursor should be active (to be used when deciding whether to draw the
+    /// cursor).
+    /// Combines the MC6845's cursor signal with the CGA's internal blink signal.
+    /// When the MC6845 is set to 'slow' blink, this causes an interesting on-off-off-on-off-off
+    /// blink pattern.
+    fn is_cursor_active(&self) -> bool {
+        self.crtc.cursor() && self.internal_cursor_blink_state
     }
 
-    fn cga_cursor_visible(&self) -> bool {
-        self.cursor_attr() != 0b01
-    }
-
-    fn cga_cursor_line_visible(&self, line: u8) -> bool {
-        let start = self.crtc.reg[CrtcRegister::CursorStartLine] & CURSOR_LINE_MASK;
-        let end = self.crtc.reg[CrtcRegister::CursorEndLine] & CURSOR_LINE_MASK;
-
-        if start > self.crtc.maximum_scanline() {
-            return false;
-        }
-
-        let line = line & 0x1F;
-        if start <= end {
-            (start..=end).contains(&line)
-        }
-        else {
-            line <= end || line >= start
-        }
-    }
-
-    fn cga_cursor_active(&self) -> bool {
-        self.vma == self.crtc.cursor_address() as usize
-            && self.cga_cursor_visible()
-            && self.blink_state
-            && self.cga_cursor_line_visible(self.vlc_c9)
+    #[inline]
+    /// Essentially emulates U28,a triple NAND gate that disables text blink when the cursor is
+    /// blinking.
+    fn is_blink_enabled(&self) -> bool {
+        !self.crtc.cursor() && self.mode_blinking
     }
 
     fn card_hsync_width(&self) -> u8 {
@@ -1070,7 +1059,38 @@ impl CGACard {
                 (2, CGA_LCHAR_CLOCK as u32, 0x0F, 0x1F)
             };
 
+            self.update_display_extents();
             self.clock_pending = false;
+        }
+    }
+
+    // Update current hclock phase. This should be called when the CRTC raises the HS pin.
+    // Phase is 0 if hsync is in phase with LCOCK.
+    // Phase is 1 if hsync is out of phase with LCLOCK.
+    #[inline]
+    fn update_hclock_phase(&mut self) {
+        if self.cycles & CGA_LCHAR_CLOCK_MASK == 0 {
+            if self.hsync_phase != 0 {
+                self.hsync_phase = 0;
+                self.update_display_extents();
+            }
+            self.hsync_phase = 0;
+        }
+        else {
+            if self.hsync_phase != 1 {
+                self.hsync_phase = 1;
+                self.update_display_extents();
+            }
+            self.hsync_phase = 1;
+        }
+    }
+
+    fn update_display_extents(&mut self) {
+        if self.hsync_phase == 0 {
+            self.extents.apertures[0].x = CGA_APERTURE_CROPPED_X;
+        }
+        else {
+            self.extents.apertures[0].x = CGA_APERTURE_CROPPED_X - 8;
         }
     }
 
@@ -1247,7 +1267,7 @@ impl CGACard {
     /// glyph in high-resolution text mode.
     #[inline]
     pub fn get_hchar_glyph_row(&self, glyph: usize, row: usize) -> u64 {
-        if self.cur_blink && !self.blink_state {
+        if self.cur_blink && !self.text_blink_state && self.is_blink_enabled() {
             CGA_COLORS_U64[self.cur_bg as usize]
         }
         else {
@@ -1263,7 +1283,7 @@ impl CGACard {
     /// glyph in low-resolution (40-column) mode.
     #[inline]
     pub fn get_lchar_glyph_rows(&self, glyph: usize, row: usize) -> (u64, u64) {
-        if self.cur_blink && !self.blink_state {
+        if self.cur_blink && !self.text_blink_state && self.is_blink_enabled() {
             let glyph = CGA_COLORS_U64[self.cur_bg as usize];
             (glyph, glyph)
         }
@@ -1768,6 +1788,12 @@ impl CGACard {
 
         self.in_crtc_hblank = hsync;
         self.in_crtc_vblank = vsync;
+
+        // Detect hsync edge.
+        if hsync && !last_crtc_hblank {
+            self.update_hclock_phase();
+        }
+
         self.in_display_area = den;
         self.border_override = hborder | vborder;
         self.border = !self.in_display_area || self.border_override;
@@ -1798,9 +1824,10 @@ impl CGACard {
 
     pub fn calculate_blanking(&mut self) {
         // Delay syncs until next LCLOCK
-        self.in_card_vblank =
-            self.in_crtc_vblank && self.vsc_c3h < CGA_CARD_VSYNC_HEIGHT && (self.cycles & CGA_LCHAR_CLOCK_MASK == 0);
-        self.in_card_hblank = self.in_crtc_hblank && !self.in_card_hblank && (self.cycles & CGA_LCHAR_CLOCK_MASK == 0);
+        if self.cycles & CGA_LCHAR_CLOCK_MASK == 0 {
+            self.in_card_vblank = self.in_crtc_vblank && self.vsc_c3h < CGA_CARD_VSYNC_HEIGHT;
+            self.in_card_hblank = self.in_crtc_hblank;
+        }
     }
 
     fn latch_lightpen(&mut self) {
@@ -1841,6 +1868,15 @@ impl CGACard {
             //     self.cc_altcolor
             // );
             self.extents.mode_byte |= 0x04;
+        }
+
+        // Update blink timings
+        self.blink_ticks = self.blink_ticks.wrapping_add(1);
+        if self.blink_ticks.is_multiple_of(CGA_CURSOR_BLINK_RATE) {
+            self.internal_cursor_blink_state = !self.internal_cursor_blink_state;
+        }
+        if self.blink_ticks.is_multiple_of(CGA_TEXT_BLINK_RATE) {
+            self.text_blink_state = !self.text_blink_state;
         }
 
         // Swap the display buffers

@@ -120,8 +120,7 @@ impl VideoCard for TGACard {
         // is always HorizontalDisplayed * (VerticalDisplayed * (MaximumScanlineAddress + 1))
         // (Excepting fancy CRTC tricks that delay vsync)
         let mut width = self.crtc.reg[CrtcRegister::HorizontalDisplayed] as u32 * TGA_HCHAR_CLOCK as u32;
-        let height =
-            self.crtc.reg[CrtcRegister::VerticalDisplayed] as u32 * (self.crtc.maximum_scanline() as u32 + 1);
+        let height = self.crtc.reg[CrtcRegister::VerticalDisplayed] as u32 * (self.crtc.maximum_scanline() as u32 + 1);
 
         if self.mode_hires_gfx {
             width *= 2;
@@ -260,7 +259,7 @@ impl VideoCard for TGACard {
                 pos_y: (addr / 40) as u32,
                 line_start,
                 line_end,
-                visible: self.crtc.cursor_status(),
+                visible: self.crtc.cursor_enabled(),
             },
             DisplayMode::Mode2TextBw80 | DisplayMode::Mode3TextCo80 => CursorInfo {
                 addr,
@@ -268,7 +267,7 @@ impl VideoCard for TGACard {
                 pos_y: (addr / 80) as u32,
                 line_start,
                 line_end,
-                visible: self.crtc.cursor_status(),
+                visible: self.crtc.cursor_enabled(),
             },
             _ => {
                 // Not a valid text mode
