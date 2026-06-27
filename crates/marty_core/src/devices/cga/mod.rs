@@ -456,8 +456,8 @@ macro_rules! trace_regs {
                 $self.scanline,
                 $self.hcc_c0,
                 $self.vcc_c4,
-                $self.crtc.reg[CrtcRegister::VerticalTotal],
-                $self.crtc.reg[CrtcRegister::VerticalSync]
+                $self.crtc.reg[CrtcRegister::VerticalTotalR4],
+                $self.crtc.reg[CrtcRegister::VerticalSyncR7]
             ));
         }
     };
@@ -918,7 +918,7 @@ impl CGACard {
     }
 
     fn card_hsync_width(&self) -> u8 {
-        let width = self.crtc.reg[CrtcRegister::SyncWidth] & 0x0F;
+        let width = self.crtc.reg[CrtcRegister::SyncWidthR3] & 0x0F;
         if width == 0 {
             16
         }

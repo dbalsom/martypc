@@ -545,8 +545,8 @@ macro_rules! trace_regs {
                 "[SL:{:03} {} VT:{:03} VS:{:03}] ",
                 $self.scanline,
                 $self.crtc.debug_string(),
-                $self.crtc.reg[CrtcRegister::VerticalTotal],
-                $self.crtc.reg[CrtcRegister::VerticalSync]
+                $self.crtc.reg[CrtcRegister::VerticalTotalR4],
+                $self.crtc.reg[CrtcRegister::VerticalSyncR7]
             ));
         }
     };

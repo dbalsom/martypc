@@ -119,8 +119,9 @@ impl VideoCard for TGACard {
         // CGA supports a single fixed 8x8 font. The size of the displayed window
         // is always HorizontalDisplayed * (VerticalDisplayed * (MaximumScanlineAddress + 1))
         // (Excepting fancy CRTC tricks that delay vsync)
-        let mut width = self.crtc.reg[CrtcRegister::HorizontalDisplayed] as u32 * TGA_HCHAR_CLOCK as u32;
-        let height = self.crtc.reg[CrtcRegister::VerticalDisplayed] as u32 * (self.crtc.maximum_scanline() as u32 + 1);
+        let mut width = self.crtc.reg[CrtcRegister::HorizontalDisplayedR1] as u32 * TGA_HCHAR_CLOCK as u32;
+        let height =
+            self.crtc.reg[CrtcRegister::VerticalDisplayedR6] as u32 * (self.crtc.maximum_scanline() as u32 + 1);
 
         if self.mode_hires_gfx {
             width *= 2;

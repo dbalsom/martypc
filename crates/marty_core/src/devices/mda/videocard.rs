@@ -88,8 +88,8 @@ impl VideoCard for MDACard {
         // MDA supports a single fixed 8x14 font. The size of the displayed window
         // is always HorizontalDisplayed * (VerticalDisplayed * (MaximumScanlineAddress + 1))
         // (Excepting fancy CRTC tricks that delay vsync)
-        let width = self.crtc.reg[HorizontalTotal] as u32 * MDA_CHAR_CLOCK as u32;
-        let height = self.crtc.reg[VerticalDisplayed] as u32 * (self.crtc.reg[MaximumScanlineAddress] as u32 + 1);
+        let width = self.crtc.reg[HorizontalTotalR0] as u32 * MDA_CHAR_CLOCK as u32;
+        let height = self.crtc.reg[VerticalDisplayedR6] as u32 * (self.crtc.reg[MaximumScanlineAddressR9] as u32 + 1);
         (width, height)
     }
 
@@ -215,7 +215,7 @@ impl VideoCard for MDACard {
     }
 
     fn character_height(&self) -> u8 {
-        self.crtc.reg[MaximumScanlineAddress] + 1
+        self.crtc.reg[MaximumScanlineAddressR9] + 1
     }
 
     fn palette(&self) -> Option<Vec<[u8; 4]>> {
@@ -522,8 +522,8 @@ impl VideoCard for MDACard {
     fn get_text_mode_strings(&self) -> Vec<String> {
         let mut strings = Vec::new();
         let start_addr = self.crtc.start_address_latch();
-        let columns = self.crtc.reg[HorizontalDisplayed] as usize;
-        let rows = self.crtc.reg[VerticalDisplayed] as usize;
+        let columns = self.crtc.reg[HorizontalDisplayedR1] as usize;
+        let rows = self.crtc.reg[VerticalDisplayedR6] as usize;
         let mut row_addr = start_addr as usize;
 
         for _ in 0..rows {
