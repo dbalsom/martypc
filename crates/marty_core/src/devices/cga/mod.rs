@@ -549,7 +549,7 @@ pub struct CGACard {
     cur_blink: bool, // Current glyph blink attribute
     char_col: u8,    // Column of character glyph being drawn
     hcc_c0: u8,      // Horizontal character counter (x pos of character)
-    vlc_c9: u8,      // Vertical line counter - row of character being drawn
+    //vlc_c9: u8,      // Vertical line counter - row of character being drawn
     vcc_c4: u8,      // Vertical character counter (y pos of character)
     last_row: bool,  // Flag set on last character row of screen
     last_line: bool, // Flag set on last line of the screen (C9==R9)
@@ -706,7 +706,7 @@ impl Default for CGACard {
             cur_blink: false,
             char_col: 0,
             hcc_c0: 0,
-            vlc_c9: 0,
+            //vlc_c9: 0,
             vcc_c4: 0,
             last_row: false,
             last_line: false,
@@ -1782,7 +1782,7 @@ impl CGACard {
             self.scanline += 1;
         }
 
-        if last_crtc_vblank && !vsync {
+        if vsync && !last_crtc_vblank {
             self.do_vsync();
         }
 
@@ -1802,7 +1802,7 @@ impl CGACard {
         self.vma_t = self.vma;
 
         self.hcc_c0 = self.crtc.hcc();
-        self.vlc_c9 = self.crtc.vlc();
+        //self.vlc_c9 = self.crtc.vlc();
         self.vcc_c4 = self.crtc.vcc();
         self.last_row = self.crtc.last_row();
         self.last_line = self.crtc.last_line();

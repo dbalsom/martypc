@@ -81,6 +81,13 @@ impl InterlacedParity {
     pub fn is_odd(&self) -> bool {
         matches!(self, InterlacedParity::Odd)
     }
+    #[inline]
+    pub fn bit(&self) -> u8 {
+        match self {
+            InterlacedParity::Even => 0,
+            InterlacedParity::Odd => 1,
+        }
+    }
 }
 
 #[derive(Copy, Clone, Debug)]
@@ -298,6 +305,8 @@ pub struct Crtc6845 {
     status: CrtcStatus,
     in_hsync: bool,
     in_vsync: bool,
+    vertical_de: bool,
+    horizontal_de: bool,
     in_display_rows: bool,
     in_last_vblank_line: bool,
 
@@ -349,6 +358,8 @@ impl Default for Crtc6845 {
             status: Default::default(),
             in_hsync: false,
             in_vsync: false,
+            vertical_de: false,
+            horizontal_de: false,
             in_display_rows: false,
             in_last_vblank_line: false,
 
@@ -589,6 +600,21 @@ impl Crtc6845 {
     }
 
     #[inline]
+    pub fn ra(&self) -> u8 {
+        if self.interlaced_mode.is_interlaced_video() {
+            (self.vlc_c9i << 1) | self.frame_parity.bit()
+        }
+        else {
+            self.vlc_c9
+        }
+    }
+
+    #[inline]
+    pub fn ma(&self) -> u16 {
+        self.vma
+    }
+
+    #[inline]
     pub fn vlc(&self) -> u8 {
         match self.interlaced_mode {
             CrtcInterlacedMode::InterlacedSyncAndVideo => self.vlc_c9i,
@@ -696,30 +722,33 @@ impl Crtc6845 {
 
     #[inline]
     pub fn hsync(&self) -> bool {
-        self.status.hsync
+        self.in_hsync
     }
 
     #[inline]
     pub fn vsync(&self) -> bool {
-        self.status.vsync
+        self.in_vsync
     }
 
     #[inline]
     pub fn den(&self) -> bool {
-        self.status.den
+        self.horizontal_de && self.vertical_de
     }
 
     #[inline]
     pub fn border(&self) -> bool {
-        self.status.hborder | self.status.vborder
+        !self.horizontal_de | !self.vertical_de
     }
 
     #[inline]
-    fn tick_vlc(&mut self) {
+    fn tick_vlc(&mut self, tick_i: bool) {
         // Increment 5-bit progressive VLC
         self.vlc_c9 = (self.vlc_c9 + 1) & 0x1F;
-        // Increment 4-bit interlaced VLC
-        self.vlc_c9i = (self.vlc_c9i + 1) & 0x0F;
+
+        if tick_i {
+            // Increment 4-bit interlaced VLC
+            self.vlc_c9i = (self.vlc_c9i + 1) & 0x0F;
+        }
 
         if (self.vlc_c9 == self.cursor_start_line) && !self.in_vta() {
             self.cursor_active = true;
@@ -744,12 +773,11 @@ impl Crtc6845 {
         let _c0_r2 = self.hcc_c0 == self.reg[HorizontalSyncPositionR2];
         let _c0_r1 = self.hcc_c0 == self.reg[HorizontalDisplayedR1];
         // C9 comparisons
-        let c9x_r9 = if self.interlaced_mode.is_interlaced_video() {
-            self.vlc_c9i == (self.reg[MaximumScanlineAddressR9] >> 1)
-        }
-        else {
-            self.vlc_c9 == self.reg[MaximumScanlineAddressR9]
-        };
+        let c9i_r9 = self.vlc_c9i == (self.reg[MaximumScanlineAddressR9] >> 1);
+        let c9_r9_half = self.vlc_c9 == (self.reg[MaximumScanlineAddressR9] >> 1);
+        let c9_r9 = self.vlc_c9 == self.reg[MaximumScanlineAddressR9];
+        let c9_ivm_split = self.interlaced_mode.is_interlaced_video() && c9_r9_half;
+
         let _c9_r11 = self.vlc_c9 == self.reg[CursorEndLine];
         let _c9_r10 = self.vlc_c9 == self.cursor_start_line; // Coincidence circuit is 5 bit.
 
@@ -770,22 +798,21 @@ impl Crtc6845 {
                     // We are at the first scanline of the first character of the first character
                     // row.
                     // START-OF-FRAME processing
-                    self.frames = self.frames.wrapping_add(1);
-                    self.status.den = true;
                     self.vma = self.start_address_latch;
                 }
-                self.in_display_rows = true;
             }
 
             // Evaluate the 'last_line' status.
             // See CRTC Compendium, 12.4.1
-            if c4_r4 {
+
+            // [Coincidence circuit]: C4 == R4
+            if self.vcc_c4 == self.reg[VerticalTotalR4] {
                 self.last_row = true;
                 // 'last_line' is true if (C4 == R4) && (C9 == R9),
                 // except:
                 //  - the previous line was a 'last line'
                 //  - if a HSYNC takes place on position C0==0 (v1.9 p94)
-                self.last_line = c9x_r9 && !self.previous_last_line && !self.in_hsync;
+                self.last_line = c9_r9 && !self.previous_last_line && !self.in_hsync;
                 // 'last_line_mgmt' is false if (C4 == 0 && (C9 == 0)
                 self.last_line_mgmt = !(self.vcc_c4 == 0 && self.vlc_c9 == 0);
                 self.vtac_c5 = 0;
@@ -799,7 +826,7 @@ impl Crtc6845 {
         self.hcc_c0 = self.hcc_c0.wrapping_add(1);
         if self.hcc_c0 == 0 {
             // C0 has wrapped?
-            self.status.hborder = false;
+            self.horizontal_de = true;
             if self.vcc_c4 == 0 {
                 // START-OF-FRAME processing.
                 // We are at the first character of a CRTC frame. Update start address.
@@ -825,7 +852,7 @@ impl Crtc6845 {
                 // CRTC Compendium, 12.4.1
                 // "During a HSYNC, a test is performed on position C0=R2+R3-1, in order to
                 // determine if line N is a last line for line N+1 (at C0=0)."
-                if c4_r4 && c9x_r9 {
+                if c4_r4 && c9_r9 {
                     self.previous_last_line = true;
                 }
                 else {
@@ -849,34 +876,31 @@ impl Crtc6845 {
                         // We are leaving the fixed 6845 vertical sync period.
                         self.in_last_vblank_line = true;
                         self.vsc_c3h = 0;
-                        self.status.vsync = false;
-                        //return (&self.status, self.vma);
+                        self.in_vsync = false;
                     }
                 }
 
                 // We are leaving horizontal blanking period.
                 self.in_hsync = false;
-                self.status.hsync = false;
             }
         }
 
         // [Coincidence circuit]: C0 == R1.
         if self.hcc_c0 == self.reg[HorizontalDisplayedR1] {
             // C0 == R1 (HorizontalDisplayed): Entering right overscan.
-            if self.vlc_c9 == self.reg[MaximumScanlineAddressR9] {
+
+            if c9_r9 || c9_ivm_split {
                 // C9 == R9 (MaximumScanlineAddress): We are at the last character row
                 // Save VMA in VMA'
                 self.vma_t = self.vma;
             }
-            self.status.den = false;
-            self.status.hborder = true;
+            self.horizontal_de = false;
         }
 
         // [Coincidence circuit]: C0 == R2
         if self.hcc_c0 == self.reg[HorizontalSyncPositionR2] {
             // C0 == R2 (HorizontalSyncPos) We entered horizontal sync.
             self.in_hsync = true;
-            self.status.hsync = true;
             self.hsc_c3l = self.horizontal_sync_width();
         }
 
@@ -897,12 +921,11 @@ impl Crtc6845 {
             if self.in_last_vblank_line {
                 self.in_last_vblank_line = false;
                 self.in_vsync = false;
-                self.status.vsync = false;
             }
 
             // Reset Horizontal Character Counter and increment character row counter
             self.hcc_c0 = 0;
-            self.status.hborder = false;
+            self.horizontal_de = true;
 
             // Return video memory address to starting position for next character row
             self.vma = self.vma_t;
@@ -910,15 +933,11 @@ impl Crtc6845 {
             // Reset the current character glyph to start of row
             //self.set_char_addr();
 
-            if !self.in_vsync && self.in_display_rows {
-                // Start the new row
-                self.status.den = true;
-            }
-
-            // [Coincidence circuit]: C9(i) == R9
-            if c9x_r9 {
+            // [Coincidence circuit]: C9 == R9
+            if c9_r9 {
                 // C9 == R9 (MaxScanlineAddress): We finished drawing this row of characters
                 self.vlc_c9 = 0;
+                self.vlc_c9i = 0;
                 // Increment Vertical Character Counter
                 self.vcc_c4 = self.vcc_c4.wrapping_add(1);
                 // Set vma to starting position for next character row
@@ -929,8 +948,6 @@ impl Crtc6845 {
                     trace_regs!(self);
                     trace!(self, "Entering vsync");
                     self.in_vsync = true;
-                    self.status.vsync = true;
-                    self.status.den = false;
 
                     // Update cursor blink (I'm not actually sure when this is done, but at vsync
                     // is as good as any...)
@@ -949,16 +966,19 @@ impl Crtc6845 {
                     self.process_last_line();
                 }
             }
+            else if c9_ivm_split {
+                self.vlc_c9i = 0;
+                self.tick_vlc(false);
+            }
             else {
-                self.tick_vlc();
+                self.tick_vlc(true);
             }
 
             // [Coincidence circuit]: C4 == R6
             if self.vcc_c4 == self.reg[VerticalDisplayedR6] {
                 // C4 == R6 (VerticalDisplayed): Entering lower overscan area.
                 self.in_display_rows = false;
-                self.status.den = false;
-                self.status.vborder = true;
+                self.vertical_de = false;
             }
 
             if self.in_vta() {
@@ -977,10 +997,20 @@ impl Crtc6845 {
             self.process_last_line();
         }
 
-        self.status.cursor = self.cursor();
+        self.update_status();
         self.ticks += 1;
 
         (&self.status, self.vma)
+    }
+
+    #[inline]
+    pub fn update_status(&mut self) {
+        self.status.cursor = self.cursor();
+        self.status.den = self.den();
+        self.status.vsync = self.in_vsync;
+        self.status.hsync = self.in_hsync;
+        self.status.hborder = !self.horizontal_de;
+        self.status.vborder = !self.vertical_de;
     }
 
     #[inline]
@@ -1027,21 +1057,27 @@ impl Crtc6845 {
     }
 
     pub fn process_start_of_frame(&mut self) {
+        self.frames = self.frames.wrapping_add(1);
+
+        if self.interlaced_mode.is_interlaced_sync() {
+            self.frame_parity = self.frame_parity.next();
+        }
+
         self.transition_mode(CrtcMode::NormalRows);
         self.last_row = false;
         self.last_line = false;
         self.vtac_c5 = 0;
         self.vcc_c4 = 0;
         self.vlc_c9 = 0;
+        self.vlc_c9i = 0;
         self.start_address_latch = self.start_address;
         self.vma = self.start_address;
         self.vma_t = self.vma;
-        self.status.den = true;
+
         self.in_display_rows = true;
-        self.status.vborder = false;
-        self.status.hborder = false;
+        self.horizontal_de = true;
+        self.vertical_de = true;
         self.in_vsync = false;
-        self.status.vsync = false;
     }
 
     #[rustfmt::skip]
@@ -1077,11 +1113,17 @@ impl Crtc6845 {
         counter_vec.push(("hcc_c0:".to_string(), VideoCardStateEntry::String(format!("{}", self.hcc_c0))));
         counter_vec.push(("vcc_c4:".to_string(), VideoCardStateEntry::String(format!("{}", self.vcc_c4))));
         counter_vec.push(("vlc_c9:".to_string(), VideoCardStateEntry::String(format!("{}", self.vlc_c9))));
+        counter_vec.push(("vlc_c9i:".to_string(), VideoCardStateEntry::String(format!("{}", self.vlc_c9i))));
         counter_vec.push(("last_row:".to_string(), VideoCardStateEntry::String(format!("{}", self.last_row))));
         counter_vec.push(("last_line:".to_string(), VideoCardStateEntry::String(format!("{}", self.last_line))));
         counter_vec.push(("vtac_c5:".to_string(), VideoCardStateEntry::String(format!("{}", self.vtac_c5))));
         counter_vec.push(("cursor_active".to_string(), VideoCardStateEntry::String(format!("{}", self.cursor_active))));
         counter_vec.push(("frame_parity:".to_string(), VideoCardStateEntry::String(format!("{:?}", self.frame_parity))));
+
+
+        counter_vec.push(("den:".to_string(), VideoCardStateEntry::String(format!("{:?}", self.den()))));
+        counter_vec.push(("hs:".to_string(), VideoCardStateEntry::String(format!("{:?}", self.in_hsync))));
+        counter_vec.push(("cs:".to_string(), VideoCardStateEntry::String(format!("{:?}", self.in_vsync))));
         counter_vec
     }
 

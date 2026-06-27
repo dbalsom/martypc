@@ -313,8 +313,11 @@ impl VideoCard for CGACard {
 
         let mut internal_vec = Vec::new();
 
-        internal_vec.push((String::from("hcc_c0:"), VideoCardStateEntry::String(format!("{}", self.hcc_c0))));
-        internal_vec.push((String::from("vlc_c9:"), VideoCardStateEntry::String(format!("{}", self.vlc_c9))));
+        //internal_vec.push((String::from("hcc_c0:"), VideoCardStateEntry::String(format!("{}", self.hcc_c0))));
+        internal_vec.push((String::from("MA:"), VideoCardStateEntry::String(format!("{:04X}", self.crtc.ma()))));
+        internal_vec.push((String::from("MA (calc):"), VideoCardStateEntry::String(format!("{:05X}", 0xB8000 + ((self.crtc.ma() as usize) << 1)))));
+        internal_vec.push((String::from("RA:"), VideoCardStateEntry::String(format!("{}", self.crtc.ra()))));
+
         internal_vec.push((String::from("last_row:"), VideoCardStateEntry::String(format!("{}", self.last_row))));
         internal_vec.push((String::from("last_line:"), VideoCardStateEntry::String(format!("{}", self.last_line))));
         internal_vec.push((String::from("vcc_c4:"), VideoCardStateEntry::String(format!("{}", self.vcc_c4))));
@@ -322,7 +325,7 @@ impl VideoCard for CGACard {
         internal_vec.push((String::from("vsc_c3h:"), VideoCardStateEntry::String(format!("{}", self.vsc_c3h))));
         internal_vec.push((String::from("hsc_c3l:"), VideoCardStateEntry::String(format!("{}", self.hsc_c3l))));
         internal_vec.push((String::from("vtac_c5:"), VideoCardStateEntry::String(format!("{}", self.vtac_c5))));
-        internal_vec.push((String::from("vma:"), VideoCardStateEntry::String(format!("{:04X}", self.vma))));
+
         internal_vec.push((String::from("vma':"), VideoCardStateEntry::String(format!("{:04X}", self.vma_t))));
         internal_vec.push((String::from("rba:"), VideoCardStateEntry::String(format!("{:04X}", self.rba))));
         internal_vec.push((String::from("de:"), VideoCardStateEntry::String(format!("{}", self.in_display_area))));

@@ -83,7 +83,7 @@ impl CGACard {
     /// Draw a single character glyph column pixel in text mode, doubling the pixel if
     /// in 40 column mode.
     pub fn draw_text_mode_pixel(&mut self) {
-        let mut new_pixel = match CGACard::get_glyph_bit(self.cur_char, self.char_col, self.vlc_c9) {
+        let mut new_pixel = match CGACard::get_glyph_bit(self.cur_char, self.char_col, self.crtc.ra()) {
             true => {
                 if self.cur_blink {
                     if self.text_blink_state {
@@ -126,7 +126,7 @@ impl CGACard {
         }
         else if self.mode_enable {
             // Get the u64 glyph row to draw for the current fg and bg colors and character row (vlc)
-            let glyph_row: u64 = self.get_hchar_glyph_row(self.cur_char as usize, self.vlc_c9 as usize);
+            let glyph_row: u64 = self.get_hchar_glyph_row(self.cur_char as usize, self.crtc.ra() as usize);
 
             let frame_u64: &mut [u64] = bytemuck::cast_slice_mut(&mut *self.buf[self.back_buf]);
             frame_u64[self.rba >> 3] = glyph_row;
@@ -148,7 +148,7 @@ impl CGACard {
         }
         else if self.mode_enable {
             // Get the two u64 glyph row components to draw for the current fg and bg colors and character row (vlc)
-            let (glyph_row0, glyph_row1) = self.get_lchar_glyph_rows(self.cur_char as usize, self.vlc_c9 as usize);
+            let (glyph_row0, glyph_row1) = self.get_lchar_glyph_rows(self.cur_char as usize, self.crtc.ra() as usize);
 
             let frame_u64: &mut [u64] = bytemuck::cast_slice_mut(&mut *self.buf[self.back_buf]);
             frame_u64[self.rba >> 3] = glyph_row0;
@@ -164,7 +164,7 @@ impl CGACard {
     /// Draw a pixel in low resolution graphics mode (320x200)
     /// In this mode, pixels are doubled
     pub fn draw_lowres_gfx_mode_pixel(&mut self) {
-        let mut new_pixel = self.get_lowres_pixel_color(self.vlc_c9, self.char_col);
+        let mut new_pixel = self.get_lowres_pixel_color(self.crtc.ra(), self.char_col);
 
         if self.rba >= CGA_MAX_CLOCK - 2 {
             return;
@@ -183,7 +183,7 @@ impl CGACard {
     /// values to write to the index frame buffer directly.
     pub fn draw_lowres_gfx_mode_char(&mut self) {
         if self.mode_enable {
-            let lchar_dat = self.get_lowres_gfx_lchar(self.vlc_c9);
+            let lchar_dat = self.get_lowres_gfx_lchar(self.crtc.ra());
             let color0 = lchar_dat.0 .0;
             let color1 = lchar_dat.1 .0;
             let mask0 = lchar_dat.0 .1;
@@ -202,7 +202,7 @@ impl CGACard {
     /// Draw pixels in high resolution graphics mode. (640x200)
     /// In this mode, two pixels are drawn at the same time.
     pub fn draw_hires_gfx_mode_pixel(&mut self) {
-        let base_addr = self.get_gfx_addr(self.vlc_c9);
+        let base_addr = self.get_gfx_addr(self.crtc.ra());
 
         let word = (self.mem[base_addr] as u16) << 8 | self.mem[base_addr + 1] as u16;
 
@@ -232,7 +232,7 @@ impl CGACard {
 
     /// Draw a single character column in high resolution graphics mode (640x200)
     pub fn draw_hires_gfx_mode_char(&mut self) {
-        let base_addr = self.get_gfx_addr(self.vlc_c9);
+        let base_addr = self.get_gfx_addr(self.crtc.ra());
         let frame_u64: &mut [u64] = bytemuck::cast_slice_mut(&mut *self.buf[self.back_buf]);
 
         if self.mode_enable {
