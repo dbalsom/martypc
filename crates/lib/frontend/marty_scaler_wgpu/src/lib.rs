@@ -120,7 +120,9 @@ struct ScalerOptionsUniform {
     crt_params: CrtParamUniform,
     fill_color: [f32; 4],
     texture_order: u32,
-    _padding: [u32; 3], // 12 bytes to pad struct to 96 bytes
+    crtc_frame_parity: u32,
+    crtc_interlaced: u32,
+    _padding: [u32; 1],
 }
 
 #[allow(dead_code)]
@@ -225,6 +227,8 @@ pub struct MartyScaler {
     #[allow(dead_code)]
     crt_params: CrtParamUniform,
     texture_order: u32,
+    crtc_frame_parity: u32,
+    crtc_interlaced: bool,
 }
 
 impl MartyScaler {
@@ -504,6 +508,8 @@ impl MartyScaler {
                 wgpu::TextureFormat::Bgra8Unorm | wgpu::TextureFormat::Bgra8UnormSrgb => 1,
                 _ => 0,
             },
+            crtc_frame_parity: 0,
+            crtc_interlaced: false,
         }
     }
 
@@ -591,6 +597,8 @@ impl MartyScaler {
             }
             .into(),
             texture_order: 0, // RGBA
+            crtc_frame_parity: 0,
+            crtc_interlaced: 0,
             ..Default::default()
         };
         bytemuck::bytes_of(&uniform_struct).to_vec()
@@ -647,6 +655,8 @@ impl MartyScaler {
             crt_params,
             fill_color: MartyColor::from(self.fill_color).into(),
             texture_order: self.texture_order,
+            crtc_frame_parity: self.crtc_frame_parity,
+            crtc_interlaced: self.crtc_interlaced as u32,
             ..Default::default()
         };
 
@@ -919,6 +929,14 @@ impl DisplayScaler<wgpu::Device, wgpu::Queue, wgpu::Texture> for MartyScaler {
                 self.scanlines = lines.unwrap_or(self.scanlines);
                 self.do_scanlines = enabled.unwrap_or(self.do_scanlines);
                 update_uniform = true;
+            }
+            ScalerOption::CrtcFrameParity { enabled, parity } => {
+                let parity = parity & 1;
+                if self.crtc_interlaced != enabled || self.crtc_frame_parity != parity {
+                    self.crtc_interlaced = enabled;
+                    self.crtc_frame_parity = parity;
+                    update_uniform = true;
+                }
             }
             ScalerOption::Effect(_) => {}
         }

@@ -87,6 +87,7 @@ pub enum ScalerOption {
     // `lines` is the number of desired CRT scanline bands. For doubled render textures this is
     // typically half the backing/render texture height.
     Scanlines { enabled: Option<bool>, lines: Option<u32>, intensity: Option<f32> },
+    CrtcFrameParity { enabled: bool, parity: u32 },
     Effect(ScalerEffect),
 }
 

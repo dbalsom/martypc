@@ -577,6 +577,7 @@ pub struct CGACard {
 
     back_buf: usize,
     front_buf: usize,
+    front_buf_interlaced_frame_parity: Option<u8>,
     extents: DisplayExtents,
     aperture: usize,
     //buf: Vec<Vec<u8>>,
@@ -730,10 +731,11 @@ impl Default for CGACard {
 
             mem: vec![0; CGA_MEM_SIZE].into_boxed_slice().try_into().unwrap(),
 
-            back_buf:  1,
+            back_buf: 1,
             front_buf: 0,
-            extents:   CgaDefault::default(),
-            aperture:  CGA_DEFAULT_APERTURE,
+            front_buf_interlaced_frame_parity: None,
+            extents: CgaDefault::default(),
+            aperture: CGA_DEFAULT_APERTURE,
 
             //buf: vec![vec![0; (CGA_XRES_MAX * CGA_YRES_MAX) as usize]; 2],
 
@@ -1878,6 +1880,11 @@ impl CGACard {
         if self.blink_ticks.is_multiple_of(CGA_TEXT_BLINK_RATE) {
             self.text_blink_state = !self.text_blink_state;
         }
+
+        self.front_buf_interlaced_frame_parity = self
+            .crtc
+            .interlaced_sync_enabled()
+            .then(|| self.crtc.frame_parity_bit());
 
         // Swap the display buffers
         self.swap();

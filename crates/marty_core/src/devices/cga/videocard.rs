@@ -567,6 +567,10 @@ impl VideoCard for CGACard {
         self.frame_count
     }
 
+    fn interlaced_frame_parity(&self) -> Option<u8> {
+        self.front_buf_interlaced_frame_parity
+    }
+
     fn dump_mem(&self, path: &Path) {
         let mut filename = path.to_path_buf();
         filename.push("cga_mem.bin");

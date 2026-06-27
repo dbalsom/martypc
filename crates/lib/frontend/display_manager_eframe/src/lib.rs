@@ -722,6 +722,36 @@ impl DisplayTargetContext {
 }
 
 impl EFrameDisplayManager {
+    pub fn set_scaler_crtc_frame_parity(&mut self, vid: VideoCardId, parity: Option<u8>) {
+        let Some(idx_vec) = self.card_id_map.get(&vid).cloned()
+        else {
+            return;
+        };
+
+        let Some(backend) = &self.backend
+        else {
+            return;
+        };
+
+        let enabled = parity.is_some();
+        let parity = parity.unwrap_or(0) as u32;
+
+        for idx in idx_vec {
+            if let Some(dtc) = self.targets.get_mut(idx) {
+                let dtc = &mut resolve_dtc_mut!(dtc);
+
+                if let Some(scaler) = &mut dtc.scaler {
+                    scaler.set_option(
+                        &*backend.device(),
+                        &*backend.queue(),
+                        ScalerOption::CrtcFrameParity { enabled, parity },
+                        true,
+                    );
+                }
+            }
+        }
+    }
+
     pub fn main_display_target(&self) -> dtc!() {
         self.targets[0].clone()
     }

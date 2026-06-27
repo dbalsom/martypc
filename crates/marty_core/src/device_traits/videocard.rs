@@ -462,6 +462,11 @@ pub trait VideoCard {
     /// Return the number of frames the video device has rendered
     fn frame_count(&self) -> u64;
 
+    /// Return the current interlaced frame parity bit, if the adapter has interlaced sync enabled.
+    fn interlaced_frame_parity(&self) -> Option<u8> {
+        None
+    }
+
     /// Dump graphics memory to disk
     fn dump_mem(&self, path: &Path);
 

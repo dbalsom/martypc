@@ -677,6 +677,21 @@ impl Crtc6845 {
         self.reg[MaximumScanlineAddressR9]
     }
 
+    #[inline]
+    pub fn frame_parity(&self) -> InterlacedParity {
+        self.frame_parity
+    }
+
+    #[inline]
+    pub fn frame_parity_bit(&self) -> u8 {
+        self.frame_parity.bit()
+    }
+
+    #[inline]
+    pub fn interlaced_sync_enabled(&self) -> bool {
+        self.interlaced_mode.is_interlaced_sync()
+    }
+
     // Emulate the cursor strobe by taking the current VMA and splitting it into the two light
     // pen registers, R16 & R17.
     pub fn latch_lightpen(&mut self) {
