@@ -41,7 +41,6 @@ const GREETS: &[&str] = &[
     "640KB",
     "BigBass",
     "Folkert",
-    "Scali",
     "raphnet",
     "twvd",
     "Smartest Blob",
@@ -72,6 +71,7 @@ const GREETS: &[&str] = &[
     "DonKale",
     "NewRisingSun",
     "Aaron Giles",
+    "PickledDog",
     "VOGONS",
     "VCF",
     "r/emudev",
@@ -127,7 +127,7 @@ impl AboutDialog {
         ui.vertical(|ui| {
             ui.label("Made possible by the work of:");
             ui.label(
-                egui::RichText::new("reenigne, Ken Shirriff, phix")
+                egui::RichText::new("reenigne, Ken Shirriff, Longshot, phix")
                     .color(ui.visuals().strong_text_color())
                     .font(egui::FontId::proportional(16.0)),
             );
