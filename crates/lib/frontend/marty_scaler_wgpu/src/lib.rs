@@ -122,7 +122,7 @@ struct ScalerOptionsUniform {
     texture_order: u32,
     crtc_frame_parity: u32,
     crtc_interlaced: u32,
-    _padding: [u32; 1],
+    crtc_interlace_support: u32,
 }
 
 #[allow(dead_code)]
@@ -229,6 +229,7 @@ pub struct MartyScaler {
     texture_order: u32,
     crtc_frame_parity: u32,
     crtc_interlaced: bool,
+    crtc_interlace_support: bool,
 }
 
 impl MartyScaler {
@@ -510,6 +511,7 @@ impl MartyScaler {
             },
             crtc_frame_parity: 0,
             crtc_interlaced: false,
+            crtc_interlace_support: true,
         }
     }
 
@@ -599,6 +601,7 @@ impl MartyScaler {
             texture_order: 0, // RGBA
             crtc_frame_parity: 0,
             crtc_interlaced: 0,
+            crtc_interlace_support: 1,
             ..Default::default()
         };
         bytemuck::bytes_of(&uniform_struct).to_vec()
@@ -657,6 +660,7 @@ impl MartyScaler {
             texture_order: self.texture_order,
             crtc_frame_parity: self.crtc_frame_parity,
             crtc_interlaced: self.crtc_interlaced as u32,
+            crtc_interlace_support: self.crtc_interlace_support as u32,
             ..Default::default()
         };
 
@@ -935,6 +939,12 @@ impl DisplayScaler<wgpu::Device, wgpu::Queue, wgpu::Texture> for MartyScaler {
                 if self.crtc_interlaced != enabled || self.crtc_frame_parity != parity {
                     self.crtc_interlaced = enabled;
                     self.crtc_frame_parity = parity;
+                    update_uniform = true;
+                }
+            }
+            ScalerOption::InterlaceSupport(enabled) => {
+                if self.crtc_interlace_support != enabled {
+                    self.crtc_interlace_support = enabled;
                     update_uniform = true;
                 }
             }

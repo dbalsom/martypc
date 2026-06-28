@@ -736,6 +736,16 @@ impl Crtc6845 {
     }
 
     #[inline]
+    fn cursor_raster_address(&self) -> u8 {
+        if self.interlaced_mode.is_interlaced_video() {
+            self.ra()
+        }
+        else {
+            self.vlc_c9
+        }
+    }
+
+    #[inline]
     pub fn hsync(&self) -> bool {
         self.in_hsync
     }
@@ -765,7 +775,7 @@ impl Crtc6845 {
             self.vlc_c9i = (self.vlc_c9i + 1) & 0x0F;
         }
 
-        if (self.vlc_c9 == self.cursor_start_line) && !self.in_vta() {
+        if (self.cursor_raster_address() == self.cursor_start_line) && !self.in_vta() {
             self.cursor_active = true;
         }
     }
@@ -803,7 +813,7 @@ impl Crtc6845 {
             // Various logic is evalauated at the start of a line when C0 == 0.
 
             // Turn cursor on if this line matches CursorStartLine.
-            if (self.vlc_c9 == self.cursor_start_line) && !self.in_vta() {
+            if (self.cursor_raster_address() == self.cursor_start_line) && !self.in_vta() {
                 self.cursor_active = true;
             }
 
@@ -928,7 +938,7 @@ impl Crtc6845 {
         // [Coincidence circuit]: C0 == R0
         if c0_r0 {
             // END-OF-LINE processing
-            if (self.vlc_c9 == self.reg[CursorEndLine]) && !self.in_vta() {
+            if (self.cursor_raster_address() == self.reg[CursorEndLine]) && !self.in_vta() {
                 self.cursor_active = false;
             }
 
@@ -1003,7 +1013,7 @@ impl Crtc6845 {
                 if self.vtac_c5 > self.reg[VerticalTotalAdjustR5] {
                     // C5 == R5 (VerticalTotalAdjust): We are at the end of the top overscan.
                     // START-OF-FRAME processing.
-                    self.process_start_of_frame();
+                    self.process_frame_end();
                 }
             }
         }
@@ -1041,6 +1051,16 @@ impl Crtc6845 {
     }
 
     #[inline]
+    fn process_frame_end(&mut self) {
+        if self.has_half_scanline() {
+            self.transition_mode(CrtcMode::InterlacedHalfLine);
+        }
+        else {
+            self.process_start_of_frame();
+        }
+    }
+
+    #[inline]
     pub fn process_last_line(&mut self) {
         match self.mode {
             CrtcMode::NormalRows => {
@@ -1055,7 +1075,7 @@ impl Crtc6845 {
                     self.transition_mode(CrtcMode::InterlacedHalfLine);
                 }
                 else {
-                    self.process_start_of_frame();
+                    self.process_frame_end();
                 }
             }
             CrtcMode::InterlacedHalfLine => {
@@ -1232,6 +1252,94 @@ mod tests {
         }
 
         assert!(crtc.in_vta());
+    }
+
+    #[test]
+    fn vta_completion_falls_through_to_interlaced_halfline_on_even_field() {
+        let trace_logger = TraceLogger::None;
+        let mut crtc = Crtc6845::new(trace_logger);
+
+        crtc.interlaced_mode = CrtcInterlacedMode::InterlacedSyncAndVideo;
+        crtc.frame_parity = InterlacedParity::Even;
+        crtc.mode = CrtcMode::VerticalTotalAdjust;
+        crtc.frames = 7;
+
+        crtc.process_frame_end();
+        assert!(matches!(crtc.mode, CrtcMode::InterlacedHalfLine));
+        assert_eq!(crtc.frames, 7);
+        assert!(crtc.frame_parity.is_even());
+
+        crtc.process_last_line();
+        assert!(matches!(crtc.mode, CrtcMode::NormalRows));
+        assert_eq!(crtc.frames, 8);
+        assert!(crtc.frame_parity.is_odd());
+    }
+
+    #[test]
+    fn vta_completion_starts_next_frame_on_odd_field() {
+        let trace_logger = TraceLogger::None;
+        let mut crtc = Crtc6845::new(trace_logger);
+
+        crtc.interlaced_mode = CrtcInterlacedMode::InterlacedSyncAndVideo;
+        crtc.frame_parity = InterlacedParity::Odd;
+        crtc.mode = CrtcMode::VerticalTotalAdjust;
+        crtc.frames = 7;
+
+        crtc.process_frame_end();
+        assert!(matches!(crtc.mode, CrtcMode::NormalRows));
+        assert_eq!(crtc.frames, 8);
+        assert!(crtc.frame_parity.is_even());
+    }
+
+    #[test]
+    fn cursor_raster_address_uses_c9_in_progressive_mode() {
+        let trace_logger = TraceLogger::None;
+        let mut crtc = Crtc6845::new(trace_logger);
+
+        crtc.vlc_c9 = 6;
+        crtc.vlc_c9i = 3;
+        crtc.frame_parity = InterlacedParity::Odd;
+
+        assert_eq!(crtc.cursor_raster_address(), 6);
+    }
+
+    #[test]
+    fn cursor_raster_address_uses_ra_in_interlaced_video_mode() {
+        let trace_logger = TraceLogger::None;
+        let mut crtc = Crtc6845::new(trace_logger);
+
+        crtc.interlaced_mode = CrtcInterlacedMode::InterlacedSyncAndVideo;
+        crtc.vlc_c9 = 6;
+        crtc.vlc_c9i = 3;
+
+        crtc.frame_parity = InterlacedParity::Even;
+        assert_eq!(crtc.cursor_raster_address(), 6);
+
+        crtc.frame_parity = InterlacedParity::Odd;
+        assert_eq!(crtc.cursor_raster_address(), 7);
+    }
+
+    #[test]
+    fn interlaced_video_cursor_start_respects_field_parity() {
+        let trace_logger = TraceLogger::None;
+        let mut crtc = Crtc6845::new(trace_logger);
+
+        crtc.interlaced_mode = CrtcInterlacedMode::InterlacedSyncAndVideo;
+        crtc.cursor_start_line = 5;
+        crtc.vlc_c9 = 4;
+        crtc.vlc_c9i = 2;
+        crtc.frame_parity = InterlacedParity::Even;
+
+        crtc.tick_vlc(false);
+        assert!(!crtc.cursor_active);
+
+        crtc.cursor_active = false;
+        crtc.vlc_c9 = 4;
+        crtc.vlc_c9i = 2;
+        crtc.frame_parity = InterlacedParity::Odd;
+
+        crtc.tick_vlc(false);
+        assert!(crtc.cursor_active);
     }
 
     #[test]

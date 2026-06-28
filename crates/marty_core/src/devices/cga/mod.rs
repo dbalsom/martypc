@@ -1420,13 +1420,13 @@ impl CGACard {
                     self.draw_solid_hchar(self.cc_overscan_color);
                 }
             }
-            else if self.in_crtc_hblank {
+            else if self.in_card_hblank {
                 // Draw hblank in debug color
                 if self.debug_draw && !self.out_of_sync {
                     self.draw_solid_hchar(CGA_HBLANK_DEBUG_COLOR);
                 }
             }
-            else if self.in_crtc_vblank {
+            else if self.in_card_vblank {
                 // Draw vblank in debug color
                 if self.debug_draw && !self.out_of_sync {
                     self.draw_solid_hchar(CGA_VBLANK_DEBUG_COLOR);
@@ -1545,13 +1545,13 @@ impl CGACard {
                     self.draw_lowres_gfx_mode_char();
                 }
             }
-            else if self.in_crtc_hblank {
+            else if self.in_card_hblank {
                 // Draw hblank in debug color
                 if self.debug_draw && !self.out_of_sync {
                     self.draw_solid_lchar(CGA_HBLANK_DEBUG_COLOR);
                 }
             }
-            else if self.in_crtc_vblank {
+            else if self.in_card_vblank {
                 // Draw vblank in debug color
                 if self.debug_draw && !self.out_of_sync {
                     self.draw_solid_lchar(CGA_VBLANK_DEBUG_COLOR);
@@ -1848,9 +1848,7 @@ impl CGACard {
         self.beam_y = 0;
         self.scanline = 0;
         self.in_monitor_vblank = false;
-        self.rba = self.hcc_c0.saturating_sub(1) as usize * self.char_clock as usize;
-
-        //self.rba = self.beam_x as usize;
+        self.rba = self.beam_x as usize;
 
         trace_regs!(self);
         trace!(self, "Flipping buffers");

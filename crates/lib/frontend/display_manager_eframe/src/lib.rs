@@ -625,6 +625,7 @@ impl DisplayTargetContext {
         });
 
         scaler_update.push(ScalerOption::Filtering(params.filter));
+        scaler_update.push(ScalerOption::InterlaceSupport(params.interlace_support));
 
         if let Some(renderer) = &self.renderer {
             let rparams = renderer.params();
