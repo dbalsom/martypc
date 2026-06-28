@@ -137,7 +137,7 @@ impl MDACard {
                 };
 
                 // Do cursor
-                if self.crtc.cursor() {
+                if self.cursor_blink_state && self.crtc.cursor() {
                     new_pixel = self.cur_fg;
                     self.last_bit |= true;
                 }

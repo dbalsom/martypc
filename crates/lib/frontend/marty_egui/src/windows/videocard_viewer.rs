@@ -127,11 +127,11 @@ impl GuiState {
             if videocard_state.contains_key("CRTC") {
                 ui.vertical(|ui| {
                     GuiState::draw_register_file(ui, videocard_state, true,"CRTC", "CRTC Registers".to_string());
+                    GuiState::draw_register_file(ui, videocard_state, false, "CRTC Counters", "CRTC Counters".to_string());
                 });
             }
 
             ui.vertical(|ui| {
-                GuiState::draw_register_file(ui, videocard_state, false, "CRTC Counters", "CRTC Counters".to_string());
                 GuiState::draw_register_file(ui, videocard_state, false,"Monitor", "Monitor Simulation".to_string());
                 GuiState::draw_register_file(ui, videocard_state, false,"Internal", "Internal Registers".to_string());
                 GuiState::draw_register_file(ui, videocard_state, false,"External", "External Registers".to_string());

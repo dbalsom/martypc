@@ -31,7 +31,10 @@
 */
 
 use super::*;
-use crate::{device_traits::videocard::*, devices::pic::Pic};
+use crate::{
+    device_traits::videocard::*,
+    devices::{mc6845::CrtcRegister, pic::Pic},
+};
 
 // Helper macro for pushing video card state entries.
 // For CGA, we put the decorator first as there is only one register file an we use it to show the register index.
@@ -112,8 +115,9 @@ impl VideoCard for CGACard {
         // CGA supports a single fixed 8x8 font. The size of the displayed window
         // is always HorizontalDisplayed * (VerticalDisplayed * (MaximumScanlineAddress + 1))
         // (Excepting fancy CRTC tricks that delay vsync)
-        let mut width = self.crtc_horizontal_displayed as u32 * CGA_HCHAR_CLOCK as u32;
-        let height = self.crtc_vertical_displayed as u32 * (self.crtc_maximum_scanline_address as u32 + 1);
+        let mut width = self.crtc.reg[CrtcRegister::HorizontalDisplayedR1] as u32 * CGA_HCHAR_CLOCK as u32;
+        let height =
+            self.crtc.reg[CrtcRegister::VerticalDisplayedR6] as u32 * (self.crtc.maximum_scanline() as u32 + 1);
 
         if self.mode_hires_gfx {
             width *= 2;
@@ -195,7 +199,7 @@ impl VideoCard for CGACard {
 
     /// Return the 16-bit value computed from the CRTC's pair of Page Address registers.
     fn start_address(&self) -> u16 {
-        (self.crtc_start_address_ho as u16) << 8 | self.crtc_start_address_lo as u16
+        self.crtc.start_address()
     }
 
     fn is_40_columns(&self) -> bool {
@@ -217,24 +221,25 @@ impl VideoCard for CGACard {
     }
 
     fn cursor_info(&self) -> CursorInfo {
-        let addr = self.get_cursor_address();
+        let addr = self.crtc.cursor_address() as usize;
+        let (line_start, line_end) = self.crtc.cursor_extents();
 
         match self.display_mode {
             DisplayMode::Mode0TextBw40 | DisplayMode::Mode1TextCo40 => CursorInfo {
                 addr,
                 pos_x: (addr % 40) as u32,
                 pos_y: (addr / 40) as u32,
-                line_start: self.crtc_cursor_start_line,
-                line_end: self.crtc_cursor_end_line,
-                visible: self.get_cursor_status(),
+                line_start,
+                line_end,
+                visible: self.is_cursor_active(),
             },
             DisplayMode::Mode2TextBw80 | DisplayMode::Mode3TextCo80 => CursorInfo {
                 addr,
                 pos_x: (addr % 80) as u32,
                 pos_y: (addr / 80) as u32,
-                line_start: self.crtc_cursor_start_line,
-                line_end: self.crtc_cursor_end_line,
-                visible: self.get_cursor_status(),
+                line_start,
+                line_end,
+                visible: self.is_cursor_active(),
             },
             _ => {
                 // Not a valid text mode
@@ -259,7 +264,7 @@ impl VideoCard for CGACard {
     }
 
     fn character_height(&self) -> u8 {
-        self.crtc_maximum_scanline_address + 1
+        self.crtc.maximum_scanline() + 1
     }
 
     fn palette(&self) -> Option<Vec<[u8; 4]>> {
@@ -275,33 +280,23 @@ impl VideoCard for CGACard {
         general_vec.push((String::from("Adapter Type:"), VideoCardStateEntry::String(format!("{:?}", self.video_type()))));
         general_vec.push((String::from("Display Mode:"), VideoCardStateEntry::String(format!("{:?}", self.display_mode()))));
         general_vec.push((String::from("Video Enable:"), VideoCardStateEntry::String(format!("{:?}", self.mode_enable))));
-        general_vec.push((String::from("Clock Divisor:"), VideoCardStateEntry::String(format!("{}", self.clock_divisor))));
+
+        let dot_clock_str = if self.clock_divisor == 1 {
+            VideoCardStateEntry::String("14.31818MHz".into())
+        }
+        else {
+            VideoCardStateEntry::String("7.15909MHz".into())
+        };
+        general_vec.push((String::from("Dot Clock:"), dot_clock_str));
+        general_vec.push((String::from("HSYNC Phase:"), VideoCardStateEntry::String(format!("{}", self.hsync_phase))));
         general_vec.push((String::from("Frame Count:"), VideoCardStateEntry::String(format!("{}", self.frame_count))));
         map.insert("General".to_string(), general_vec);
 
-        let mut crtc_vec = Vec::new();
-
-        push_reg_str!(crtc_vec, CRTCRegister::HorizontalTotal, "[R0]", self.crtc_horizontal_total);
-        push_reg_str!(crtc_vec, CRTCRegister::HorizontalDisplayed, "[R1]", self.crtc_horizontal_displayed);
-        push_reg_str!(crtc_vec, CRTCRegister::HorizontalSyncPosition, "[R2]", self.crtc_horizontal_sync_pos);
-        push_reg_str!(crtc_vec, CRTCRegister::SyncWidth, "[R3]", self.crtc_sync_width);
-        push_reg_str!(crtc_vec, CRTCRegister::VerticalTotal, "[R4]", self.crtc_vertical_total);
-        push_reg_str!(crtc_vec, CRTCRegister::VerticalTotalAdjust, "[R5]", self.crtc_vertical_total_adjust);
-        push_reg_str!(crtc_vec, CRTCRegister::VerticalDisplayed, "[R6]", self.crtc_vertical_displayed);
-        push_reg_str!(crtc_vec, CRTCRegister::VerticalSync, "[R7]", self.crtc_vertical_sync_pos);
-        push_reg_str!(crtc_vec, CRTCRegister::InterlaceMode, "[R8]", self.crtc_interlace_mode);
-        push_reg_str!(crtc_vec, CRTCRegister::MaximumScanLineAddress, "[R9]", self.crtc_maximum_scanline_address);
-        push_reg_str!(crtc_vec, CRTCRegister::CursorStartLine, "[R10]", self.crtc_cursor_start_line);
-        push_reg_str!(crtc_vec, CRTCRegister::CursorEndLine, "[R11]", self.crtc_cursor_end_line);
-        push_reg_str!(crtc_vec, CRTCRegister::StartAddressH, "[R12]", self.crtc_start_address_ho);
-        push_reg_str!(crtc_vec, CRTCRegister::StartAddressL, "[R13]", self.crtc_start_address_lo);
-        crtc_vec.push(("Start Address".to_string(), VideoCardStateEntry::String(format!("{:04X}", self.crtc_start_address))));
-        push_reg_str!(crtc_vec, CRTCRegister::CursorAddressH, "[R14]", self.crtc_cursor_address_ho);
-        push_reg_str!(crtc_vec, CRTCRegister::CursorAddressL, "[R15]", self.crtc_cursor_address_lo);
-        push_reg_str!(crtc_vec, CRTCRegister::LightPenPositionH, "[R16]", self.crtc_lightpen_latch_ho);
-        push_reg_str!(crtc_vec, CRTCRegister::LightPenPositionL, "[R17]", self.crtc_lightpen_latch_lo);
-
+        let crtc_vec = self.crtc.get_reg_state();
         map.insert("CRTC".to_string(), crtc_vec);
+
+        let crtc_counters_vec = self.crtc.get_counter_state();
+        map.insert("CRTC Counters".to_string(), crtc_counters_vec);
 
         let mut monitor_vec = if self.monitor_emulation {
             self.monitor.debug_state()
@@ -318,8 +313,11 @@ impl VideoCard for CGACard {
 
         let mut internal_vec = Vec::new();
 
-        internal_vec.push((String::from("hcc_c0:"), VideoCardStateEntry::String(format!("{}", self.hcc_c0))));
-        internal_vec.push((String::from("vlc_c9:"), VideoCardStateEntry::String(format!("{}", self.vlc_c9))));
+        //internal_vec.push((String::from("hcc_c0:"), VideoCardStateEntry::String(format!("{}", self.hcc_c0))));
+        internal_vec.push((String::from("MA:"), VideoCardStateEntry::String(format!("{:04X}", self.crtc.ma()))));
+        internal_vec.push((String::from("MA (calc):"), VideoCardStateEntry::String(format!("{:05X}", 0xB8000 + ((self.crtc.ma() as usize) << 1)))));
+        internal_vec.push((String::from("RA:"), VideoCardStateEntry::String(format!("{}", self.crtc.ra()))));
+
         internal_vec.push((String::from("last_row:"), VideoCardStateEntry::String(format!("{}", self.last_row))));
         internal_vec.push((String::from("last_line:"), VideoCardStateEntry::String(format!("{}", self.last_line))));
         internal_vec.push((String::from("vcc_c4:"), VideoCardStateEntry::String(format!("{}", self.vcc_c4))));
@@ -327,7 +325,7 @@ impl VideoCard for CGACard {
         internal_vec.push((String::from("vsc_c3h:"), VideoCardStateEntry::String(format!("{}", self.vsc_c3h))));
         internal_vec.push((String::from("hsc_c3l:"), VideoCardStateEntry::String(format!("{}", self.hsc_c3l))));
         internal_vec.push((String::from("vtac_c5:"), VideoCardStateEntry::String(format!("{}", self.vtac_c5))));
-        internal_vec.push((String::from("vma:"), VideoCardStateEntry::String(format!("{:04X}", self.vma))));
+
         internal_vec.push((String::from("vma':"), VideoCardStateEntry::String(format!("{:04X}", self.vma_t))));
         internal_vec.push((String::from("rba:"), VideoCardStateEntry::String(format!("{:04X}", self.rba))));
         internal_vec.push((String::from("de:"), VideoCardStateEntry::String(format!("{}", self.in_display_area))));
@@ -340,7 +338,6 @@ impl VideoCard for CGACard {
         internal_vec.push((String::from("vsync_cycles:"), VideoCardStateEntry::String(format!("{}", self.cycles_per_vsync))));
         internal_vec.push((String::from("cur_screen_cycles:"), VideoCardStateEntry::String(format!("{}", self.cur_screen_cycles))));
         internal_vec.push((String::from("phase:"), VideoCardStateEntry::String(format!("{}", self.cycles & 0x0F))));
-        internal_vec.push((String::from("cursor attr:"), VideoCardStateEntry::String(format!("{:02b}", self.cursor_attr))));
         internal_vec.push((String::from("snowflakes:"), VideoCardStateEntry::String(format!("{}", self.snow_count))));
         map.insert("Internal".to_string(), internal_vec);
 
@@ -465,22 +462,9 @@ impl VideoCard for CGACard {
                 }
 
                 // Drain accumulator and tick by character clock.
-                while self.clocks_accum > self.char_clock {
+                while self.clocks_accum >= self.char_clock {
                     if self.clocks_accum > 10000 {
                         log::error!("excessive clocks in accumulator: {}", self.clocks_accum);
-                    }
-
-                    /*
-                    if self.debug_counter >= 3638297 {
-                        log::error!("Break on me");
-                    }
-                    */
-
-                    // Handle blinking. TODO: Move blink handling into tick().
-                    self.blink_accum_clocks += self.char_clock;
-                    if self.blink_accum_clocks > CGA_CURSOR_BLINK_RATE_CLOCKS {
-                        self.blink_state = !self.blink_state;
-                        self.blink_accum_clocks -= CGA_CURSOR_BLINK_RATE_CLOCKS;
                     }
 
                     // Char clock may update after tick_char() with deferred mode change, so save the
@@ -494,25 +478,11 @@ impl VideoCard for CGACard {
                         self.tick_hchar();
                     }
 
-                    /*
-                    if self.debug_counter >= 3638298 {
-                        log::error!("{} < {}", self.clocks_accum, self.char_clock);
-                    }
-                    self.debug_counter += 1;
-                    */
-
                     self.clocks_accum = self.clocks_accum.saturating_sub(old_char_clock);
                 }
             }
             ClockingMode::Cycle => {
                 while self.clocks_accum > 0 {
-                    // Handle blinking. TODO: Move blink handling into tick().
-                    self.blink_accum_clocks += 1;
-                    if self.blink_accum_clocks > CGA_CURSOR_BLINK_RATE_CLOCKS {
-                        self.blink_state = !self.blink_state;
-                        self.blink_accum_clocks -= CGA_CURSOR_BLINK_RATE_CLOCKS;
-                    }
-
                     self.tick();
                     self.clocks_accum = self.clocks_accum.saturating_sub(1);
                 }
@@ -597,6 +567,10 @@ impl VideoCard for CGACard {
         self.frame_count
     }
 
+    fn interlaced_frame_parity(&self) -> Option<u8> {
+        self.front_buf_interlaced_frame_parity
+    }
+
     fn dump_mem(&self, path: &Path) {
         let mut filename = path.to_path_buf();
         filename.push("cga_mem.bin");
@@ -622,9 +596,9 @@ impl VideoCard for CGACard {
     fn get_text_mode_strings(&self) -> Vec<String> {
         let mut strings = Vec::new();
 
-        let start_addr = self.crtc_start_address;
-        let columns = self.crtc_horizontal_displayed as usize;
-        let rows = self.crtc_vertical_displayed as usize;
+        let start_addr = self.crtc.start_address() as usize;
+        let columns = self.crtc.reg[CrtcRegister::HorizontalDisplayedR1] as usize;
+        let rows = self.crtc.reg[CrtcRegister::VerticalDisplayedR6] as usize;
 
         let mut row_addr = start_addr;
 

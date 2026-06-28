@@ -163,7 +163,7 @@ impl<T> ThreadSafe for T where T: Sized {} // Implement it for all types on WASM
 /// - a texture object representing the uploaded pixel buffer
 /// - a texture object representing a scaled display surface - usually produced by a scaling shader
 /// It is this latter texture that is ultimately presented to the display.
-pub trait DisplayTargetSurface: Send + Sync {
+pub trait DisplayTargetSurface: ThreadSafe {
     type NativeDevice;
     type NativeQueue;
     type NativeTexture;

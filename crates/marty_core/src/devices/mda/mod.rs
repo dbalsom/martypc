@@ -25,11 +25,10 @@
     --------------------------------------------------------------------------
 
     devices::mda::mod.rs
-
-    Implementation of the IBM MDA card, built around the Motorola MC6845
-    display controller.
-
 */
+
+//! Implementations of the IBM MDA card and the Hercules graphics adapter.
+//! Both use the common Motorola MC6845 CRTC.
 
 use super::mda::attr::*;
 
@@ -186,7 +185,7 @@ const MDA_FONT: &[u8] = include_bytes!("../../../assets/mda_8by14.bin");
 const MDA_FONT_SPAN: usize = 256; // Font bitmap is 2048 bits wide (256 * 8 characters)
 
 const MDA_CHAR_CLOCK: u8 = 9;
-const HGC_CHAR_CLOCK: u8 = 8;
+const HGC_CHAR_CLOCK: u8 = 16;
 const CRTC_FONT_HEIGHT: u8 = 14;
 const CRTC_VBLANK_HEIGHT: u8 = 16;
 
@@ -279,18 +278,18 @@ const CGA_DEBUG_U64: [u64; 16] = [
 // periods.
 const MDA_APERTURE_CROPPED_W: u32 = 720;
 const MDA_APERTURE_CROPPED_H: u32 = 350;
-const MDA_APERTURE_CROPPED_X: u32 = 9;
+const MDA_APERTURE_CROPPED_X: u32 = 9 + 135;
 const MDA_APERTURE_CROPPED_Y: u32 = 20;
 
 const MDA_APERTURE_NORMAL_W: u32 = 738;
 const MDA_APERTURE_NORMAL_H: u32 = 354;
-const MDA_APERTURE_NORMAL_X: u32 = 0;
-const MDA_APERTURE_NORMAL_Y: u32 = 18;
+const MDA_APERTURE_NORMAL_X: u32 = 135;
+const MDA_APERTURE_NORMAL_Y: u32 = 16;
 
 const MDA_APERTURE_FULL_W: u32 = 738;
 const MDA_APERTURE_FULL_H: u32 = 354;
-const MDA_APERTURE_FULL_X: u32 = 0;
-const MDA_APERTURE_FULL_Y: u32 = 18;
+const MDA_APERTURE_FULL_X: u32 = 135;
+const MDA_APERTURE_FULL_Y: u32 = 16;
 
 const MDA_APERTURE_DEBUG_W: u32 = MDA_XRES_MAX;
 const MDA_APERTURE_DEBUG_H: u32 = MDA_SCANLINE_MAX;
@@ -383,11 +382,11 @@ macro_rules! trace_regs {
 
 use crate::devices::{
     lpt_port::ParallelPort,
-    mc6845::{Crtc6845, CrtcStatus, HBlankCallback},
+    mc6845::{Crtc6845, CrtcStatus},
     mda::io::LPT_DEFAULT_IO_BASE,
 };
 
-#[derive(Copy, Clone, Debug, PartialEq, Eq, BitfieldSpecifier)]
+#[derive(Copy, Clone, Debug, PartialEq, Eq, Specifier)]
 pub enum PageSelect {
     PageB000,
     PageB800,
@@ -454,8 +453,6 @@ pub struct MDACard {
 
     cursor_status: bool,
     cursor_slowblink: bool,
-    cursor_blink_rate: f64,
-    cursor_data: [bool; MDA_CURSOR_MAX],
     cursor_attr: u8,
     last_bit: bool,
 
@@ -471,7 +468,7 @@ pub struct MDACard {
     monitor: MdaMonitor,
     in_card_vsync: bool,
     last_card_hsync: bool,
-    last_card_vblank: bool,
+    last_card_vsync: bool,
     beam_x: u32,
     beam_y: u32,
     scanline: u32,
@@ -520,8 +517,6 @@ pub struct MDACard {
 
     lightpen_latch: bool,
     lightpen_addr:  usize,
-
-    hblank_fn: Box<HBlankCallback>,
 
     lpt_port_base: u16,
     lpt: Option<ParallelPort>,
@@ -613,8 +608,6 @@ impl Default for MDACard {
 
             cursor_status: false,
             cursor_slowblink: false,
-            cursor_blink_rate: MDA_DEFAULT_CURSOR_BLINK_RATE,
-            cursor_data: [false; MDA_CURSOR_MAX],
             cursor_attr: 0,
             last_bit: false,
 
@@ -628,7 +621,7 @@ impl Default for MDACard {
             monitor: MdaMonitor::default(),
             in_card_vsync: true,
             last_card_hsync: false,
-            last_card_vblank: false,
+            last_card_vsync: false,
             beam_x: 0,
             beam_y: 0,
             scanline: 0,
@@ -685,8 +678,6 @@ impl Default for MDACard {
             lightpen_latch: false,
             lightpen_addr:  0,
 
-            hblank_fn: Box::new(|| 10),
-
             lpt_port_base: LPT_DEFAULT_IO_BASE,
             lpt: None,
 
@@ -707,9 +698,11 @@ impl MDACard {
         lpt: bool,
         video_frame_debug: bool,
     ) -> Self {
-        let mut mda = Self::default();
+        let mut mda = MDACard {
+            subtype,
+            ..Default::default()
+        };
 
-        mda.subtype = subtype;
         if let VideoCardSubType::Hercules = subtype {
             mda.mem_mask = HGC_MEM_MASK_FULL;
         }
@@ -728,17 +721,12 @@ impl MDACard {
             mda.lpt = Some(ParallelPort::new(None, TraceLogger::None));
         }
 
-        // MDA does not need to cut hblank short for any reason, so always return a big value
-        // for hsync width.
-        mda.hblank_fn = Box::new(|| 100);
-
         mda
     }
 
     /// Reset CGA state (on reboot, for example)
     fn reset_private(&mut self) {
         let trace_logger = std::mem::replace(&mut self.trace_logger, TraceLogger::None);
-        let hblank_fn = std::mem::replace(&mut self.hblank_fn, Box::new(|| 10));
         let lpt = self.lpt.take();
 
         // Save non-default values
@@ -749,7 +737,6 @@ impl MDACard {
             frame_count: self.frame_count, // Keep frame count as to not confuse frontend
             trace_logger,
             extents: self.extents.clone(),
-            hblank_fn,
             lpt,
             ..Self::default()
         }
@@ -836,7 +823,7 @@ impl MDACard {
     /// until we are back in phase with the character clock.
     #[inline]
     fn calc_cycles_owed(&mut self) -> u32 {
-        if self.ticks_advanced % MDA_CHAR_CLOCK as u32 > 0 {
+        if !self.ticks_advanced.is_multiple_of(MDA_CHAR_CLOCK as u32) {
             // We have advanced the CGA card out of phase with the character clock. Count
             // how many pixel clocks we need to tick by to be back in phase.
             ((!self.cycles + 1) & 0x0F) as u32
@@ -942,11 +929,13 @@ impl MDACard {
     /// Handle a read from the MDA status register. This register has bits to indicate whether
     /// we are in vblank or if the display is in the active display area (enabled)
     fn handle_status_register_read(&mut self) -> u8 {
-        // Bit 1 of the status register is set when a pixel is being drawn on the screen at that moment.
-        // It is essentially similar to the video mux bits on the EGA. It is difficult to emulate this bit
-        // when clocking by character. We can record whether a pixel was drawn during the last character tick
-        // and use that value.  IBM diagnostics primarily use this bit, but draw a large white box on the screen
-        // to give the bit ample time to be detected toggling on and off.
+        // Bit 1 of the status register is set when a pixel is being drawn on the screen at that
+        // precise moment.
+        // It is essentially similar to the video mux bits on the EGA. It is difficult to emulate
+        // this bit when clocking by character. We can record whether a pixel was drawn during the
+        // last character tick and use that value.  IBM diagnostics primarily use this bit, but
+        // draw a large white box on the screen to give the bit ample time to be detected toggling
+        // on and off.
 
         // Bit 3 is set when the horizontal retrace is active.
 
@@ -960,7 +949,7 @@ impl MDACard {
                 byte |= STATUS_HRETRACE;
             }
         }
-        else if self.crtc.hblank() {
+        else if self.crtc.hsync() {
             byte |= STATUS_HRETRACE
         }
 
@@ -969,7 +958,7 @@ impl MDACard {
         }
 
         if let VideoCardSubType::Hercules = self.subtype {
-            if !self.crtc.vblank() {
+            if !self.crtc.vsync() {
                 byte |= STATUS_NO_VRETRACE;
                 // Temporary hack for hercules (Road Runner)
                 //byte |= STATUS_VIDEO;
@@ -981,26 +970,14 @@ impl MDACard {
         //trace_regs!(self);
         trace!(
             self,
-            "Status register read: byte: {:02X} in_display_area: {} vblank: {} ",
+            "Status register read: byte: {:02X} in_display_area: {} vsync: {} ",
             byte,
             self.crtc.den(),
-            self.crtc.vblank()
+            self.crtc.vsync()
         );
 
         byte
     }
-
-    /*
-    /// Handle write to the Color Control register. This register controls the palette selection
-    /// and background/overscan color (foreground color in high res graphics mode)
-    fn handle_cc_register_write(&mut self, data: u8) {
-        self.cc_register = data;
-        self.update_palette();
-
-        log::trace!("Write to color control register: {:02X}", data);
-    }
-
-     */
 
     /// Swaps the front and back buffers by exchanging indices.
     fn swap(&mut self) {
@@ -1049,65 +1026,6 @@ impl MDACard {
         // Look up fg/bg from attribute table as the logic isn't regular.
         (self.cur_fg, self.cur_bg) = MDA_ATTR_TABLE[self.cur_attr as usize];
     }
-    /*
-       /// Get the 64-bit value representing the specified row of the specified character
-       /// glyph in high-resolution text mode.
-       #[inline]
-       pub fn get_hchar_glyph_row(&self, glyph: usize, row: usize) -> u64 {
-           if self.cur_blink && !self.blink_state {
-               CGA_COLORS_U64[self.cur_bg as usize]
-           }
-           else {
-               let glyph_row_base = CGA_HIRES_GLYPH_TABLE[glyph & 0xFF][row];
-
-               // Combine glyph mask with foreground and background colors.
-               glyph_row_base & CGA_COLORS_U64[self.cur_fg as usize]
-                   | !glyph_row_base & CGA_COLORS_U64[self.cur_bg as usize]
-           }
-       }
-
-    */
-
-    /*
-    pub fn draw_text_mode_char(&mut self) {
-
-        let draw_span = (8 * self.clock_divisor) as usize;
-
-        // Do cursor if visible, enabled and defined
-        if     self.vma == self.crtc_cursor_address
-            && self.cursor_status
-            && self.blink_state
-            && self.cursor_data[(self.vlc_c9 & 0x1F) as usize]
-        {
-            self.draw_solid_char(self.cur_fg);
-        }
-        else if self.mode_enable {
-            for i in (0..draw_span).step_by(self.clock_divisor as usize) {
-                let new_pixel = match CGACard::get_glyph_bit(self.cur_char, (i as u8 / self.clock_divisor), self.vlc_c9) {
-                    true => {
-                        if self.cur_blink {
-                            if self.blink_state { self.cur_fg } else { self.cur_bg }
-                        }
-                        else {
-                            self.cur_fg
-                        }
-                    },
-                    false => self.cur_bg
-                };
-
-                self.buf[self.back_buf][self.rba + i] = new_pixel;
-                if self.clock_divisor == 2 {
-                    // Double pixels in 40 column mode.
-                    self.buf[self.back_buf][self.rba + i + 1] = new_pixel;
-                }
-            }
-        }
-        else {
-            // When mode bit is disabled in text mode, the CGA acts like VRAM is all 0.
-            self.draw_solid_char(0);
-        }
-    }
-    */
 
     /// Calculate the byte address given the current value of vma; given that the address
     /// programmed into the CRTC start register is interpreted by the CGA as a word address.
@@ -1140,13 +1058,13 @@ impl MDACard {
             if self.crtc.den() {
                 self.draw_text_mode_hchar_slow();
             }
-            else if self.crtc.hblank() {
+            else if self.crtc.hsync() {
                 // Draw hblank in debug color
                 if self.debug_draw {
                     self.draw_solid_hchar(MDA_HBLANK_DEBUG_COLOR);
                 }
             }
-            else if self.crtc.vblank() {
+            else if self.crtc.vsync() {
                 // Draw vblank in debug color
                 if self.debug_draw {
                     self.draw_solid_hchar(MDA_VBLANK_DEBUG_COLOR);
@@ -1198,13 +1116,13 @@ impl MDACard {
                 self.draw_hires_gfx_mode_char();
                 //self.draw_solid_gchar(MDA_DEBUG_COLOR);
             }
-            else if self.crtc.hblank() {
+            else if self.crtc.hsync() {
                 // Draw hblank in debug color
                 if self.debug_draw {
                     self.draw_solid_gchar(MDA_HBLANK_DEBUG_COLOR);
                 }
             }
-            else if self.crtc.vblank() {
+            else if self.crtc.vsync() {
                 // Draw vblank in debug color
                 if self.debug_draw {
                     self.draw_solid_gchar(MDA_VBLANK_DEBUG_COLOR);
@@ -1236,26 +1154,26 @@ impl MDACard {
 
     /// Handle the CRTC status after ticking.
     pub fn handle_crtc_tick(&mut self) {
-        let (status, vma) = self.crtc.tick(&mut self.hblank_fn);
+        let (status, vma) = self.crtc.tick();
         // Destructure status so that we can drop the borrow
-        let CrtcStatus { hsync, vblank, .. } = *status;
-        self.in_card_vsync = !vblank;
-        self.tick_monitor(self.char_clock, hsync, vblank);
+        let CrtcStatus { hsync, vsync, .. } = *status;
+        self.in_card_vsync = vsync;
+        self.tick_monitor(self.char_clock, hsync, !vsync);
         self.fetch_char(vma);
         self.vma = vma as usize;
     }
 
-    #[inline]
-    pub fn tick_monitor(&mut self, ticks: u32, hsync: bool, vblank: bool) {
+    // Run the monitor simulation, and perform flybacks if triggered.
+    pub fn tick_monitor(&mut self, ticks: u32, hsync: bool, vsync: bool) {
         if !self.monitor_emulation {
             if hsync && !self.last_card_hsync {
                 self.do_hsync();
             }
-            if vblank && !self.last_card_vblank {
+            if vsync && !self.last_card_vsync {
                 self.do_vsync();
             }
             self.last_card_hsync = hsync;
-            self.last_card_vblank = vblank;
+            self.last_card_vsync = vsync;
             return;
         }
 
@@ -1264,7 +1182,7 @@ impl MDACard {
         self.monitor.run(
             ticks,
             hsync,
-            self.in_card_vsync,
+            vsync,
             &mut || {
                 do_horizontal_flyback = true;
             },
@@ -1350,13 +1268,13 @@ impl MDACard {
                 // Draw current pixel
                 self.draw_text_mode_pixel();
             }
-            else if self.crtc.hblank() {
+            else if self.crtc.hsync() {
                 // Draw hblank in debug color
                 if self.debug_draw {
                     self.buf[self.back_buf][self.rba] = MDA_HBLANK_DEBUG_COLOR;
                 }
             }
-            else if self.crtc.vblank() {
+            else if self.crtc.vsync() {
                 // Draw vblank in debug color
                 if self.debug_draw {
                     self.buf[self.back_buf][self.rba] = MDA_VBLANK_DEBUG_COLOR;
@@ -1420,7 +1338,7 @@ impl MDACard {
 
         // Done with the current character
         if self.char_col == MDA_CHAR_CLOCK {
-            if self.cycles % MDA_CHAR_CLOCK as u64 != 0 {
+            if !self.cycles.is_multiple_of(MDA_CHAR_CLOCK as u64) {
                 log::error!(
                     "tick(): calling tick_crtc_char but out of phase with cclock: cycles: {}",
                     self.cycles,
@@ -1465,25 +1383,6 @@ impl MDACard {
             // So we need to delay resetting vblank flag until then.
             //self.in_crtc_vblank = false;
 
-            if self.beam_y > 258 && self.beam_y < 262 {
-                // This is a "short" frame. Calculate delta.
-                let _delta_y = 262 - self.beam_y;
-
-                //self.sink_cycles = delta_y * 912;
-
-                /*
-                if self.cycles & self.char_clock_mask != 0 {
-                    log::error!(
-                        "vsync out of phase with cclock: cycles: {} mask: {}",
-                        self.cycles,
-                        self.char_clock_mask
-                    );
-                }
-
-                 */
-                //log::trace!("sink_cycles: {}", self.sink_cycles);
-            }
-
             self.beam_x = 0;
             self.beam_y = 0;
             self.rba = 0;
@@ -1495,13 +1394,14 @@ impl MDACard {
             self.scanline = 0;
             self.frame_count += 1;
 
+            // TODO: clean this up, artifacts left over from CGA.
             // Save the current mode byte, used for composite rendering.
-            // The mode could have changed several times per frame, but I am not sure how the composite rendering should
-            // really handle that...
+            // The mode could have changed several times per frame, but I am not sure how the
+            // composite rendering should really handle that...
             self.extents.mode_byte = self.mode_byte;
 
             // Toggle blink state. This is toggled every 8 frames by default.
-            if (self.frame_count % MDA_DEFAULT_CURSOR_FRAME_CYCLE) == 0 {
+            if self.frame_count.is_multiple_of(MDA_DEFAULT_CURSOR_FRAME_CYCLE) {
                 self.cursor_blink_state = !self.cursor_blink_state;
                 // Text blink state is 1/2 cursor blink state
                 if self.cursor_blink_state {

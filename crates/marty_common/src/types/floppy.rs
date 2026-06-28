@@ -5,7 +5,7 @@
    Copyright 2022-2026 Daniel Balsom
 
    Permission is hereby granted, free of charge, to any person obtaining a
-   copy of this software and associated documentation files (the “Software”),
+   copy of this software and associated documentation files (the "Software"),
    to deal in the Software without restriction, including without limitation
    the rights to use, copy, modify, merge, publish, distribute, sublicense,
    and/or sell copies of the Software, and to permit persons to whom the
@@ -14,7 +14,7 @@
    The above copyright notice and this permission notice shall be included in
    all copies or substantial portions of the Software.
 
-   THE SOFTWARE IS PROVIDED “AS IS”, WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
+   THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
    IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
    FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
    AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
@@ -24,27 +24,18 @@
 
    ---------------------------------------------------------------------------
 
-   frontend_common::types::joykey.rs
+   common::types::floppy.rs
 
-   Define frontend types for joystick keyboard emulation keys..
-
+   Common floppy image types.
 */
 
-use marty_common::types::keys::MartyKey;
-use serde_derive::Deserialize;
-
-#[derive(Copy, Clone, Debug, PartialEq, Hash, Eq, Deserialize)]
-pub enum JoyKeyInput {
-    JoyButton1,
-    JoyButton2,
-    JoyUp,
-    JoyLeft,
-    JoyRight,
-    JoyDown,
-}
-
-#[derive(Clone, Debug, Deserialize)]
-pub struct JoyKeyEntry {
-    pub input: JoyKeyInput,
-    pub key:   MartyKey,
+#[derive(Copy, Clone, Debug)]
+pub enum FloppyImageType {
+    Image160K,
+    Image180K,
+    Image320K,
+    Image360K,
+    Image720K,
+    Image12M,
+    Image144M,
 }

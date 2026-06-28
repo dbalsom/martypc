@@ -81,7 +81,7 @@ pub enum ChannelMode {
     HardwareTriggeredStrobe,
 }
 
-// We implement From<u8> for this enum ourselves rather than deriving BitfieldSpecifier
+// We implement From<u8> for this enum ourselves rather than deriving Specifier
 // as there is more than one bit mapping per Enum variant (6 and 7 map to modes 2 & 3 again)
 impl From<u8> for ChannelMode {
     fn from(orig: u8) -> Self {
@@ -105,13 +105,13 @@ pub enum ReloadFlag {
     ReloadNextCycle,
 }
 
-#[derive(Debug, Copy, Clone, PartialEq, BitfieldSpecifier)]
+#[derive(Debug, Copy, Clone, PartialEq, Specifier)]
 pub enum PitType {
     Model8253,
     Model8254,
 }
 
-#[derive(Debug, PartialEq, BitfieldSpecifier)]
+#[derive(Debug, PartialEq, Specifier)]
 enum RwModeField {
     LatchCommand,
     Lsb,

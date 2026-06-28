@@ -64,25 +64,25 @@ pub enum AttributeRegisterFlipFlop {
     Data,
 }
 
-#[derive(Debug, PartialEq, BitfieldSpecifier)]
+#[derive(Debug, PartialEq, Specifier)]
 pub enum AttributeMode {
     Text,
     Graphics,
 }
 
-#[derive(Debug, BitfieldSpecifier)]
+#[derive(Debug, Specifier)]
 pub enum AttributeDisplayType {
     Color,
     Monochrome,
 }
 
-#[derive(Debug, BitfieldSpecifier)]
+#[derive(Debug, Specifier)]
 pub enum AttributeBlinkOrIntensity {
     BackgroundIntensity,
     Blink,
 }
 
-#[derive(Debug, BitfieldSpecifier)]
+#[derive(Debug, Specifier)]
 pub enum PixelClockSelect {
     EveryCycle,
     EveryOtherCycle,

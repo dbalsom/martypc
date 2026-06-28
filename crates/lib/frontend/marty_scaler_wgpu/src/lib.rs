@@ -120,7 +120,9 @@ struct ScalerOptionsUniform {
     crt_params: CrtParamUniform,
     fill_color: [f32; 4],
     texture_order: u32,
-    _padding: [u32; 3], // 12 bytes to pad struct to 96 bytes
+    crtc_frame_parity: u32,
+    crtc_interlaced: u32,
+    crtc_interlace_support: u32,
 }
 
 #[allow(dead_code)]
@@ -225,6 +227,9 @@ pub struct MartyScaler {
     #[allow(dead_code)]
     crt_params: CrtParamUniform,
     texture_order: u32,
+    crtc_frame_parity: u32,
+    crtc_interlaced: bool,
+    crtc_interlace_support: bool,
 }
 
 impl MartyScaler {
@@ -257,7 +262,7 @@ impl MartyScaler {
             address_mode_w: wgpu::AddressMode::ClampToEdge,
             mag_filter: wgpu::FilterMode::Nearest,
             min_filter: wgpu::FilterMode::Nearest,
-            mipmap_filter: wgpu::FilterMode::Nearest,
+            mipmap_filter: wgpu::MipmapFilterMode::Nearest,
             lod_min_clamp: 0.0,
             lod_max_clamp: 1.0,
             compare: None,
@@ -273,7 +278,7 @@ impl MartyScaler {
             address_mode_w: wgpu::AddressMode::ClampToEdge,
             mag_filter: wgpu::FilterMode::Linear,
             min_filter: wgpu::FilterMode::Linear,
-            mipmap_filter: wgpu::FilterMode::Linear,
+            mipmap_filter: wgpu::MipmapFilterMode::Linear,
             lod_min_clamp: 0.0,
             lod_max_clamp: 1.0,
             compare: None,
@@ -414,8 +419,8 @@ impl MartyScaler {
         // Create pipeline
         let pipeline_layout = device.create_pipeline_layout(&wgpu::PipelineLayoutDescriptor {
             label: Some("marty_renderer_pipeline_layout"),
-            bind_group_layouts: &[&bind_group_layout],
-            push_constant_ranges: &[],
+            bind_group_layouts: &[Some(&bind_group_layout)],
+            immediate_size: 0,
         });
 
         let mut primitive = wgpu::PrimitiveState::default();
@@ -446,7 +451,7 @@ impl MartyScaler {
                     write_mask: wgpu::ColorWrites::ALL,
                 })],
             }),
-            multiview: None,
+            multiview_mask: None,
             cache: None,
         });
 
@@ -504,6 +509,9 @@ impl MartyScaler {
                 wgpu::TextureFormat::Bgra8Unorm | wgpu::TextureFormat::Bgra8UnormSrgb => 1,
                 _ => 0,
             },
+            crtc_frame_parity: 0,
+            crtc_interlaced: false,
+            crtc_interlace_support: true,
         }
     }
 
@@ -591,6 +599,9 @@ impl MartyScaler {
             }
             .into(),
             texture_order: 0, // RGBA
+            crtc_frame_parity: 0,
+            crtc_interlaced: 0,
+            crtc_interlace_support: 1,
             ..Default::default()
         };
         bytemuck::bytes_of(&uniform_struct).to_vec()
@@ -647,6 +658,9 @@ impl MartyScaler {
             crt_params,
             fill_color: MartyColor::from(self.fill_color).into(),
             texture_order: self.texture_order,
+            crtc_frame_parity: self.crtc_frame_parity,
+            crtc_interlaced: self.crtc_interlaced as u32,
+            crtc_interlace_support: self.crtc_interlace_support as u32,
             ..Default::default()
         };
 
@@ -681,6 +695,7 @@ impl DisplayScaler<wgpu::Device, wgpu::Queue, wgpu::Texture> for MartyScaler {
             label: Some("marty_renderer marty_render pass"),
             color_attachments: &[Some(wgpu::RenderPassColorAttachment {
                 view: render_target,
+                depth_slice: None,
                 resolve_target: None,
                 ops: wgpu::Operations {
                     load:  wgpu::LoadOp::Clear(MartyColor::from(self.fill_color).to_wgpu_color_linear()),
@@ -690,6 +705,7 @@ impl DisplayScaler<wgpu::Device, wgpu::Queue, wgpu::Texture> for MartyScaler {
             depth_stencil_attachment: None,
             timestamp_writes: None,
             occlusion_query_set: None,
+            multiview_mask: None,
         });
 
         render_pass.set_pipeline(&self.render_pipeline);
@@ -917,6 +933,20 @@ impl DisplayScaler<wgpu::Device, wgpu::Queue, wgpu::Texture> for MartyScaler {
                 self.scanlines = lines.unwrap_or(self.scanlines);
                 self.do_scanlines = enabled.unwrap_or(self.do_scanlines);
                 update_uniform = true;
+            }
+            ScalerOption::CrtcFrameParity { enabled, parity } => {
+                let parity = parity & 1;
+                if self.crtc_interlaced != enabled || self.crtc_frame_parity != parity {
+                    self.crtc_interlaced = enabled;
+                    self.crtc_frame_parity = parity;
+                    update_uniform = true;
+                }
+            }
+            ScalerOption::InterlaceSupport(enabled) => {
+                if self.crtc_interlace_support != enabled {
+                    self.crtc_interlace_support = enabled;
+                    update_uniform = true;
+                }
             }
             ScalerOption::Effect(_) => {}
         }

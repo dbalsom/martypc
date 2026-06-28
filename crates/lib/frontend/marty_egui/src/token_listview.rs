@@ -242,7 +242,7 @@ impl TokenListView {
     ) {
         let font_id = egui::TextStyle::Monospace.resolve(ui.style());
         let mut row_height = 0.0;
-        ui.fonts(|f| row_height = f.row_height(&font_id) + ui.spacing().item_spacing.y);
+        ui.fonts_mut(|f| row_height = f.row_height(&font_id) + ui.spacing().item_spacing.y);
         let num_rows = self.max_rows;
         let show_rows = self.visible_rows;
 
@@ -487,6 +487,7 @@ impl TokenListView {
                                     egui::Rounding::ZERO,
                                     Color32::TRANSPARENT,
                                     egui::Stroke::new(1.0, Color32::WHITE),
+                                    egui::StrokeKind::Inside,
                                 );
                             }
 
@@ -522,6 +523,7 @@ impl TokenListView {
                                     egui::Rounding::ZERO,
                                     Color32::TRANSPARENT,
                                     egui::Stroke::new(1.0, COLOR32_CYAN),
+                                    egui::StrokeKind::Inside,
                                 );
                             }
 

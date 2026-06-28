@@ -42,7 +42,7 @@ use std::{
 use crate::{
     bus::{BusInterface, DeviceRunTimeUnit, IoDevice},
     cpu_common::LogicAnalyzer,
-    device_types::fdc::FloppyImageType,
+    device_types::fdc::{CoreFloppyImageType, FloppyImageType},
     devices::{
         dma,
         floppy_drive::{FloppyDiskDrive, FloppyImageState},
@@ -691,7 +691,7 @@ impl FloppyController {
         let drive = &mut self.drives[drive_select];
 
         if let Some(image_type) = image_type {
-            if let Ok(standard_disk_format) = image_type.try_into() {
+            if let Ok(standard_disk_format) = CoreFloppyImageType::from(image_type).try_into() {
                 drive.patch_image_bpb(standard_disk_format)?;
             }
             else {

@@ -32,7 +32,7 @@ pollster = "0.4"
 egui = { workspace = true, optional = true }
 wgpu = { workspace = true, optional = true }
 url = { workspace = true, optional = true }
-gilrs = { workspace = true, default-features = false, optional = true, package = "gilrs" }
+gilrs = { workspace = true, default-features = false, optional = true }
 cfg-if = "1.0.0"
 
 [target.'cfg(not(target_arch = "wasm32"))'.dependencies]
@@ -56,8 +56,8 @@ features = ["std", "chrono", "alloc", "log_level_debug"]
 
 [features]
 default = []
-ega = []
-vga = []
+ega = ["marty_core/ega"]
+vga = ["marty_core/vga"]
 use_url = ["dep:url"]
 use_wgpu_display = ["use_wgpu", "dep:marty_videocard_renderer", "marty_videocard_renderer/use_wgpu"]
 use_glow_display = ["use_glow", "dep:marty_videocard_renderer", "marty_videocard_renderer/use_glow"]

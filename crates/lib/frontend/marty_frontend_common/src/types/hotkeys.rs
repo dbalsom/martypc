@@ -30,7 +30,7 @@
 
 */
 
-use marty_core::keys::MartyKey;
+use marty_common::types::keys::MartyKey;
 use serde_derive::Deserialize;
 use strum_macros::EnumIter;
 

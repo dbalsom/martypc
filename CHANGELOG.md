@@ -19,12 +19,13 @@ This release adds a new Fantasy EMS device courtsey of sqpat, author of RealDOOM
  - Fixed a bug where alternate ROM dumps were not handled correctly (mostly encountered with EGA ROMs)
  - Fixed the Amber CRT shader being blue
  - Improved/fixed scanline rendering in CRT shader
+ - Added interlacing support to CRT shader
  - Added IBM PCjr keyboard mapping file
  - Fixed bad md5 in PCjr ROM definition for 64K ROM image
  - Updated GLaBIOS to 0.4
  - Added build ID to title bar / About window
  - Restored Backend debug string in the Performance window.
-
+ 
 ## Core Bug Fixes / Improvements
  - Add Fantasy EMS device (thanks sqpat)
  - VGA: Fix Miscellaneous Output Register not being readable
@@ -35,6 +36,9 @@ This release adds a new Fantasy EMS device courtsey of sqpat, author of RealDOOM
  - PCjr: Fixed a keyboard handling bug that prevented movement in Keyboard Adventure
  - Adlib: Run at cycle-accurate resolution to support advanced DAC effects.
  - EGA/VGA: many miscellaneous fixes to CRTC register handling
+ - CGA/TGA: Factored out common MC6845 implementation
+ - CGA: Improved emulation of sync timings, hsync phase
+ - MC6845: Added support for interlaced sync and video modes (ISAV)
 
 
 ## [0.4.1](https://github.com/dbalsom/martypc/releases/tag/0.4.1) (2025-05-31)

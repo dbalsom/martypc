@@ -34,6 +34,8 @@ const DEFAULT_VOLUME: f32 = 0.25;
 
 const MAX_LATENCY: f32 = 150.0; // Maximum latency in milliseconds
 
+use std::num::NonZero;
+
 use anyhow::{anyhow, Error};
 use crossbeam_channel::Receiver;
 use marty_core::{
@@ -42,10 +44,8 @@ use marty_core::{
 };
 use marty_frontend_common::types::sound::SoundSourceInfo;
 use rodio::{
-    cpal::{traits::HostTrait, SupportedBufferSize},
-    DeviceTrait,
-    Sink,
-    SupportedStreamConfig,
+    cpal::{traits::HostTrait, BufferSize, SupportedBufferSize},
+    DeviceSinkBuilder, DeviceTrait, MixerDeviceSink, Player,
 };
 use web_time::{Duration, Instant};
 
@@ -53,6 +53,8 @@ pub struct SoundSource {
     pub name: String,
     pub sample_rate: u32,
     pub channels: u16,
+    pub sample_rate_nz: NonZero<u32>,
+    pub channels_nz: NonZero<u16>,
     pub receiver: Receiver<AudioSample>,
     pub sample_ct: u64,
     pub latency_ms: f32,
@@ -61,7 +63,7 @@ pub struct SoundSource {
     pub first_buffer: Option<Instant>,
     pub muted: bool,
     pub volume: f32,
-    pub sink: Sink,
+    pub player: Player,
     pub last_block_received: Instant,
     pub controller: AudioLatencyController,
 }
@@ -76,7 +78,7 @@ impl SoundSource {
             latency_ms: self.latency_ms,
             muted: self.muted,
             volume: self.volume,
-            len: self.sink.len(),
+            len: self.player.len(),
         }
     }
 }
@@ -145,8 +147,7 @@ impl AudioLatencyController {
 
             // Clamp playback speed within safe bounds
             self.playback_speed = self.playback_speed.clamp(self.min_speed, self.max_speed);
-        }
-        else {
+        } else {
             self.playback_speed = 1.0;
         }
 
@@ -163,8 +164,7 @@ pub struct SoundInterface {
     sample_format: String, // We don't really need this, so I am not converting it to an enum.
     channels: usize,
     device: Option<rodio::cpal::Device>,
-    stream: Option<rodio::OutputStream>,
-    stream_handle: Option<rodio::OutputStreamHandle>,
+    stream: Option<MixerDeviceSink>,
     sources: Vec<SoundSource>,
 }
 
@@ -179,7 +179,6 @@ impl Default for SoundInterface {
             channels: 0,
             device: None,
             stream: None,
-            stream_handle: None,
             sources: Vec::new(),
         }
     }
@@ -206,8 +205,7 @@ impl SoundInterface {
             SupportedBufferSize::Range { min, .. } => {
                 if *min > MAX_BUFFER_SIZE {
                     *min
-                }
-                else {
+                } else {
                     MAX_BUFFER_SIZE
                 }
             }
@@ -219,18 +217,14 @@ impl SoundInterface {
             new_max
         );
 
-        let config = SupportedStreamConfig::new(
-            default_config.channels(),
-            default_config.sample_rate(),
-            SupportedBufferSize::Range { min: 0, max: new_max },
-            default_config.sample_format(),
-        );
+        let sample_rate = default_config.sample_rate();
+        let channels = default_config.channels() as usize;
+        let sample_format = default_config.sample_format().to_string();
 
-        let sample_rate = config.sample_rate().0;
-        let channels = config.channels() as usize;
-        let sample_format = config.sample_format().to_string();
-
-        let (stream, stream_handle) = rodio::OutputStream::try_from_device_config(&audio_device, config)?;
+        let stream = DeviceSinkBuilder::from_device(audio_device.clone())?
+            .with_supported_config(&default_config)
+            .with_buffer_size(BufferSize::Fixed(new_max))
+            .open_stream()?;
 
         *self = {
             SoundInterface {
@@ -242,7 +236,6 @@ impl SoundInterface {
                 channels,
                 device: Some(audio_device),
                 stream: Some(stream),
-                stream_handle: Some(stream_handle),
                 sources: Vec::new(),
             }
         };
@@ -254,26 +247,32 @@ impl SoundInterface {
         self.master_speed = speed;
 
         for source in self.sources.iter_mut() {
-            source.sink.set_speed(speed);
+            source.player.set_speed(speed);
         }
     }
 
     pub fn add_source(&mut self, source: &SoundSourceDescriptor) -> Result<(), Error> {
-        let stream_handle = self.stream_handle.as_ref().unwrap();
-        let sink = Sink::try_new(stream_handle)?;
+        let stream = self.stream.as_ref().ok_or(anyhow!("No audio stream open."))?;
+        let player = Player::connect_new(stream.mixer());
         let volume = DEFAULT_VOLUME;
-        sink.set_volume(volume);
+        player.set_volume(volume);
+
+        let channels = u16::try_from(source.channels)?;
+        let channels_nz = NonZero::new(channels).ok_or(anyhow!("Sound source has zero channels."))?;
+        let sample_rate_nz = NonZero::new(source.sample_rate).ok_or(anyhow!("Sound source has zero sample rate."))?;
 
         self.sources.push(SoundSource {
             name: source.name.clone(),
             sample_rate: source.sample_rate,
-            channels: source.channels as u16,
+            channels,
+            sample_rate_nz,
+            channels_nz,
             receiver: source.receiver.clone(),
             sample_ct: 0,
             latency_ms: 0.0,
             buffer_ct: 0,
             first_buffer: None,
-            sink,
+            player,
             muted: false,
             volume,
             last_block_received: Instant::now(),
@@ -300,7 +299,7 @@ impl SoundInterface {
 
                 let block_duration = Duration::from_secs_f64(block_len as f64 / source.sample_rate as f64);
                 // How far along is the current block?
-                let mut sink_pos = source.sink.get_pos();
+                let mut sink_pos = source.player.get_pos();
 
                 if sink_pos > block_duration {
                     sink_pos = block_duration;
@@ -309,7 +308,7 @@ impl SoundInterface {
                 // Calculate the latency of the audio queue, by combining the current source position with the
                 // number of buffers in the queue
                 let latency = (block_duration - sink_pos)
-                    + Duration::from_secs_f64(source.sink.len() as f64 * block_duration.as_secs_f64());
+                    + Duration::from_secs_f64(source.player.len() as f64 * block_duration.as_secs_f64());
                 let dt = last_block_duration.as_secs_f32();
                 let new_speed = source.controller.update((latency.as_nanos() as f32) / 1_000_000.0, dt);
 
@@ -330,20 +329,19 @@ impl SoundInterface {
                 if source.latency_ms < MAX_LATENCY {
                     source.sample_ct += block_len as u64;
                     let sink_buffer =
-                        rodio::buffer::SamplesBuffer::new(source.channels, source.sample_rate, samples_in);
-                    source.sink.append(sink_buffer);
+                        rodio::buffer::SamplesBuffer::new(source.channels_nz, source.sample_rate_nz, samples_in);
+                    source.player.append(sink_buffer);
                 }
-                source.sink.set_speed(new_speed * self.master_speed);
+                source.player.set_speed(new_speed * self.master_speed);
             }
         }
     }
 
     pub fn open_stream(&mut self) -> Result<(), Error> {
-        if self.device.is_none() {
-            return Err(anyhow!("No audio device open."));
+        if self.stream.is_none() {
+            return Err(anyhow!("No audio stream open."));
         }
 
-        let _stream = rodio::OutputStream::try_from_device(self.device.as_ref().unwrap())?;
         log::debug!("Rodio stream successfully opened.");
         Ok(())
     }
@@ -367,7 +365,7 @@ impl SoundInterface {
             }
 
             source.volume = new_volume;
-            source.sink.set_volume(new_sink_volume);
+            source.player.set_volume(new_sink_volume);
         }
     }
 

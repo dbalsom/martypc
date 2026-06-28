@@ -34,7 +34,7 @@
 */
 #![allow(dead_code)]
 
-use modular_bitfield::{bitfield, BitfieldSpecifier};
+use modular_bitfield::{bitfield, Specifier};
 use std::collections::BTreeMap;
 
 use crate::{
@@ -47,7 +47,7 @@ use crate::{
     updatable::Updatable,
 };
 
-#[derive(Debug, Default, BitfieldSpecifier)]
+#[derive(Debug, Default, Specifier)]
 pub enum PpiModeA {
     #[default]
     Mode0Io,
@@ -56,14 +56,14 @@ pub enum PpiModeA {
     Mode2BiDirectional2,
 }
 
-#[derive(Debug, Default, BitfieldSpecifier)]
+#[derive(Debug, Default, Specifier)]
 pub enum PpiModeB {
     #[default]
     Mode0Io,
     Mode1StrobedIo,
 }
 
-#[derive(Debug, Default, BitfieldSpecifier)]
+#[derive(Debug, Default, Specifier)]
 pub enum IoMode {
     #[default]
     Output,

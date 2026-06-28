@@ -51,18 +51,6 @@ impl CGACard {
         }
     }
 
-    /*
-    #[inline]
-    pub fn draw_solid_char(&mut self, color: u8) {
-
-        let draw_span = (8 * self.clock_divisor) as usize;
-
-        for i in 0..draw_span {
-            self.buf[self.back_buf][self.rba + i] = color;
-        }
-    }
-    */
-
     /// Draw a character (8 or 16 pixels) using a single solid color.
     /// Since all pixels are the same we can draw 64 bits at a time.
     #[inline]
@@ -95,10 +83,10 @@ impl CGACard {
     /// Draw a single character glyph column pixel in text mode, doubling the pixel if
     /// in 40 column mode.
     pub fn draw_text_mode_pixel(&mut self) {
-        let mut new_pixel = match CGACard::get_glyph_bit(self.cur_char, self.char_col, self.vlc_c9) {
+        let mut new_pixel = match CGACard::get_glyph_bit(self.cur_char, self.char_col, self.crtc.ra()) {
             true => {
                 if self.cur_blink {
-                    if self.blink_state {
+                    if self.text_blink_state {
                         self.cur_fg
                     }
                     else {
@@ -113,11 +101,9 @@ impl CGACard {
         };
 
         // Do cursor
-        if (self.vma == self.crtc_cursor_address) && self.cursor_status && self.blink_state {
+        if self.is_cursor_active() {
             // This cell has the cursor address, cursor is enabled and not blinking
-            if self.cursor_data[(self.vlc_c9 & 0x1F) as usize] {
-                new_pixel = self.cur_fg;
-            }
+            new_pixel = self.cur_fg;
         }
 
         if !self.mode_enable {
@@ -135,22 +121,19 @@ impl CGACard {
     /// Draw an entire character row in high resolution text mode (8 pixels)
     pub fn draw_text_mode_hchar(&mut self) {
         // Do cursor if visible, enabled and defined
-        if self.vma == self.crtc_cursor_address
-            && self.cursor_status
-            && self.blink_state
-            && self.cursor_data[(self.vlc_c9 & 0x1F) as usize]
-        {
+        if self.is_cursor_active() {
             self.draw_solid_hchar(self.cur_fg);
         }
         else if self.mode_enable {
             // Get the u64 glyph row to draw for the current fg and bg colors and character row (vlc)
-            let glyph_row: u64 = self.get_hchar_glyph_row(self.cur_char as usize, self.vlc_c9 as usize);
+            let glyph_row: u64 = self.get_hchar_glyph_row(self.cur_char as usize, self.crtc.ra() as usize);
 
             let frame_u64: &mut [u64] = bytemuck::cast_slice_mut(&mut *self.buf[self.back_buf]);
             frame_u64[self.rba >> 3] = glyph_row;
         }
         else {
-            // When mode bit is disabled in text mode, the CGA acts like VRAM is all 0.
+            // When the video enable bit is disabled, the CGA disables the C0 & C1 serializers,
+            // so all output is 0.
             self.draw_solid_hchar(0);
         }
     }
@@ -160,23 +143,20 @@ impl CGACard {
         //let draw_span = (8 * self.clock_divisor) as usize;
 
         // Do cursor if visible, enabled and defined
-        if self.vma == self.crtc_cursor_address
-            && self.cursor_status
-            && self.blink_state
-            && self.cursor_data[(self.vlc_c9 & 0x1F) as usize]
-        {
+        if self.is_cursor_active() {
             self.draw_solid_lchar(self.cur_fg);
         }
         else if self.mode_enable {
             // Get the two u64 glyph row components to draw for the current fg and bg colors and character row (vlc)
-            let (glyph_row0, glyph_row1) = self.get_lchar_glyph_rows(self.cur_char as usize, self.vlc_c9 as usize);
+            let (glyph_row0, glyph_row1) = self.get_lchar_glyph_rows(self.cur_char as usize, self.crtc.ra() as usize);
 
             let frame_u64: &mut [u64] = bytemuck::cast_slice_mut(&mut *self.buf[self.back_buf]);
             frame_u64[self.rba >> 3] = glyph_row0;
             frame_u64[(self.rba >> 3) + 1] = glyph_row1;
         }
         else {
-            // When mode bit is disabled in text mode, the CGA acts like VRAM is all 0.
+            // When the video enable bit is disabled, the CGA disables the C0 & C1 serializers,
+            // so all output is 0.
             self.draw_solid_lchar(0);
         }
     }
@@ -184,7 +164,7 @@ impl CGACard {
     /// Draw a pixel in low resolution graphics mode (320x200)
     /// In this mode, pixels are doubled
     pub fn draw_lowres_gfx_mode_pixel(&mut self) {
-        let mut new_pixel = self.get_lowres_pixel_color(self.vlc_c9, self.char_col);
+        let mut new_pixel = self.get_lowres_pixel_color(self.crtc.ra(), self.char_col);
 
         if self.rba >= CGA_MAX_CLOCK - 2 {
             return;
@@ -203,7 +183,7 @@ impl CGACard {
     /// values to write to the index frame buffer directly.
     pub fn draw_lowres_gfx_mode_char(&mut self) {
         if self.mode_enable {
-            let lchar_dat = self.get_lowres_gfx_lchar(self.vlc_c9);
+            let lchar_dat = self.get_lowres_gfx_lchar(self.crtc.ra());
             let color0 = lchar_dat.0 .0;
             let color1 = lchar_dat.1 .0;
             let mask0 = lchar_dat.0 .1;
@@ -222,7 +202,7 @@ impl CGACard {
     /// Draw pixels in high resolution graphics mode. (640x200)
     /// In this mode, two pixels are drawn at the same time.
     pub fn draw_hires_gfx_mode_pixel(&mut self) {
-        let base_addr = self.get_gfx_addr(self.vlc_c9);
+        let base_addr = self.get_gfx_addr(self.crtc.ra());
 
         let word = (self.mem[base_addr] as u16) << 8 | self.mem[base_addr + 1] as u16;
 
@@ -252,7 +232,7 @@ impl CGACard {
 
     /// Draw a single character column in high resolution graphics mode (640x200)
     pub fn draw_hires_gfx_mode_char(&mut self) {
-        let base_addr = self.get_gfx_addr(self.vlc_c9);
+        let base_addr = self.get_gfx_addr(self.crtc.ra());
         let frame_u64: &mut [u64] = bytemuck::cast_slice_mut(&mut *self.buf[self.back_buf]);
 
         if self.mode_enable {

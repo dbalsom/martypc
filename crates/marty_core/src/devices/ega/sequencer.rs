@@ -34,7 +34,7 @@ use crate::{
     device_traits::videocard::VideoCardStateEntry,
     devices::ega::{tablegen::BIT_EXTEND_TABLE64, vram::Vram, EGA_CHARACTER_HEIGHT},
 };
-use modular_bitfield::{bitfield, prelude::*, BitfieldSpecifier};
+use modular_bitfield::{bitfield, prelude::*, Specifier};
 
 #[derive(Copy, Clone, Debug)]
 pub enum SequencerRegister {
@@ -77,20 +77,20 @@ pub struct SCharacterMapSelect {
     unused: B4,
 }
 
-#[derive(Copy, Clone, Debug, BitfieldSpecifier)]
+#[derive(Copy, Clone, Debug, Specifier)]
 pub enum OddEvenMode {
     OddEven,
     Sequential,
 }
 
 // Ferraro has this bit flipped. 0 == 9 Dots. IBM docs are correct.
-#[derive(Copy, Clone, Debug, BitfieldSpecifier)]
+#[derive(Copy, Clone, Debug, Specifier)]
 pub enum CharacterClock {
     NineDots,
     EightDots,
 }
 
-#[derive(Copy, Clone, Debug, BitfieldSpecifier)]
+#[derive(Copy, Clone, Debug, Specifier)]
 pub enum DotClock {
     Native,
     HalfClock,

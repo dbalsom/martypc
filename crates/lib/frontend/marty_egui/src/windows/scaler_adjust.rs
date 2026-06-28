@@ -144,6 +144,15 @@ impl ScalerAdjustControl {
                 }
                 ui.end_row();
 
+                ui.label(egui::RichText::new("Interlace Support:").text_style(egui::TextStyle::Monospace));
+                if ui
+                    .checkbox(&mut self.params[self.dt_idx].interlace_support, "Enable")
+                    .changed()
+                {
+                    update = true;
+                }
+                ui.end_row();
+
                 ui.label(egui::RichText::new("Barrel Distortion:").text_style(egui::TextStyle::Monospace));
                 if ui
                     .add(egui::Slider::new(

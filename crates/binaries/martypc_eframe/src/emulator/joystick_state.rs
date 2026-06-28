@@ -1,4 +1,4 @@
-use marty_core::keys::MartyKey;
+use marty_common::types::keys::MartyKey;
 use marty_frontend_common::types::joykeys::{JoyKeyEntry, JoyKeyInput};
 use std::collections::HashMap;
 

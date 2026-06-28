@@ -55,7 +55,7 @@ pub use null_gamepad_interface::GamepadInterface;
 
 use std::env::consts::OS;
 
-use marty_core::keys::MartyKey;
+use marty_common::types::keys::MartyKey;
 
 #[cfg(feature = "use_winit")]
 use winit::keyboard::KeyCode;

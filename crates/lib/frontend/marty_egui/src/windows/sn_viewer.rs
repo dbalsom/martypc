@@ -204,7 +204,7 @@ impl SnViewerControl {
             .show_y(true)
             .show_axes(false)
             .show_grid(false)
-            .auto_bounds(Vec2b::new(true, false))
+            .auto_bounds([true, false])
             .include_y(-1.125)
             .include_y(1.125)
             .center_y_axis(false)
@@ -220,7 +220,7 @@ impl SnViewerControl {
                     })
                     .collect();
 
-                plot_ui.line(Line::new(points).color(Color32::from_rgb(0, 255, 255)));
+                plot_ui.line(Line::new(format!("sn_chan_line{}", i), points).color(Color32::from_rgb(0, 255, 255)));
             });
     }
 

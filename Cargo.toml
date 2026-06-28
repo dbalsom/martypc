@@ -7,10 +7,8 @@ members = [
     "crates/lib/frontend/marty_videocard_renderer",
     "crates/lib/frontend/marty_scaler_wgpu",
     "crates/lib/frontend/marty_scaler_glow",
-    "crates/lib/frontend/display_manager_wgpu",
     "crates/lib/frontend/marty_egui",
     "crates/lib/frontend/marty_egui_common",
-    "crates/lib/frontend/marty_egui_wgpu",
     "crates/lib/frontend/marty_config",
     "crates/lib/frontend/marty_web_helpers",
     "crates/binaries/martypc_headless",
@@ -23,16 +21,16 @@ default-members = ["crates/binaries/martypc_eframe"]
 [workspace.package]
 version = "0.4.2"
 edition = "2021"
-rust-version = "1.76"
+rust-version = "1.92"
 license = "MIT"
 authors = ["Daniel Balsom"]
 
 [workspace.dependencies]
 winit = "0.30"
-wgpu = "23.0"
-glow = "0.16"
+wgpu = { version = "29.0", default-features = false, features = ["std", "wgsl", "vulkan", "dx12", "metal", "gles", "webgpu"] }
+glow = "0.17"
 bytemuck = "1.14"
-raw-window-handle = "0.5.0"
+raw-window-handle = "0.6"
 thiserror = "2.0"
 anyhow = "1.0"
 log = "0.4.20"
@@ -49,24 +47,24 @@ zip = { version = "2.3", default-features = false }
 strum = {  version = "0.27", features = ["derive"] }
 strum_macros = "0.27"
 url = "2.5"
-egui_commonmark = { version = "0.19" }
+egui_commonmark = { version = "0.22.0" }
 rand = "0.9"
 getrandom = "0.3"
 regex = "1.5"
 cfg-if = "1.0"
 binrw = "0.14"
-rfd = "0.15"
-gilrs = { version = "0.11", default-features = false }
+rfd = "0.17.2"
+gilrs = { version = "0.11.1" }
 
 # wasm workspace dependencies
 # ---------------------------------------------------------------------------------------------------------------------
 
-# Match the exact version of wasm-bindgen bundled with Trunk. This changes from time to time
-wasm-bindgen = "=0.2.100"
-wasm-bindgen-futures = "0.4"
+# Match the wasm-bindgen/web-sys versions required by eframe.
+wasm-bindgen = "0.2.108"
+wasm-bindgen-futures = "0.4.58"
 wasm-bindgen-rayon = "1.3"
 [workspace.dependencies.web-sys]
-version = "=0.3.72"
+version = "0.3.77"
 features = [
     "DedicatedWorkerGlobalScope",
     "WorkerOptions",
@@ -84,54 +82,48 @@ features = [
 
 [workspace.dependencies.fluxfox]
 git = "https://github.com/dbalsom/fluxfox.git"
-branch = "martypc_consumer"
+branch = "marty_consumer_0.34"
 default-features = false
 
 [workspace.dependencies.fluxfox_egui]
 git = "https://github.com/dbalsom/fluxfox.git"
-branch = "martypc_consumer"
+branch = "marty_consumer_0.34"
 
 [workspace.dependencies.egui]
-#git = "https://github.com/dbalsom/egui_martypc.git"
-#branch = "0.30.0_raw_winit_hook"
-version = "0.30.0"
+version = "0.34.2"
 default-features = false
 
 [workspace.dependencies.eframe]
 git = "https://github.com/dbalsom/egui_martypc.git"
-branch = "0.30.0_raw_winit_hook"
-#version = "0.30.0"
+branch = "0.34.2_raw_web_hook"
 default-features = false
 
 [workspace.dependencies.egui-winit]
-git = "https://github.com/dbalsom/egui_martypc.git"
-branch = "0.30.0_raw_winit_hook"
 default-features = false
-#version = "0.30.0"
+version = "0.34.2"
 #branch = "0_24_2_winit_0_29_15"
 #features = ["clipboard", "wayland", "x11"]
 
 [workspace.dependencies.egui-wgpu]
-#git = "https://github.com/dbalsom/egui_martypc.git"
-#branch = "0.30.0_raw_winit_hook"
-version = "0.30.0"
+version = "0.34.2"
+default-features = false
+features = ["winit", "capture"]
 
 [workspace.dependencies.egui_glow]
-version = "0.30.0"
+version = "0.34.2"
 
 [workspace.dependencies.egui_extras]
-git = "https://github.com/dbalsom/egui_martypc.git"
-branch = "0.30.0_raw_winit_hook"
+version = "0.34.2"
 default-features = false
 #branch = "0_24_2_winit_0_29_15"
 features = ["image"]
 
 [workspace.dependencies.egui_plot]
-version = "0.30.0"
+version = "0.35.0"
 #default-features = false
 
 [workspace.dependencies.egui-notify]
-version = "0.18"
+version = "0.22"
 
 [workspace.dependencies.image]
 version = "0.25"
@@ -145,8 +137,9 @@ features = ["png"]
 #branch = "marty_update_deps4"
 
 [workspace.dependencies.rodio]
-git = "https://github.com/dbalsom/rodio_martypc.git"
-branch = "buffer_size"
+version = "0.22.2"
+default-features = false
+features = ["playback"]
 
 #[workspace.dependencies.egui]
 #git = "https://github.com/dbalsom/egui_martypc.git"

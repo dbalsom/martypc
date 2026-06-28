@@ -63,7 +63,7 @@ pub enum VhdManagerError {
 impl std::error::Error for VhdManagerError {}
 impl Display for VhdManagerError {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        match &*self {
+        match self {
             VhdManagerError::DirNotFound => write!(f, "The Vhd directory was not found."),
             VhdManagerError::FileNotFound => {
                 write!(f, "File not found scanning Vhd directory.")
@@ -286,10 +286,10 @@ impl VhdManager {
         drive: usize,
         name: &OsString,
     ) -> Result<Vec<u8>, VhdManagerError> {
-        if let Some(path) = self.find_first_name(name.clone()) {
+        if let Some(path) = self.find_first_name(name.as_os_str()) {
             match rm.read_resource_from_path_blocking(path.clone()) {
                 Ok(file) => {
-                    if self.is_drive_loaded(drive) {
+                    if self.is_drive_loaded(drive).0 {
                         log::error!("VHD drive slot {} not empty!", drive);
                         return Err(VhdManagerError::DriveAlreadyLoaded);
                     }

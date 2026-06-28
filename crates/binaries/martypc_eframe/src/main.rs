@@ -30,10 +30,68 @@
 
 use martypc_eframe::{app::MartyApp, version_string, MARTY_ICON};
 
+#[cfg(not(target_arch = "wasm32"))]
+struct MartyWinitApp<'a> {
+    inner: eframe::EframeWinitApplication<'a>,
+    sender: crossbeam_channel::Sender<(winit::window::WindowId, winit::event::WindowEvent)>,
+}
+
+#[cfg(not(target_arch = "wasm32"))]
+impl winit::application::ApplicationHandler<eframe::UserEvent> for MartyWinitApp<'_> {
+    fn resumed(&mut self, event_loop: &winit::event_loop::ActiveEventLoop) {
+        self.inner.resumed(event_loop);
+    }
+
+    fn window_event(
+        &mut self,
+        event_loop: &winit::event_loop::ActiveEventLoop,
+        window_id: winit::window::WindowId,
+        event: winit::event::WindowEvent,
+    ) {
+        let _ = self.sender.send((window_id, event.clone()));
+        self.inner.window_event(event_loop, window_id, event);
+    }
+
+    fn new_events(&mut self, event_loop: &winit::event_loop::ActiveEventLoop, cause: winit::event::StartCause) {
+        self.inner.new_events(event_loop, cause);
+    }
+
+    fn user_event(&mut self, event_loop: &winit::event_loop::ActiveEventLoop, event: eframe::UserEvent) {
+        self.inner.user_event(event_loop, event);
+    }
+
+    fn device_event(
+        &mut self,
+        event_loop: &winit::event_loop::ActiveEventLoop,
+        device_id: winit::event::DeviceId,
+        event: winit::event::DeviceEvent,
+    ) {
+        self.inner.device_event(event_loop, device_id, event);
+    }
+
+    fn about_to_wait(&mut self, event_loop: &winit::event_loop::ActiveEventLoop) {
+        self.inner.about_to_wait(event_loop);
+    }
+
+    fn suspended(&mut self, event_loop: &winit::event_loop::ActiveEventLoop) {
+        self.inner.suspended(event_loop);
+    }
+
+    fn exiting(&mut self, event_loop: &winit::event_loop::ActiveEventLoop) {
+        self.inner.exiting(event_loop);
+    }
+
+    fn memory_warning(&mut self, event_loop: &winit::event_loop::ActiveEventLoop) {
+        self.inner.memory_warning(event_loop);
+    }
+}
+
 // When compiling natively:
 #[cfg(not(target_arch = "wasm32"))]
 #[async_std::main]
 async fn main() -> eframe::Result {
+    use winit::event_loop::{ControlFlow, EventLoop};
+
     env_logger::init(); // Log to stderr (if you run with `RUST_LOG=debug`).
 
     // Set up the default window size and icon
@@ -54,9 +112,27 @@ async fn main() -> eframe::Result {
         ..Default::default()
     };
 
-    let app = MartyApp::new(&mut native_options).await;
+    let (winit_sender, winit_receiver) = crossbeam_channel::unbounded();
+    let app = MartyApp::new(&mut native_options)
+        .await
+        .with_winit_receiver(winit_receiver);
 
-    eframe::run_native("MartyPC", native_options, Box::new(|cc| Ok(Box::new(app.init(cc)))))
+    let event_loop = EventLoop::<eframe::UserEvent>::with_user_event().build()?;
+    event_loop.set_control_flow(ControlFlow::Poll);
+
+    let inner = eframe::create_native(
+        "MartyPC",
+        native_options,
+        Box::new(|cc| Ok(Box::new(app.init(cc)))),
+        &event_loop,
+    );
+    let mut winit_app = MartyWinitApp {
+        inner,
+        sender: winit_sender,
+    };
+
+    event_loop.run_app(&mut winit_app)?;
+    Ok(())
 }
 
 // #[cfg(not(target_arch = "wasm32"))]

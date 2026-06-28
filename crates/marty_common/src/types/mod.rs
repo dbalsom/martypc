@@ -31,8 +31,10 @@
 */
 
 pub mod cartridge;
+pub mod floppy;
 pub mod history_buffer;
 pub mod joystick;
+pub mod keys;
 pub mod rom;
 pub mod ui;
 pub mod video_dimensions;

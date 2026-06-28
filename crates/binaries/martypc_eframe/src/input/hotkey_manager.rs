@@ -27,7 +27,7 @@
 
 use std::collections::{HashMap, HashSet};
 
-use marty_core::keys::MartyKey;
+use marty_common::types::keys::MartyKey;
 use marty_frontend_common::{HotkeyConfigEntry, HotkeyEvent, HotkeyScope};
 
 use strum::IntoEnumIterator;
@@ -122,8 +122,7 @@ impl HotkeyManager {
 
         if events.is_empty() {
             None
-        }
-        else {
+        } else {
             Some(events)
         }
     }

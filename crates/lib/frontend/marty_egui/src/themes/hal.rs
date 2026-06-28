@@ -40,9 +40,8 @@ use crate::{
 use egui::{
     epaint::Shadow,
     style::{Selection, WidgetVisuals, Widgets},
-    Rounding,
+    CornerRadius,
     Stroke,
-    Vec2,
 };
 
 pub struct HalTheme {
@@ -63,11 +62,11 @@ impl HalTheme {
                             width: 1.0,
                             color: Color32::from_rgba_premultiplied(190, 190, 190, 255),
                         },
-                        rounding: Rounding {
-                            nw: 2.0,
-                            ne: 2.0,
-                            sw: 2.0,
-                            se: 2.0,
+                        corner_radius: CornerRadius {
+                            nw: 2,
+                            ne: 2,
+                            sw: 2,
+                            se: 2,
                         },
                         fg_stroke: Stroke {
                             width: 1.0,
@@ -82,11 +81,11 @@ impl HalTheme {
                             width: 0.0,
                             color: Color32::from_rgba_premultiplied(0, 0, 0, 0),
                         },
-                        rounding: Rounding {
-                            nw: 2.0,
-                            ne: 2.0,
-                            sw: 2.0,
-                            se: 2.0,
+                        corner_radius: CornerRadius {
+                            nw: 2,
+                            ne: 2,
+                            sw: 2,
+                            se: 2,
                         },
                         fg_stroke: Stroke {
                             width: 1.0,
@@ -101,11 +100,11 @@ impl HalTheme {
                             width: 1.0,
                             color: Color32::from_rgba_premultiplied(105, 105, 105, 255),
                         },
-                        rounding: Rounding {
-                            nw: 3.0,
-                            ne: 3.0,
-                            sw: 3.0,
-                            se: 3.0,
+                        corner_radius: CornerRadius {
+                            nw: 3,
+                            ne: 3,
+                            sw: 3,
+                            se: 3,
                         },
                         fg_stroke: Stroke {
                             width: 1.5,
@@ -120,11 +119,11 @@ impl HalTheme {
                             width: 1.0,
                             color: Color32::from_rgba_premultiplied(0, 0, 0, 255),
                         },
-                        rounding: Rounding {
-                            nw: 2.0,
-                            ne: 2.0,
-                            sw: 2.0,
-                            se: 2.0,
+                        corner_radius: CornerRadius {
+                            nw: 2,
+                            ne: 2,
+                            sw: 2,
+                            se: 2,
                         },
                         fg_stroke: Stroke {
                             width: 2.0,
@@ -139,11 +138,11 @@ impl HalTheme {
                             width: 1.0,
                             color: Color32::from_rgba_premultiplied(160, 160, 160, 255),
                         },
-                        rounding: Rounding {
-                            nw: 2.0,
-                            ne: 2.0,
-                            sw: 2.0,
-                            se: 2.0,
+                        corner_radius: CornerRadius {
+                            nw: 2,
+                            ne: 2,
+                            sw: 2,
+                            se: 2,
                         },
                         fg_stroke: Stroke {
                             width: 1.0,
@@ -165,16 +164,16 @@ impl HalTheme {
                 code_bg_color: Color32::from_rgba_premultiplied(230, 230, 230, 255),
                 warn_fg_color: Color32::from_rgba_premultiplied(250, 181, 167, 255),
                 error_fg_color: Color32::from_rgba_premultiplied(253, 126, 126, 255),
-                window_rounding: Rounding {
-                    nw: 6.0,
-                    ne: 6.0,
-                    sw: 6.0,
-                    se: 6.0,
+                window_corner_radius: CornerRadius {
+                    nw: 6,
+                    ne: 6,
+                    sw: 6,
+                    se: 6,
                 },
                 window_shadow: Shadow {
-                    offset: Vec2::new(10.0, 20.0),
-                    blur:   15.0,
-                    spread: 0.0,
+                    offset: [10, 20],
+                    blur:   15,
+                    spread: 0,
                     color:  Color32::from_rgba_premultiplied(0, 0, 0, 16),
                 },
                 window_fill: Color32::from_rgba_premultiplied(243, 243, 243, 255),
@@ -182,17 +181,17 @@ impl HalTheme {
                     width: 1.0,
                     color: Color32::from_rgba_premultiplied(191, 191, 191, 255),
                 },
-                menu_rounding: Rounding {
-                    nw: 6.0,
-                    ne: 6.0,
-                    sw: 6.0,
-                    se: 6.0,
+                menu_corner_radius: CornerRadius {
+                    nw: 6,
+                    ne: 6,
+                    sw: 6,
+                    se: 6,
                 },
                 panel_fill: Color32::from_rgba_premultiplied(237, 237, 236, 255),
                 popup_shadow: Shadow {
-                    offset: Vec2::new(6.0, 10.0),
-                    blur:   8.0,
-                    spread: 0.0,
+                    offset: [6, 10],
+                    blur:   8,
+                    spread: 0,
                     color:  Color32::from_rgba_premultiplied(0, 0, 0, 20),
                 },
                 ..egui::Visuals::light()

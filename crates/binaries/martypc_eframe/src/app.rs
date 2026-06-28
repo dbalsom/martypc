@@ -141,6 +141,15 @@ type MartyAppNewOptions = eframe::NativeOptions;
 type MartyAppNewOptions = ();
 
 impl MartyApp {
+    #[cfg(feature = "use_winit")]
+    pub fn with_winit_receiver(
+        mut self,
+        receiver: Receiver<(winit::window::WindowId, winit::event::WindowEvent)>,
+    ) -> Self {
+        self.winit_receiver = Some(receiver);
+        self
+    }
+
     /// We split app initialization into two parts, since we can't make the callback eframe passes
     /// the creation context to async. So we first create the app, then let eframe call `init` with
     /// the partially initialized app - it should have the emulator built by then.
@@ -355,8 +364,8 @@ impl MartyApp {
                     },
                     TextureDimensions { w: 640, h: 480 },
                     render_state.adapter.get_info(),
-                    render_state.device.clone(),
-                    render_state.queue.clone(),
+                    std::sync::Arc::new(render_state.device.clone()),
+                    std::sync::Arc::new(render_state.queue.clone()),
                     render_state.target_format,
                 ) {
                     Ok(backend) => {
@@ -519,15 +528,8 @@ impl MartyApp {
             }
         }
 
-        // Create event receivers - for winit, we have a hook in egui_winit to receive raw
-        // WindowEvents. For web we have a hook in eframe to receive custom WebKeyboardEvents,
-        // which are Send + Sync copies of the raw web_sys::KeyboardEvent.
-        #[cfg(feature = "use_winit")]
-        let winit_receiver = {
-            let (winit_sender, winit_receiver) = crossbeam_channel::unbounded();
-            egui_winit::install_window_event_hook(winit_sender);
-            winit_receiver
-        };
+        // Create event receivers. Native builds receive raw WindowEvents from our external winit
+        // event loop. Web builds install browser keyboard hooks directly.
         #[cfg(not(feature = "use_winit"))]
         let web_receiver = {
             let (web_sender, web_receiver) = crossbeam_channel::unbounded();
@@ -543,8 +545,6 @@ impl MartyApp {
             dm: Some(display_manager),
             emu: Some(emu),
 
-            #[cfg(feature = "use_winit")]
-            winit_receiver: Some(winit_receiver),
             #[cfg(not(feature = "use_winit"))]
             web_receiver: Some(web_receiver),
             ..self
@@ -569,10 +569,10 @@ impl MartyApp {
     }
 }
 
-impl eframe::App for MartyApp {
+impl MartyApp {
     /// Called each time the UI needs repainting, which may be many times per second.
     /// A display manager must be created before this is called.
-    fn update(&mut self, ctx: &Context, _frame: &mut eframe::Frame) {
+    fn update_frame(&mut self, ctx: &Context, _frame: &mut eframe::Frame) {
         // Enumerate the host's gamepads if the feature is enabled
         // #[cfg(feature = "use_gilrs")]
         // let mut gilrs = Gilrs::new().unwrap();
@@ -903,6 +903,12 @@ impl eframe::App for MartyApp {
         // Pump the event loop by requesting a repaint every time.
         ctx.request_repaint();
     }
+}
+
+impl eframe::App for MartyApp {
+    fn ui(&mut self, ui: &mut egui::Ui, frame: &mut eframe::Frame) {
+        self.update_frame(ui.ctx(), frame);
+    }
 
     /// Called by the framework to save state before shutdown.
     fn save(&mut self, storage: &mut dyn eframe::Storage) {
@@ -910,7 +916,7 @@ impl eframe::App for MartyApp {
     }
 
     fn raw_input_hook(&mut self, ctx: &Context, raw_input: &mut RawInput) {
-        let gui_has_focus = ctx.wants_keyboard_input();
+        let gui_has_focus = ctx.egui_wants_keyboard_input();
 
         //let gui_has_focus = ctx.memory(|mem| mem.focused()).is_some();
 

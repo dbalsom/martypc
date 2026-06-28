@@ -363,6 +363,12 @@ pub struct DisplayTargetCallback {
     pub lock: Arc<RwLock<DisplayTargetContext>>,
 }
 
+#[cfg(all(target_arch = "wasm32", feature = "use_wgpu"))]
+unsafe impl Send for DisplayTargetCallback {}
+
+#[cfg(all(target_arch = "wasm32", feature = "use_wgpu"))]
+unsafe impl Sync for DisplayTargetCallback {}
+
 #[cfg(feature = "use_wgpu")]
 impl egui_wgpu::CallbackTrait for DisplayTargetCallback {
     // Required method
@@ -619,6 +625,7 @@ impl DisplayTargetContext {
         });
 
         scaler_update.push(ScalerOption::Filtering(params.filter));
+        scaler_update.push(ScalerOption::InterlaceSupport(params.interlace_support));
 
         if let Some(renderer) = &self.renderer {
             let rparams = renderer.params();
@@ -716,6 +723,36 @@ impl DisplayTargetContext {
 }
 
 impl EFrameDisplayManager {
+    pub fn set_scaler_crtc_frame_parity(&mut self, vid: VideoCardId, parity: Option<u8>) {
+        let Some(idx_vec) = self.card_id_map.get(&vid).cloned()
+        else {
+            return;
+        };
+
+        let Some(backend) = &self.backend
+        else {
+            return;
+        };
+
+        let enabled = parity.is_some();
+        let parity = parity.unwrap_or(0) as u32;
+
+        for idx in idx_vec {
+            if let Some(dtc) = self.targets.get_mut(idx) {
+                let dtc = &mut resolve_dtc_mut!(dtc);
+
+                if let Some(scaler) = &mut dtc.scaler {
+                    scaler.set_option(
+                        &*backend.device(),
+                        &*backend.queue(),
+                        ScalerOption::CrtcFrameParity { enabled, parity },
+                        true,
+                    );
+                }
+            }
+        }
+    }
+
     pub fn main_display_target(&self) -> dtc!() {
         self.targets[0].clone()
     }

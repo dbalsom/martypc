@@ -35,6 +35,8 @@ use marty_core::{device_traits::videocard::BufferSelect, machine::ExecutionState
 use marty_egui::GuiBoolean;
 
 pub fn render_frame(emu: &mut Emulator, dm: &mut EFrameDisplayManager) {
+    let mut scaler_parity_updates = Vec::new();
+
     // First, run each renderer to resolve all videocard views.
     // Every renderer will have an associated card and backend.
     dm.for_each_renderer(|renderer, vid, backend_buf| {
@@ -62,6 +64,7 @@ pub fn render_frame(emu: &mut Emulator, dm: &mut EFrameDisplayManager) {
             }
 
             let extents = videocard.display_extents();
+            scaler_parity_updates.push((vid, videocard.interlaced_frame_parity()));
 
             // Update mode byte.
             if renderer.get_mode_byte() != extents.mode_byte {
@@ -96,6 +99,10 @@ pub fn render_frame(emu: &mut Emulator, dm: &mut EFrameDisplayManager) {
             videocard.set_debug_draw_state(renderer.is_debug());
         }
     });
+
+    for (vid, parity) in scaler_parity_updates {
+        dm.set_scaler_crtc_frame_parity(vid, parity);
+    }
 
     // Don't need this as eframe does not host guis ...
     // Prepare guis for rendering.

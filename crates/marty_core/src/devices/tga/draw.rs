@@ -114,7 +114,8 @@ impl TGACard {
     /// Draw a single character glyph column pixel in text mode, doubling the pixel if
     /// in 40 column mode.
     pub fn draw_text_mode_pixel(&mut self) {
-        let mut new_pixel = match TGACard::get_glyph_bit(self.cur_char, self.char_col, self.vlc_c9) {
+        let vlc = self.crtc.vlc();
+        let mut new_pixel = match TGACard::get_glyph_bit(self.cur_char, self.char_col, vlc) {
             true => {
                 if self.cur_blink {
                     if self.blink_state {
@@ -132,11 +133,9 @@ impl TGACard {
         };
 
         // Do cursor
-        if (self.vma == self.crtc_cursor_address) && self.cursor_status && self.blink_state {
+        if self.crtc.cursor() {
             // This cell has the cursor address, cursor is enabled and not blinking
-            if self.cursor_data[(self.vlc_c9 & 0x1F) as usize] {
-                new_pixel = self.cur_fg;
-            }
+            new_pixel = self.cur_fg;
         }
 
         if !self.mode_enable {
@@ -154,16 +153,12 @@ impl TGACard {
     /// Draw an entire character row in high resolution text mode (8 pixels)
     pub fn draw_text_mode_hchar(&mut self) {
         // Do cursor if visible, enabled and defined
-        if self.vma == self.crtc_cursor_address
-            && self.cursor_status
-            && self.blink_state
-            && self.cursor_data[(self.vlc_c9 & 0x1F) as usize]
-        {
+        if self.crtc.cursor() {
             self.draw_solid_hchar(self.cur_fg);
         }
         else if self.mode_enable {
             // Get the u64 glyph row to draw for the current fg and bg colors and character row (vlc)
-            let glyph_row: u64 = self.get_hchar_glyph_row(self.cur_char as usize, self.vlc_c9 as usize);
+            let glyph_row: u64 = self.get_hchar_glyph_row(self.cur_char as usize, self.crtc.vlc() as usize);
 
             let frame_u64: &mut [u64] = bytemuck::cast_slice_mut(&mut *self.buf[self.back_buf]);
             frame_u64[self.rba >> 3] = glyph_row;
@@ -179,16 +174,12 @@ impl TGACard {
         //let draw_span = (8 * self.clock_divisor) as usize;
 
         // Do cursor if visible, enabled and defined
-        if self.vma == self.crtc_cursor_address
-            && self.cursor_status
-            && self.blink_state
-            && self.cursor_data[(self.vlc_c9 & 0x1F) as usize]
-        {
+        if self.crtc.cursor() {
             self.draw_solid_mchar(self.cur_fg);
         }
         else if self.mode_enable {
             // Get the two u64 glyph row components to draw for the current fg and bg colors and character row (vlc)
-            let (glyph_row0, glyph_row1) = self.get_mchar_glyph_rows(self.cur_char as usize, self.vlc_c9 as usize);
+            let (glyph_row0, glyph_row1) = self.get_mchar_glyph_rows(self.cur_char as usize, self.crtc.vlc() as usize);
 
             let frame_u64: &mut [u64] = bytemuck::cast_slice_mut(&mut *self.buf[self.back_buf]);
             frame_u64[self.rba >> 3] = glyph_row0;
@@ -203,7 +194,7 @@ impl TGACard {
     /// Draw a pixel in low resolution graphics mode (320x200)
     /// In this mode, pixels are doubled
     pub fn draw_lowres_gfx_mode_pixel(&mut self, cpumem: &[u8]) {
-        let mut new_pixel = self.get_lowres_pixel_color(self.vlc_c9, self.char_col, cpumem);
+        let mut new_pixel = self.get_lowres_pixel_color(self.crtc.vlc(), self.char_col, cpumem);
 
         if self.rba >= CGA_MAX_CLOCK - 2 {
             return;
@@ -222,7 +213,7 @@ impl TGACard {
     /// values to write to the index frame buffer directly.
     pub fn draw_gfx_mode_2bpp_mchar_cga(&mut self, cpumem: &[u8]) {
         if self.mode_enable {
-            let mchar_dat = self.get_lowres_gfx_mchar(self.vlc_c9, cpumem);
+            let mchar_dat = self.get_lowres_gfx_mchar(self.crtc.vlc(), cpumem);
             let color0 = mchar_dat.0 .0;
             let color1 = mchar_dat.1 .0;
             let mask0 = mchar_dat.0 .1;
@@ -268,7 +259,7 @@ impl TGACard {
 
     pub fn draw_gfx_mode_2bpp_mchar(&mut self, cpumem: &[u8]) {
         if self.mode_enable {
-            let base_addr = self.get_gfx_addr(self.vlc_c9);
+            let base_addr = self.get_gfx_addr(self.crtc.vlc());
             let byte0 = self.crt_mem(cpumem)[base_addr];
             let byte1 = self.crt_mem(cpumem)[base_addr + 1];
 
@@ -308,7 +299,7 @@ impl TGACard {
     /// Pixel colors are then looked up from the gate array's palette registers.
     pub fn draw_gfx_mode_2bpp_hchar(&mut self, cpumem: &[u8]) {
         if self.mode_enable {
-            let base_addr = self.get_gfx_addr(self.vlc_c9);
+            let base_addr = self.get_gfx_addr(self.crtc.vlc());
             let byte0 = self.crt_mem(cpumem)[base_addr] as usize;
             let byte1 = self.crt_mem(cpumem)[base_addr + 1] as usize;
 
@@ -338,7 +329,7 @@ impl TGACard {
     /// Draw 8 dots in medium res 4bpp graphics mode (320x200x16)
     pub fn draw_gfx_mode_4bpp_char(&mut self, cpumem: &[u8]) {
         if self.mode_enable {
-            let base_addr = self.get_gfx_addr(self.vlc_c9);
+            let base_addr = self.get_gfx_addr(self.crtc.vlc());
             let pair0 = self.crt_mem(cpumem)[base_addr] as usize;
             let pair1 = self.crt_mem(cpumem)[base_addr + 1] as usize;
             self.buf[self.back_buf][self.rba] = self.palette_registers[pair0 >> 4];
@@ -358,7 +349,7 @@ impl TGACard {
     /// Draw 16 dots in low res 4bpp graphics mode (160x200x16)
     pub fn draw_gfx_mode_4bpp_lchar(&mut self, cpumem: &[u8]) {
         if self.mode_enable {
-            let base_addr = self.get_gfx_addr(self.vlc_c9);
+            let base_addr = self.get_gfx_addr(self.crtc.vlc());
             let pair0 = self.crt_mem(cpumem)[base_addr] as usize;
             let pair1 = self.crt_mem(cpumem)[base_addr + 1] as usize;
             self.buf[self.back_buf][self.rba] = self.palette_registers[pair0 >> 4];
@@ -386,7 +377,7 @@ impl TGACard {
     /// Draw pixels in high resolution graphics mode. (640x200)
     /// In this mode, two pixels are drawn at the same time.
     pub fn draw_hires_gfx_mode_pixel(&mut self, cpumem: &[u8]) {
-        let base_addr = self.get_gfx_addr(self.vlc_c9);
+        let base_addr = self.get_gfx_addr(self.crtc.vlc());
 
         let word = (self.crt_mem(cpumem)[base_addr] as u16) << 8 | self.crt_mem(cpumem)[base_addr + 1] as u16;
 
@@ -416,7 +407,7 @@ impl TGACard {
 
     /// Draw a single character column in high resolution 1bpp graphics mode (640x200x1)
     pub fn draw_gfx_mode_hchar_1bpp(&mut self, cpumem: &[u8]) {
-        let base_addr = self.get_gfx_addr(self.vlc_c9);
+        let base_addr = self.get_gfx_addr(self.crtc.vlc());
 
         let byte0 = self.crt_mem(cpumem)[base_addr];
         let byte1 = self.crt_mem(cpumem)[base_addr + 1];

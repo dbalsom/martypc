@@ -357,7 +357,7 @@ pub struct ByteBufWriter<'a> {
 }
 
 impl ByteBufWriter<'_> {
-    pub fn from_slice(buf: &mut [u8]) -> ByteBufWriter {
+    pub fn from_slice(buf: &mut [u8]) -> ByteBufWriter<'_> {
         ByteBufWriter { cursor: 0, buf }
     }
 

@@ -434,7 +434,7 @@ impl GuiState {
             option_enums,
 
             machine_state: MachineState::Off,
-            video_mem: ColorImage::new([320, 200], egui::Color32::BLACK),
+            video_mem: ColorImage::filled([320, 200], egui::Color32::BLACK),
 
             perf_stats: Default::default(),
 
@@ -763,7 +763,7 @@ impl GuiState {
         *self.window_open_flags.get_mut(&window).unwrap() = true;
     }
 
-    pub fn get_breakpoints(&mut self) -> BreakpointSet {
+    pub fn get_breakpoints(&mut self) -> BreakpointSet<'_> {
         self.cpu_control.get_breakpoints()
     }
 

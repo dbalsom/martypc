@@ -158,7 +158,7 @@ pub struct CUnderlineLocation {
     unused: B1,
 }
 
-#[derive(Copy, Clone, Debug, BitfieldSpecifier)]
+#[derive(Copy, Clone, Debug, Specifier)]
 pub enum BandwidthSelect {
     ThreeCycles,
     FiveCycles,
@@ -196,13 +196,13 @@ pub struct CMaximumScanline {
     pub two_t4: bool,
 }
 
-#[derive(Debug, BitfieldSpecifier)]
+#[derive(Debug, Specifier)]
 pub enum WordOrByteMode {
     Word,
     Byte,
 }
 
-#[derive(Debug, BitfieldSpecifier)]
+#[derive(Debug, Specifier)]
 pub enum CompatibilityMode {
     Cga,
     Ega,

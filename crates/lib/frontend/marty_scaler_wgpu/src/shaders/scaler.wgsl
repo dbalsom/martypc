@@ -66,6 +66,9 @@ struct ScalerOptionsUniform {
     crt_params: CrtParamUniform,
     fill_color: vec4<f32>,
     texture_order: u32,
+    crtc_frame_parity: u32,
+    crtc_interlaced: u32,
+    crtc_interlace_support: u32,
 };
 
 const PI: f32 = 3.141592653589793;
@@ -194,8 +197,17 @@ fn fs_main(@location(0) tex_coord: vec2<f32>) -> @location(0) vec4<f32> {
 
     let is_outside = any(curved_tex_coord < vec2<f32>(0.0, 0.0)) || any(curved_tex_coord > vec2<f32>(1.0, 1.0));
     let is_inside_corner = is_inside_corner_radius(curved_tex_coord, scaler_opts.crt_params.corner_radius * 0.1);
+    let interlace_shift_enabled = scaler_opts.crtc_interlace_support != 0u
+        && scaler_opts.crtc_interlaced != 0u
+        && scaler_opts.crtc_frame_parity == 1u;
+    let parity_shift = select(
+        0.0,
+        0.5 / max(f32(scaler_opts.vres), 1.0),
+        interlace_shift_enabled
+    );
+    let sampled_tex_coord = vec2<f32>(curved_tex_coord.x, curved_tex_coord.y - parity_shift);
 
-    var color = textureSample(r_tex_color, r_tex_sampler, curved_tex_coord);
+    var color = textureSample(r_tex_color, r_tex_sampler, sampled_tex_coord);
     if scaler_opts.texture_order != 0 {
         color = color.bgra;
     }
@@ -214,7 +226,12 @@ fn fs_main(@location(0) tex_coord: vec2<f32>) -> @location(0) vec4<f32> {
         }
 
         if (scanlines > 0u) {
-            color = do_scanlines(color, curved_tex_coord.y, scaler_opts.vres, scanlines, 0.3);
+            let scanline_phase_shift = select(
+                0.0,
+                0.5 / max(f32(scanlines), 1.0),
+                interlace_shift_enabled
+            );
+            color = do_scanlines(color, curved_tex_coord.y - scanline_phase_shift, scaler_opts.vres, scanlines, 0.3);
         }
 
         // We can emit a solid color for debugging...

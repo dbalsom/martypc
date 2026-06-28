@@ -87,6 +87,8 @@ pub enum ScalerOption {
     // `lines` is the number of desired CRT scanline bands. For doubled render textures this is
     // typically half the backing/render texture height.
     Scanlines { enabled: Option<bool>, lines: Option<u32>, intensity: Option<f32> },
+    CrtcFrameParity { enabled: bool, parity: u32 },
+    InterlaceSupport(bool),
     Effect(ScalerEffect),
 }
 
@@ -96,6 +98,10 @@ pub enum PhosphorType {
     White,
     Green,
     Amber,
+}
+
+fn default_true() -> bool {
+    true
 }
 
 #[derive(Clone, Debug, Deserialize)]
@@ -109,6 +115,8 @@ pub struct ScalerPreset {
     pub crt_barrel_distortion: f32,
     pub crt_corner_radius: f32,
     pub crt_scanlines: bool,
+    #[serde(default = "default_true")]
+    pub interlace_support: bool,
     pub crt_phosphor_type: PhosphorType,
     pub gamma: f32,
     // Options for associated renderer
@@ -132,6 +140,7 @@ pub struct ScalerParams {
     pub crt_barrel_distortion: f32,
     pub crt_corner_radius: f32,
     pub crt_scanlines: bool,
+    pub interlace_support: bool,
     pub crt_phosphor_type: PhosphorType,
     pub gamma: f32,
 }
@@ -143,6 +152,7 @@ impl From<ScalerPreset> for ScalerParams {
             crt_effect: value.crt_effect,
             crt_barrel_distortion: value.crt_barrel_distortion,
             crt_scanlines: value.crt_scanlines,
+            interlace_support: value.interlace_support,
             crt_phosphor_type: value.crt_phosphor_type,
             crt_corner_radius: value.crt_corner_radius,
             gamma: value.gamma,
@@ -158,6 +168,7 @@ impl Default for ScalerParams {
             crt_barrel_distortion: 0.0,
             crt_corner_radius: 0.0,
             crt_scanlines: false,
+            interlace_support: true,
             crt_phosphor_type: PhosphorType::Color,
             gamma: 1.0,
         }
@@ -182,7 +193,7 @@ impl<T> ThreadSafe for T where T: Send + Sync {} // Implement it for all Send + 
 #[cfg(target_arch = "wasm32")]
 impl<T> ThreadSafe for T where T: Sized {} // Implement it for all types on WASM
 
-pub trait DisplayScaler<D, Q, T>: Send + Sync {
+pub trait DisplayScaler<D, Q, T>: ThreadSafe {
     type NativeContext;
     type NativeRenderPass;
 
