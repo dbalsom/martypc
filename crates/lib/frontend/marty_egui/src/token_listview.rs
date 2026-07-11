@@ -38,7 +38,7 @@ use std::mem::discriminant;
 
 use crate::{color::*, constants::*, *};
 use egui::*;
-use marty_core::syntax_token::*;
+use marty_common::syntax_token::*;
 
 pub const TOKEN_TAB_STOPS: u32 = 128;
 
@@ -49,7 +49,7 @@ pub struct TokenListView {
     pub visible_rows: usize,
     pub max_rows: usize,
     row_span: usize,
-    pub contents: Vec<Vec<SyntaxToken>>,
+    pub contents: Vec<SyntaxTokenStream>,
     #[allow(unused)]
     pub visible_rect: Rect,
 
@@ -109,7 +109,7 @@ impl TokenListView {
         self.row_offset = Some(pos);
     }
 
-    pub fn set_contents(&mut self, mut contents: Vec<Vec<SyntaxToken>>, scrolling: bool) {
+    pub fn set_contents(&mut self, mut contents: Vec<SyntaxTokenStream>, scrolling: bool) {
         if self.contents.len() != contents.len() {
             // Size of contents is changing. Assume these are all new bytes.
 
@@ -261,7 +261,9 @@ impl TokenListView {
         }
 
         scroll_area.show_viewport(ui, |ui, viewport| {
-            ui.set_height(row_height * num_rows as f32);
+            // Keep an underfilled list as tall as its viewport so its contents remain
+            // top-aligned instead of inheriting vertical centering from the parent layout.
+            ui.set_height(row_height * num_rows.max(show_rows) as f32);
             //log::debug!("viewport.min.y: {}", viewport.min.y);
             let mut first_item = (viewport.min.y / row_height).floor().at_least(0.0) as usize;
             let last_item = (viewport.max.y / row_height).ceil() as usize + 1;
@@ -574,6 +576,7 @@ impl TokenListView {
 
                     if !drawn {
                         let (token_color, token_text, token_padding) = match token {
+                            SyntaxToken::ColorText(s, r, g, b) => (Color32::from_rgb(*r, *g, *b), s, 0.0),
                             SyntaxToken::MemoryAddressSeg16(_, _, s) => (Color32::LIGHT_GRAY, s, 10.0),
                             SyntaxToken::InstructionBytes(s) => (Color32::from_rgb(6, 152, 255), s, 1.0),
                             SyntaxToken::Prefix(s) => (Color32::from_rgb(116, 228, 227), s, 6.0),

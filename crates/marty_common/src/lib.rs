@@ -33,6 +33,7 @@
 pub mod bytebuf;
 pub mod keys;
 pub mod path;
+pub mod syntax_token;
 pub mod types;
 pub mod util;
 

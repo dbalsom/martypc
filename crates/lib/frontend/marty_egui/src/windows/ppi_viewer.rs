@@ -35,7 +35,8 @@ use crate::{
     GuiEventQueue,
 };
 use egui::Color32;
-use marty_core::{devices::ppi::PpiDisplayState, syntax_token::SyntaxToken};
+use marty_common::syntax_token::SyntaxToken;
+use marty_core::devices::ppi::PpiDisplayState;
 
 pub struct PpiViewerControl {
     ppi_state: PpiDisplayState,

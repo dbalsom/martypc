@@ -37,10 +37,8 @@ use egui::*;
 
 use crate::{color::*, constants::*, *};
 
-use marty_core::{
-    devices::{pit::PitDisplayState, serial::SerialPortDisplayState},
-    syntax_token::*,
-};
+use marty_common::syntax_token::SyntaxToken;
+use marty_core::devices::{pit::PitDisplayState, serial::SerialPortDisplayState};
 
 #[allow(dead_code)]
 pub struct SerialViewerControl {

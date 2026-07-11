@@ -49,8 +49,8 @@ use crate::{
         CPU_FLAG_TRAP,
         CPU_FLAG_ZERO,
     },
-    syntax_token::SyntaxToken,
 };
+use marty_common::syntax_token::{SyntaxToken, SyntaxTokenStream};
 
 pub enum BusSlotStatus {
     SlotA(BusStatus, TCycle),
@@ -387,7 +387,7 @@ impl NecVx0 {
         cycle_str
     }
 
-    pub fn cycle_state_tokens(&self, dma_count: u16, _short: bool) -> Vec<SyntaxToken> {
+    pub fn cycle_state_tokens(&self, dma_count: u16, _short: bool) -> SyntaxTokenStream {
         let ale_str = match self.i8288.ale {
             true => "A",
             false => " ",
@@ -578,7 +578,7 @@ impl NecVx0 {
             SyntaxToken::Text(comment_str),
         ];
 
-        token_vec
+        token_vec.into()
     }
 
     pub fn cycle_table_header(&self) -> Vec<String> {

@@ -75,10 +75,10 @@ use crate::{
     machine::KeybufferEntry,
     machine_config::{normalize_conventional_memory, MachineConfiguration, MachineDescriptor},
     machine_types::{EmsType, FdcType, HardDiskControllerType, MachineType, SerialControllerType, SerialMouseType},
-    syntax_token::{SyntaxFormatType, SyntaxToken},
     tracelogger::TraceLogger,
 };
 use marty_common::{
+    syntax_token::{SyntaxFormatType, SyntaxToken, SyntaxTokenStream},
     types::rom::{MachineCheckpoint, MachinePatch},
     MartyHashMap,
 };
@@ -828,11 +828,11 @@ impl BusInterface {
         }
     }
 
-    pub fn dump_ivt_tokens(&mut self) -> Vec<Vec<SyntaxToken>> {
-        let mut vec: Vec<Vec<SyntaxToken>> = Vec::new();
+    pub fn dump_ivt_tokens(&mut self) -> Vec<SyntaxTokenStream> {
+        let mut vec: Vec<SyntaxTokenStream> = Vec::new();
 
         for v in 0..256 {
-            let mut ivr_vec = Vec::new();
+            let mut ivr_vec = SyntaxTokenStream::new();
             let (ip, _) = self.read_u16((v * 4) as usize, 0).unwrap();
             let (cs, _) = self.read_u16(((v * 4) + 2) as usize, 0).unwrap();
 
@@ -2009,7 +2009,7 @@ impl BusInterface {
         self.keyboard.as_mut()
     }
 
-    pub fn dump_io_stats(&mut self) -> Vec<Vec<SyntaxToken>> {
+    pub fn dump_io_stats(&mut self) -> Vec<SyntaxTokenStream> {
         let mut token_vec: Vec<_> = self
             .io_stats
             .iter_mut()
@@ -2022,7 +2022,7 @@ impl BusInterface {
                     port_desc = format!("{:width$}", port_desc, width = DEVICE_DESC_LEN);
                 }
 
-                let mut tokens = Vec::new();
+                let mut tokens = SyntaxTokenStream::new();
                 tokens.push(SyntaxToken::Text(format!(
                     "{:04X}{}",
                     port,

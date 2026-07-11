@@ -54,7 +54,6 @@ pub mod machine_types;
 pub mod memerror;
 #[cfg(feature = "sound")]
 pub mod sound;
-pub mod syntax_token;
 pub mod tracelogger;
 pub mod updatable;
 pub mod util;

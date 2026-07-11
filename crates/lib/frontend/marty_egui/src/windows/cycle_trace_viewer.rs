@@ -33,7 +33,8 @@
 */
 use crate::*;
 use egui_extras::{Column, TableBuilder};
-use marty_core::{cpu_common::TraceMode, syntax_token::SyntaxToken};
+use marty_common::syntax_token::SyntaxTokenStream;
+use marty_core::cpu_common::TraceMode;
 
 pub struct CycleTraceViewerControl {
     pub mode: TraceMode,
@@ -42,7 +43,7 @@ pub struct CycleTraceViewerControl {
 
     pub header_vec: Vec<String>,
     pub text_content: String,
-    pub content: Vec<Vec<SyntaxToken>>,
+    pub content: Vec<SyntaxTokenStream>,
     pub col_sizes: Vec<u32>,
     pub col_states: Vec<bool>,
 }
@@ -55,7 +56,7 @@ impl CycleTraceViewerControl {
             instr_len: 0,
             header_vec: Vec::new(),
             text_content: String::new(),
-            content: vec![vec![]],
+            content: vec![SyntaxTokenStream::new()],
             col_sizes: Vec::new(),
             col_states: Vec::new(),
         }
@@ -178,7 +179,7 @@ impl CycleTraceViewerControl {
         self.content_str = trace_vec.join("\n");
     }
 
-    pub fn update_tokens(&mut self, trace_vec: &Vec<Vec<SyntaxToken>>) {
+    pub fn update_tokens(&mut self, trace_vec: &[SyntaxTokenStream]) {
         self.instr_len = trace_vec.len();
 
         if trace_vec.len() > 0 && trace_vec[0].len() != self.header_vec.len() {
@@ -189,6 +190,6 @@ impl CycleTraceViewerControl {
             );
         }
 
-        self.content = trace_vec.clone();
+        self.content = trace_vec.to_vec();
     }
 }

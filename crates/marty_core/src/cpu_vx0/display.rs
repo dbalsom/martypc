@@ -36,7 +36,8 @@ mod tests {
     #[cfg(feature = "cpu_validator")]
     use crate::cpu_validator;
 
-    use crate::{cpu_vx0::*, syntax_token::*};
+    use crate::cpu_vx0::*;
+    use marty_common::syntax_token::*;
 
     #[test]
     fn test_display_methods_match() {
@@ -96,7 +97,7 @@ mod tests {
             };
 
             let s1 = i.to_string();
-            let s2 = SyntaxTokenVec(i.tokenize()).to_string();
+            let s2 = i.tokenize().to_string();
 
             if s1.to_lowercase() == s2.to_lowercase() {
                 //log::debug!("Disassembly matches: {}, {}", s1, s2);

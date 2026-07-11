@@ -31,13 +31,13 @@
 use crate::{emulator::Emulator, event_loop::egui_events::handle_egui_event};
 
 use display_manager_eframe::{DisplayManager, EFrameDisplayManager};
+use marty_common::syntax_token::{SyntaxToken, SyntaxTokenStream};
 use marty_core::{
     bytequeue::ByteQueue,
     cpu_808x::Cpu,
     cpu_common,
     cpu_common::{CpuAddress, CpuOption, TraceMode},
     machine,
-    syntax_token::SyntaxToken,
     util,
 };
 use marty_egui::GuiWindow;
@@ -388,7 +388,7 @@ pub fn update_egui(emu: &mut Emulator, dm: &mut EFrameDisplayManager, tm: &Times
             if disassembly_addr_flat < machine::MAX_MEMORY_ADDRESS {
                 bus.seek(disassembly_addr_flat);
 
-                let mut decode_vec = Vec::new();
+                let mut decode_vec = SyntaxTokenStream::new();
 
                 match cpu_type.decode(bus, true) {
                     Ok(i) => {
@@ -400,7 +400,7 @@ pub fn update_egui(emu: &mut Emulator, dm: &mut EFrameDisplayManager, tm: &Times
                             format!("{:05X}", disassembly_addr_flat),
                         ));
 
-                        let mut instr_vec = cpu_type.tokenize_instruction(&i);
+                        let instr_vec = cpu_type.tokenize_instruction(&i);
 
                         //let decode_str = format!("{:05X} {:012} {}\n", disassembly_addr, instr_bytes_str, i);
 
@@ -425,7 +425,7 @@ pub fn update_egui(emu: &mut Emulator, dm: &mut EFrameDisplayManager, tm: &Times
                             //*offset = new_offset;
                         }
                         decode_vec.push(SyntaxToken::InstructionBytes(format!("{:012}", instr_bytes_str)));
-                        decode_vec.append(&mut instr_vec);
+                        decode_vec.extend(instr_vec);
                     }
                     Err(_) => {
                         decode_vec.push(SyntaxToken::ErrorString("INVALID".to_string()));

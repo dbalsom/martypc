@@ -36,25 +36,23 @@ use std::{
 };
 
 use super::{addressing::WithPlusSign, mnemonic::mnemonic_to_str};
-use crate::{
-    cpu_common::{
-        alu::Xi,
-        operands::OperandSize,
-        AddressingMode,
-        Mnemonic,
-        OperandType,
-        Register16,
-        Register8,
-        Segment,
-        OPCODE_PREFIX_0F,
-        OPCODE_PREFIX_LOCK,
-        OPCODE_PREFIX_REP1,
-        OPCODE_PREFIX_REP2,
-        OPCODE_PREFIX_REP3,
-        OPCODE_PREFIX_REP4,
-    },
-    syntax_token::{SyntaxFormatType, SyntaxToken, SyntaxTokenVec, SyntaxTokenize},
+use crate::cpu_common::{
+    alu::Xi,
+    operands::OperandSize,
+    AddressingMode,
+    Mnemonic,
+    OperandType,
+    Register16,
+    Register8,
+    Segment,
+    OPCODE_PREFIX_0F,
+    OPCODE_PREFIX_LOCK,
+    OPCODE_PREFIX_REP1,
+    OPCODE_PREFIX_REP2,
+    OPCODE_PREFIX_REP3,
+    OPCODE_PREFIX_REP4,
 };
+use marty_common::syntax_token::{SyntaxFormatType, SyntaxToken, SyntaxTokenStream, SyntaxTokenize};
 
 #[derive(Copy, Clone)]
 pub enum OperandSelect {
@@ -178,7 +176,7 @@ impl Display for Instruction {
 }
 
 impl SyntaxTokenize for Instruction {
-    fn tokenize(&self) -> Vec<SyntaxToken> {
+    fn tokenize(&self) -> SyntaxTokenStream {
         // Size overrides. Certain instructions have byte operands with no apparent indication
         // in the GDR. We override the operand size here to avoid unwanted sign-extension.
         use Mnemonic::*;
@@ -187,27 +185,27 @@ impl SyntaxTokenize for Instruction {
             _ => OperandSize::from(&self.width),
         };
 
-        let mut i_vec = SyntaxTokenVec(Vec::new());
+        let mut i_vec = SyntaxTokenStream::new();
 
         // Stick segment override prefix on certain opcodes (string ops)
         let sego_prefix = override_prefix_to_string(self);
         if let Some(so) = sego_prefix {
-            i_vec.0.push(SyntaxToken::Prefix(so));
-            i_vec.0.push(SyntaxToken::Formatter(SyntaxFormatType::Space));
+            i_vec.push(SyntaxToken::Prefix(so));
+            i_vec.push(SyntaxToken::Formatter(SyntaxFormatType::Space));
         }
 
         let prefix = prefix_to_string(self);
         if let Some(p) = prefix {
-            i_vec.0.push(SyntaxToken::Prefix(p));
-            i_vec.0.push(SyntaxToken::Formatter(SyntaxFormatType::Space));
+            i_vec.push(SyntaxToken::Prefix(p));
+            i_vec.push(SyntaxToken::Formatter(SyntaxFormatType::Space));
         }
 
         let mnemonic = mnemonic_to_str(self.mnemonic).to_string().to_lowercase();
-        i_vec.0.push(SyntaxToken::Mnemonic(mnemonic));
+        i_vec.push(SyntaxToken::Mnemonic(mnemonic));
 
         if matches!(self.mnemonic, Mnemonic::NOP) {
             // NOP is a special case. It has no operands, so we don't need to do anything.
-            return i_vec.0;
+            return i_vec;
         }
 
         let op1_vec = tokenize_operand(self, OperandSelect::FirstOperand, op_size);
@@ -216,11 +214,11 @@ impl SyntaxTokenize for Instruction {
         let op2_vec = tokenize_operand(self, OperandSelect::SecondOperand, op_size);
 
         if !op2_vec.is_empty() {
-            i_vec.0.push(SyntaxToken::Comma);
+            i_vec.push(SyntaxToken::Comma);
             i_vec.append(op2_vec, Some(SyntaxToken::Formatter(SyntaxFormatType::Space)), None);
         }
 
-        i_vec.0
+        i_vec
     }
 }
 
@@ -482,13 +480,13 @@ fn operand_to_string(i: &Instruction, op: OperandSelect, lvalue: OperandSize) ->
     instruction_string
 }
 
-fn tokenize_operand(i: &Instruction, op: OperandSelect, lvalue: OperandSize) -> Vec<SyntaxToken> {
+fn tokenize_operand(i: &Instruction, op: OperandSelect, lvalue: OperandSize) -> SyntaxTokenStream {
     let op_type = match op {
         OperandSelect::FirstOperand => i.operand1_type,
         OperandSelect::SecondOperand => i.operand2_type,
     };
 
-    let mut op_vec = Vec::new();
+    let mut op_vec = SyntaxTokenStream::new();
 
     match op_type {
         OperandType::Immediate8(imm8) => {

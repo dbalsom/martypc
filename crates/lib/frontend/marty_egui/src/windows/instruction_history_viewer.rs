@@ -32,7 +32,7 @@
 
 */
 use crate::{token_listview::*, *};
-use marty_core::syntax_token::*;
+use marty_common::syntax_token::SyntaxTokenStream;
 
 pub struct InstructionHistoryControl {
     pub address: String,
@@ -62,7 +62,7 @@ impl InstructionHistoryControl {
         });
     }
 
-    pub fn set_content(&mut self, mem: Vec<Vec<SyntaxToken>>) {
+    pub fn set_content(&mut self, mem: Vec<SyntaxTokenStream>) {
         self.tlv.set_contents(mem, false);
     }
 

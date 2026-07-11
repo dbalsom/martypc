@@ -43,9 +43,9 @@ use crate::{
     device_traits::videocard::VideoType,
     devices::pic,
     machine_types::MachineType,
-    syntax_token::SyntaxToken,
     updatable::Updatable,
 };
+use marty_common::syntax_token::SyntaxToken;
 
 #[derive(Debug, Default, Specifier)]
 pub enum PpiModeA {

@@ -42,8 +42,8 @@ use crate::{
     bus::{BusInterface, DeviceRunTimeUnit, IoDevice},
     cpu_common::LogicAnalyzer,
     devices::pic,
-    syntax_token::SyntaxToken,
 };
+use marty_common::syntax_token::SyntaxToken;
 #[cfg(feature = "serial")]
 use marty_common::MartyHashMap;
 use serde_derive::Deserialize;

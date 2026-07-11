@@ -27,6 +27,8 @@
 
 //! Implementation of floppy disk controllers.
 pub mod controller;
-mod data_adapter;
+mod data_interface;
+mod debug_log;
+mod operation;
 
 pub use controller::{FdcDebugState, FloppyController};

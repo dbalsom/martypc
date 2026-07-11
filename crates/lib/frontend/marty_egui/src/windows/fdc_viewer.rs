@@ -33,23 +33,38 @@
 
 */
 
-use crate::GuiEventQueue;
+use crate::{token_listview::TokenListView, GuiEventQueue};
 #[allow(dead_code)]
+use marty_common::syntax_token::SyntaxTokenStream;
 use marty_core::devices::fdc::FdcDebugState;
 
-pub const FDC_VIEWER_LINES: usize = 27;
+const FDC_VIEWER_DEFAULT_ROWS: usize = 32;
+const FDC_VIEWER_LOG_HEIGHT_SCALE: f32 = 0.75;
 
 pub struct FdcViewerControl {
-    log_string: String,
-    fdc_state:  FdcDebugState,
+    log_tokens: Vec<SyntaxTokenStream>,
+    log_row: usize,
+    fdc_state: FdcDebugState,
+    tlv: TokenListView,
 }
 
 impl FdcViewerControl {
     pub fn new() -> Self {
         Self {
-            log_string: String::new(),
-            fdc_state:  Default::default(),
+            log_tokens: Vec::new(),
+            log_row: 0,
+            fdc_state: Default::default(),
+            tlv: TokenListView::new(),
         }
+    }
+
+    fn visible_log_rows(&self, visible_rows: usize) -> Vec<SyntaxTokenStream> {
+        self.log_tokens
+            .iter()
+            .skip(self.log_row)
+            .take(visible_rows)
+            .cloned()
+            .collect()
     }
 
     pub fn draw(&mut self, ui: &mut egui::Ui, _events: &mut GuiEventQueue) {
@@ -127,22 +142,47 @@ impl FdcViewerControl {
             }
         });
 
-        ui.add_sized(
-            ui.available_size(),
-            egui::TextEdit::multiline(&mut self.log_string).font(egui::TextStyle::Monospace),
-        );
+        let font_id = egui::TextStyle::Monospace.resolve(ui.style());
+        let mut row_height = 0.0;
+        ui.fonts_mut(|f| row_height = f.row_height(&font_id) + ui.spacing().item_spacing.y);
+        let visible_rows = if row_height > 0.0 {
+            (((ui.available_height() * FDC_VIEWER_LOG_HEIGHT_SCALE) / row_height).floor() as usize).max(1)
+        }
+        else {
+            FDC_VIEWER_DEFAULT_ROWS
+        };
+
+        let max_row = self.log_tokens.len().saturating_sub(visible_rows);
+        self.log_row = self.log_row.min(max_row);
+
+        self.tlv.set_capacity(self.log_tokens.len());
+        self.tlv.set_visible(visible_rows);
+        self.tlv.set_contents(self.visible_log_rows(visible_rows), false);
+
+        let mut new_row = self.log_row;
+        let mut scrolled_to = None;
+        ui.horizontal(|ui| {
+            self.tlv.draw(ui, _events, &mut new_row, &mut |row, _events| {
+                scrolled_to = Some(row);
+            });
+        });
+
+        if let Some(row) = scrolled_to {
+            self.log_row = row.min(max_row);
+        }
     }
 
     pub fn update_state(&mut self, state: FdcDebugState) {
+        let old_len = self.log_tokens.len();
+        let visible_rows = self.tlv.visible_rows.max(1);
+        let was_at_bottom = self.log_row >= old_len.saturating_sub(visible_rows);
+
+        self.log_tokens = state.cmd_log_tokens.clone();
         self.fdc_state = state;
 
-        let log_slice = if self.fdc_state.cmd_log.len() > FDC_VIEWER_LINES {
-            &self.fdc_state.cmd_log[self.fdc_state.cmd_log.len() - FDC_VIEWER_LINES..]
+        if was_at_bottom {
+            self.log_row = self.log_tokens.len().saturating_sub(visible_rows);
+            self.tlv.set_scroll_pos(self.log_row);
         }
-        else {
-            &self.fdc_state.cmd_log
-        };
-
-        self.log_string = log_slice.join("\n");
     }
 }

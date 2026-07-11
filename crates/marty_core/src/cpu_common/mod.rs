@@ -61,10 +61,10 @@ use crate::{
     bytequeue::ByteQueue,
     cpu_808x::Intel808x,
     cpu_vx0::NecVx0,
-    syntax_token::{SyntaxToken, SyntaxTokenize},
 };
 
 use enum_dispatch::enum_dispatch;
+use marty_common::syntax_token::{SyntaxTokenStream, SyntaxTokenize};
 use serde::{Deserialize, Deserializer};
 
 // Instruction prefixes
@@ -430,7 +430,7 @@ impl CpuType {
             },
         }
     }
-    pub fn tokenize_instruction(&self, instruction: &Instruction) -> Vec<SyntaxToken> {
+    pub fn tokenize_instruction(&self, instruction: &Instruction) -> SyntaxTokenStream {
         match self {
             CpuType::Intel8088 | CpuType::Intel8086 => instruction.tokenize(),
             CpuType::NecV20(arch) | CpuType::NecV30(arch) => match arch {
@@ -626,13 +626,13 @@ pub trait Cpu {
     fn flat_ip_disassembly(&self) -> u32;
     fn flat_sp(&self) -> u32;
     fn dump_instruction_history_string(&self) -> String;
-    fn dump_instruction_history_tokens(&self) -> Vec<Vec<SyntaxToken>>;
+    fn dump_instruction_history_tokens(&self) -> Vec<SyntaxTokenStream>;
     fn dump_call_stack(&self) -> String;
     fn get_service_event(&mut self) -> Option<ServiceEvent>;
     #[cfg(any(feature = "cpu_validator", feature = "cpu_collect_cycle_states"))]
     fn get_cycle_states(&self) -> &Vec<CycleState>;
     fn get_cycle_trace(&self) -> &Vec<String>;
-    fn get_cycle_trace_tokens(&self) -> &Vec<Vec<SyntaxToken>>;
+    fn get_cycle_trace_tokens(&self) -> &[SyntaxTokenStream];
 
     fn get_string_state(&self) -> CpuStringState;
 

@@ -35,8 +35,8 @@ use crate::{
     bus::BusInterface,
     cpu_808x::{Intel808x, Register16},
     cpu_common::{Cpu, CpuAddress, CpuError, CpuOption, CpuStringState, CpuType, ServiceEvent, StepResult},
-    syntax_token::SyntaxToken,
 };
+use marty_common::syntax_token::SyntaxTokenStream;
 
 use crate::cpu_common::{Disassembly, LogicAnalyzer, Register8, TraceMode};
 
@@ -182,7 +182,7 @@ impl Cpu for Intel808x {
     }
 
     #[inline]
-    fn dump_instruction_history_tokens(&self) -> Vec<Vec<SyntaxToken>> {
+    fn dump_instruction_history_tokens(&self) -> Vec<SyntaxTokenStream> {
         self.dump_instruction_history_tokens()
     }
 
@@ -205,7 +205,7 @@ impl Cpu for Intel808x {
         self.get_cycle_trace()
     }
 
-    fn get_cycle_trace_tokens(&self) -> &Vec<Vec<SyntaxToken>> {
+    fn get_cycle_trace_tokens(&self) -> &[SyntaxTokenStream] {
         self.get_cycle_trace_tokens()
     }
 

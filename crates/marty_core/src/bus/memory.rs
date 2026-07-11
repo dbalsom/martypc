@@ -40,8 +40,8 @@ use crate::{
         MMIO_MAP_SHIFT,
     },
     memerror::MemError,
-    syntax_token::SyntaxToken,
 };
+use marty_common::syntax_token::{SyntaxToken, SyntaxTokenStream};
 
 impl BusInterface {
     pub fn copy_from(&mut self, src: &[u8], location: usize, cycle_cost: u32, read_only: bool) -> Result<(), bool> {
@@ -649,15 +649,15 @@ impl BusInterface {
         }
     }
 
-    /// Dump memory to a vector of vectors of SyntaxTokens.
+    /// Dump memory to a vector of syntax token streams.
     ///
     /// Does not honor memory mappings.
-    pub fn dump_flat_tokens(&self, address: usize, cursor: usize, mut size: usize) -> Vec<Vec<SyntaxToken>> {
-        let mut vec: Vec<Vec<SyntaxToken>> = Vec::new();
+    pub fn dump_flat_tokens(&self, address: usize, cursor: usize, mut size: usize) -> Vec<SyntaxTokenStream> {
+        let mut vec: Vec<SyntaxTokenStream> = Vec::new();
 
         if address >= self.memory.len() {
             // Start address is invalid. Send only an error token.
-            let linevec = vec![SyntaxToken::ErrorString("REQUEST OUT OF BOUNDS".to_string())];
+            let linevec = vec![SyntaxToken::ErrorString("REQUEST OUT OF BOUNDS".to_string())].into();
             vec.push(linevec);
             return vec;
         }
@@ -671,7 +671,7 @@ impl BusInterface {
         let mut display_address = address;
 
         for dump_row in dump_slice.chunks_exact(16) {
-            let mut line_vec = Vec::new();
+            let mut line_vec = SyntaxTokenStream::new();
 
             // Push memory flat address tokens
             line_vec.push(SyntaxToken::MemoryAddressFlat(
@@ -727,13 +727,13 @@ impl BusInterface {
         vec
     }
 
-    pub fn dump_virtual_flat_tokens(&self, address: usize, cursor: usize, mut size: usize) -> Vec<Vec<SyntaxToken>> {
+    pub fn dump_virtual_flat_tokens(&self, address: usize, cursor: usize, mut size: usize) -> Vec<SyntaxTokenStream> {
         if let Some(fantasy_ems) = &self.fantasy_ems {
-            let mut vec: Vec<Vec<SyntaxToken>> = Vec::new();
+            let mut vec: Vec<SyntaxTokenStream> = Vec::new();
 
             if address >= fantasy_ems.get_mem_blob().len() {
                 // Start address is invalid. Send only an error token.
-                let linevec = vec![SyntaxToken::ErrorString("REQUEST OUT OF BOUNDS".to_string())];
+                let linevec = vec![SyntaxToken::ErrorString("REQUEST OUT OF BOUNDS".to_string())].into();
                 vec.push(linevec);
                 return vec;
             }
@@ -747,7 +747,7 @@ impl BusInterface {
             let mut display_address = address;
 
             for dump_row in dump_slice.chunks_exact(16) {
-                let mut line_vec = Vec::new();
+                let mut line_vec = SyntaxTokenStream::new();
 
                 // Push memory flat address tokens
                 line_vec.push(SyntaxToken::MemoryAddressFlat(
@@ -799,22 +799,22 @@ impl BusInterface {
             vec
         }
         else {
-            let mut vec2: Vec<Vec<SyntaxToken>> = Vec::new();
-            let linevec2 = vec![SyntaxToken::ErrorString("NO EMS VIRTUAL MEMORY".to_string())];
+            let mut vec2: Vec<SyntaxTokenStream> = Vec::new();
+            let linevec2 = vec![SyntaxToken::ErrorString("NO EMS VIRTUAL MEMORY".to_string())].into();
             vec2.push(linevec2);
             vec2
         }
     }
 
-    /// Dump memory to a vector of vectors of SyntaxTokens.
+    /// Dump memory to a vector of syntax token streams.
     ///
     /// Uses bus peek functions to resolve MMIO addresses.
-    pub fn dump_flat_tokens_ex(&self, address: usize, cursor: usize, mut size: usize) -> Vec<Vec<SyntaxToken>> {
-        let mut vec: Vec<Vec<SyntaxToken>> = Vec::new();
+    pub fn dump_flat_tokens_ex(&self, address: usize, cursor: usize, mut size: usize) -> Vec<SyntaxTokenStream> {
+        let mut vec: Vec<SyntaxTokenStream> = Vec::new();
 
         if address >= self.memory.len() {
             // Start address is invalid. Send only an error token.
-            let linevec = vec![SyntaxToken::ErrorString("REQUEST OUT OF BOUNDS".to_string())];
+            let linevec = vec![SyntaxToken::ErrorString("REQUEST OUT OF BOUNDS".to_string())].into();
             vec.push(linevec);
 
             return vec;
@@ -829,7 +829,7 @@ impl BusInterface {
         let mut display_address = address;
 
         for dump_addr_row in addr_vec.chunks_exact(16) {
-            let mut line_vec = Vec::new();
+            let mut line_vec = SyntaxTokenStream::new();
 
             // Push memory flat address tokens
             line_vec.push(SyntaxToken::MemoryAddressFlat(
@@ -885,12 +885,17 @@ impl BusInterface {
         vec
     }
 
-    pub fn dump_virtual_flat_tokens_ex(&self, address: usize, cursor: usize, mut size: usize) -> Vec<Vec<SyntaxToken>> {
+    pub fn dump_virtual_flat_tokens_ex(
+        &self,
+        address: usize,
+        cursor: usize,
+        mut size: usize,
+    ) -> Vec<SyntaxTokenStream> {
         if let Some(fantasy_ems) = &self.fantasy_ems {
-            let mut vec: Vec<Vec<SyntaxToken>> = Vec::new();
+            let mut vec: Vec<SyntaxTokenStream> = Vec::new();
             if address >= fantasy_ems.get_mem_blob().len() {
                 // Start address is invalid. Send only an error token.
-                let linevec = vec![SyntaxToken::ErrorString("REQUEST OUT OF BOUNDS".to_string())];
+                let linevec = vec![SyntaxToken::ErrorString("REQUEST OUT OF BOUNDS".to_string())].into();
                 vec.push(linevec);
 
                 return vec;
@@ -905,7 +910,7 @@ impl BusInterface {
             let mut display_address = address;
 
             for dump_addr_row in addr_vec.chunks_exact(16) {
-                let mut line_vec = Vec::new();
+                let mut line_vec = SyntaxTokenStream::new();
 
                 // Push memory flat address tokens
                 line_vec.push(SyntaxToken::MemoryAddressFlat(
@@ -961,8 +966,8 @@ impl BusInterface {
             return vec;
         }
 
-        let mut vec2: Vec<Vec<SyntaxToken>> = Vec::new();
-        let linevec2 = vec![SyntaxToken::ErrorString("NO EMS VIRTUAL MEMORY".to_string())];
+        let mut vec2: Vec<SyntaxTokenStream> = Vec::new();
+        let linevec2 = vec![SyntaxToken::ErrorString("NO EMS VIRTUAL MEMORY".to_string())].into();
         vec2.push(linevec2);
         vec2
     }

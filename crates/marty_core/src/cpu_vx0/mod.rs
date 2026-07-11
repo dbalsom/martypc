@@ -86,9 +86,9 @@ use crate::{
         TraceMode,
     },
     cpu_vx0::{microcode::*, queue::InstructionQueue},
-    syntax_token::*,
     tracelogger::TraceLogger,
 };
+use marty_common::syntax_token::*;
 
 // Make ReadWriteFlag available to benchmarks
 pub use crate::cpu_vx0::biu::ReadWriteFlag;
@@ -617,7 +617,7 @@ pub struct NecVx0 {
     trace_comment: Vec<&'static str>,
     trace_instr: u16,
     trace_str_vec: Vec<String>,
-    trace_token_vec: Vec<Vec<SyntaxToken>>,
+    trace_token_vec: Vec<SyntaxTokenStream>,
 
     enable_wait_states: bool,
     off_rails_detection: bool,
@@ -1737,11 +1737,11 @@ impl NecVx0 {
         disassembly_string
     }
 
-    pub fn dump_instruction_history_tokens(&self) -> Vec<Vec<SyntaxToken>> {
+    pub fn dump_instruction_history_tokens(&self) -> Vec<SyntaxTokenStream> {
         let mut history_vec = Vec::new();
 
         for i in &self.instruction_history {
-            let mut i_token_vec = Vec::new();
+            let mut i_token_vec = SyntaxTokenStream::new();
             match i {
                 HistoryEntry::InstructionEntry {
                     cs,
@@ -1907,7 +1907,7 @@ impl NecVx0 {
     pub fn get_cycle_trace(&self) -> &Vec<String> {
         &self.trace_str_vec
     }
-    pub fn get_cycle_trace_tokens(&self) -> &Vec<Vec<SyntaxToken>> {
+    pub fn get_cycle_trace_tokens(&self) -> &[SyntaxTokenStream] {
         &self.trace_token_vec
     }
     pub fn get_cycle_ct(&self) -> (u64, u64) {

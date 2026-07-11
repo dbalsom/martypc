@@ -63,8 +63,8 @@ use crate::{
         TaCycle,
         CPU_FLAGS_RESERVED_ON,
     },
-    syntax_token::SyntaxToken,
 };
+use marty_common::syntax_token::SyntaxTokenStream;
 
 #[cfg(any(feature = "cpu_validator", feature = "cpu_collect_cycle_states"))]
 use crate::cpu_validator::{CycleState, VRegisters};
@@ -363,7 +363,7 @@ impl Cpu for NecVx0 {
     }
 
     #[inline]
-    fn dump_instruction_history_tokens(&self) -> Vec<Vec<SyntaxToken>> {
+    fn dump_instruction_history_tokens(&self) -> Vec<SyntaxTokenStream> {
         self.dump_instruction_history_tokens()
     }
 
@@ -386,7 +386,7 @@ impl Cpu for NecVx0 {
         self.get_cycle_trace()
     }
 
-    fn get_cycle_trace_tokens(&self) -> &Vec<Vec<SyntaxToken>> {
+    fn get_cycle_trace_tokens(&self) -> &[SyntaxTokenStream] {
         self.get_cycle_trace_tokens()
     }
 

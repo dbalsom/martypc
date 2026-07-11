@@ -35,7 +35,7 @@
 */
 
 use crate::{token_listview::*, *};
-use marty_core::syntax_token::*;
+use marty_common::syntax_token::SyntaxTokenStream;
 
 pub const DEFAULT_VIEWER_ROWS: usize = 25;
 
@@ -161,7 +161,7 @@ impl EMSVirtualMemoryViewerControl {
         self.visible_rows * self.row_span
     }
 
-    pub fn set_memory(&mut self, mem: Vec<Vec<SyntaxToken>>) {
+    pub fn set_memory(&mut self, mem: Vec<SyntaxTokenStream>) {
         self.tlv.set_contents(mem, false);
     }
 

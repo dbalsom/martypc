@@ -40,9 +40,9 @@ use modular_bitfield::prelude::*;
 use crate::{
     bus::{BusInterface, DeviceRunTimeUnit, IoDevice},
     cpu_common::LogicAnalyzer,
-    syntax_token::*,
     updatable::*,
 };
+use marty_common::syntax_token::*;
 
 pub type PitDisplayState = Vec<BTreeMap<&'static str, SyntaxToken>>;
 

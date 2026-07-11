@@ -39,10 +39,10 @@
 use crate::{
     bus::{BusInterface, DeviceRunTimeUnit, IoDevice, MemRangeDescriptor, MemoryMappedDevice, NO_IO_BYTE},
     cpu_common::{CpuAddress, LogicAnalyzer},
-    syntax_token::SyntaxToken,
 };
 
 use lazy_static::lazy_static;
+use marty_common::syntax_token::{SyntaxToken, SyntaxTokenStream};
 use regex::Regex;
 
 // todos/wishlist:
@@ -385,11 +385,11 @@ impl FantasyEmsCard {
             (self.pages[port_num as usize].unmapped_default as usize) << FANTASY_PAGE_SHIFT;
     }
 
-    pub fn dump_fantasy_stats(&mut self) -> Vec<Vec<SyntaxToken>> {
+    pub fn dump_fantasy_stats(&mut self) -> Vec<SyntaxTokenStream> {
         let mut token_vec = Vec::new();
 
         for (i, page) in self.pages.iter_mut().enumerate() {
-            let mut tokens = Vec::new();
+            let mut tokens = SyntaxTokenStream::new();
             tokens.push(SyntaxToken::Text(format!("Page {:02X}{:04x}", i, page.page_addr)));
             token_vec.push(tokens);
         }

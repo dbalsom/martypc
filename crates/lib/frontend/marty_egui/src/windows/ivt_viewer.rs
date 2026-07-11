@@ -31,14 +31,14 @@
 */
 
 use crate::{token_listview::*, *};
-use marty_core::syntax_token::*;
+use marty_common::syntax_token::SyntaxTokenStream;
 
 const DEFAULT_ROWS: usize = 24;
 
 pub struct IvtViewerControl {
     tlv: TokenListView,
     row: usize,
-    content: Vec<Vec<SyntaxToken>>,
+    content: Vec<SyntaxTokenStream>,
     scrolling: bool,
 }
 
@@ -71,7 +71,7 @@ impl IvtViewerControl {
         }
     }
 
-    pub fn set_content(&mut self, ivt: Vec<Vec<SyntaxToken>>) {
+    pub fn set_content(&mut self, ivt: Vec<SyntaxTokenStream>) {
         self.content = ivt;
         self.tlv
             .set_contents(self.content[self.row..self.row + DEFAULT_ROWS].to_vec(), self.scrolling);

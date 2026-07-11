@@ -109,8 +109,15 @@ impl OperationStatus {
 pub struct DriveReadResult {
     pub(crate) not_found: bool,
     pub(crate) sectors_read: u16,
+    pub(crate) bytes_read: usize,
     pub(crate) new_chs: DiskChs,
     pub(crate) deleted_mark: bool,
+}
+
+pub struct DriveSectorReadResult {
+    pub(crate) not_found: bool,
+    pub(crate) data: Vec<u8>,
+    pub(crate) status: OperationStatus,
 }
 
 pub struct DriveWriteResult {
@@ -514,6 +521,7 @@ impl FloppyDiskDrive {
                     return Ok(DriveReadResult {
                         not_found: true,
                         sectors_read: 0,
+                        bytes_read: 0,
                         new_chs: op_chs,
                         deleted_mark: false,
                     });
@@ -526,6 +534,7 @@ impl FloppyDiskDrive {
                 return Ok(DriveReadResult {
                     not_found: false,
                     sectors_read: 0,
+                    bytes_read: 0,
                     new_chs: op_chs,
                     deleted_mark: false,
                 });
@@ -557,6 +566,17 @@ impl FloppyDiskDrive {
                     return Ok(DriveReadResult {
                         not_found: true,
                         sectors_read: sectors_read as u16,
+                        bytes_read: operation_buf.len(),
+                        new_chs: op_chs,
+                        deleted_mark: false,
+                    });
+                }
+                else {
+                    self.operation_status.sector_not_found = true;
+                    return Ok(DriveReadResult {
+                        not_found: true,
+                        sectors_read: sectors_read as u16,
+                        bytes_read: operation_buf.len(),
                         new_chs: op_chs,
                         deleted_mark: false,
                     });
@@ -622,12 +642,78 @@ impl FloppyDiskDrive {
             }
         }
 
+        let bytes_read = operation_buf.len();
         self.operation_buf = Cursor::new(operation_buf);
         Ok(DriveReadResult {
             not_found: false,
             sectors_read: sectors_read as u16,
+            bytes_read,
             new_chs: op_chs,
             deleted_mark: self.operation_status.deleted_mark,
+        })
+    }
+
+    pub fn read_sector(&mut self, h: u8, id_chs: DiskChs, n: u8) -> Result<DriveSectorReadResult, Error> {
+        if self.disk_image.is_none() {
+            return Err(anyhow!("No media in drive"));
+        }
+
+        log::trace!(
+            "read_sector(): phys_c: {} phys_h: {} id_chs: {} n: {}",
+            self.cylinder,
+            h,
+            id_chs,
+            n
+        );
+
+        let image_lock = self.disk_image.as_ref().unwrap();
+        let mut image = write_lock!(image_lock);
+
+        self.operation_status.reset(FloppyDriveOperation::ReadData);
+
+        let read_sector_result = match image.read_sector(
+            DiskCh::new(self.cylinder, h),
+            DiskChsnQuery::new(id_chs.c(), id_chs.h(), id_chs.s(), n),
+            None,
+            None,
+            RwScope::DataOnly,
+            false,
+        ) {
+            Ok(result) => result,
+            Err(DiskImageError::DataError) => {
+                self.operation_status.sector_not_found = true;
+                return Ok(DriveSectorReadResult {
+                    not_found: true,
+                    data: Vec::new(),
+                    status: self.operation_status,
+                });
+            }
+            Err(e) => return Err(e.into()),
+        };
+
+        self.operation_status.sector_not_found = read_sector_result.not_found;
+        self.operation_status.wrong_cylinder = read_sector_result.wrong_cylinder;
+        self.operation_status.wrong_head = read_sector_result.wrong_head;
+
+        if !read_sector_result.not_found {
+            self.operation_status.no_dam = read_sector_result.no_dam;
+            self.operation_status.address_crc_error = read_sector_result.address_crc_error;
+            self.operation_status.data_crc_error = read_sector_result.data_crc_error;
+            self.operation_status.deleted_mark = read_sector_result.deleted_mark;
+        }
+
+        let data = if read_sector_result.not_found || read_sector_result.no_dam || read_sector_result.address_crc_error
+        {
+            Vec::new()
+        }
+        else {
+            read_sector_result.read_buf[read_sector_result.data_range].to_vec()
+        };
+
+        Ok(DriveSectorReadResult {
+            not_found: read_sector_result.not_found,
+            data,
+            status: self.operation_status,
         })
     }
 
@@ -660,6 +746,7 @@ impl FloppyDiskDrive {
             return Ok(DriveReadResult {
                 not_found: true,
                 sectors_read: 0,
+                bytes_read: 0,
                 new_chs: DiskChs::from((id_ch, 1)),
                 deleted_mark: false,
             });
@@ -679,7 +766,8 @@ impl FloppyDiskDrive {
         Ok(DriveReadResult {
             not_found: false,
             sectors_read: read_track_result.sectors_read,
-            new_chs: DiskChs::from((id_ch, (read_track_result.sectors_read + 1) as u8)),
+            bytes_read: read_track_result.read_len_bytes,
+            new_chs: DiskChs::from((id_ch, 1)),
             deleted_mark: self.operation_status.deleted_mark,
         })
     }

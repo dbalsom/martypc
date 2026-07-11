@@ -85,9 +85,9 @@ use crate::{
     cpu_808x::{microcode::*, queue::InstructionQueue},
     cpu_common::{CpuType, TraceMode},
     cycles_mc,
-    syntax_token::*,
     tracelogger::TraceLogger,
 };
+use marty_common::syntax_token::*;
 
 #[cfg(feature = "cpu_validator")]
 use crate::cpu_validator::ValidatorType;
@@ -586,7 +586,7 @@ pub struct Intel808x {
     trace_comment: Vec<&'static str>,
     trace_instr: u16,
     trace_str_vec: Vec<String>,
-    trace_token_vec: Vec<Vec<SyntaxToken>>,
+    trace_token_vec: Vec<SyntaxTokenStream>,
 
     enable_wait_states: bool,
     off_rails_detection: bool,
@@ -1905,11 +1905,11 @@ impl Intel808x {
         disassembly_string
     }
 
-    pub fn dump_instruction_history_tokens(&self) -> Vec<Vec<SyntaxToken>> {
+    pub fn dump_instruction_history_tokens(&self) -> Vec<SyntaxTokenStream> {
         let mut history_vec = Vec::new();
 
         for i in &self.instruction_history {
-            let mut i_token_vec = Vec::new();
+            let mut i_token_vec = SyntaxTokenStream::new();
             match i {
                 HistoryEntry::InstructionEntry {
                     cs,
@@ -2081,7 +2081,7 @@ impl Intel808x {
     pub fn get_cycle_trace(&self) -> &Vec<String> {
         &self.trace_str_vec
     }
-    pub fn get_cycle_trace_tokens(&self) -> &Vec<Vec<SyntaxToken>> {
+    pub fn get_cycle_trace_tokens(&self) -> &[SyntaxTokenStream] {
         &self.trace_token_vec
     }
     pub fn get_cycle_ct(&self) -> (u64, u64) {

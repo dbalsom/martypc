@@ -45,7 +45,8 @@ use egui::plot::{
 
 use crate::{color::*, constants::*, *};
 
-use marty_core::{devices::pit::PitDisplayState, syntax_token::*};
+use marty_common::syntax_token::SyntaxToken;
+use marty_core::devices::pit::PitDisplayState;
 
 #[allow(dead_code)]
 pub struct PitViewerControl {
