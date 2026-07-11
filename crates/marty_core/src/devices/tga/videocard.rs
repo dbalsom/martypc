@@ -260,7 +260,7 @@ impl VideoCard for TGACard {
                 pos_y: (addr / 40) as u32,
                 line_start,
                 line_end,
-                visible: self.crtc.cursor_enabled(),
+                visible: self.is_cursor_active(),
             },
             DisplayMode::Mode2TextBw80 | DisplayMode::Mode3TextCo80 => CursorInfo {
                 addr,
@@ -268,7 +268,7 @@ impl VideoCard for TGACard {
                 pos_y: (addr / 80) as u32,
                 line_start,
                 line_end,
-                visible: self.crtc.cursor_enabled(),
+                visible: self.is_cursor_active(),
             },
             _ => {
                 // Not a valid text mode
@@ -352,6 +352,8 @@ impl VideoCard for TGACard {
         internal_vec.push((String::from("cur_screen_cycles:"), VideoCardStateEntry::String(format!("{}", self.cur_screen_cycles))));
         internal_vec.push((String::from("phase:"), VideoCardStateEntry::String(format!("{}", self.cycles & 0x0F))));
         internal_vec.push((String::from("cursor attr:"), VideoCardStateEntry::String(format!("{:02b}", (self.crtc.reg[CrtcRegister::CursorStartLine] & CURSOR_ATTR_MASK) >> 5))));
+        internal_vec.push((String::from("cursor blink:"), VideoCardStateEntry::String(format!("{}", self.internal_cursor_blink_state))));
+        internal_vec.push((String::from("text blink:"), VideoCardStateEntry::String(format!("{}", self.text_blink_state))));
         internal_vec.push((String::from("snowflakes:"), VideoCardStateEntry::String(format!("{}", self.snow_count))));
         map.insert("Internal".to_string(), internal_vec);
 
@@ -513,13 +515,6 @@ impl VideoCard for TGACard {
                         log::error!("excessive clocks in accumulator: {}", self.clocks_accum);
                     }
 
-                    // Handle blinking. TODO: Move blink handling into tick().
-                    self.blink_accum_clocks += self.char_clock;
-                    if self.blink_accum_clocks > CGA_CURSOR_BLINK_RATE_CLOCKS {
-                        self.blink_state = !self.blink_state;
-                        self.blink_accum_clocks -= CGA_CURSOR_BLINK_RATE_CLOCKS;
-                    }
-
                     // Char clock may update after tick_char() with deferred mode change, so save the
                     // current clock.
                     let old_char_clock = self.char_clock;
@@ -530,17 +525,6 @@ impl VideoCard for TGACard {
             }
             ClockingMode::Cycle => {
                 panic!("Unsupported mode for TGA");
-                // while self.clocks_accum > 0 {
-                //     // Handle blinking. TODO: Move blink handling into tick().
-                //     self.blink_accum_clocks += 1;
-                //     if self.blink_accum_clocks > CGA_CURSOR_BLINK_RATE_CLOCKS {
-                //         self.blink_state = !self.blink_state;
-                //         self.blink_accum_clocks -= CGA_CURSOR_BLINK_RATE_CLOCKS;
-                //     }
-                //
-                //     //self.tick();
-                //     self.clocks_accum = self.clocks_accum.saturating_sub(1);
-                // }
             }
             _ => {
                 panic!("Unsupported ClockingMode: {:?}", self.clock_mode);

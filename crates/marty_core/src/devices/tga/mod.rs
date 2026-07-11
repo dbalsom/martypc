@@ -228,8 +228,6 @@ const CGA_MONITOR_VSYNC_MIN: u32 = 127;
 // For derivation of CGA timings, see https://www.vogons.org/viewtopic.php?t=47052
 // We run the CGA card independent of the CPU frequency.
 // Timings in 4.77Mhz CPU cycles are provided for reference.
-const FRAME_TIME_CLOCKS: u32 = 238944;
-const FRAME_TIME_US: f64 = 16_688.15452339;
 const FRAME_VBLANK_US: f64 = 14_732.45903422;
 //const FRAME_CPU_TIME: u32 = 79_648;
 //const FRAME_VBLANK_START: u32 = 70_314;
@@ -242,11 +240,8 @@ const SCANLINE_HBLANK_US: f64 = 52.38095911;
 
 const CGA_HBLANK: f64 = 0.1785714;
 
-const CGA_DEFAULT_CURSOR_BLINK_RATE: f64 = 0.0625;
-const CGA_CURSOR_BLINK_RATE_CLOCKS: u32 = FRAME_TIME_CLOCKS * 8;
-const CGA_CURSOR_BLINK_RATE_US: f64 = FRAME_TIME_US * 8.0;
-
-const CGA_DEFAULT_CURSOR_FRAME_CYCLE: u32 = 8;
+const TGA_CURSOR_BLINK_RATE: usize = 8;
+const TGA_TEXT_BLINK_RATE: usize = 16;
 
 const MODE_MATCH_MASK: u8 = 0b0001_1111;
 const MODE_HIRES_TEXT: u8 = 0b0000_0001;
@@ -599,8 +594,6 @@ pub struct TGACard {
     frame_count:  u64,
     status_reads: u64,
 
-    cursor_blink_rate: f64,
-
     crtc: Crtc6845,
     crtc_ticks_since_vsync: u32,
     in_crtc_hsync: bool,
@@ -651,13 +644,17 @@ pub struct TGACard {
     vtac_c5: u8,
     in_vta: bool,
     effective_vta: u8,
-    vma: usize,              // VMA register - Video memory address
-    vma_t: usize,            // VMA' register - Video memory address temporary
-    vmws: usize,             // Video memory word size
-    rba: usize,              // Render buffer address
-    blink_state: bool,       // Used to control blinking of cursor and text with blink attribute
-    blink_accum_us: f64,     // Microsecond accumulator for blink state flipflop
-    blink_accum_clocks: u32, // CGA Clock accumulator for blink state flipflop
+    vma: usize,   // VMA register - Video memory address
+    vma_t: usize, // VMA' register - Video memory address temporary
+    vmws: usize,  // Video memory word size
+    rba: usize,   // Render buffer address
+
+    // Blinking logic
+    blink_ticks: usize,
+    internal_cursor_blink_state: bool,
+    text_blink_state: bool,
+
+    // Timing signals
     accumulated_us: f64,
     ticks_advanced: u32, // Number of ticks we have advanced mid-instruction via port or mmio access.
     pixel_clocks_owed: u32,
@@ -774,8 +771,6 @@ impl Default for TGACard {
             frame_count:  0,
             status_reads: 0,
 
-            cursor_blink_rate: CGA_DEFAULT_CURSOR_BLINK_RATE,
-
             crtc: Crtc6845::new(TraceLogger::None),
             crtc_ticks_since_vsync: 0,
 
@@ -829,9 +824,9 @@ impl Default for TGACard {
             vma_t: 0,
             vmws: 2,
             rba: 0,
-            blink_state: false,
-            blink_accum_us: 0.0,
-            blink_accum_clocks: 0,
+            blink_ticks: 0,
+            internal_cursor_blink_state: false,
+            text_blink_state: false,
 
             accumulated_us: 0.0,
             ticks_advanced: 0,
@@ -935,6 +930,34 @@ impl TGACard {
             a0_byte: 0,
             a0: A0Register::new(),
             ..Self::default()
+        }
+    }
+
+    #[inline]
+    /// Returns whether the cursor should be active for the current character clock.
+    ///
+    /// The PCjr video gate array (and compatible Tandy circuitry) is a black box, so its
+    /// independent cursor blink signal is inferred to behave like the CGA signal. Software
+    /// normally configures the MC6845 not to blink; if it does enable CRTC blinking, both signals
+    /// are combined here.
+    fn is_cursor_active(&self) -> bool {
+        self.crtc.cursor() && self.internal_cursor_blink_state
+    }
+
+    #[inline]
+    /// Returns whether the text blink signal should affect the current character clock.
+    fn is_blink_enabled(&self) -> bool {
+        !self.crtc.cursor() && self.mode_blinking
+    }
+
+    #[inline]
+    fn update_blink_state(&mut self) {
+        self.blink_ticks = self.blink_ticks.wrapping_add(1);
+        if self.blink_ticks.is_multiple_of(TGA_CURSOR_BLINK_RATE) {
+            self.internal_cursor_blink_state = !self.internal_cursor_blink_state;
+        }
+        if self.blink_ticks.is_multiple_of(TGA_TEXT_BLINK_RATE) {
+            self.text_blink_state = !self.text_blink_state;
         }
     }
 
@@ -1512,7 +1535,7 @@ impl TGACard {
     /// glyph in high-resolution text mode.
     #[inline]
     pub fn get_hchar_glyph_row(&self, glyph: usize, mut row: usize) -> u64 {
-        if self.cur_blink && !self.blink_state {
+        if self.cur_blink && !self.text_blink_state && self.is_blink_enabled() {
             CGA_COLORS_U64[self.cur_bg as usize]
         }
         else {
@@ -1531,7 +1554,7 @@ impl TGACard {
     /// glyph in low-resolution (40-column) mode.
     #[inline]
     pub fn get_mchar_glyph_rows(&self, glyph: usize, mut row: usize) -> (u64, u64) {
-        if self.cur_blink && !self.blink_state {
+        if self.cur_blink && !self.text_blink_state && self.is_blink_enabled() {
             let glyph = CGA_COLORS_U64[self.cur_bg as usize];
             (glyph, glyph)
         }
@@ -1560,7 +1583,7 @@ impl TGACard {
         // Do cursor if visible, enabled and defined
         if     self.vma == self.crtc_cursor_address
             && self.cursor_status
-            && self.blink_state
+            && self.internal_cursor_blink_state
             && self.cursor_data[(self.vlc_c9 & 0x1F) as usize]
         {
             self.draw_solid_char(self.cur_fg);
@@ -1570,7 +1593,7 @@ impl TGACard {
                 let new_pixel = match CGACard::get_glyph_bit(self.cur_char, (i as u8 / self.clock_divisor), self.vlc_c9) {
                     true => {
                         if self.cur_blink {
-                            if self.blink_state { self.cur_fg } else { self.cur_bg }
+                            if self.text_blink_state { self.cur_fg } else { self.cur_bg }
                         }
                         else {
                             self.cur_fg
@@ -2336,6 +2359,8 @@ impl TGACard {
 
             // Save the current mode byte, used for composite rendering.
             self.extents.mode_byte = self.mode_byte;
+
+            self.update_blink_state();
 
             self.swap();
         }

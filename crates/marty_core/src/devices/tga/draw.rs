@@ -118,7 +118,7 @@ impl TGACard {
         let mut new_pixel = match TGACard::get_glyph_bit(self.cur_char, self.char_col, vlc) {
             true => {
                 if self.cur_blink {
-                    if self.blink_state {
+                    if self.text_blink_state {
                         self.cur_fg
                     }
                     else {
@@ -133,7 +133,7 @@ impl TGACard {
         };
 
         // Do cursor
-        if self.crtc.cursor() {
+        if self.is_cursor_active() {
             // This cell has the cursor address, cursor is enabled and not blinking
             new_pixel = self.cur_fg;
         }
@@ -153,7 +153,7 @@ impl TGACard {
     /// Draw an entire character row in high resolution text mode (8 pixels)
     pub fn draw_text_mode_hchar(&mut self) {
         // Do cursor if visible, enabled and defined
-        if self.crtc.cursor() {
+        if self.is_cursor_active() {
             self.draw_solid_hchar(self.cur_fg);
         }
         else if self.mode_enable {
@@ -174,7 +174,7 @@ impl TGACard {
         //let draw_span = (8 * self.clock_divisor) as usize;
 
         // Do cursor if visible, enabled and defined
-        if self.crtc.cursor() {
+        if self.is_cursor_active() {
             self.draw_solid_mchar(self.cur_fg);
         }
         else if self.mode_enable {
