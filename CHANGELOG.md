@@ -24,8 +24,9 @@ This release adds a new Fantasy EMS device courtsey of sqpat, author of RealDOOM
  - Fixed bad md5 in PCjr ROM definition for 64K ROM image
  - Updated GLaBIOS to 0.4
  - Added build ID to title bar / About window
- - Restored Backend debug string in the Performance window.
- 
+ - Restored Backend debug string in the Performance window
+ - Improved oscilloscope level logic in SN76489 viewer window
+
 ## Core Bug Fixes / Improvements
  - Add Fantasy EMS device (thanks sqpat)
  - VGA: Fix Miscellaneous Output Register not being readable

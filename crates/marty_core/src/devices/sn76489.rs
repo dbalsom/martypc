@@ -261,7 +261,7 @@ impl Oscilloscope {
         }
         else {
             // Not enough points, just return a flat line.
-            let vec = vec![(self.start_tick, 0.0), (tick, 0.0)];
+            let vec = vec![(self.start_tick, self.last_vol), (tick, self.last_vol)];
             self.start_tick = tick;
             vec
         }
@@ -542,7 +542,7 @@ impl Sn76489 {
             delta = self.tone_channels[i].tick(self.ticks);
 
             // Update the scope if there was a change in output.
-            if delta {
+            if delta && self.tone_channels[i].running {
                 let volume = self.attenuation_registers[i].get() * 4.0;
                 self.tone_channels[i]
                     .scope
@@ -553,8 +553,10 @@ impl Sn76489 {
         if self.noise_channel.tick(delta) {
             // Noise channel output changed; update oscilloscope.
             let volume = self.attenuation_registers[3].get() * 4.0;
-            self.noise_scope
-                .update_delta(self.ticks, self.noise_channel.output(), volume);
+            if self.noise_channel.running {
+                self.noise_scope
+                    .update_delta(self.ticks, self.noise_channel.output(), volume);
+            }
         }
         // Decrement the write wait counter.
         self.write_wait = self.write_wait.saturating_sub(1);
