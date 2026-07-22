@@ -494,34 +494,35 @@ impl IoDevice for FantasyEmsCard {
     ) {
         match port {
             FANTASY_PAGE_SELECT_REGISTER => {
-                if data >= FANTASY_WRITABLE_PAGE_COUNT {
+                if (data & FANTASY_PAGE_SET_MASK) >= FANTASY_WRITABLE_PAGE_COUNT {
                     log::warn!("Out of range page select register write! {}", data);
                     self.current_page_index = 0;
-                }
-                else {
-                    self.current_page_index = data;
+                } else {
+                    self.current_page_index = data & FANTASY_PAGE_SET_MASK;
                 }
 
-                self.page_index_auto_increment_on =
-                    (data & FANTASY_AUTOINCREMENT_PAGE_FLAG) == FANTASY_AUTOINCREMENT_PAGE_FLAG;
+                if ((data & FANTASY_AUTOINCREMENT_PAGE_FLAG) == FANTASY_AUTOINCREMENT_PAGE_FLAG){
+                    self.page_index_auto_increment_on = true;
+                } else {
+                    self.page_index_auto_increment_on = false;
+                }
             }
             FANTASY_PAGE_SET_REGISTER_LO => {
                 self.current_page_set_register_lo_value = data;
             }
             FANTASY_PAGE_SET_REGISTER_HI => {
-                let combined_data: u16 = ((data as u16) << 8) + (self.current_page_set_register_lo_value as u16);
-                if combined_data == 0xFFFF {
+                    let combined_data:u16 = ((data as u16) << 8) + (self.current_page_set_register_lo_value as u16);
+                if (combined_data == 0xFFFF){
                     //log::warn!("Page {} Unset!", self.current_page_index);
                     self.page_reg_unmap(self.current_page_index);
-                }
-                else {
+                } else {
                     //log::warn!("Page set! {} as {}", self.current_page_index, data);
                     self.page_reg_write(self.current_page_index, combined_data);
                 }
 
-                if self.page_index_auto_increment_on {
+                if (self.page_index_auto_increment_on){
                     self.current_page_index += 1;
-                    if self.current_page_index >= FANTASY_WRITABLE_PAGE_COUNT {
+                    if (self.current_page_index >= FANTASY_WRITABLE_PAGE_COUNT){
                         self.current_page_index = 0;
                     }
                 }
