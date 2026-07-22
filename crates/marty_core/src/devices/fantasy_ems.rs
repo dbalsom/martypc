@@ -35,6 +35,12 @@
       Changing the active register set changings the whole card's 
       mapping context at once.
 
+    Support for 4 Register sets:
+      There are 4 lists of pages (register sets) maintained by the card.
+      Changing the active register set changings the whole card's 
+      mapping context at once.
+
+
     Pages 4-27 are the conventional page registers (0x4000 thru 0x9C00 )
 */
  
@@ -1160,10 +1166,36 @@ impl IoDevice for FantasyEmsCard {
         _delta: DeviceRunTimeUnit,
         _analyzer: Option<&mut LogicAnalyzer>,
     ) {
-        match port {
-            FANTASY_PAGE_SELECT_REGISTER => {
-                if (data & FANTASY_PAGE_SET_MASK) >= FANTASY_WRITABLE_PAGE_COUNT{
-                    log::warn!("Out of range page select register write! {}", data);
+        if (port == FANTASY_PAGE_SELECT_REGISTER) {
+            if ((data & FANTASY_PAGE_SET_MASK) >= FANTASY_WRITABLE_PAGE_COUNT){
+                log::warn!("Out of range page select register write! {}", data);
+                self.current_page_index = 0;
+            } else {
+                self.current_page_index = data & FANTASY_PAGE_SET_MASK;
+            }
+
+            if ((data & FANTASY_AUTOINCREMENT_PAGE_FLAG) == FANTASY_AUTOINCREMENT_PAGE_FLAG){
+                self.page_index_auto_increment_on = true;
+            } else {
+                self.page_index_auto_increment_on = false;
+            }
+        } else if (port == FANTASY_PAGE_SET_REGISTER_LO) {
+            self.current_page_set_register_lo_value = data;
+
+        } else if (port == FANTASY_PAGE_SET_REGISTER_HI) {
+            let combined_data:u16 = ((data as u16) << 8) + (self.current_page_set_register_lo_value as u16);
+            if (combined_data == 0xFFFF){
+                //log::warn!("Page {} Unset!", self.current_page_index);
+                self.page_reg_unmap(self.current_page_index);
+            } else {
+                //log::warn!("Page set! {} as {}", self.current_page_index, data);
+
+                self.page_reg_write(self.current_page_index, combined_data & FANTASY_EMS_MAX_LOGICAL_PAGE_MASK);
+            }
+
+            if (self.page_index_auto_increment_on){
+                self.current_page_index += 1;
+                if (self.current_page_index >= FANTASY_WRITABLE_PAGE_COUNT){
                     self.current_page_index = 0;
                 } else {
                     self.current_page_index = data & FANTASY_PAGE_SET_MASK;
@@ -1175,44 +1207,15 @@ impl IoDevice for FantasyEmsCard {
                     self.page_index_auto_increment_on = false;
                 }
             }
-            FANTASY_PAGE_SET_REGISTER_LO => {
-                self.current_page_set_register_lo_value = data;
-            }
-            FANTASY_PAGE_SET_REGISTER_HI => {
-                let combined_data:u16 = ((data as u16) << 8) + (self.current_page_set_register_lo_value as u16);
-                if (combined_data == 0xFFFF){
-                    //log::warn!("Page {} Unset!", self.current_page_index);
-                    self.page_reg_unmap(self.current_page_index);
-                } else {
-                    //log::warn!("Page set! {} as {}", self.current_page_index, data);
 
-                    self.page_reg_write(self.current_page_index, combined_data & FANTASY_EMS_MAX_LOGICAL_PAGE_MASK);
-                }
-
-                if (self.page_index_auto_increment_on){
-                    self.current_page_index += 1;
-                    if (self.current_page_index >= FANTASY_WRITABLE_PAGE_COUNT){
-                        self.current_page_index = 0;
-                    } else {
-                        self.current_page_index = data & FANTASY_PAGE_SET_MASK;
-                    }
-
-                    if ((data & FANTASY_AUTOINCREMENT_PAGE_FLAG) == FANTASY_AUTOINCREMENT_PAGE_FLAG){
-                        self.page_index_auto_increment_on = true;
-                    } else {
-                        self.page_index_auto_increment_on = false;
-                    }
-                }
-            }
-            FANTASY_CONTEXT_REGISTER => {
-                // bits 2-7 currently unused
-                self.context_register = data & 3;
-                self.current_mapping_context = data & 3;
-                self.current_mapping_context_offset = (self.current_mapping_context) * FANTASY_PAGE_COUNT;
+        }
+        else if (port == FANTASY_CONTEXT_REGISTER) {
+            // bits 2-7 currently unused
+            self.context_register = data & 3;
+            self.current_mapping_context = data & 3;
+            self.current_mapping_context_offset = (self.current_mapping_context) * FANTASY_PAGE_COUNT;
 
 
-            }
-        _ => {}
         }
     }
 
