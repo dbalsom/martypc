@@ -63,6 +63,9 @@ impl FantasyEMSStatsViewerControl {
                 ui.label(egui::RichText::new("Page Lo (0xEA)").text_style(egui::TextStyle::Monospace));
                 ui.add(egui::TextEdit::singleline(&mut self.state.current_page_set_register_lo_value_state.to_string()).font(egui::TextStyle::Monospace));
                 ui.end_row();
+                ui.label(egui::RichText::new("Current Mapping Context (0xEC)").text_style(egui::TextStyle::Monospace));
+                ui.add(egui::TextEdit::singleline(&mut self.state.current_mapping_context.to_string()).font(egui::TextStyle::Monospace));
+                ui.end_row();
             });
 
         egui::Grid::new("ems_debug_view")
