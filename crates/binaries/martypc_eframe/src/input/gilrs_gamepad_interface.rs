@@ -144,7 +144,8 @@ impl GamepadInterface {
         if self.mapping.0.is_none() {
             log::debug!("Auto-connecting gamepad {} to joystick slot 0", id);
             self.mapping.0 = Some(JoystickMapping::Gamepad(id));
-        } else if let Some(JoystickMapping::Gamepad(id_0)) = self.mapping.0 {
+        }
+        else if let Some(JoystickMapping::Gamepad(id_0)) = self.mapping.0 {
             if id != id_0 && self.mapping.1.is_none() {
                 log::debug!("Auto-connecting gamepad {} to joystick slot 1", id);
                 self.mapping.1 = Some(JoystickMapping::Gamepad(id));
@@ -180,9 +181,11 @@ impl GamepadInterface {
     pub fn select_id(&self, id: GamepadId) -> Option<usize> {
         if Some(JoystickMapping::Gamepad(id)) == self.mapping.0 {
             Some(0)
-        } else if Some(JoystickMapping::Gamepad(id)) == self.mapping.1 {
+        }
+        else if Some(JoystickMapping::Gamepad(id)) == self.mapping.1 {
             Some(1)
-        } else {
+        }
+        else {
             None
         }
     }
@@ -193,9 +196,11 @@ impl GamepadInterface {
     pub fn is_joykey(&self, slot: usize) -> bool {
         if slot == 0 {
             matches!(self.mapping.0, Some(JoystickMapping::JoyKeys))
-        } else if slot == 1 {
+        }
+        else if slot == 1 {
             matches!(self.mapping.1, Some(JoystickMapping::JoyKeys))
-        } else {
+        }
+        else {
             false
         }
     }
@@ -208,9 +213,11 @@ impl GamepadInterface {
         if let Some(JoystickMapping::JoyKeys) = self.mapping.0 {
             //log::debug!("Joykey mapping found in slot 0");
             Some(0)
-        } else if let Some(JoystickMapping::JoyKeys) = self.mapping.1 {
+        }
+        else if let Some(JoystickMapping::JoyKeys) = self.mapping.1 {
             Some(1)
-        } else {
+        }
+        else {
             None
         }
     }
@@ -220,25 +227,29 @@ impl GamepadInterface {
             if self.mapping.0 == Some(JoystickMapping::JoyKeys) {
                 self.mapping.0 = None;
                 false
-            } else {
+            }
+            else {
                 self.mapping.0 = Some(JoystickMapping::JoyKeys);
                 if self.mapping.1 == Some(JoystickMapping::JoyKeys) {
                     self.mapping.1 = None;
                 }
                 true
             }
-        } else if slot == 1 {
+        }
+        else if slot == 1 {
             if self.mapping.1 == Some(JoystickMapping::JoyKeys) {
                 self.mapping.1 = None;
                 false
-            } else {
+            }
+            else {
                 self.mapping.1 = Some(JoystickMapping::JoyKeys);
                 if self.mapping.0 == Some(JoystickMapping::JoyKeys) {
                     self.mapping.0 = None;
                 }
                 true
             }
-        } else {
+        }
+        else {
             false
         }
     }
