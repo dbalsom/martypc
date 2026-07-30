@@ -610,7 +610,7 @@ impl MartyApp {
         });
 
         if let Some(emu) = &mut self.emu {
-            self.current_size = ctx.screen_rect().size(); // Get window size
+            self.current_size = ctx.content_rect().size(); // Get window size
 
             if self.size_delay > 0 || (self.current_size != self.last_size) {
                 log::debug!(
