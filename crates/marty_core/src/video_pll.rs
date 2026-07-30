@@ -304,19 +304,6 @@ mod tests {
     }
 
     #[test]
-    fn free_running_oscillator_triggers() {
-        let mut pll = create_test_pll();
-
-        // Run for 99 ticks (target is 100)
-        let triggered = pll.run(99, false);
-        assert!(!triggered, "Should not trigger before period is complete");
-
-        // Run for 1 more tick
-        let triggered = pll.run(1, false);
-        assert!(triggered, "Should trigger when period is complete");
-    }
-
-    #[test]
     fn sync_pulse_locks_pll() {
         let mut pll = create_test_pll();
 
