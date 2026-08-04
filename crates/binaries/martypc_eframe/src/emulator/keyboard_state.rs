@@ -1,13 +1,13 @@
 use marty_core::devices::keyboard_common::KeyboardModifiers;
 
 pub struct KeyboardData {
-    pub modifiers: KeyboardModifiers,
+    pub modifiers:    KeyboardModifiers,
     pub ctrl_pressed: bool,
 }
 impl KeyboardData {
     pub fn new() -> Self {
         Self {
-            modifiers: KeyboardModifiers::default(),
+            modifiers:    KeyboardModifiers::default(),
             ctrl_pressed: false,
         }
     }

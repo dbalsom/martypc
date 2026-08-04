@@ -32,7 +32,7 @@ use martypc_eframe::{app::MartyApp, version_string, MARTY_ICON};
 
 #[cfg(not(target_arch = "wasm32"))]
 struct MartyWinitApp<'a> {
-    inner: eframe::EframeWinitApplication<'a>,
+    inner:  eframe::EframeWinitApplication<'a>,
     sender: crossbeam_channel::Sender<(winit::window::WindowId, winit::event::WindowEvent)>,
 }
 
