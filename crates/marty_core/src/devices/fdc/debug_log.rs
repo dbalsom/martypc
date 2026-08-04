@@ -23,11 +23,12 @@
     DEALINGS IN THE SOFTWARE.
 
     --------------------------------------------------------------------------
-
-    devices::fdc::debug_log
-
-    Syntax token post-processing for the FDC debug log.
 */
+
+//! Syntax token post-processing for the FDC debug log.
+
+// This is all a bit of a gross hack to avoid putting a bunch of tokenization
+// in the FDC. Once log formats are stable this should be refactored.
 
 use lazy_static::lazy_static;
 use marty_common::syntax_token::{HighlightType, SyntaxFormatType, SyntaxToken, SyntaxTokenStream};
@@ -48,13 +49,13 @@ lazy_static! {
     static ref FDC_LOG_TOKEN_RE: Regex = Regex::new(
         r"(?x)
         (?P<command>^[A-Za-z][A-Za-z0-9]+:) |
-        (?P<command_word>\b(?:SenseIntStatus|FixDriveData|CheckDriveStatus|CalibrateDrive|SeekParkHead|ReadData|WriteData|ReadTrack|FormatTrack|ReadSectorID)\b) |
+        (?P<command_word>\b(?:SenseIntStatus|Specify|CheckDriveStatus|CalibrateDrive|SeekOperation|Seek|ReadData|WriteData|ReadTrack|FormatTrack|ReadSectorID)\b) |
         (?P<key>\b(?:ST[0-3]|mt|mf|sk|dhs|drive|head|chs|c|h|s|n|eot|gap3_len|data_len|track_len|skip|new\ chs|Last\ command|Last\ error|reset\ flag|pending\ interrupt|DMA\ transfer|sectors|bytes|sector_size|src|dst|bytes_left):) |
         (?P<binary>\b[01]{4,8}\b) |
         (?P<fdc>\bFDC\b) |
         (?P<number>\b[0-9A-F]{1,5}\b) |
         (?P<bool>\b(?:true|false)\b) |
-        (?P<state>\b(?:NormalTermination|AbnormalTermination|InvalidCommand|AbnormalPolling|NoError|BadRead|BadWrite|BadSeek|WriteProtect)\b) |
+        (?P<state>\b(?:NormalTermination|AbnormalTermination|InvalidCommand|ReadyChanged|NoError|BadRead|BadWrite|BadSeek|WriteProtect)\b) |
         (?P<state_word>\b(?:Disabled|Reset|Enabled|Watchdog|Motor|Requested|Complete)\b) |
         (?P<bracket>[\[\]]) |
         (?P<comma>,) |
@@ -68,10 +69,11 @@ fn is_log_command_name(s: &str) -> bool {
     matches!(
         s,
         "SenseIntStatus"
-            | "FixDriveData"
+            | "Specify"
             | "CheckDriveStatus"
             | "CalibrateDrive"
-            | "SeekParkHead"
+            | "SeekOperation"
+            | "Seek"
             | "ReadData"
             | "WriteData"
             | "ReadTrack"
@@ -80,10 +82,12 @@ fn is_log_command_name(s: &str) -> bool {
     )
 }
 
+/// Take a str representing a FDC log entry and tokenize it into a [SyntaxTokenStream].  
 pub(crate) fn tokenize_log_entry(s: &str) -> SyntaxTokenStream {
     let mut tokens = SyntaxTokenStream::new();
     let lower = s.to_ascii_lowercase();
 
+    // Apply row background color to certain error messages
     if s.contains("AbnormalTermination")
         || s.contains("InvalidCommand")
         || s.contains("BadRead")
@@ -176,13 +180,9 @@ pub(crate) fn tokenize_log_entry(s: &str) -> SyntaxTokenStream {
         }
         else if let Some(value) = captures.name("state") {
             match value.as_str() {
-                "AbnormalTermination"
-                | "InvalidCommand"
-                | "AbnormalPolling"
-                | "BadRead"
-                | "BadWrite"
-                | "BadSeek"
-                | "WriteProtect" => tokens.push(SyntaxToken::ErrorString(value.as_str().to_string())),
+                "AbnormalTermination" | "InvalidCommand" | "BadRead" | "BadWrite" | "BadSeek" | "WriteProtect" => {
+                    tokens.push(SyntaxToken::ErrorString(value.as_str().to_string()))
+                }
                 _ => tokens.push(SyntaxToken::ColorText(
                     value.as_str().to_string(),
                     FDC_LOG_STATE_COLOR.0,
@@ -315,6 +315,19 @@ mod tests {
                 token,
                 SyntaxToken::ColorText(text, r, g, b)
                 if text == "SenseIntStatus" && (*r, *g, *b) == FDC_LOG_COMMAND_COLOR
+            )
+        }));
+    }
+
+    #[test]
+    fn seek_operation_uses_seek_command_color() {
+        let tokens = tokenize_log_entry("SeekOperation: drive:2 PCN:10 target:37 tracks:27");
+
+        assert!(tokens.iter().any(|token| {
+            matches!(
+                token,
+                SyntaxToken::ColorText(text, r, g, b)
+                if text == "SeekOperation" && (*r, *g, *b) == FDC_LOG_COMMAND_COLOR
             )
         }));
     }

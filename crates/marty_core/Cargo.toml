@@ -14,6 +14,7 @@ crate-type = ["cdylib", "lib"]
 marty_common = { path = "../marty_common" }
 
 arraydeque = "0.5"
+bitflags = "2"
 bytemuck = "1.19"
 const_format = "0.2"
 lazy_static = "1.5"

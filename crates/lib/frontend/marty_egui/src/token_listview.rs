@@ -34,13 +34,24 @@
     to enable color syntax highlighting, hover tooltips and other features.
 
 */
-use std::mem::discriminant;
+use std::{mem::discriminant, ops::Range};
 
 use crate::{color::*, constants::*, *};
 use egui::*;
 use marty_common::syntax_token::*;
 
 pub const TOKEN_TAB_STOPS: u32 = 128;
+
+fn clipped_row_range(row_top: f32, row_height: f32, row_count: usize, clip_rect: Rect) -> Range<usize> {
+    if row_height <= 0.0 || row_count == 0 {
+        return 0..0;
+    }
+
+    let first_row = ((clip_rect.top() - row_top) / row_height).floor().max(0.0) as usize;
+    let end_row = ((clip_rect.bottom() - row_top) / row_height).ceil().max(0.0) as usize;
+
+    first_row.min(row_count)..end_row.min(row_count).max(first_row.min(row_count))
+}
 
 pub struct TokenListView {
     pub row: usize,
@@ -265,13 +276,8 @@ impl TokenListView {
             // top-aligned instead of inheriting vertical centering from the parent layout.
             ui.set_height(row_height * num_rows.max(show_rows) as f32);
             //log::debug!("viewport.min.y: {}", viewport.min.y);
-            let mut first_item = (viewport.min.y / row_height).floor().at_least(0.0) as usize;
-            let last_item = (viewport.max.y / row_height).ceil() as usize + 1;
-            let last_item = last_item.at_most(num_rows.saturating_sub(show_rows));
-
-            if first_item > last_item {
-                first_item = last_item;
-            }
+            let first_item = (viewport.min.y / row_height).floor().at_least(0.0) as usize;
+            let first_item = first_item.at_most(num_rows.saturating_sub(show_rows));
 
             self.row = first_item;
 
@@ -297,6 +303,8 @@ impl TokenListView {
 
             // Constrain visible rows if we don't have enough rows in contents
             let show_rows = usize::min(show_rows, self.contents.len());
+            let row_top = start_y + self.t_margin;
+            let rendered_rows = clipped_row_range(row_top, row_height, show_rows, ui.clip_rect());
 
             // Measure the size of a byte token label.
             let label_rect = self.measure_token(
@@ -312,10 +320,11 @@ impl TokenListView {
             let plus = "+".to_string();
             let null = "[missing token!]".to_string();
 
-            for (i, row) in self.contents[0..show_rows].iter().enumerate() {
+            for (i, row) in self.contents[rendered_rows.clone()].iter().enumerate() {
+                let i = rendered_rows.start + i;
                 let x = ui.min_rect().left() + self.l_margin;
                 //let width = ui.min_rect().right() - ui.min_rect().left();
-                let y = start_y + ((i as f32) * row_height) + self.t_margin;
+                let y = row_top + ((i as f32) * row_height);
 
                 let mut token_x = x;
 
@@ -613,5 +622,31 @@ impl TokenListView {
 
             ui.allocate_rect(used_rect, egui::Sense::hover());
         });
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn clipped_rows_exclude_rows_outside_the_viewport() {
+        let clip_rect = Rect::from_min_max(pos2(0.0, 25.0), pos2(100.0, 55.0));
+
+        assert_eq!(clipped_row_range(0.0, 10.0, 10, clip_rect), 2..6);
+    }
+
+    #[test]
+    fn clipped_rows_are_bounded_by_available_contents() {
+        let clip_rect = Rect::from_min_max(pos2(0.0, -20.0), pos2(100.0, 100.0));
+
+        assert_eq!(clipped_row_range(0.0, 10.0, 3, clip_rect), 0..3);
+    }
+
+    #[test]
+    fn clipped_rows_are_empty_when_contents_are_outside_the_viewport() {
+        let clip_rect = Rect::from_min_max(pos2(0.0, 50.0), pos2(100.0, 100.0));
+
+        assert_eq!(clipped_row_range(0.0, 10.0, 3, clip_rect), 3..3);
     }
 }

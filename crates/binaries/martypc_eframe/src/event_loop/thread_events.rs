@@ -104,7 +104,8 @@ pub fn handle_thread_event(emu: &mut Emulator, ctx: &egui::Context) {
 
                 let path_buf = if let FileSelectionContext::Path(path) = fsc {
                     path
-                } else {
+                }
+                else {
                     log::error!("Failed to get file path from FileSaveDialogComplete event");
                     emu.gui
                         .toasts()
@@ -192,7 +193,8 @@ pub fn handle_thread_event(emu: &mut Emulator, ctx: &egui::Context) {
                         Ok(image_lock) => {
                             let item_idx = if let FileSelectionContext::Index(idx) = item {
                                 Some(idx)
-                            } else {
+                            }
+                            else {
                                 None
                             };
 

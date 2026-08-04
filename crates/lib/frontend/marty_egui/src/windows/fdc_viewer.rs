@@ -41,6 +41,15 @@ use marty_core::devices::fdc::FdcDebugState;
 const FDC_VIEWER_DEFAULT_ROWS: usize = 32;
 const FDC_VIEWER_LOG_HEIGHT_SCALE: f32 = 0.75;
 
+fn visible_row_count(available_height: f32, row_height: f32) -> usize {
+    if row_height > 0.0 {
+        (((available_height * FDC_VIEWER_LOG_HEIGHT_SCALE) / row_height).floor() as usize).max(FDC_VIEWER_DEFAULT_ROWS)
+    }
+    else {
+        FDC_VIEWER_DEFAULT_ROWS
+    }
+}
+
 pub struct FdcViewerControl {
     log_tokens: Vec<SyntaxTokenStream>,
     log_row: usize,
@@ -145,12 +154,7 @@ impl FdcViewerControl {
         let font_id = egui::TextStyle::Monospace.resolve(ui.style());
         let mut row_height = 0.0;
         ui.fonts_mut(|f| row_height = f.row_height(&font_id) + ui.spacing().item_spacing.y);
-        let visible_rows = if row_height > 0.0 {
-            (((ui.available_height() * FDC_VIEWER_LOG_HEIGHT_SCALE) / row_height).floor() as usize).max(1)
-        }
-        else {
-            FDC_VIEWER_DEFAULT_ROWS
-        };
+        let visible_rows = visible_row_count(ui.available_height(), row_height);
 
         let max_row = self.log_tokens.len().saturating_sub(visible_rows);
         self.log_row = self.log_row.min(max_row);
@@ -184,5 +188,20 @@ impl FdcViewerControl {
             self.log_row = self.log_tokens.len().saturating_sub(visible_rows);
             self.tlv.set_scroll_pos(self.log_row);
         }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn fresh_viewer_uses_default_rows_when_available_height_is_small() {
+        assert_eq!(visible_row_count(160.0, 20.0), FDC_VIEWER_DEFAULT_ROWS);
+    }
+
+    #[test]
+    fn viewer_can_expand_beyond_default_rows() {
+        assert_eq!(visible_row_count(1_000.0, 20.0), 37);
     }
 }

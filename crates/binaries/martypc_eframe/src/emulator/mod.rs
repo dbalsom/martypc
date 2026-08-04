@@ -23,11 +23,10 @@
     DEALINGS IN THE SOFTWARE.
 
     --------------------------------------------------------------------------
-
-    emulator::mod.rs
-
-    MartyPC Desktop front-end Emulator struct and implementation.
 */
+
+//! MartyPC Desktop front-end Emulator struct and implementation.
+
 pub mod joystick_state;
 pub mod keyboard_state;
 pub mod mouse_state;
@@ -62,9 +61,16 @@ use marty_core::{
 use marty_display_common::display_scaler::SCALER_MODES;
 use marty_egui::{state::GuiState, GuiBoolean, GuiWindow};
 use marty_frontend_common::{
-    cartridge_manager::CartridgeManager, floppy_manager::FloppyManager, resource_manager::ResourceManager,
-    rom_manager::RomManager, thread_events::FrontendThreadEvent, timestep_manager::PerfSnapshot,
-    types::floppy::FloppyImageSource, vhd_manager::VhdManager,
+    asset_manager::AssetManager,
+    cartridge_manager::CartridgeManager,
+    floppy_manager::FloppyManager,
+    resource_manager::ResourceManager,
+    rom_manager::RomManager,
+    sound_file_manager::SoundFileManager,
+    thread_events::FrontendThreadEvent,
+    timestep_manager::PerfSnapshot,
+    types::floppy::FloppyImageSource,
+    vhd_manager::VhdManager,
 };
 
 /// Define flags to be used by emulator.
@@ -76,7 +82,7 @@ pub struct EmuFlags {
 #[derive(Clone, Debug)]
 pub struct MountInfo {
     pub index: usize,
-    pub name: String,
+    pub name:  String,
 }
 
 /// Define the main Emulator struct for this frontend.
@@ -99,6 +105,8 @@ pub struct Emulator {
     pub floppy_manager: FloppyManager,
     pub vhd_manager: VhdManager,
     pub cart_manager: CartridgeManager,
+    pub asset_manager: AssetManager,
+    pub sound_file_manager: SoundFileManager,
     pub flags: EmuFlags,
     pub perf: PerfSnapshot,
     pub hkm: HotkeyManager,
@@ -122,7 +130,8 @@ impl Emulator {
         // Set the initial power-on state.
         if self.config.emulator.auto_poweron {
             self.machine.change_state(MachineState::On);
-        } else {
+        }
+        else {
             self.machine.change_state(MachineState::Off);
         }
 
@@ -175,19 +184,23 @@ impl Emulator {
                                 );
                                 std::process::exit(1);
                             };
-                        } else {
+                        }
+                        else {
                             eprintln!("Must specify program start offset.");
                             std::process::exit(1);
                         }
-                    } else {
+                    }
+                    else {
                         eprintln!("Must specify program start segment.");
                         std::process::exit(1);
                     }
-                } else {
+                }
+                else {
                     eprintln!("Must specify program load offset.");
                     std::process::exit(1);
                 }
-            } else {
+            }
+            else {
                 eprintln!("Must specify program load segment.");
                 std::process::exit(1);
             }
@@ -271,7 +284,8 @@ impl Emulator {
             for drive in controller.drive.as_ref().unwrap_or(&Vec::new()) {
                 if let Some(vhd) = drive.vhd.as_ref() {
                     vhd_names.push(Some(vhd.clone()));
-                } else {
+                }
+                else {
                     vhd_names.push(None);
                 }
             }
@@ -342,7 +356,7 @@ impl Emulator {
 
                                         mounted_floppies.push(MountInfo {
                                             index: idx,
-                                            name: path.display().to_string(),
+                                            name:  path.display().to_string(),
                                         });
                                     }
                                     Err(err) => {
@@ -354,7 +368,8 @@ impl Emulator {
                                         );
                                     }
                                 }
-                            } else {
+                            }
+                            else {
                                 log::error!("Couldn't load floppy disk: No Floppy Disk Controller present!");
                             }
                         }
@@ -399,7 +414,8 @@ impl Emulator {
                 // Add new drive
                 println!("Adding VHD image {:?} to drive index {}", vhd.filename, drive_i);
                 vhd_names.push(Some(vhd.filename.clone()));
-            } else {
+            }
+            else {
                 // Replace existing drive
                 println!("Replacing VHD image in machine configuration with {:?}", vhd.filename);
                 vhd_names[drive_i] = Some(vhd.filename.clone());
@@ -451,7 +467,7 @@ impl Emulator {
                     self.load_vhd(Box::new(vhd_file), drive_idx, &vhd_os_name, None)?;
                     mount_info_vec.push(MountInfo {
                         index: drive_idx,
-                        name: vhd_os_name.to_string_lossy().to_string(),
+                        name:  vhd_os_name.to_string_lossy().to_string(),
                     });
                     Ok(())
                 }
@@ -460,7 +476,8 @@ impl Emulator {
                     Err(Error::from(err))
                 }
             }
-        } else {
+        }
+        else {
             // Relative path or just filename
             if path.parent().is_some() && path.parent().unwrap().as_os_str().len() > 0 {
                 // Relative path (has directory components)
@@ -469,7 +486,7 @@ impl Emulator {
                         self.load_vhd(Box::new(vhd_file), drive_idx, &vhd_os_name, None)?;
                         mount_info_vec.push(MountInfo {
                             index: drive_idx,
-                            name: vhd_os_name.to_string_lossy().to_string(),
+                            name:  vhd_os_name.to_string_lossy().to_string(),
                         });
                         Ok(())
                     }
@@ -478,14 +495,15 @@ impl Emulator {
                         Err(Error::from(err))
                     }
                 }
-            } else {
+            }
+            else {
                 // Just filename, try loading by name (from media/hdds)
                 match self.vhd_manager.load_vhd_file_by_name(drive_idx, &vhd_os_name) {
                     Ok((vhd_file, vhd_idx)) => {
                         self.load_vhd(Box::new(vhd_file), drive_idx, &vhd_os_name, Some(vhd_idx))?;
                         mount_info_vec.push(MountInfo {
                             index: drive_idx,
-                            name: vhd_os_name.to_string_lossy().to_string(),
+                            name:  vhd_os_name.to_string_lossy().to_string(),
                         });
                         Ok(())
                     }
@@ -526,7 +544,8 @@ impl Emulator {
                             log::error!("Error mounting VHD: {}", err);
                         }
                     }
-                } else if let Some(hdc) = self.machine.xtide_mut() {
+                }
+                else if let Some(hdc) = self.machine.xtide_mut() {
                     match hdc.set_vhd(drive_idx, vhd) {
                         Ok(_) => {
                             log::info!(
@@ -545,7 +564,8 @@ impl Emulator {
                             log::error!("Error mounting VHD: {}", err);
                         }
                     }
-                } else if let Some(jride) = self.machine.jride_mut() {
+                }
+                else if let Some(jride) = self.machine.jride_mut() {
                     match jride.set_vhd(drive_idx, vhd) {
                         Ok(_) => {
                             log::info!(
@@ -564,7 +584,8 @@ impl Emulator {
                             log::error!("Error mounting VHD: {}", err);
                         }
                     }
-                } else {
+                }
+                else {
                     log::error!("Couldn't load VHD: No Hard Disk Controller present!");
                 }
             }

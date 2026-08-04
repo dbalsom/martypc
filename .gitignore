@@ -49,6 +49,8 @@ icon.png
 /install/dumps/*
 /install/screenshots/*
 /install/traces/*
+/install/assets/*
+
 # New media paths for 0.2.0
 /install/media/roms/*
 /install/media/floppies/*

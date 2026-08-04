@@ -48,8 +48,15 @@ use marty_core::{
     vhd::VirtualHardDisk,
 };
 use marty_egui::{
-    state::FloppyDriveSelection, DeviceSelection, GuiBoolean, GuiEnum, GuiEvent, GuiFloat, GuiVariable,
-    GuiVariableContext, InputFieldChangeSource,
+    state::FloppyDriveSelection,
+    DeviceSelection,
+    GuiBoolean,
+    GuiEnum,
+    GuiEvent,
+    GuiFloat,
+    GuiVariable,
+    GuiVariableContext,
+    InputFieldChangeSource,
 };
 use marty_videocard_renderer::AspectCorrectionMode;
 
@@ -269,7 +276,8 @@ pub fn handle_egui_event(
                                     false
                                 }
                             }
-                        } else if let Some(hdc) = emu.machine.xtide_mut() {
+                        }
+                        else if let Some(hdc) = emu.machine.xtide_mut() {
                             match hdc.set_vhd(*drive_idx, vhd) {
                                 Ok(_) => true,
                                 Err(err) => {
@@ -278,7 +286,8 @@ pub fn handle_egui_event(
                                     false
                                 }
                             }
-                        } else {
+                        }
+                        else {
                             error_str = Some("No Hard Disk Controller present!".to_string());
                             false
                         };
@@ -333,7 +342,8 @@ pub fn handle_egui_event(
                         false
                     }
                 }
-            } else if let Some(hdc) = emu.machine.xtide_mut() {
+            }
+            else if let Some(hdc) = emu.machine.xtide_mut() {
                 match hdc.unload_vhd(*drive_idx) {
                     Ok(_) => {
                         log::info!("VHD image successfully detached from virtual drive: {}", *drive_idx);
@@ -348,7 +358,8 @@ pub fn handle_egui_event(
                         false
                     }
                 }
-            } else {
+            }
+            else {
                 log::error!("No Hard Disk Controller present!");
                 false
             };
@@ -842,7 +853,8 @@ pub fn handle_egui_event(
                     .toasts()
                     .error(err.to_string())
                     .duration(Some(NORMAL_NOTIFICATION_TIME));
-            } else {
+            }
+            else {
                 emu.gui
                     .toasts()
                     .info(format!("Serial port successfully bridged to {}", host_port_name))

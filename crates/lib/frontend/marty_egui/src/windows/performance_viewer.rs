@@ -39,7 +39,7 @@ use crate::*;
 use marty_common::util::format_duration;
 use marty_frontend_common::{
     timestep_manager::{FrameEntry, PerfSnapshot},
-    types::sound::SoundSourceInfo,
+    types::sound::{SoundSourceInfo, SoundSourceKind},
 };
 #[cfg(feature = "use_display")]
 use marty_videocard_renderer::VideoParams;
@@ -146,8 +146,16 @@ impl PerformanceViewerControl {
                         .default_open(true)
                         .show(ui, |ui| {
                             egui::Grid::new("sound_sources").striped(false).show(ui, |ui| {
-                                ui.label("Sample Count: ");
-                                ui.label(egui::RichText::new(format!("{}", ss.sample_ct)));
+                                match ss.kind {
+                                    SoundSourceKind::MachineSounds => {
+                                        ui.label("Active Sounds: ");
+                                        ui.label(egui::RichText::new(format!("{}", ss.len)));
+                                    }
+                                    SoundSourceKind::Emulated => {
+                                        ui.label("Sample Count: ");
+                                        ui.label(egui::RichText::new(format!("{}", ss.sample_ct)));
+                                    }
+                                }
                                 ui.end_row();
                             })
                         });

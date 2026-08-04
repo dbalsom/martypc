@@ -37,7 +37,8 @@ use display_manager_eframe::{DisplayManager, EFrameDisplayManager};
 use marty_core::{bus::DeviceEvent, cpu_common::ServiceEvent, devices::game_port::GamePort, machine::MachineEvent};
 use marty_frontend_common::{
     constants::{LONG_NOTIFICATION_TIME, NORMAL_NOTIFICATION_TIME, SHORT_NOTIFICATION_TIME},
-    marty_common::types::ui::MouseCaptureMode,
+    marty_common::{types::ui::MouseCaptureMode, PresentableDeviceEvent},
+    sound_file_manager::PresentableSoundAction,
     thread_events::FrontendThreadEvent,
     timestep_manager::{MachinePerfStats, TimestepManager},
 };
@@ -249,6 +250,8 @@ pub fn process_update(emu: &mut Emulator, dm: &mut EFrameDisplayManager, tm: &mu
                 }
             }
 
+            let mut machine_was_reset = false;
+
             // Drain machine events
             while let Some(event) = emuc.machine.get_event() {
                 match event {
@@ -277,6 +280,8 @@ pub fn process_update(emu: &mut Emulator, dm: &mut EFrameDisplayManager, tm: &mu
                         }
                     }
                     MachineEvent::Reset => {
+                        machine_was_reset = true;
+
                         // Send notification
                         emuc.gui
                             .toasts()
@@ -324,6 +329,40 @@ pub fn process_update(emu: &mut Emulator, dm: &mut EFrameDisplayManager, tm: &mu
                         }
                         _ => {}
                     },
+                }
+            }
+
+            for event in emuc.machine.presentable_event_receiver().try_iter() {
+                log::debug!("Presentable device event: {:?}", event);
+                match event {
+                    PresentableDeviceEvent::FloppyDrive { .. } => {
+                        if let Some(action) = emuc.sound_file_manager.resolve_presentable_event(event) {
+                            log::debug!("Resolved floppy sound action: {:?}", action);
+                            if let Some(sound_interface) = emuc.si.as_mut() {
+                                let result = match action {
+                                    PresentableSoundAction::OneShot(effect) => {
+                                        sound_interface.play_sound(&effect.samples, effect.sample_rate, effect.stereo)
+                                    }
+                                    PresentableSoundAction::StartLoop { key, intro, looping } => {
+                                        sound_interface.start_loop(key, intro, looping)
+                                    }
+                                    PresentableSoundAction::StopLoop { key, outro } => {
+                                        sound_interface.stop_loop(key, outro)
+                                    }
+                                };
+
+                                if let Err(err) = result {
+                                    log::error!("Failed to execute floppy sound action {:?}: {}", action, err);
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+
+            if machine_was_reset {
+                if let Some(sound_interface) = emuc.si.as_mut() {
+                    sound_interface.device_reset();
                 }
             }
 

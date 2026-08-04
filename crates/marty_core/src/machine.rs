@@ -68,9 +68,10 @@ use crate::{
     devices::{
         cartridge_slots::CartridgeSlot,
         dma::DMAControllerStringState,
+        fantasy_ems::FantasyEmsCard,
         fdc::{controller::FloppyController, FdcDebugState},
         floppy_drive::FloppyImageState,
-        hdc::{xebec::HardDiskController, xtide::XtIdeController},
+        hdc::{jr_ide::JrIdeController, xebec::HardDiskController, xtide::XtIdeController},
         keyboard_common::KeyboardModifiers,
         mouse::Mouse,
         pic::PicStringState,
@@ -84,11 +85,14 @@ use crate::{
     tracelogger::TraceLogger,
 };
 
-use crate::devices::{fantasy_ems::FantasyEmsCard, hdc::jr_ide::JrIdeController};
-use anyhow::{anyhow, Error};
-use fluxfox::DiskImage;
-use log;
 pub use marty_common::types::rom::{MachineCheckpoint, MachinePatch, MachineRomEntry, MachineRomManifest};
+use marty_common::PresentableDeviceEvent;
+
+use fluxfox::DiskImage;
+
+use anyhow::{anyhow, Error};
+use crossbeam_channel::Receiver;
+use log;
 use ringbuf::Consumer;
 
 pub const STEP_OVER_TIMEOUT: u32 = 320000;
@@ -434,6 +438,7 @@ pub struct Machine {
     //pit_data: PitData,
     #[cfg(feature = "sound")]
     sound_sources: Vec<SoundSourceDescriptor>,
+    presentable_event_receiver: Receiver<PresentableDeviceEvent>,
     debug_snd_file: Option<File>,
     kb_buf: VecDeque<KeybufferEntry>,
     error: bool,
@@ -570,16 +575,17 @@ impl Machine {
 
         #[cfg(feature = "sound")]
         let sound_sources;
+        let presentable_event_receiver;
 
         match install_result {
             Ok(result) => {
+                presentable_event_receiver = result.presentable_event_receiver;
                 cfg_if::cfg_if! {
                     if #[cfg(feature = "sound")] {
                         log::debug!("Installed devices, including {} sound sources.", result.sound_sources.len());
                         sound_sources = result.sound_sources;
                     } else {
                         log::debug!("Installed devices.");
-                        { _ = &result;  }
                     }
                 }
             }
@@ -654,6 +660,7 @@ impl Machine {
             //pit_data,
             #[cfg(feature = "sound")]
             sound_sources,
+            presentable_event_receiver,
             debug_snd_file: None,
             kb_buf: VecDeque::new(),
             error: false,
@@ -683,6 +690,10 @@ impl Machine {
     #[cfg(feature = "sound")]
     pub fn get_sound_sources(&self) -> &Vec<SoundSourceDescriptor> {
         &self.sound_sources
+    }
+
+    pub fn presentable_event_receiver(&self) -> &Receiver<PresentableDeviceEvent> {
+        &self.presentable_event_receiver
     }
 
     pub fn set_option(&mut self, opt: MachineOption) {

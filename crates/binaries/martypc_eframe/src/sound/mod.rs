@@ -30,17 +30,75 @@
 
 */
 
-#[cfg(not(feature = "sound"))]
 mod null_interface;
 #[cfg(feature = "sound")]
 mod rodio_interface;
 
-#[cfg(not(feature = "sound"))]
-pub use null_interface::SoundInterface;
-#[cfg(not(feature = "sound"))]
-pub use null_interface::SoundSourceDescriptor;
+use anyhow::Error;
+use marty_core::sound::SoundOutputConfig;
+use marty_frontend_common::{
+    sound_file_manager::{PresentableSoundKey, SoundEffect},
+    types::sound::{SoundSourceInfo, SoundSourceKind},
+};
+use web_time::Duration;
 
-#[cfg(feature = "sound")]
+const MACHINE_SOUNDS_NAME: &str = "Machine Sounds";
+const MACHINE_SOUNDS_DEFAULT_VOLUME: f32 = 0.5;
+
+fn machine_sounds_info(sample_rate: u32, channels: usize, volume: f32, muted: bool, len: usize) -> SoundSourceInfo {
+    SoundSourceInfo {
+        kind: SoundSourceKind::MachineSounds,
+        name: MACHINE_SOUNDS_NAME.to_string(),
+        sample_rate,
+        channels: u16::try_from(channels).unwrap_or(u16::MAX),
+        sample_ct: 0,
+        latency_ms: 0.0,
+        volume,
+        muted,
+        len,
+    }
+}
+
+#[cfg(not(feature = "sound"))]
+pub use null_interface::NullSoundInterface as SoundInterface;
+
 pub use marty_core::sound::SoundSourceDescriptor;
 #[cfg(feature = "sound")]
-pub use rodio_interface::SoundInterface;
+pub use rodio_interface::RodioSoundInterface as SoundInterface;
+
+pub trait SoundInterfaceBackend: Default {
+    fn new(enabled: bool) -> Self
+    where
+        Self: Sized;
+
+    fn open_device(&mut self) -> Result<(), Error>;
+    fn open_stream(&mut self) -> Result<(), Error>;
+    fn device_name(&self) -> String;
+    fn add_source(&mut self, source: &SoundSourceDescriptor) -> Result<(), Error>;
+    fn run(&mut self, duration: Duration);
+    fn set_master_speed(&mut self, speed: f32);
+    fn set_volume(&mut self, source_index: usize, volume: Option<f32>, muted: Option<bool>);
+    fn config(&self) -> SoundOutputConfig;
+    fn info(&self) -> Vec<SoundSourceInfo>;
+    fn play_sound(&mut self, samples: &[f32], sample_rate: u32, stereo: bool) -> Result<(), Error>;
+    fn device_reset(&mut self);
+    fn start_loop(&mut self, key: PresentableSoundKey, intro: &SoundEffect, looping: &SoundEffect)
+        -> Result<(), Error>;
+    fn stop_loop(&mut self, key: PresentableSoundKey, outro: &SoundEffect) -> Result<(), Error>;
+}
+
+#[cfg(test)]
+mod tests {
+    #[cfg(feature = "sound")]
+    use super::rodio_interface;
+    use super::{null_interface, SoundInterfaceBackend};
+
+    fn assert_sound_interface<T: SoundInterfaceBackend>() {}
+
+    #[test]
+    fn all_backends_implement_sound_interface() {
+        assert_sound_interface::<null_interface::NullSoundInterface>();
+        #[cfg(feature = "sound")]
+        assert_sound_interface::<rodio_interface::RodioSoundInterface>();
+    }
+}

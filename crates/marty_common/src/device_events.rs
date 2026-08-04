@@ -5,7 +5,7 @@
    Copyright 2022-2026 Daniel Balsom
 
    Permission is hereby granted, free of charge, to any person obtaining a
-   copy of this software and associated documentation files (the “Software”),
+   copy of this software and associated documentation files (the "Software"),
    to deal in the Software without restriction, including without limitation
    the rights to use, copy, modify, merge, publish, distribute, sublicense,
    and/or sell copies of the Software, and to permit persons to whom the
@@ -14,7 +14,7 @@
    The above copyright notice and this permission notice shall be included in
    all copies or substantial portions of the Software.
 
-   THE SOFTWARE IS PROVIDED “AS IS”, WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
+   THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
    IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
    FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
    AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
@@ -25,28 +25,20 @@
    ---------------------------------------------------------------------------
 */
 
-//! Define frontend types for sound sources
+//! Events emitted by emulated devices for presentation by a frontend.
 
-/// [SoundSourceKind] describes the type of a given sound source.
-/// MachineSounds are typically recorded audio files that are played back.
-/// Emulated sounds produce samples on their own.
-#[derive(Clone, Copy, Debug, PartialEq, Eq)]
-pub enum SoundSourceKind {
-    // Samples machine sounds (floppy drive, etc.)
-    MachineSounds,
-    /// Emulated sound source (pc speaker, adlib, etc.)
-    Emulated,
+#[derive(Copy, Clone, Debug, PartialEq, Eq)]
+pub enum PresentableDeviceEvent {
+    FloppyDrive { controller: u8, drive: u8, event: FloppyDriveEvent },
 }
 
-#[derive(Clone, Debug)]
-pub struct SoundSourceInfo {
-    pub kind: SoundSourceKind,
-    pub name: String,
-    pub sample_rate: u32,
-    pub channels: u16,
-    pub sample_ct: u64,
-    pub latency_ms: f32,
-    pub volume: f32,
-    pub muted: bool,
-    pub len: usize,
+#[derive(Copy, Clone, Debug, PartialEq, Eq)]
+pub enum FloppyDriveEvent {
+    MotorStarted { media_present: bool },
+    MotorStopped { media_present: bool },
+    HeadStep { from_cylinder: u8, to_cylinder: u8 },
+    HeadLoaded,
+    HeadUnloaded,
+    MediaInserted,
+    MediaEjected,
 }

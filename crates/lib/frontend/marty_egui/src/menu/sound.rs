@@ -36,6 +36,8 @@ use crate::{
     GuiVariableContext,
 };
 
+use marty_frontend_common::types::sound::SoundSourceKind;
+
 impl GuiState {
     pub fn draw_sound_menu(&mut self, ui: &mut egui::Ui) {
         let mut sources = self.sound_sources.clone();
@@ -88,10 +90,18 @@ impl GuiState {
                             }
                         }
                     });
-                    ui.label(format!("Sample Rate: {}Hz", source.sample_rate));
-                    ui.label(format!("Latency: {:.0}ms", source.latency_ms));
-                    // ui.label(format!("Samples: {}", source.sample_ct));
-                    // ui.label(format!("Buffers: {}", source.len));
+
+                    match source.kind {
+                        SoundSourceKind::MachineSounds => {
+                            ui.label(format!("Active Sounds: {}", source.len));
+                        }
+                        SoundSourceKind::Emulated => {
+                            ui.label(format!("Sample Rate: {}Hz", source.sample_rate));
+                            ui.label(format!("Latency: {:.0}ms", source.latency_ms));
+                            // ui.label(format!("Samples: {}", source.sample_ct));
+                            // ui.label(format!("Buffers: {}", source.len));
+                        }
+                    }
                 });
             });
         }

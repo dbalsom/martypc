@@ -23,12 +23,9 @@
     DEALINGS IN THE SOFTWARE.
 
     --------------------------------------------------------------------------
-
-    sound_player.rs
-
-    Implement the sound player interface.
-
 */
+
+//! The rodio-backed sound interface used when the 'sound' feature is enabled.
 const MAX_BUFFER_SIZE: u32 = 100;
 const DEFAULT_VOLUME: f32 = 0.25;
 
@@ -36,17 +33,29 @@ const MAX_LATENCY: f32 = 150.0; // Maximum latency in milliseconds
 
 use std::num::NonZero;
 
-use anyhow::{anyhow, Error};
-use crossbeam_channel::Receiver;
+use marty_common::MartyHashMap;
 use marty_core::{
     device_traits::sounddevice::AudioSample,
     sound::{SoundOutputConfig, SoundSourceDescriptor},
 };
-use marty_frontend_common::types::sound::SoundSourceInfo;
-use rodio::{
-    cpal::{traits::HostTrait, BufferSize, SupportedBufferSize},
-    DeviceSinkBuilder, DeviceTrait, MixerDeviceSink, Player,
+use marty_frontend_common::{
+    sound_file_manager::{PresentableSoundKey, SoundEffect},
+    types::sound::{SoundSourceInfo, SoundSourceKind},
 };
+use rodio::{
+    buffer::SamplesBuffer,
+    cpal::{traits::HostTrait, BufferSize, SupportedBufferSize},
+    mixer::{self, Mixer},
+    source::Zero,
+    DeviceSinkBuilder,
+    DeviceTrait,
+    MixerDeviceSink,
+    Player,
+    Source,
+};
+
+use anyhow::{anyhow, Error};
+use crossbeam_channel::Receiver;
 use web_time::{Duration, Instant};
 
 pub struct SoundSource {
@@ -71,6 +80,7 @@ pub struct SoundSource {
 impl SoundSource {
     pub fn info(&self) -> SoundSourceInfo {
         SoundSourceInfo {
+            kind: SoundSourceKind::Emulated,
             name: self.name.clone(),
             sample_rate: self.sample_rate,
             channels: self.channels,
@@ -147,7 +157,8 @@ impl AudioLatencyController {
 
             // Clamp playback speed within safe bounds
             self.playback_speed = self.playback_speed.clamp(self.min_speed, self.max_speed);
-        } else {
+        }
+        else {
             self.playback_speed = 1.0;
         }
 
@@ -156,7 +167,7 @@ impl AudioLatencyController {
 }
 
 #[allow(unused)]
-pub struct SoundInterface {
+pub struct RodioSoundInterface {
     enabled: bool,
     device_name: String,
     master_speed: f32,
@@ -165,12 +176,21 @@ pub struct SoundInterface {
     channels: usize,
     device: Option<rodio::cpal::Device>,
     stream: Option<MixerDeviceSink>,
+    // Presentable events are things like floppy drive sounds.
+    presentable_event_mixer: Option<Mixer>,
+    // Master output for all presentable event sounds.
+    presentable_event_output: Option<Player>,
+    machine_sounds_volume: f32,
+    machine_sounds_muted: bool,
+
+    presentable_event_players: MartyHashMap<PresentableSoundKey, Player>,
+    presentable_event_one_shots: Vec<Player>,
     sources: Vec<SoundSource>,
 }
 
-impl Default for SoundInterface {
+impl Default for RodioSoundInterface {
     fn default() -> Self {
-        SoundInterface {
+        RodioSoundInterface {
             enabled: false,
             device_name: String::new(),
             master_speed: 1.0,
@@ -179,14 +199,20 @@ impl Default for SoundInterface {
             channels: 0,
             device: None,
             stream: None,
+            presentable_event_mixer: None,
+            presentable_event_output: None,
+            machine_sounds_volume: super::MACHINE_SOUNDS_DEFAULT_VOLUME,
+            machine_sounds_muted: false,
+            presentable_event_players: MartyHashMap::default(),
+            presentable_event_one_shots: Vec::new(),
             sources: Vec::new(),
         }
     }
 }
 
-impl SoundInterface {
-    pub fn new(enabled: bool) -> SoundInterface {
-        SoundInterface {
+impl RodioSoundInterface {
+    pub fn new(enabled: bool) -> RodioSoundInterface {
+        RodioSoundInterface {
             enabled,
             ..Default::default()
         }
@@ -198,14 +224,15 @@ impl SoundInterface {
             .default_output_device()
             .ok_or(anyhow!("No audio device found."))?;
 
-        let device_name = audio_device.name()?;
+        let device_name = audio_device.description()?.name().to_owned();
         let default_config = audio_device.default_output_config()?;
 
         let new_max = match default_config.buffer_size() {
             SupportedBufferSize::Range { min, .. } => {
                 if *min > MAX_BUFFER_SIZE {
                     *min
-                } else {
+                }
+                else {
                     MAX_BUFFER_SIZE
                 }
             }
@@ -226,8 +253,23 @@ impl SoundInterface {
             .with_buffer_size(BufferSize::Fixed(new_max))
             .open_stream()?;
 
+        let channels_nz = NonZero::new(default_config.channels()).ok_or(anyhow!("Audio device has zero channels."))?;
+        let sample_rate_nz = NonZero::new(sample_rate).ok_or(anyhow!("Audio device has a zero sample rate."))?;
+
+        // Create a mixer for presentable events - floppy drive sounds, etc.
+        let (presentable_event_mixer, presentable_event_mixer_source) = mixer::mixer(channels_nz, sample_rate_nz);
+        presentable_event_mixer.add(Zero::new(channels_nz, sample_rate_nz));
+        let presentable_event_output = Player::connect_new(stream.mixer());
+        presentable_event_output.set_volume(if self.machine_sounds_muted {
+            0.0
+        }
+        else {
+            self.machine_sounds_volume
+        });
+        presentable_event_output.append(presentable_event_mixer_source);
+
         *self = {
-            SoundInterface {
+            RodioSoundInterface {
                 enabled: self.enabled,
                 device_name,
                 master_speed: 1.0,
@@ -236,9 +278,108 @@ impl SoundInterface {
                 channels,
                 device: Some(audio_device),
                 stream: Some(stream),
+                presentable_event_mixer: Some(presentable_event_mixer),
+                presentable_event_output: Some(presentable_event_output),
+                machine_sounds_volume: self.machine_sounds_volume,
+                machine_sounds_muted: self.machine_sounds_muted,
+                presentable_event_players: MartyHashMap::default(),
+                presentable_event_one_shots: Vec::new(),
                 sources: Vec::new(),
             }
         };
+
+        Ok(())
+    }
+
+    fn samples_buffer(samples: &[f32], sample_rate: u32, stereo: bool) -> Result<SamplesBuffer, Error> {
+        if stereo && !samples.len().is_multiple_of(2) {
+            return Err(anyhow!("Stereo sound contains an odd number of samples."));
+        }
+
+        let channels = NonZero::new(if stereo { 2 } else { 1 }).ok_or(anyhow!("Sound has zero channels."))?;
+        let sample_rate = NonZero::new(sample_rate).ok_or(anyhow!("Sound has a zero sample rate."))?;
+
+        Ok(SamplesBuffer::new(channels, sample_rate, samples.to_vec()))
+    }
+
+    fn cancel_presentable_sound(&mut self, key: PresentableSoundKey) {
+        if let Some(player) = self.presentable_event_players.remove(&key) {
+            player.stop();
+        }
+    }
+
+    /// Plays samples through the mixer reserved for presentable frontend events.
+    ///
+    /// Stereo samples must be interleaved left/right pairs. Rodio resamples
+    /// the source to the output device's sample rate when necessary.
+    pub fn play_sound(&mut self, samples: &[f32], sample_rate: u32, stereo: bool) -> Result<(), Error> {
+        if samples.is_empty() {
+            return Ok(());
+        }
+
+        let mixer = self
+            .presentable_event_mixer
+            .as_ref()
+            .ok_or(anyhow!("No audio stream open."))?;
+        let source = Self::samples_buffer(samples, sample_rate, stereo)?;
+        let player = Player::connect_new(mixer);
+        player.append(source);
+        self.presentable_event_one_shots.push(player);
+
+        Ok(())
+    }
+
+    pub fn device_reset(&mut self) {
+        for (_, player) in self.presentable_event_players.drain() {
+            player.stop();
+        }
+        for player in self.presentable_event_one_shots.drain(..) {
+            player.stop();
+        }
+    }
+
+    pub fn start_loop(
+        &mut self,
+        key: PresentableSoundKey,
+        intro: &SoundEffect,
+        looping: &SoundEffect,
+    ) -> Result<(), Error> {
+        if looping.samples.is_empty() {
+            return Err(anyhow!("Looping sound '{}' contains no samples.", looping.base_name));
+        }
+
+        let mixer = self
+            .presentable_event_mixer
+            .clone()
+            .ok_or(anyhow!("No audio stream open."))?;
+        // This also cancels a queued or currently playing motor-stop sound when
+        // the motor is turned back on before the stop sound has completed.
+        self.cancel_presentable_sound(key);
+
+        let player = Player::connect_new(&mixer);
+        if !intro.samples.is_empty() {
+            player.append(Self::samples_buffer(&intro.samples, intro.sample_rate, intro.stereo)?);
+        }
+        player.append(Self::samples_buffer(&looping.samples, looping.sample_rate, looping.stereo)?.repeat_infinite());
+        self.presentable_event_players.insert(key, player);
+
+        Ok(())
+    }
+
+    pub fn stop_loop(&mut self, key: PresentableSoundKey, outro: &SoundEffect) -> Result<(), Error> {
+        self.cancel_presentable_sound(key);
+
+        if outro.samples.is_empty() {
+            return Ok(());
+        }
+
+        let mixer = self
+            .presentable_event_mixer
+            .clone()
+            .ok_or(anyhow!("No audio stream open."))?;
+        let player = Player::connect_new(&mixer);
+        player.append(Self::samples_buffer(&outro.samples, outro.sample_rate, outro.stereo)?);
+        self.presentable_event_players.insert(key, player);
 
         Ok(())
     }
@@ -283,6 +424,9 @@ impl SoundInterface {
     }
 
     pub fn run(&mut self, _duration: Duration) {
+        self.presentable_event_players.retain(|_, player| !player.empty());
+        self.presentable_event_one_shots.retain(|player| !player.empty());
+
         for source in self.sources.iter_mut() {
             let samples_in = source.receiver.try_iter().collect::<Vec<f32>>();
             //log::debug!("received {} samples from channel {}", samples_in.len(), source.name);
@@ -351,8 +495,20 @@ impl SoundInterface {
     }
 
     pub fn set_volume(&mut self, s_idx: usize, volume: Option<f32>, muted: Option<bool>) {
-        if s_idx < self.sources.len() {
-            let source = &mut self.sources[s_idx];
+        if s_idx == 0 {
+            self.machine_sounds_volume = volume.unwrap_or(self.machine_sounds_volume);
+            self.machine_sounds_muted = muted.unwrap_or(self.machine_sounds_muted);
+
+            if let Some(output) = self.presentable_event_output.as_ref() {
+                output.set_volume(if self.machine_sounds_muted {
+                    0.0
+                }
+                else {
+                    self.machine_sounds_volume
+                });
+            }
+        }
+        else if let Some(source) = self.sources.get_mut(s_idx - 1) {
             let new_volume = volume.unwrap_or(source.volume);
             let mut new_sink_volume = new_volume;
 
@@ -379,6 +535,169 @@ impl SoundInterface {
     }
 
     pub fn info(&self) -> Vec<SoundSourceInfo> {
-        self.sources.iter().map(|s| s.info()).collect()
+        let mut info = vec![super::machine_sounds_info(
+            self.sample_rate,
+            self.channels,
+            self.machine_sounds_volume,
+            self.machine_sounds_muted,
+            self.presentable_event_players.len() + self.presentable_event_one_shots.len(),
+        )];
+        info.extend(self.sources.iter().map(|s| s.info()));
+        info
+    }
+}
+
+impl super::SoundInterfaceBackend for RodioSoundInterface {
+    fn new(enabled: bool) -> Self {
+        RodioSoundInterface::new(enabled)
+    }
+
+    fn open_device(&mut self) -> Result<(), Error> {
+        RodioSoundInterface::open_device(self)
+    }
+
+    fn open_stream(&mut self) -> Result<(), Error> {
+        RodioSoundInterface::open_stream(self)
+    }
+
+    fn device_name(&self) -> String {
+        RodioSoundInterface::device_name(self)
+    }
+
+    fn add_source(&mut self, source: &SoundSourceDescriptor) -> Result<(), Error> {
+        RodioSoundInterface::add_source(self, source)
+    }
+
+    fn run(&mut self, duration: Duration) {
+        RodioSoundInterface::run(self, duration)
+    }
+
+    fn set_master_speed(&mut self, speed: f32) {
+        RodioSoundInterface::set_master_speed(self, speed)
+    }
+
+    fn set_volume(&mut self, source_index: usize, volume: Option<f32>, muted: Option<bool>) {
+        RodioSoundInterface::set_volume(self, source_index, volume, muted)
+    }
+
+    fn config(&self) -> SoundOutputConfig {
+        RodioSoundInterface::config(self)
+    }
+
+    fn info(&self) -> Vec<SoundSourceInfo> {
+        RodioSoundInterface::info(self)
+    }
+
+    fn play_sound(&mut self, samples: &[f32], sample_rate: u32, stereo: bool) -> Result<(), Error> {
+        RodioSoundInterface::play_sound(self, samples, sample_rate, stereo)
+    }
+
+    fn device_reset(&mut self) {
+        RodioSoundInterface::device_reset(self)
+    }
+
+    fn start_loop(
+        &mut self,
+        key: PresentableSoundKey,
+        intro: &SoundEffect,
+        looping: &SoundEffect,
+    ) -> Result<(), Error> {
+        RodioSoundInterface::start_loop(self, key, intro, looping)
+    }
+
+    fn stop_loop(&mut self, key: PresentableSoundKey, outro: &SoundEffect) -> Result<(), Error> {
+        RodioSoundInterface::stop_loop(self, key, outro)
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    fn effect(base_name: &str, samples: Vec<f32>) -> SoundEffect {
+        SoundEffect {
+            base_name: base_name.to_string(),
+            samples,
+            stereo: false,
+            sample_rate: 44_100,
+        }
+    }
+
+    #[test]
+    fn motor_restart_replaces_queued_stop_sound() {
+        let (mixer, _mixer_source) =
+            mixer::mixer(NonZero::<u16>::new(2).unwrap(), NonZero::<u32>::new(44_100).unwrap());
+        let mut interface = RodioSoundInterface {
+            presentable_event_mixer: Some(mixer),
+            ..Default::default()
+        };
+        let key = PresentableSoundKey::FloppyDriveMotor {
+            controller: 0,
+            drive: 0,
+        };
+        let stop = effect("drive_motor_stop", vec![-1.0; 16]);
+        let start = effect("drive_motor_start", vec![0.5; 16]);
+        let looping = effect("drive_motor_on", vec![0.25; 16]);
+
+        interface.stop_loop(key, &stop).unwrap();
+        assert_eq!(interface.presentable_event_players[&key].len(), 1);
+
+        interface.start_loop(key, &start, &looping).unwrap();
+        assert_eq!(interface.presentable_event_players.len(), 1);
+        assert_eq!(interface.presentable_event_players[&key].len(), 2);
+    }
+
+    #[test]
+    fn device_reset_stops_all_presentable_event_players() {
+        let (mixer, _mixer_source) =
+            mixer::mixer(NonZero::<u16>::new(2).unwrap(), NonZero::<u32>::new(44_100).unwrap());
+        let mut interface = RodioSoundInterface {
+            presentable_event_mixer: Some(mixer),
+            ..Default::default()
+        };
+        let key = PresentableSoundKey::FloppyDriveMotor {
+            controller: 0,
+            drive: 0,
+        };
+        let start = effect("drive_motor_start", vec![0.5; 16]);
+        let looping = effect("drive_motor_on", vec![0.25; 16]);
+
+        interface.play_sound(&[1.0; 16], 44_100, false).unwrap();
+        interface.start_loop(key, &start, &looping).unwrap();
+        assert_eq!(interface.presentable_event_one_shots.len(), 1);
+        assert_eq!(interface.presentable_event_players.len(), 1);
+
+        interface.device_reset();
+        assert!(interface.presentable_event_one_shots.is_empty());
+        assert!(interface.presentable_event_players.is_empty());
+    }
+
+    #[test]
+    fn machine_sounds_are_listed_first_and_control_presentable_event_output() {
+        let (mixer, _mixer_source) =
+            mixer::mixer(NonZero::<u16>::new(2).unwrap(), NonZero::<u32>::new(44_100).unwrap());
+        let output = Player::connect_new(&mixer);
+        let mut interface = RodioSoundInterface {
+            sample_rate: 44_100,
+            channels: 2,
+            presentable_event_output: Some(output),
+            ..Default::default()
+        };
+
+        let machine_sounds_index = 0;
+        interface.set_volume(machine_sounds_index, Some(0.7), Some(true));
+
+        let info = interface.info();
+        let machine_sounds = info.first().unwrap();
+        assert_eq!(machine_sounds.kind, SoundSourceKind::MachineSounds);
+        assert_eq!(machine_sounds.name, super::super::MACHINE_SOUNDS_NAME);
+        assert_eq!(machine_sounds.sample_rate, 44_100);
+        assert_eq!(machine_sounds.channels, 2);
+        assert_eq!(machine_sounds.volume, 0.7);
+        assert!(machine_sounds.muted);
+        assert_eq!(interface.presentable_event_output.as_ref().unwrap().volume(), 0.0);
+
+        interface.set_volume(machine_sounds_index, None, Some(false));
+        assert_eq!(interface.presentable_event_output.as_ref().unwrap().volume(), 0.7);
     }
 }

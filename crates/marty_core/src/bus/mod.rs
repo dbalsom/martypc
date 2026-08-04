@@ -94,6 +94,7 @@ use crate::{
     bus::dispatch::MemoryDispatch,
     devices::{conventional_memory::ConventionalMemory, hdc::jr_ide::JrIdeController, sn76489::Sn76489},
 };
+
 #[cfg(feature = "sound")]
 use crate::{
     device_traits::sounddevice::SoundDevice,
@@ -105,15 +106,14 @@ use crate::{
 
 use crate::device_types::keyboard::KeyboardType;
 use anyhow::Error;
-#[cfg(feature = "sound")]
-use crossbeam_channel::unbounded;
+use crossbeam_channel::{unbounded, Receiver, Sender};
+use marty_common::PresentableDeviceEvent;
 
 pub(crate) const NO_IO_BYTE: u8 = 0xFF; // This is the byte read from an unconnected IO address.
 pub(crate) const OPEN_BUS_BYTE: u8 = 0xFF; // This is the byte read from an unmapped memory address.
 
 pub(crate) const ADDRESS_SPACE: usize = 0x10_0000;
 pub(crate) const DEFAULT_WAIT_STATES: u32 = 0;
-
 pub(crate) const MMIO_MAP_SIZE: usize = 0x2000;
 pub(crate) const MMIO_MAP_SHIFT: usize = 13;
 pub(crate) const MMIO_MAP_LEN: usize = ADDRESS_SPACE >> MMIO_MAP_SHIFT;
@@ -198,16 +198,27 @@ impl DeviceRunContext {
     }
 }
 
-#[derive(Default)]
 pub struct InstalledDevicesResult {
-    pub dummy: bool,
+    presentable_event_sender: Sender<PresentableDeviceEvent>,
+    pub(crate) presentable_event_receiver: Receiver<PresentableDeviceEvent>,
     #[cfg(feature = "sound")]
     pub sound_sources: Vec<SoundSourceDescriptor>,
 }
 
 impl InstalledDevicesResult {
     pub fn new() -> Self {
-        Self::default()
+        let (presentable_event_sender, presentable_event_receiver) = unbounded();
+
+        Self {
+            presentable_event_sender,
+            presentable_event_receiver,
+            #[cfg(feature = "sound")]
+            sound_sources: Vec::new(),
+        }
+    }
+
+    fn presentable_event_sender(&self) -> Sender<PresentableDeviceEvent> {
+        self.presentable_event_sender.clone()
     }
 }
 
@@ -1081,7 +1092,8 @@ impl BusInterface {
             // Create the correct kind of FDC (currently only NEC supported)
             match fdc_type {
                 FdcType::IbmNec | FdcType::IbmPCJrNec => {
-                    let fdc = FloppyController::new(fdc_type, fdc_config.drive.clone());
+                    let mut fdc = FloppyController::new(fdc_type, fdc_config.drive.clone());
+                    fdc.set_presentable_event_sender(0, installed_devices.presentable_event_sender());
                     // Add FDC ports to io_map
                     add_io_device!(self, fdc, IoDeviceType::FloppyController);
                     self.fdc = Some(Box::new(fdc));

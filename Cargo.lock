@@ -2547,6 +2547,12 @@ dependencies = [
 ]
 
 [[package]]
+name = "hound"
+version = "3.5.1"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "62adaabb884c94955b19907d60019f4e145d091c75345379e70d1ee696f7854f"
+
+[[package]]
 name = "humantime"
 version = "2.1.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -3166,6 +3172,7 @@ dependencies = [
  "arduinox86_client 0.3.0 (git+https://github.com/dbalsom/arduinoX86)",
  "arraydeque",
  "binrw 0.14.1",
+ "bitflags 2.11.1",
  "bytemuck",
  "cfg-if",
  "const_format",
@@ -3285,6 +3292,7 @@ dependencies = [
  "fatfs",
  "fluxfox",
  "gilrs",
+ "hound",
  "log",
  "marty_common",
  "marty_core",

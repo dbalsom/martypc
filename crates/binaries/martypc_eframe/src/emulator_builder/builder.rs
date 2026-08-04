@@ -33,7 +33,11 @@
 use crate::{
     counter::Counter,
     emulator::{
-        joystick_state::JoystickState, keyboard_state::KeyboardData, mouse_state::MouseState, EmuFlags, Emulator,
+        joystick_state::JoystickState,
+        keyboard_state::KeyboardData,
+        mouse_state::MouseState,
+        EmuFlags,
+        Emulator,
     },
     input,
     input::HotkeyManager,
@@ -60,8 +64,14 @@ use marty_core::{
 };
 use marty_egui::state::GuiState;
 use marty_frontend_common::{
-    cartridge_manager::CartridgeManager, floppy_manager::FloppyManager, machine_manager::MachineManager,
-    resource_manager::ResourceManager, rom_manager::RomManager, types::resource_location::ResourceLocation,
+    asset_manager::AssetManager,
+    cartridge_manager::CartridgeManager,
+    floppy_manager::FloppyManager,
+    machine_manager::MachineManager,
+    resource_manager::ResourceManager,
+    rom_manager::RomManager,
+    sound_file_manager::{SoundFileManager, SoundFileManagerOptions},
+    types::resource_location::ResourceLocation,
     vhd_manager::VhdManager,
 };
 
@@ -222,7 +232,8 @@ impl EmulatorBuilder {
 
         let config_location = if self.toml_config_path.is_some() {
             ResourceLocation::FilePath(self.toml_config_path.as_ref().unwrap().clone())
-        } else {
+        }
+        else {
             ResourceLocation::Url(self.toml_config_url.as_ref().unwrap().clone())
         };
 
@@ -322,7 +333,8 @@ impl EmulatorBuilder {
 
             sound_config = sound_player.config();
             Some(sound_player)
-        } else {
+        }
+        else {
             None
         };
 
@@ -382,6 +394,13 @@ impl EmulatorBuilder {
         if let Some(ignore_dirs) = &config.emulator.ignore_dirs {
             resource_manager.set_ignore_dirs(ignore_dirs.clone());
         }
+
+        // The asset manager is new to 0.4.2 and handles miscellaneous assets such as sound effect
+        // libraries. The AssetManager operates off the previously defined 'asset' resource path.
+        log::debug!("Creating AssetManager...");
+        let mut asset_manager = AssetManager::new();
+        let asset_count = asset_manager.scan_resource(&mut resource_manager).await?;
+        log::debug!("Asset resource scan complete! Discovered {} asset(s).", asset_count);
 
         // Instantiate the new machine manager to load Machine configurations.
         log::debug!("Creating MachineManager...");
@@ -653,7 +672,8 @@ impl EmulatorBuilder {
 
         if let Some(global_kb_string) = &config.machine.input.keyboard_layout {
             kb_string = global_kb_string.clone()
-        } else {
+        }
+        else {
             if let Some(keyboard) = machine_config.keyboard.as_ref() {
                 kb_string = keyboard.layout.clone();
             }
@@ -705,6 +725,29 @@ impl EmulatorBuilder {
         #[allow(unused_mut)]
         let mut machine = machine_builder.build()?;
 
+        // Only load sound assets if we actually need to, ie, anything has enabled sound effects
+        let mut load_sound_assets = false;
+
+        // Instantiate default sound options.
+        let mut sound_file_manager_options = SoundFileManagerOptions::default();
+
+        // Enable floppy drive sounds if we have a FDC and they are enabled in config.
+        if machine.bus().fdc().is_some() {
+            sound_file_manager_options = SoundFileManagerOptions { floppy_sounds: true };
+            load_sound_assets |= true;
+        }
+
+        let mut sound_file_manager = SoundFileManager::new(sound_file_manager_options);
+
+        if load_sound_assets {
+            if let Err(err) = sound_file_manager
+                .load_assets(&asset_manager, &mut resource_manager)
+                .await
+            {
+                log::warn!("Failed to load frontend sound assets: {}", err);
+            }
+        }
+
         // Now that we have a Machine, we can query it for sound sources (devices that produce sound)
         // For each sound source we will create a source in the SoundInterface, to give it
         // volume/mute controls.
@@ -723,8 +766,9 @@ impl EmulatorBuilder {
                     }
                 }
 
-                // PC Speaker is always first sound source. Set its volume to 25%.
-                si.set_volume(0, Some(0.25), None);
+                // Machine Sounds occupies GUI source index 0. PC Speaker is
+                // always the first emulated source, at GUI source index 1.
+                si.set_volume(1, Some(0.25), None);
             }
         }
 
@@ -785,7 +829,8 @@ impl EmulatorBuilder {
                     if let Some(index) = serial_ports.iter().position(|p| p.port_name == *port.host_port_name) {
                         // Set the host port id to the resolved index.
                         port.host_port_id = Some(index);
-                    } else if port.host_port_name != "default" {
+                    }
+                    else if port.host_port_name != "default" {
                         // Print a warning if the port name was not found - user may have typo'd or the configuration has changed
                         log::warn!(
                             "Serial port name '{}' not found in host serial ports. Bridge configuration not set.",
@@ -833,7 +878,8 @@ impl EmulatorBuilder {
                                 }
                             }
                         }
-                    } else {
+                    }
+                    else {
                         log::warn!(
                             "Serial port name '{}' not found in host serial ports. Bridge connection not created.",
                             connection.host_port_name
@@ -883,6 +929,8 @@ impl EmulatorBuilder {
             floppy_manager,
             vhd_manager,
             cart_manager,
+            asset_manager,
+            sound_file_manager,
             perf: Default::default(),
             flags: EmuFlags {
                 render_gui: self.enable_gui,

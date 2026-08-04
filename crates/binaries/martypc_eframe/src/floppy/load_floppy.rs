@@ -201,7 +201,8 @@ pub fn handle_load_floppy(emu: &mut Emulator, drive_select: usize, context: File
                         .duration(Some(NORMAL_NOTIFICATION_TIME));
                 }
             }
-        } else {
+        }
+        else {
             log::error!("Failed to load floppy image: No result returned.");
             emu.gui
                 .toasts()

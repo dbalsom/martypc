@@ -48,7 +48,8 @@ pub fn update_egui(emu: &mut Emulator, dm: &mut EFrameDisplayManager, tm: &Times
     if let Some(err) = emu.machine.get_error_str() {
         emu.gui.show_error(err);
         emu.gui.show_window(GuiWindow::DisassemblyViewer);
-    } else {
+    }
+    else {
         // No error? Make sure we close the error dialog.
         emu.gui.clear_error();
     }
@@ -58,7 +59,8 @@ pub fn update_egui(emu: &mut Emulator, dm: &mut EFrameDisplayManager, tm: &Times
         if let Some(gui_event) = emu.gui.get_event() {
             //log::warn!("Handling GUI event!");
             handle_egui_event(emu, dm, tm, tmu, &gui_event);
-        } else {
+        }
+        else {
             break;
         }
     }
@@ -90,9 +92,11 @@ pub fn update_egui(emu: &mut Emulator, dm: &mut EFrameDisplayManager, tm: &Times
     if emu.gui.is_window_open(GuiWindow::VHDCreator) {
         if let Some(hdc) = emu.machine.hdc_mut() {
             emu.gui.vhd_creator.set_formats(hdc.get_supported_formats());
-        } else if let Some(hdc) = emu.machine.xtide_mut() {
+        }
+        else if let Some(hdc) = emu.machine.xtide_mut() {
             emu.gui.vhd_creator.set_formats(hdc.get_supported_formats());
-        } else {
+        }
+        else {
             log::error!("Couldn't query available formats: No Hard Disk Controller present!");
         }
     }

@@ -31,6 +31,7 @@
 */
 
 pub mod bytebuf;
+pub mod device_events;
 pub mod keys;
 pub mod path;
 pub mod syntax_token;
@@ -38,6 +39,7 @@ pub mod types;
 pub mod util;
 
 pub use crate::{
+    device_events::{FloppyDriveEvent, PresentableDeviceEvent},
     path::find_unique_filename,
     types::{cartridge::CartImage, video_dimensions::VideoDimensions},
 };
