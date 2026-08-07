@@ -325,10 +325,10 @@ impl SoundFileManager {
     /// resolve_presentable_event() receives PresentableDeviceEvents and returns
     /// Option<PresentableAction>, ie, what should be done, if anything, in response to the
     /// presentable event.
-    /// In the initial implementation, the only PresentableDeviceEvent is of type FloppyDrive and
-    /// is used to generate sound effects.
+    /// Device events with configured sound effects are translated into sound actions here.
     pub fn resolve_presentable_event(&self, event: PresentableDeviceEvent) -> Option<PresentableSoundAction<'_>> {
         match event {
+            PresentableDeviceEvent::PowerOn | PresentableDeviceEvent::PowerOff => None,
             PresentableDeviceEvent::FloppyDrive {
                 event:
                     FloppyDriveEvent::HeadStep {

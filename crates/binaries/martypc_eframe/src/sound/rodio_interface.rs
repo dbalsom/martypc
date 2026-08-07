@@ -77,6 +77,11 @@ pub struct SoundSource {
     pub controller: AudioLatencyController,
 }
 
+struct KeyedPresentableSound {
+    player: Player,
+    looping: bool,
+}
+
 impl SoundSource {
     pub fn info(&self) -> SoundSourceInfo {
         SoundSourceInfo {
@@ -183,7 +188,8 @@ pub struct RodioSoundInterface {
     machine_sounds_volume: f32,
     machine_sounds_muted: bool,
 
-    presentable_event_players: MartyHashMap<PresentableSoundKey, Player>,
+    looping_sounds_paused: bool,
+    presentable_event_players: MartyHashMap<PresentableSoundKey, KeyedPresentableSound>,
     presentable_event_one_shots: Vec<Player>,
     sources: Vec<SoundSource>,
 }
@@ -203,6 +209,7 @@ impl Default for RodioSoundInterface {
             presentable_event_output: None,
             machine_sounds_volume: super::MACHINE_SOUNDS_DEFAULT_VOLUME,
             machine_sounds_muted: false,
+            looping_sounds_paused: false,
             presentable_event_players: MartyHashMap::default(),
             presentable_event_one_shots: Vec::new(),
             sources: Vec::new(),
@@ -282,6 +289,7 @@ impl RodioSoundInterface {
                 presentable_event_output: Some(presentable_event_output),
                 machine_sounds_volume: self.machine_sounds_volume,
                 machine_sounds_muted: self.machine_sounds_muted,
+                looping_sounds_paused: self.looping_sounds_paused,
                 presentable_event_players: MartyHashMap::default(),
                 presentable_event_one_shots: Vec::new(),
                 sources: Vec::new(),
@@ -303,8 +311,8 @@ impl RodioSoundInterface {
     }
 
     fn cancel_presentable_sound(&mut self, key: PresentableSoundKey) {
-        if let Some(player) = self.presentable_event_players.remove(&key) {
-            player.stop();
+        if let Some(sound) = self.presentable_event_players.remove(&key) {
+            sound.player.stop();
         }
     }
 
@@ -330,11 +338,29 @@ impl RodioSoundInterface {
     }
 
     pub fn device_reset(&mut self) {
-        for (_, player) in self.presentable_event_players.drain() {
-            player.stop();
+        for (_, sound) in self.presentable_event_players.drain() {
+            sound.player.stop();
         }
         for player in self.presentable_event_one_shots.drain(..) {
             player.stop();
+        }
+    }
+
+    pub fn set_looping_sounds_paused(&mut self, paused: bool) {
+        if self.looping_sounds_paused == paused {
+            return;
+        }
+
+        self.looping_sounds_paused = paused;
+        for sound in self.presentable_event_players.values() {
+            if sound.looping {
+                if paused {
+                    sound.player.pause();
+                }
+                else {
+                    sound.player.play();
+                }
+            }
         }
     }
 
@@ -361,7 +387,11 @@ impl RodioSoundInterface {
             player.append(Self::samples_buffer(&intro.samples, intro.sample_rate, intro.stereo)?);
         }
         player.append(Self::samples_buffer(&looping.samples, looping.sample_rate, looping.stereo)?.repeat_infinite());
-        self.presentable_event_players.insert(key, player);
+        if self.looping_sounds_paused {
+            player.pause();
+        }
+        self.presentable_event_players
+            .insert(key, KeyedPresentableSound { player, looping: true });
 
         Ok(())
     }
@@ -379,7 +409,8 @@ impl RodioSoundInterface {
             .ok_or(anyhow!("No audio stream open."))?;
         let player = Player::connect_new(&mixer);
         player.append(Self::samples_buffer(&outro.samples, outro.sample_rate, outro.stereo)?);
-        self.presentable_event_players.insert(key, player);
+        self.presentable_event_players
+            .insert(key, KeyedPresentableSound { player, looping: false });
 
         Ok(())
     }
@@ -424,7 +455,7 @@ impl RodioSoundInterface {
     }
 
     pub fn run(&mut self, _duration: Duration) {
-        self.presentable_event_players.retain(|_, player| !player.empty());
+        self.presentable_event_players.retain(|_, sound| !sound.player.empty());
         self.presentable_event_one_shots.retain(|player| !player.empty());
 
         for source in self.sources.iter_mut() {
@@ -596,6 +627,10 @@ impl super::SoundInterfaceBackend for RodioSoundInterface {
         RodioSoundInterface::device_reset(self)
     }
 
+    fn set_looping_sounds_paused(&mut self, paused: bool) {
+        RodioSoundInterface::set_looping_sounds_paused(self, paused)
+    }
+
     fn start_loop(
         &mut self,
         key: PresentableSoundKey,
@@ -640,11 +675,46 @@ mod tests {
         let looping = effect("drive_motor_on", vec![0.25; 16]);
 
         interface.stop_loop(key, &stop).unwrap();
-        assert_eq!(interface.presentable_event_players[&key].len(), 1);
+        assert_eq!(interface.presentable_event_players[&key].player.len(), 1);
 
         interface.start_loop(key, &start, &looping).unwrap();
         assert_eq!(interface.presentable_event_players.len(), 1);
-        assert_eq!(interface.presentable_event_players[&key].len(), 2);
+        assert_eq!(interface.presentable_event_players[&key].player.len(), 2);
+    }
+
+    #[test]
+    fn execution_pause_only_affects_looping_presentable_sounds() {
+        let (mixer, _mixer_source) =
+            mixer::mixer(NonZero::<u16>::new(2).unwrap(), NonZero::<u32>::new(44_100).unwrap());
+        let mut interface = RodioSoundInterface {
+            presentable_event_mixer: Some(mixer),
+            ..Default::default()
+        };
+        let key = PresentableSoundKey::FloppyDriveMotor {
+            controller: 0,
+            drive: 0,
+        };
+        let start = effect("drive_motor_start", vec![0.5; 16]);
+        let looping = effect("drive_motor_on", vec![0.25; 16]);
+        let stop = effect("drive_motor_stop", vec![-1.0; 16]);
+
+        interface.play_sound(&[1.0; 16], 44_100, false).unwrap();
+        interface.start_loop(key, &start, &looping).unwrap();
+        interface.set_looping_sounds_paused(true);
+
+        assert!(interface.presentable_event_players[&key].player.is_paused());
+        assert!(!interface.presentable_event_one_shots[0].is_paused());
+
+        interface.set_looping_sounds_paused(false);
+        assert!(!interface.presentable_event_players[&key].player.is_paused());
+
+        interface.set_looping_sounds_paused(true);
+        interface.start_loop(key, &start, &looping).unwrap();
+        assert!(interface.presentable_event_players[&key].player.is_paused());
+
+        interface.stop_loop(key, &stop).unwrap();
+        assert!(!interface.presentable_event_players[&key].looping);
+        assert!(!interface.presentable_event_players[&key].player.is_paused());
     }
 
     #[test]
@@ -664,6 +734,7 @@ mod tests {
 
         interface.play_sound(&[1.0; 16], 44_100, false).unwrap();
         interface.start_loop(key, &start, &looping).unwrap();
+        interface.set_looping_sounds_paused(true);
         assert_eq!(interface.presentable_event_one_shots.len(), 1);
         assert_eq!(interface.presentable_event_players.len(), 1);
 

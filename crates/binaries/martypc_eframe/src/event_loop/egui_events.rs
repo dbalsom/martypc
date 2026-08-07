@@ -510,7 +510,7 @@ pub fn handle_egui_event(
             }
 
             if reboot {
-                emu.machine.change_state(MachineState::Rebooting);
+                emu.machine.reboot();
             }
         }
         GuiEvent::RemoveCartridge(slot_select) => {
@@ -529,7 +529,7 @@ pub fn handle_egui_event(
                 reboot = true;
             }
             if reboot {
-                emu.machine.change_state(MachineState::Rebooting);
+                emu.machine.reboot();
             }
         }
         GuiEvent::RequestLoadFloppyDialog(drive_select) => {
@@ -1087,8 +1087,8 @@ pub fn handle_egui_event(
         // User changed the machine's operational state.
         GuiEvent::MachineStateChange(state) => {
             match state {
-                MachineState::Off | MachineState::Rebooting => {
-                    // Clear the screen if rebooting or turning off
+                MachineState::Off => {
+                    // Prevent execution while ROM resources are reloaded after power-off.
                     if emu.config.machine.reload_roms {
                         // Tell the Machine to wait on execution until ROMs are reloaded
                         emu.machine.set_reload_pending(true);
@@ -1099,6 +1099,12 @@ pub fn handle_egui_event(
                 }
             }
             emu.machine.change_state(*state);
+        }
+        GuiEvent::Reboot => {
+            if emu.config.machine.reload_roms {
+                emu.machine.set_reload_pending(true);
+            }
+            emu.machine.reboot();
         }
         GuiEvent::TakeScreenshot(dt_idx) => {
             // User requested to take a screenshot

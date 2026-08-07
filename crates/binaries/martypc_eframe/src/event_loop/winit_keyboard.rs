@@ -33,7 +33,7 @@ use crate::{emulator::Emulator, input::TranslateKey};
 use egui::{CursorGrab, ViewportCommand};
 
 use display_manager_eframe::{DisplayManager, EFrameDisplayManager};
-use marty_core::machine::{ExecutionOperation, MachineState};
+use marty_core::machine::ExecutionOperation;
 use marty_display_common::display_manager::DtHandle;
 use marty_frontend_common::{
     constants::{LONG_NOTIFICATION_TIME, NORMAL_NOTIFICATION_TIME},
@@ -225,7 +225,7 @@ pub fn process_hotkeys(
             }
             HotkeyEvent::Reboot => {
                 log::debug!("Reboot hotkey triggered. Restarting machine.");
-                emu.machine.change_state(MachineState::Rebooting);
+                emu.machine.reboot();
             }
             HotkeyEvent::ToggleFullscreen => {
                 log::debug!("ToggleFullscreen hotkey triggered.");

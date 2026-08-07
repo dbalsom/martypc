@@ -256,6 +256,7 @@ pub enum GuiEvent {
     DelayAdjust,
     TickDevice(DeviceSelection, u32),
     MachineStateChange(MachineState),
+    Reboot,
     TakeScreenshot(usize),
     ToggleFullscreen(usize),
     Exit,

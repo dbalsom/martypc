@@ -107,6 +107,8 @@ impl NullSoundInterface {
 
     pub fn device_reset(&mut self) {}
 
+    pub fn set_looping_sounds_paused(&mut self, _paused: bool) {}
+
     pub fn start_loop(
         &mut self,
         _key: PresentableSoundKey,
@@ -168,6 +170,10 @@ impl super::SoundInterfaceBackend for NullSoundInterface {
 
     fn device_reset(&mut self) {
         NullSoundInterface::device_reset(self)
+    }
+
+    fn set_looping_sounds_paused(&mut self, paused: bool) {
+        NullSoundInterface::set_looping_sounds_paused(self, paused)
     }
 
     fn start_loop(

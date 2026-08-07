@@ -217,7 +217,7 @@ impl InstalledDevicesResult {
         }
     }
 
-    fn presentable_event_sender(&self) -> Sender<PresentableDeviceEvent> {
+    pub(crate) fn presentable_event_sender(&self) -> Sender<PresentableDeviceEvent> {
         self.presentable_event_sender.clone()
     }
 }

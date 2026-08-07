@@ -99,7 +99,7 @@ impl CpuControl {
                     .on_disabled_hover_text("Pause")
                     .clicked()
                 {
-                    exec_control.set_state(ExecutionState::Paused);
+                    exec_control.set_op(ExecutionOperation::Pause);
                 };
             });
 

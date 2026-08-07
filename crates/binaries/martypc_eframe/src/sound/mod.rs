@@ -82,6 +82,7 @@ pub trait SoundInterfaceBackend: Default {
     fn info(&self) -> Vec<SoundSourceInfo>;
     fn play_sound(&mut self, samples: &[f32], sample_rate: u32, stereo: bool) -> Result<(), Error>;
     fn device_reset(&mut self);
+    fn set_looping_sounds_paused(&mut self, paused: bool);
     fn start_loop(&mut self, key: PresentableSoundKey, intro: &SoundEffect, looping: &SoundEffect)
         -> Result<(), Error>;
     fn stop_loop(&mut self, key: PresentableSoundKey, outro: &SoundEffect) -> Result<(), Error>;

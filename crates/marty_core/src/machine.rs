@@ -91,7 +91,7 @@ use marty_common::PresentableDeviceEvent;
 use fluxfox::DiskImage;
 
 use anyhow::{anyhow, Error};
-use crossbeam_channel::Receiver;
+use crossbeam_channel::{Receiver, Sender};
 use log;
 use ringbuf::Consumer;
 
@@ -124,10 +124,9 @@ pub enum MachineEvent {
 
 #[derive(Copy, Clone, Debug)]
 pub enum MachineState {
+    /// The emulated machine is powered on.
     On,
-    Paused,
-    Resuming,
-    Rebooting,
+    /// The emulated machine is powered off.
     Off,
 }
 
@@ -152,21 +151,24 @@ pub enum ExecutionState {
 }
 
 impl ExecutionState {
-    /// Can we Step from the current state?
+    /// Is execution suspended by the debugger or user controls?
     #[inline]
-    pub fn can_step(&self) -> bool {
+    pub fn is_paused(&self) -> bool {
         matches!(
             self,
             ExecutionState::Paused | ExecutionState::BreakpointHit | ExecutionState::StepOverHit
         )
     }
+
+    /// Can we Step from the current state?
+    #[inline]
+    pub fn can_step(&self) -> bool {
+        self.is_paused()
+    }
     /// Can we Run from the current state?
     #[inline]
     pub fn can_run(&self) -> bool {
-        matches!(
-            self,
-            ExecutionState::Paused | ExecutionState::BreakpointHit | ExecutionState::StepOverHit
-        )
+        self.is_paused()
     }
     /// Can we Pause from the current state?
     #[inline]
@@ -438,6 +440,7 @@ pub struct Machine {
     //pit_data: PitData,
     #[cfg(feature = "sound")]
     sound_sources: Vec<SoundSourceDescriptor>,
+    presentable_event_sender: Sender<PresentableDeviceEvent>,
     presentable_event_receiver: Receiver<PresentableDeviceEvent>,
     debug_snd_file: Option<File>,
     kb_buf: VecDeque<KeybufferEntry>,
@@ -575,10 +578,12 @@ impl Machine {
 
         #[cfg(feature = "sound")]
         let sound_sources;
+        let presentable_event_sender;
         let presentable_event_receiver;
 
         match install_result {
             Ok(result) => {
+                presentable_event_sender = result.presentable_event_sender();
                 presentable_event_receiver = result.presentable_event_receiver;
                 cfg_if::cfg_if! {
                     if #[cfg(feature = "sound")] {
@@ -660,6 +665,7 @@ impl Machine {
             //pit_data,
             #[cfg(feature = "sound")]
             sound_sources,
+            presentable_event_sender,
             presentable_event_receiver,
             debug_snd_file: None,
             kb_buf: VecDeque::new(),
@@ -694,6 +700,12 @@ impl Machine {
 
     pub fn presentable_event_receiver(&self) -> &Receiver<PresentableDeviceEvent> {
         &self.presentable_event_receiver
+    }
+
+    fn send_presentable_event(&self, event: PresentableDeviceEvent) {
+        if let Err(err) = self.presentable_event_sender.try_send(event) {
+            log::warn!("Failed to send presentable machine event {:?}: {}", event, err);
+        }
     }
 
     pub fn set_option(&mut self, opt: MachineOption) {
@@ -782,26 +794,23 @@ impl Machine {
             (MachineState::Off, MachineState::On) => {
                 log::debug!("Turning machine on...");
                 self.state = new_state;
+                self.send_presentable_event(PresentableDeviceEvent::PowerOn);
             }
             (MachineState::On, MachineState::Off) => {
                 log::debug!("Turning machine off...");
                 self.reset();
                 self.state = new_state;
-            }
-            (MachineState::On, MachineState::Rebooting) => {
-                log::debug!("Rebooting machine...");
-                self.reset();
-                self.state = MachineState::On;
-            }
-            (MachineState::On, MachineState::Paused) => {
-                log::debug!("Pausing machine...");
-                self.state = new_state;
-            }
-            (MachineState::Paused, MachineState::Resuming) => {
-                log::debug!("Resuming machine...");
-                self.state = MachineState::On;
+                self.send_presentable_event(PresentableDeviceEvent::PowerOff);
             }
             _ => {}
+        }
+    }
+
+    /// Reset a powered-on machine without representing reboot as a persistent machine state.
+    pub fn reboot(&mut self) {
+        if matches!(self.state, MachineState::On) {
+            log::debug!("Rebooting machine...");
+            self.reset();
         }
     }
 

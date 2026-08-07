@@ -25,7 +25,7 @@
     --------------------------------------------------------------------------
 */
 use crate::{state::GuiState, GuiBoolean, GuiEvent, GuiFloat, GuiVariable, GuiVariableContext};
-use marty_core::machine::MachineState;
+use marty_core::machine::{ExecutionOperation, MachineState};
 
 impl GuiState {
     pub fn show_machine_menu(&mut self, ui: &mut egui::Ui) {
@@ -59,12 +59,10 @@ impl GuiState {
 
             ui.separator();
 
-            let (is_on, is_paused) = match self.machine_state {
-                MachineState::On => (true, false),
-                MachineState::Paused => (true, true),
-                MachineState::Off => (false, false),
-                _ => (false, false),
-            };
+            let is_on = self.machine_state.is_on();
+            let exec_state = self.exec_control.borrow().get_state();
+            let can_pause = exec_state.can_pause();
+            let can_resume = exec_state.can_run();
 
             ui.add_enabled_ui(!is_on, |ui| {
                 if ui.button("⚡ Power on").clicked() {
@@ -86,26 +84,23 @@ impl GuiState {
                 ui.close_menu();
             }
 
-            ui.add_enabled_ui(is_on && !is_paused, |ui| {
+            ui.add_enabled_ui(is_on && can_pause, |ui| {
                 if ui.button("⏸ Pause").clicked() {
-                    self.event_queue
-                        .send(GuiEvent::MachineStateChange(MachineState::Paused));
+                    self.exec_control.borrow_mut().set_op(ExecutionOperation::Pause);
                     ui.close_menu();
                 }
             });
 
-            ui.add_enabled_ui(is_on && is_paused, |ui| {
+            ui.add_enabled_ui(is_on && can_resume, |ui| {
                 if ui.button("▶ Resume").clicked() {
-                    self.event_queue
-                        .send(GuiEvent::MachineStateChange(MachineState::Resuming));
+                    self.exec_control.borrow_mut().set_op(ExecutionOperation::Run);
                     ui.close_menu();
                 }
             });
 
             ui.add_enabled_ui(is_on, |ui| {
                 if ui.button("⟲ Reboot").clicked() {
-                    self.event_queue
-                        .send(GuiEvent::MachineStateChange(MachineState::Rebooting));
+                    self.event_queue.send(GuiEvent::Reboot);
                     ui.close_menu();
                 }
             });

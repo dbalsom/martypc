@@ -29,6 +29,8 @@
 
 #[derive(Copy, Clone, Debug, PartialEq, Eq)]
 pub enum PresentableDeviceEvent {
+    PowerOn,
+    PowerOff,
     FloppyDrive { controller: u8, drive: u8, event: FloppyDriveEvent },
 }
 
