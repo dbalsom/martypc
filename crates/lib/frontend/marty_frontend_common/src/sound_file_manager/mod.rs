@@ -58,7 +58,8 @@ const DISK_EJECT_SOUND: &str = "eject_disk";
 
 #[derive(Copy, Clone, Debug, Default, Eq, PartialEq)]
 pub struct SoundFileManagerOptions {
-    pub floppy_sounds: bool,
+    pub machine_sounds: bool,
+    pub floppy_sounds:  bool,
 }
 
 #[derive(Clone, PartialEq)]
@@ -122,7 +123,7 @@ impl SoundFileManager {
         self.effects.clear();
         self.sound_library = None;
 
-        if !self.options.floppy_sounds {
+        if !self.options.machine_sounds || !self.options.floppy_sounds {
             return Ok(0);
         }
 
@@ -327,6 +328,14 @@ impl SoundFileManager {
     /// presentable event.
     /// Device events with configured sound effects are translated into sound actions here.
     pub fn resolve_presentable_event(&self, event: PresentableDeviceEvent) -> Option<PresentableSoundAction<'_>> {
+        if !self.options.machine_sounds {
+            return None;
+        }
+
+        if matches!(&event, PresentableDeviceEvent::FloppyDrive { .. }) && !self.options.floppy_sounds {
+            return None;
+        }
+
         match event {
             PresentableDeviceEvent::PowerOn | PresentableDeviceEvent::PowerOff => None,
             PresentableDeviceEvent::FloppyDrive {
@@ -445,7 +454,10 @@ mod tests {
             .unwrap();
         let archive_data = writer.finish().unwrap().into_inner();
 
-        let mut manager = SoundFileManager::new(SoundFileManagerOptions { floppy_sounds: true });
+        let mut manager = SoundFileManager::new(SoundFileManagerOptions {
+            machine_sounds: true,
+            floppy_sounds:  true,
+        });
         assert_eq!(manager.load_sound_library(&sound_library(), archive_data).unwrap(), 1);
 
         let effect = manager.effect("seek_step").unwrap();
@@ -486,6 +498,13 @@ mod tests {
         }
     }
 
+    fn enabled_floppy_options() -> SoundFileManagerOptions {
+        SoundFileManagerOptions {
+            machine_sounds: true,
+            floppy_sounds:  true,
+        }
+    }
+
     #[test]
     fn sound_effect_debug_output_omits_samples() {
         let effect = test_effect("seek_in_01");
@@ -498,7 +517,7 @@ mod tests {
 
     #[test]
     fn resolves_inward_seek_by_step_count() {
-        let mut manager = SoundFileManager::new(SoundFileManagerOptions::default());
+        let mut manager = SoundFileManager::new(enabled_floppy_options());
         manager
             .effects
             .insert("seek_in_05".to_string(), test_effect("seek_in_05"));
@@ -512,7 +531,7 @@ mod tests {
 
     #[test]
     fn resolves_outward_seek_by_step_count() {
-        let mut manager = SoundFileManager::new(SoundFileManagerOptions::default());
+        let mut manager = SoundFileManager::new(enabled_floppy_options());
         manager
             .effects
             .insert("seek_out_12".to_string(), test_effect("seek_out_12"));
@@ -529,7 +548,7 @@ mod tests {
 
     #[test]
     fn outward_seek_overflow_uses_largest_outward_sample() {
-        let mut manager = SoundFileManager::new(SoundFileManagerOptions::default());
+        let mut manager = SoundFileManager::new(enabled_floppy_options());
         for name in ["seek_out_12", "seek_out_39", "seek_in_40"] {
             manager.effects.insert(name.to_string(), test_effect(name));
         }
@@ -543,7 +562,7 @@ mod tests {
 
     #[test]
     fn inward_seek_overflow_uses_largest_inward_sample() {
-        let mut manager = SoundFileManager::new(SoundFileManagerOptions::default());
+        let mut manager = SoundFileManager::new(enabled_floppy_options());
         for name in ["seek_in_31", "seek_out_39"] {
             manager.effects.insert(name.to_string(), test_effect(name));
         }
@@ -557,7 +576,7 @@ mod tests {
 
     #[test]
     fn missing_in_range_seek_sample_does_not_use_overflow_fallback() {
-        let mut manager = SoundFileManager::new(SoundFileManagerOptions::default());
+        let mut manager = SoundFileManager::new(enabled_floppy_options());
         for name in ["seek_out_04", "seek_out_12"] {
             manager.effects.insert(name.to_string(), test_effect(name));
         }
@@ -567,14 +586,14 @@ mod tests {
 
     #[test]
     fn seek_without_directional_samples_does_not_resolve() {
-        let manager = SoundFileManager::new(SoundFileManagerOptions::default());
+        let manager = SoundFileManager::new(enabled_floppy_options());
 
         assert!(manager.resolve_presentable_event(head_step(54, 12)).is_none());
     }
 
     #[test]
     fn ignores_head_step_without_movement() {
-        let mut manager = SoundFileManager::new(SoundFileManagerOptions::default());
+        let mut manager = SoundFileManager::new(enabled_floppy_options());
         manager
             .effects
             .insert("seek_in_00".to_string(), test_effect("seek_in_00"));
@@ -584,7 +603,7 @@ mod tests {
 
     #[test]
     fn resolves_motor_start_to_intro_and_loop() {
-        let mut manager = SoundFileManager::new(SoundFileManagerOptions::default());
+        let mut manager = SoundFileManager::new(enabled_floppy_options());
         manager.effects.insert(
             DRIVE_MOTOR_START_SOUND.to_string(),
             test_effect(DRIVE_MOTOR_START_SOUND),
@@ -613,7 +632,7 @@ mod tests {
 
     #[test]
     fn resolves_motor_stop_to_loop_stop_and_outro() {
-        let mut manager = SoundFileManager::new(SoundFileManagerOptions::default());
+        let mut manager = SoundFileManager::new(enabled_floppy_options());
         manager
             .effects
             .insert(DRIVE_MOTOR_STOP_SOUND.to_string(), test_effect(DRIVE_MOTOR_STOP_SOUND));
@@ -639,7 +658,7 @@ mod tests {
 
     #[test]
     fn resolves_empty_drive_motor_samples() {
-        let mut manager = SoundFileManager::new(SoundFileManagerOptions::default());
+        let mut manager = SoundFileManager::new(enabled_floppy_options());
         for name in [
             EMPTY_DRIVE_MOTOR_START_SOUND,
             EMPTY_DRIVE_MOTOR_ON_SOUND,
@@ -676,7 +695,7 @@ mod tests {
 
     #[test]
     fn resolves_media_inserted_to_one_shot() {
-        let mut manager = SoundFileManager::new(SoundFileManagerOptions::default());
+        let mut manager = SoundFileManager::new(enabled_floppy_options());
         manager
             .effects
             .insert(DISK_INSERT_SOUND.to_string(), test_effect(DISK_INSERT_SOUND));
@@ -691,7 +710,7 @@ mod tests {
 
     #[test]
     fn resolves_media_ejected_to_one_shot() {
-        let mut manager = SoundFileManager::new(SoundFileManagerOptions::default());
+        let mut manager = SoundFileManager::new(enabled_floppy_options());
         manager
             .effects
             .insert(DISK_EJECT_SOUND.to_string(), test_effect(DISK_EJECT_SOUND));
@@ -702,5 +721,35 @@ mod tests {
             panic!("Expected a media ejection one-shot");
         };
         assert_eq!(effect.base_name, DISK_EJECT_SOUND);
+    }
+
+    #[test]
+    fn machine_sounds_gate_floppy_events() {
+        let mut manager = SoundFileManager::new(SoundFileManagerOptions {
+            machine_sounds: false,
+            floppy_sounds:  true,
+        });
+        manager
+            .effects
+            .insert(DISK_INSERT_SOUND.to_string(), test_effect(DISK_INSERT_SOUND));
+
+        assert!(manager
+            .resolve_presentable_event(floppy_event(0, 0, FloppyDriveEvent::MediaInserted))
+            .is_none());
+    }
+
+    #[test]
+    fn floppy_sounds_gate_floppy_events() {
+        let mut manager = SoundFileManager::new(SoundFileManagerOptions {
+            machine_sounds: true,
+            floppy_sounds:  false,
+        });
+        manager
+            .effects
+            .insert(DISK_INSERT_SOUND.to_string(), test_effect(DISK_INSERT_SOUND));
+
+        assert!(manager
+            .resolve_presentable_event(floppy_event(0, 0, FloppyDriveEvent::MediaInserted))
+            .is_none());
     }
 }
