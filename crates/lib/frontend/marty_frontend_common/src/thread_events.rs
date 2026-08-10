@@ -55,10 +55,21 @@ impl FileSelectionContext {
 /// [FileOpenContext] provides a way to identify for what purpose a file was loaded.
 /// If `FloppyDiskImage` is used, then the file was loaded as a floppy disk image.
 /// If `CartridgeImage` is used, then the file was loaded as a PCjr cartridge image.
+/// If `VhdDiskImage` is used, then the selected path is opened directly as a writable VHD.
 #[derive(Clone, Debug)]
 pub enum FileOpenContext {
-    FloppyDiskImage { drive_select: usize, fsc: FileSelectionContext },
-    CartridgeImage { slot_select: usize, fsc: FileSelectionContext },
+    FloppyDiskImage {
+        drive_select: usize,
+        fsc: FileSelectionContext,
+    },
+    CartridgeImage {
+        slot_select: usize,
+        fsc: FileSelectionContext,
+    },
+    #[cfg(not(target_arch = "wasm32"))]
+    VhdDiskImage {
+        drive_select: usize,
+    },
 }
 
 impl FileOpenContext {
@@ -70,6 +81,8 @@ impl FileOpenContext {
             FileOpenContext::CartridgeImage { fsc: fsc_ref, .. } => {
                 *fsc_ref = fsc;
             }
+            #[cfg(not(target_arch = "wasm32"))]
+            FileOpenContext::VhdDiskImage { .. } => {}
         }
     }
 }
@@ -103,6 +116,11 @@ pub enum FrontendThreadEvent<D> {
         context: FileOpenContext,
         path: Option<PathBuf>,
         contents: Vec<u8>,
+    },
+    #[cfg(not(target_arch = "wasm32"))]
+    FileOpenPathDialogComplete {
+        context: FileOpenContext,
+        path:    PathBuf,
     },
     FileSaveDialogComplete(FileSaveContext),
     FileOpenError(FileOpenContext, String),

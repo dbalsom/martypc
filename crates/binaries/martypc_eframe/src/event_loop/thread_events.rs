@@ -29,6 +29,8 @@
     Handle events received from background threads spawned by the frontend.
 */
 
+#[cfg(not(target_arch = "wasm32"))]
+use crate::event_loop::egui_events::handle_load_vhd;
 use crate::{emulator::Emulator, floppy::load_floppy::load_floppy_image};
 use egui::ViewportCommand;
 use fluxfox::DiskImage;
@@ -91,6 +93,27 @@ pub fn handle_thread_event(emu: &mut Emulator, ctx: &egui::Context) {
                         load_floppy_image(emu, drive_select, fsc, contents, floppy_path.as_deref());
                     }
                     FileOpenContext::CartridgeImage { .. } => {}
+                    #[cfg(not(target_arch = "wasm32"))]
+                    FileOpenContext::VhdDiskImage { .. } => {
+                        log::error!("VHD path selection was returned with file contents");
+                    }
+                }
+            }
+            #[cfg(not(target_arch = "wasm32"))]
+            FrontendThreadEvent::FileOpenPathDialogComplete { context, path } => {
+                emu.gui.modal.close();
+                match context {
+                    FileOpenContext::VhdDiskImage { drive_select } => {
+                        handle_load_vhd(emu, drive_select, FileSelectionContext::Path(path));
+                    }
+                    _ => {
+                        let error = "Unsupported path-only file dialog context";
+                        log::error!("{}", error);
+                        emu.gui
+                            .toasts()
+                            .error(error.to_string())
+                            .duration(Some(LONG_NOTIFICATION_TIME));
+                    }
                 }
             }
             FrontendThreadEvent::FileSaveDialogComplete(save_context) => {

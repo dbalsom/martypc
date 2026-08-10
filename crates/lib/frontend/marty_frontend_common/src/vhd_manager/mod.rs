@@ -218,40 +218,56 @@ impl VhdManager {
 
     #[cfg(not(target_arch = "wasm32"))]
     pub fn load_vhd_file_by_path(&mut self, drive: usize, vhd_path: &Path) -> Result<File, VhdManagerError> {
-        let vhd_file_result = File::options().read(true).write(true).open(vhd_path);
+        let file = self.open_vhd_file_by_path(vhd_path)?;
+        self.associate_vhd(drive, vhd_path)?;
+        Ok(file)
+    }
 
-        match vhd_file_result {
-            Ok(file) => {
-                log::debug!(
-                    "load_vhd_file_by_path(): Associating vhd: {} to drive: {}",
-                    vhd_path.to_string_lossy(),
-                    drive
-                );
+    /// Open a VHD for direct read/write access without changing drive bookkeeping.
+    pub fn open_vhd_file_by_path(&self, vhd_path: &Path) -> Result<File, VhdManagerError> {
+        File::options().read(true).write(true).open(vhd_path).map_err(|e| {
+            log::error!("open_vhd_file_by_path(): error opening file: {}", e);
+            VhdManagerError::FileReadError
+        })
+    }
 
-                let (drive_loaded, loaded_path) = self.is_drive_loaded(drive);
-                if drive_loaded {
-                    log::error!(
-                        "VHD drive slot {} not empty: VHD {:?} already mounted!",
-                        drive,
-                        loaded_path
-                    );
-                    return Err(VhdManagerError::DriveAlreadyLoaded);
-                }
-
-                if self.is_vhd_loaded(vhd_path) {
-                    log::error!("VHD already associated with drive! Release drive first.");
-                    return Err(VhdManagerError::DriveAlreadyLoaded);
-                }
-
-                self.drives_loaded.insert(drive, vhd_path.to_path_buf());
-                self.images_loaded.insert(vhd_path.to_path_buf());
-                Ok(file)
-            }
-            Err(e) => {
-                log::error!("load_vhd_file(): error opening file: {}", e);
-                Err(VhdManagerError::FileReadError)
-            }
+    /// Associate a VHD path with an empty drive slot.
+    pub fn associate_vhd(&mut self, drive: usize, vhd_path: &Path) -> Result<(), VhdManagerError> {
+        let (drive_loaded, loaded_path) = self.is_drive_loaded(drive);
+        if drive_loaded {
+            log::error!(
+                "VHD drive slot {} not empty: VHD {:?} already mounted!",
+                drive,
+                loaded_path
+            );
+            return Err(VhdManagerError::DriveAlreadyLoaded);
         }
+
+        if self.is_vhd_loaded(vhd_path) {
+            log::error!("VHD already associated with drive! Release drive first.");
+            return Err(VhdManagerError::DriveAlreadyLoaded);
+        }
+
+        log::debug!("Associating vhd: {} to drive: {}", vhd_path.to_string_lossy(), drive);
+        self.drives_loaded.insert(drive, vhd_path.to_path_buf());
+        self.images_loaded.insert(vhd_path.to_path_buf());
+        Ok(())
+    }
+
+    /// Replace the VHD association for a drive. The selected path may already be associated with
+    /// this drive, but not with any other drive.
+    pub fn replace_vhd(&mut self, drive: usize, vhd_path: &Path) -> Result<(), VhdManagerError> {
+        if self
+            .drives_loaded
+            .iter()
+            .any(|(loaded_drive, loaded_path)| *loaded_drive != drive && loaded_path == vhd_path)
+        {
+            log::error!("VHD already associated with another drive!");
+            return Err(VhdManagerError::DriveAlreadyLoaded);
+        }
+
+        self.release_vhd(drive);
+        self.associate_vhd(drive, vhd_path)
     }
 
     /// Load a VHD file by its resource name and return a rust File handle.
@@ -363,5 +379,40 @@ impl VhdManager {
             log::debug!("Releasing VHD {:?} from drive {}", image, drive);
             self.images_loaded.remove(&image);
         }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn replace_vhd_updates_drive_association() {
+        let mut manager = VhdManager::new();
+        let old_path = Path::new("old.vhd");
+        let new_path = Path::new("new.vhd");
+
+        manager.associate_vhd(0, old_path).unwrap();
+        manager.replace_vhd(0, new_path).unwrap();
+
+        assert_eq!(manager.is_drive_loaded(0), (true, Some(new_path.to_path_buf())));
+        assert!(!manager.is_vhd_loaded(old_path));
+        assert!(manager.is_vhd_loaded(new_path));
+    }
+
+    #[test]
+    fn replace_vhd_rejects_path_mounted_in_another_drive() {
+        let mut manager = VhdManager::new();
+        let drive_zero_path = Path::new("drive0.vhd");
+        let drive_one_path = Path::new("drive1.vhd");
+
+        manager.associate_vhd(0, drive_zero_path).unwrap();
+        manager.associate_vhd(1, drive_one_path).unwrap();
+
+        assert!(matches!(
+            manager.replace_vhd(1, drive_zero_path),
+            Err(VhdManagerError::DriveAlreadyLoaded)
+        ));
+        assert_eq!(manager.is_drive_loaded(1), (true, Some(drive_one_path.to_path_buf())));
     }
 }

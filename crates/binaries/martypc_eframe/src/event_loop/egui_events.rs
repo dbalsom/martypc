@@ -28,7 +28,7 @@
 //! Process events received from the emulator GUI.
 //! Typically, the GUI is implemented by the `marty_egui` crate.
 
-use std::{mem::discriminant, time::Duration};
+use std::{mem::discriminant, path::PathBuf, time::Duration};
 
 use crate::{emulator::Emulator, floppy::load_floppy::handle_load_floppy};
 use display_manager_eframe::EFrameDisplayManager;
@@ -69,8 +69,6 @@ use marty_frontend_common::{
     marty_common::types::ui::MouseCaptureMode,
     timestep_manager::{TimestepManager, TimestepUpdate},
 };
-#[cfg(target_arch = "wasm32")]
-use std::path::PathBuf;
 
 //noinspection RsBorrowChecker
 pub fn handle_egui_event(
@@ -258,70 +256,7 @@ pub fn handle_egui_event(
             },
         },
         GuiEvent::LoadVHD(drive_idx, image_idx) => {
-            log::debug!("Releasing VHD slot: {}", drive_idx);
-            emu.vhd_manager.release_vhd(*drive_idx);
-
-            let mut error_str = None;
-
-            match emu.vhd_manager.load_vhd_file_by_idx(*drive_idx, *image_idx) {
-                Ok(vhd_file) => match VirtualHardDisk::parse(Box::new(vhd_file), false) {
-                    Ok(vhd) => {
-                        let vhd_name = emu.vhd_manager.get_vhd_name(*image_idx).unwrap();
-                        let mount_success = if let Some(hdc) = emu.machine.hdc_mut() {
-                            match hdc.set_vhd(*drive_idx, vhd) {
-                                Ok(_) => true,
-                                Err(err) => {
-                                    error_str =
-                                        Some(format!("Error mounting VHD '{}': {}", vhd_name.to_string_lossy(), err));
-                                    false
-                                }
-                            }
-                        }
-                        else if let Some(hdc) = emu.machine.xtide_mut() {
-                            match hdc.set_vhd(*drive_idx, vhd) {
-                                Ok(_) => true,
-                                Err(err) => {
-                                    error_str =
-                                        Some(format!("Error mounting VHD '{}': {}", vhd_name.to_string_lossy(), err));
-                                    false
-                                }
-                            }
-                        }
-                        else {
-                            error_str = Some("No Hard Disk Controller present!".to_string());
-                            false
-                        };
-
-                        if mount_success {
-                            log::info!(
-                                "VHD image {} successfully loaded into virtual drive: {}",
-                                vhd_name.to_string_lossy(),
-                                *drive_idx
-                            );
-
-                            emu.gui
-                                .set_hdd_selection(*drive_idx, Some(*image_idx), Some(vhd_name.clone().into()));
-
-                            emu.gui
-                                .toasts()
-                                .info(format!("VHD loaded: {:?}", vhd_name))
-                                .duration(Some(NORMAL_NOTIFICATION_TIME));
-                        }
-                    }
-                    Err(err) => {
-                        error_str = Some(format!("Error loading VHD: {}", err));
-                    }
-                },
-                Err(err) => {
-                    error_str = Some(format!("Failed to load VHD image index {}: {}", *image_idx, err));
-                }
-            }
-
-            // Handle errors.
-            if let Some(err_str) = error_str {
-                log::error!("{}", err_str);
-                emu.gui.toasts().error(err_str).duration(Some(LONG_NOTIFICATION_TIME));
-            }
+            handle_load_vhd(emu, *drive_idx, FileSelectionContext::Index(*image_idx));
         }
         GuiEvent::DetachVHD(drive_idx) => {
             // User requested to detach a VHD from the indicated drive.
@@ -1174,4 +1109,93 @@ pub fn handle_egui_event(
             log::warn!("Unhandled GUI event: {:?}", discriminant(gui_event));
         }
     }
+}
+
+pub(crate) fn handle_load_vhd(emu: &mut Emulator, drive_idx: usize, source: FileSelectionContext) {
+    match try_load_vhd(emu, drive_idx, source) {
+        Ok(display_path) => {
+            log::info!(
+                "VHD image {} successfully loaded into virtual drive: {}",
+                display_path.to_string_lossy(),
+                drive_idx
+            );
+            emu.gui
+                .toasts()
+                .info(format!("VHD loaded: {:?}", display_path))
+                .duration(Some(NORMAL_NOTIFICATION_TIME));
+        }
+        Err(err) => {
+            log::error!("{}", err);
+            emu.gui.toasts().error(err).duration(Some(LONG_NOTIFICATION_TIME));
+        }
+    }
+}
+
+fn try_load_vhd(emu: &mut Emulator, drive_idx: usize, source: FileSelectionContext) -> Result<PathBuf, String> {
+    let (vhd_path, image_idx) = match source {
+        FileSelectionContext::Index(image_idx) => {
+            let path = emu
+                .vhd_manager
+                .get_vhd_path(image_idx)
+                .ok_or_else(|| format!("Failed to load VHD image index {}: image not found", image_idx))?;
+            (path, Some(image_idx))
+        }
+        FileSelectionContext::Path(path) => (path, None),
+        FileSelectionContext::Uninitialized => {
+            return Err("Failed to load VHD: file selection is uninitialized".to_string());
+        }
+    };
+
+    let (_, current_path) = emu.vhd_manager.is_drive_loaded(drive_idx);
+    if emu.vhd_manager.is_vhd_loaded(&vhd_path) && current_path.as_deref() != Some(vhd_path.as_path()) {
+        return Err(format!(
+            "Failed to load VHD '{}': image is already mounted in another drive",
+            vhd_path.to_string_lossy()
+        ));
+    }
+
+    // Open and parse the candidate before replacing the current drive. This keeps the existing
+    // selection and VHD manager association intact if the new image is unreadable or invalid.
+    let vhd_file = emu
+        .vhd_manager
+        .open_vhd_file_by_path(&vhd_path)
+        .map_err(|err| format!("Failed to open VHD '{}': {}", vhd_path.to_string_lossy(), err))?;
+    let vhd = VirtualHardDisk::parse(Box::new(vhd_file), false)
+        .map_err(|err| format!("Failed to parse VHD '{}': {}", vhd_path.to_string_lossy(), err))?;
+
+    if let Some(hdc) = emu.machine.hdc_mut() {
+        hdc.set_vhd(drive_idx, vhd)
+            .map_err(|err| format!("Error mounting VHD '{}': {}", vhd_path.to_string_lossy(), err))?;
+    }
+    else if let Some(xtide) = emu.machine.xtide_mut() {
+        xtide
+            .set_vhd(drive_idx, vhd)
+            .map_err(|err| format!("Error mounting VHD '{}': {}", vhd_path.to_string_lossy(), err))?;
+    }
+    else if let Some(jride) = emu.machine.jride_mut() {
+        jride
+            .set_vhd(drive_idx, vhd)
+            .map_err(|err| format!("Error mounting VHD '{}': {}", vhd_path.to_string_lossy(), err))?;
+    }
+    else {
+        return Err("Couldn't load VHD: No Hard Disk Controller present!".to_string());
+    }
+
+    emu.vhd_manager
+        .replace_vhd(drive_idx, &vhd_path)
+        .map_err(|err| format!("Failed to track mounted VHD '{}': {}", vhd_path.to_string_lossy(), err))?;
+
+    let display_path = if image_idx.is_some() {
+        vhd_path
+            .file_name()
+            .map(PathBuf::from)
+            .unwrap_or_else(|| vhd_path.clone())
+    }
+    else {
+        vhd_path.clone()
+    };
+    emu.gui
+        .set_hdd_selection(drive_idx, image_idx, Some(display_path.clone()));
+
+    Ok(display_path)
 }

@@ -104,7 +104,7 @@ impl GuiState {
                         filter_vec.push(FileDialogFilter::new("Zip Files", vec!["zip"]));
                         filter_vec.push(FileDialogFilter::new("All Files", vec!["*"]));
 
-                        self.open_file_dialog(fc, "Select Floppy Disk Image", filter_vec);
+                        self.open_file_dialog(fc, "Select Floppy Disk Image", filter_vec, true);
 
                         self.modal.open(ModalContext::Notice(
                             "A native File Open dialog is open.\nPlease make a selection or cancel to continue."
@@ -268,6 +268,24 @@ impl GuiState {
                         self.event_queue.send(GuiEvent::LoadVHD(drive_idx, image_idx));
                     });
                 });
+
+                #[cfg(not(target_arch = "wasm32"))]
+                if ui.button("🗁 Browse for Image...").clicked() {
+                    let context = FileOpenContext::VhdDiskImage {
+                        drive_select: drive_idx,
+                    };
+                    let filters = vec![
+                        FileDialogFilter::new("VHD Images", vec!["vhd"]),
+                        FileDialogFilter::new("All Files", vec!["*"]),
+                    ];
+
+                    self.open_file_dialog(context, "Select VHD Image", filters, false);
+                    self.modal.open(ModalContext::Notice(
+                        "A native File Open dialog is open.\nPlease make a selection or cancel to continue."
+                            .to_string(),
+                    ));
+                    ui.close_menu();
+                }
 
                 let (have_vhd, detatch_string) = match &self.hdds[drive_idx].filename() {
                     Some(name) => (true, format!("Detach image: {}", name)),

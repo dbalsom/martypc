@@ -51,11 +51,14 @@ impl FileDialogFilter {
 }
 
 impl GuiState {
+    /// Open a file picker. If `read_file` is true, read the selected file into memory; otherwise,
+    /// return only its native filesystem path so the caller can retain direct file access.
     pub fn open_file_dialog(
         &mut self,
         context: FileOpenContext,
         title: impl AsRef<str>,
         filters: Vec<FileDialogFilter>,
+        read_file: bool,
     ) {
         match self.dialog_provider {
             DialogProvider::EguiFileDialog => {
@@ -69,7 +72,7 @@ impl GuiState {
                     dialog = dialog.add_filter(filter.desc, &filter.extensions);
                 }
                 let task = dialog.pick_file();
-                exec_async(self.thread_sender.clone(), async {
+                exec_async(self.thread_sender.clone(), async move {
                     let mut resolved_context = context;
                     let rfd_handle = task.await;
 
@@ -79,14 +82,21 @@ impl GuiState {
                             let path_buf = file_handle.path().to_path_buf();
                             resolved_context.set_fsc(FileSelectionContext::Path(path_buf.clone()));
 
-                            // Load the file
-                            match std::fs::read(&path_buf) {
-                                Ok(vec) => FrontendThreadEvent::FileOpenDialogComplete {
+                            if read_file {
+                                match std::fs::read(&path_buf) {
+                                    Ok(vec) => FrontendThreadEvent::FileOpenDialogComplete {
+                                        context: resolved_context,
+                                        path: Some(path_buf),
+                                        contents: vec,
+                                    },
+                                    Err(e) => FrontendThreadEvent::FileOpenError(resolved_context, e.to_string()),
+                                }
+                            }
+                            else {
+                                FrontendThreadEvent::FileOpenPathDialogComplete {
                                     context: resolved_context,
-                                    path: Some(path_buf),
-                                    contents: vec,
-                                },
-                                Err(e) => FrontendThreadEvent::FileOpenError(resolved_context, e.to_string()),
+                                    path:    path_buf,
+                                }
                             }
                         }
                         else {
@@ -101,11 +111,18 @@ impl GuiState {
                             let file_name = file_handle.file_name().to_string();
                             resolved_context.set_fsc(FileSelectionContext::Path(PathBuf::from(file_name.clone())));
 
-                            // Read file contents asynchronously
-                            FrontendThreadEvent::FileOpenDialogComplete {
-                                context: resolved_context,
-                                path: None, // No path available on WASM
-                                contents: file_handle.read().await,
+                            if read_file {
+                                FrontendThreadEvent::FileOpenDialogComplete {
+                                    context: resolved_context,
+                                    path: None, // No path available on WASM
+                                    contents: file_handle.read().await,
+                                }
+                            }
+                            else {
+                                FrontendThreadEvent::FileOpenError(
+                                    resolved_context,
+                                    "Path-only file dialogs are not supported on WASM".to_string(),
+                                )
                             }
                         }
                         else {
