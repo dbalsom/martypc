@@ -29,18 +29,17 @@
     Machine configuration services for frontends.
 */
 
-use std::{
-    collections::{BTreeMap, HashSet},
-    ffi::OsString,
-};
+use std::{collections::BTreeMap, ffi::OsString};
 
 use crate::resource_manager::ResourceManager;
+use marty_common::MartyHashSet;
 use marty_core::{
     machine_config::{
         ConventionalExpansionConfig,
         CpuConfig,
         EmsMemoryConfig,
         FloppyControllerConfig,
+        FloppyDriveConfig,
         GamePortConfig,
         HardDriveControllerConfig,
         KeyboardConfig,
@@ -102,6 +101,13 @@ pub struct MachineConfigFileEntry {
 #[derive(Clone, Debug, Deserialize)]
 pub struct MachineConfigFileOverlayEntry {
     name: String,
+    #[serde(default)]
+    operation: MachineConfigOverlayOperation,
+    target: Option<MachineConfigOverlayTarget>,
+    selector: Option<String>,
+    #[serde(default)]
+    parameters: Vec<MachineConfigOverlayParameter>,
+    value: Option<toml::Value>,
     cpu: Option<CpuConfig>,
     memory: Option<MemoryConfig>,
     ems: Option<EmsMemoryConfig>,
@@ -120,6 +126,348 @@ pub struct MachineConfigFileOverlayEntry {
     media: Option<MediaConfig>,
 }
 
+#[derive(Copy, Clone, Debug, Default, Deserialize, Eq, PartialEq)]
+#[serde(rename_all = "lowercase")]
+enum MachineConfigOverlayOperation {
+    #[default]
+    Replace,
+    Merge,
+}
+
+#[derive(Copy, Clone, Debug, Deserialize, Eq, PartialEq)]
+enum MachineConfigOverlayTarget {
+    #[serde(rename = "fdc.drive")]
+    FdcDrive,
+}
+
+#[derive(Clone, Debug, Deserialize)]
+#[serde(tag = "type", rename_all = "lowercase")]
+enum MachineConfigOverlayParameter {
+    Integer {
+        name: String,
+        min: Option<i64>,
+        max: Option<i64>,
+        #[serde(default = "default_true")]
+        required: bool,
+        default: Option<i64>,
+        #[allow(unused)]
+        label: Option<String>,
+    },
+}
+
+impl MachineConfigOverlayParameter {
+    fn name(&self) -> &str {
+        match self {
+            Self::Integer { name, .. } => name,
+        }
+    }
+
+    fn validate_definition(&self, overlay_name: &str) -> Result<(), Error> {
+        match self {
+            Self::Integer {
+                name,
+                min,
+                max,
+                default,
+                ..
+            } => {
+                if name.is_empty() {
+                    return Err(anyhow::anyhow!(
+                        "Overlay '{}': parameter name cannot be empty",
+                        overlay_name
+                    ));
+                }
+                if let (Some(min), Some(max)) = (*min, *max) {
+                    if min > max {
+                        return Err(anyhow::anyhow!(
+                            "Overlay '{}': parameter '{}' has minimum {} greater than maximum {}",
+                            overlay_name,
+                            name,
+                            min,
+                            max
+                        ));
+                    }
+                }
+                if let Some(default) = default {
+                    self.validate_integer(overlay_name, *default)?;
+                }
+            }
+        }
+        Ok(())
+    }
+
+    fn parse_value(&self, overlay_name: &str, raw_value: &str) -> Result<MachineConfigOverlayValue, Error> {
+        match self {
+            Self::Integer { .. } => {
+                let value = raw_value.parse::<i64>().map_err(|_| {
+                    anyhow::anyhow!(
+                        "Overlay '{}': parameter '{}' requires an integer, received '{}'",
+                        overlay_name,
+                        self.name(),
+                        raw_value
+                    )
+                })?;
+                self.validate_integer(overlay_name, value)?;
+                Ok(MachineConfigOverlayValue::Integer(value))
+            }
+        }
+    }
+
+    fn default_value(&self) -> Option<MachineConfigOverlayValue> {
+        match self {
+            Self::Integer { default, .. } => default.map(MachineConfigOverlayValue::Integer),
+        }
+    }
+
+    fn is_required(&self) -> bool {
+        match self {
+            Self::Integer { required, .. } => *required,
+        }
+    }
+
+    fn validate_integer(&self, overlay_name: &str, value: i64) -> Result<(), Error> {
+        let Self::Integer { name, min, max, .. } = self;
+        if min.is_some_and(|min| value < min) || max.is_some_and(|max| value > max) {
+            let expected = match (min, max) {
+                (Some(min), Some(max)) => format!("between {} and {}", min, max),
+                (Some(min), None) => format!("at least {}", min),
+                (None, Some(max)) => format!("at most {}", max),
+                (None, None) => unreachable!(),
+            };
+            return Err(anyhow::anyhow!(
+                "Overlay '{}': parameter '{}' must be {}, received {}",
+                overlay_name,
+                name,
+                expected,
+                value
+            ));
+        }
+        Ok(())
+    }
+}
+
+#[derive(Copy, Clone, Debug, Eq, PartialEq)]
+enum MachineConfigOverlayValue {
+    Integer(i64),
+}
+
+#[derive(Debug, Eq, PartialEq)]
+struct MachineConfigOverlayInvocation<'a> {
+    name: &'a str,
+    arguments: Option<&'a str>,
+}
+
+impl<'a> MachineConfigOverlayInvocation<'a> {
+    fn parse(spec: &'a str) -> Result<Self, Error> {
+        let spec = spec.trim();
+        if spec.is_empty() {
+            return Err(anyhow::anyhow!("Machine configuration overlay name cannot be empty"));
+        }
+
+        let (name, arguments) = match spec.split_once(':') {
+            Some((name, arguments)) => {
+                let name = name.trim();
+                let arguments = arguments.trim();
+                if name.is_empty() {
+                    return Err(anyhow::anyhow!("Machine configuration overlay name cannot be empty"));
+                }
+                if arguments.is_empty() {
+                    return Err(anyhow::anyhow!("Overlay '{}': argument list cannot be empty", name));
+                }
+                (name, Some(arguments))
+            }
+            None => (spec, None),
+        };
+
+        Ok(Self { name, arguments })
+    }
+}
+
+fn default_true() -> bool {
+    true
+}
+
+impl MachineConfigFileOverlayEntry {
+    fn validate_definition(&self) -> Result<(), Error> {
+        if self.name.is_empty() {
+            return Err(anyhow::anyhow!("Overlay name cannot be empty"));
+        }
+        if self.name.contains(':') {
+            return Err(anyhow::anyhow!(
+                "Overlay name '{}' contains reserved argument delimiter ':'",
+                self.name
+            ));
+        }
+
+        let mut parameter_names = MartyHashSet::default();
+        for parameter in &self.parameters {
+            parameter.validate_definition(&self.name)?;
+            if !parameter_names.insert(parameter.name()) {
+                return Err(anyhow::anyhow!(
+                    "Overlay '{}': duplicate parameter '{}'",
+                    self.name,
+                    parameter.name()
+                ));
+            }
+        }
+
+        match self.operation {
+            MachineConfigOverlayOperation::Replace => {
+                if self.target.is_some()
+                    || self.selector.is_some()
+                    || self.value.is_some()
+                    || !self.parameters.is_empty()
+                {
+                    return Err(anyhow::anyhow!(
+                        "Overlay '{}': target, selector, parameters, and value are only valid for merge operations",
+                        self.name
+                    ));
+                }
+            }
+            MachineConfigOverlayOperation::Merge => {
+                let target = self
+                    .target
+                    .ok_or_else(|| anyhow::anyhow!("Overlay '{}': merge operation requires a target", self.name))?;
+                let selector = self
+                    .selector
+                    .as_ref()
+                    .ok_or_else(|| anyhow::anyhow!("Overlay '{}': merge operation requires a selector", self.name))?;
+                if self.parameters.len() != 1 {
+                    return Err(anyhow::anyhow!(
+                        "Overlay '{}': fdc.drive merge requires exactly one parameter",
+                        self.name
+                    ));
+                }
+                let parameter = self
+                    .parameters
+                    .iter()
+                    .find(|parameter| parameter.name() == selector)
+                    .ok_or_else(|| {
+                        anyhow::anyhow!(
+                            "Overlay '{}': selector '{}' does not name a declared parameter",
+                            self.name,
+                            selector
+                        )
+                    })?;
+                if !matches!(parameter, MachineConfigOverlayParameter::Integer { .. }) {
+                    return Err(anyhow::anyhow!(
+                        "Overlay '{}': fdc.drive selector '{}' must be an integer parameter",
+                        self.name,
+                        selector
+                    ));
+                }
+                let value = self
+                    .value
+                    .as_ref()
+                    .ok_or_else(|| anyhow::anyhow!("Overlay '{}': merge operation requires a value", self.name))?;
+                match target {
+                    MachineConfigOverlayTarget::FdcDrive => {
+                        value.clone().try_into::<FloppyDriveConfig>().map_err(|err| {
+                            anyhow::anyhow!("Overlay '{}': invalid fdc.drive value: {}", self.name, err)
+                        })?;
+                    }
+                }
+                if self.has_replacement_payload() {
+                    return Err(anyhow::anyhow!(
+                        "Overlay '{}': merge operation cannot also contain replacement fields",
+                        self.name
+                    ));
+                }
+            }
+        }
+        Ok(())
+    }
+
+    fn has_replacement_payload(&self) -> bool {
+        self.cpu.is_some()
+            || self.memory.is_some()
+            || self.ems.is_some()
+            || self.fdc.is_some()
+            || self.hdc.is_some()
+            || self.serial.is_some()
+            || self.parallel.is_some()
+            || self.video.is_some()
+            || self.sound.is_some()
+            || self.keyboard.is_some()
+            || self.serial_mouse.is_some()
+            || self.game_port.is_some()
+            || self.conventional_expansion.is_some()
+            || self.media.is_some()
+    }
+
+    fn bind_arguments(
+        &self,
+        invocation: &MachineConfigOverlayInvocation<'_>,
+    ) -> Result<BTreeMap<String, MachineConfigOverlayValue>, Error> {
+        let mut raw_arguments: BTreeMap<&str, &str> = BTreeMap::new();
+
+        if let Some(argument_list) = invocation.arguments {
+            if self.parameters.is_empty() {
+                return Err(anyhow::anyhow!("Overlay '{}' does not accept parameters", self.name));
+            }
+
+            if !argument_list.contains('=') {
+                if self.parameters.len() != 1 {
+                    return Err(anyhow::anyhow!(
+                        "Overlay '{}': positional syntax requires exactly one declared parameter",
+                        self.name
+                    ));
+                }
+                raw_arguments.insert(self.parameters[0].name(), argument_list.trim());
+            }
+            else {
+                for argument in argument_list.split(';') {
+                    let (name, value) = argument.split_once('=').ok_or_else(|| {
+                        anyhow::anyhow!("Overlay '{}': invalid named argument '{}'", self.name, argument)
+                    })?;
+                    let name = name.trim();
+                    let value = value.trim();
+                    if name.is_empty() || value.is_empty() {
+                        return Err(anyhow::anyhow!(
+                            "Overlay '{}': invalid named argument '{}'",
+                            self.name,
+                            argument
+                        ));
+                    }
+                    if raw_arguments.insert(name, value).is_some() {
+                        return Err(anyhow::anyhow!(
+                            "Overlay '{}': parameter '{}' was specified more than once",
+                            self.name,
+                            name
+                        ));
+                    }
+                }
+            }
+        }
+
+        for name in raw_arguments.keys() {
+            if !self.parameters.iter().any(|parameter| parameter.name() == *name) {
+                return Err(anyhow::anyhow!("Overlay '{}': unknown parameter '{}'", self.name, name));
+            }
+        }
+
+        let mut bound_arguments = BTreeMap::new();
+        for parameter in &self.parameters {
+            let value = match raw_arguments.get(parameter.name()) {
+                Some(raw_value) => parameter.parse_value(&self.name, raw_value)?,
+                None => match parameter.default_value() {
+                    Some(default) => default,
+                    None if parameter.is_required() => {
+                        return Err(anyhow::anyhow!(
+                            "Overlay '{}': missing required parameter '{}'",
+                            self.name,
+                            parameter.name()
+                        ));
+                    }
+                    None => continue,
+                },
+            };
+            bound_arguments.insert(parameter.name().to_string(), value);
+        }
+        Ok(bound_arguments)
+    }
+}
+
 /*
 #[derive(Clone, Debug, Deserialize)]
 pub struct ParallelControllerConfig {
@@ -130,12 +478,12 @@ pub struct ParallelControllerConfig {
 
 pub struct MachineManager {
     active_config: Option<MachineConfigFileEntry>,
-    config_names: HashSet<String>,
-    overlay_names: HashSet<String>,
+    config_names: MartyHashSet<String>,
+    overlay_names: MartyHashSet<String>,
     configs: BTreeMap<String, MachineConfigFileEntry>,
     overlays: BTreeMap<String, MachineConfigFileOverlayEntry>,
-    features_requested: HashSet<String>,
-    features_provided: HashSet<String>,
+    features_requested: MartyHashSet<String>,
+    features_provided: MartyHashSet<String>,
     rom_sets_required: Vec<usize>,
 }
 
@@ -143,12 +491,12 @@ impl Default for MachineManager {
     fn default() -> Self {
         Self {
             active_config: None,
-            config_names: HashSet::new(),
-            overlay_names: HashSet::new(),
+            config_names: MartyHashSet::default(),
+            overlay_names: MartyHashSet::default(),
             configs: BTreeMap::new(),
             overlays: BTreeMap::new(),
-            features_requested: HashSet::new(),
-            features_provided: HashSet::new(),
+            features_requested: MartyHashSet::default(),
+            features_provided: MartyHashSet::default(),
             rom_sets_required: Vec::new(),
         }
     }
@@ -211,9 +559,11 @@ impl MachineManager {
             self.configs.insert(config.name.clone(), config);
         }
         for overlay in overlay_configs {
+            overlay.validate_definition()?;
             if self.overlays.contains_key(&overlay.name) {
                 return Err(anyhow::anyhow!("Duplicate overlay name: {}", overlay.name));
             }
+            self.overlay_names.insert(overlay.name.clone());
             self.overlays.insert(overlay.name.clone(), overlay);
         }
 
@@ -275,12 +625,14 @@ impl MachineManager {
         // Filter empty strings
         total_overlays.retain(|overlay| !overlay.is_empty());
 
-        for overlay_name in total_overlays {
-            let overlay = self.overlays.get(&overlay_name).ok_or(anyhow::anyhow!(
+        for overlay_spec in total_overlays {
+            let invocation = MachineConfigOverlayInvocation::parse(&overlay_spec)?;
+            let overlay = self.overlays.get(invocation.name).ok_or(anyhow::anyhow!(
                 "Machine configuration overlay not found: {}",
-                overlay_name
+                invocation.name
             ))?;
-            config.apply_overlay(overlay.clone());
+            let arguments = overlay.bind_arguments(&invocation)?;
+            config.apply_overlay(overlay.clone(), &arguments)?;
         }
 
         self.active_config = Some(config);
@@ -314,7 +666,7 @@ impl MachineConfigFileEntry {
     /// Returns a tuple of vectors of strings representing the required and optional ROM features for this
     /// configuration
     pub fn get_rom_requirements(&self, load_custom_roms: bool) -> Result<(Vec<String>, Vec<String>), Error> {
-        let mut req_set: HashSet<String> = HashSet::new();
+        let mut req_set: MartyHashSet<String> = MartyHashSet::default();
         let mut req_vec: Vec<String> = Vec::new();
         let mut opt_vec: Vec<String> = Vec::new();
 
@@ -401,9 +753,19 @@ impl MachineConfigFileEntry {
         Ok((req_vec, opt_vec))
     }
 
-    /// Apply a Machine Config Overlay to this configuration. Every option that is Some within the overlay is
-    /// copied into this configuration.
-    pub fn apply_overlay(&mut self, overlay: MachineConfigFileOverlayEntry) {
+    /// Apply either a replacement overlay or a parameterized merge overlay to this configuration.
+    fn apply_overlay(
+        &mut self,
+        overlay: MachineConfigFileOverlayEntry,
+        arguments: &BTreeMap<String, MachineConfigOverlayValue>,
+    ) -> Result<(), Error> {
+        match overlay.operation {
+            MachineConfigOverlayOperation::Replace => self.apply_replacement_overlay(overlay),
+            MachineConfigOverlayOperation::Merge => self.apply_merge_overlay(overlay, arguments),
+        }
+    }
+
+    fn apply_replacement_overlay(&mut self, overlay: MachineConfigFileOverlayEntry) -> Result<(), Error> {
         if let Some(cpu) = overlay.cpu {
             log::debug!("Applying CPU overlay: {:?}", cpu);
             self.cpu = Some(cpu);
@@ -456,6 +818,112 @@ impl MachineConfigFileEntry {
             log::debug!("Applying conventional expansion overlay: {:?}", conventional_expansion);
             self.conventional_expansion = Some(conventional_expansion);
         }
+        Ok(())
+    }
+
+    fn apply_merge_overlay(
+        &mut self,
+        overlay: MachineConfigFileOverlayEntry,
+        arguments: &BTreeMap<String, MachineConfigOverlayValue>,
+    ) -> Result<(), Error> {
+        let MachineConfigFileOverlayEntry {
+            name,
+            target,
+            selector,
+            value,
+            ..
+        } = overlay;
+        let target = target.ok_or_else(|| anyhow::anyhow!("Overlay '{}': merge operation requires a target", name))?;
+        let selector =
+            selector.ok_or_else(|| anyhow::anyhow!("Overlay '{}': merge operation requires a selector", name))?;
+        let value = value.ok_or_else(|| anyhow::anyhow!("Overlay '{}': merge operation requires a value", name))?;
+
+        match target {
+            MachineConfigOverlayTarget::FdcDrive => {
+                let drive_index = match arguments.get(&selector) {
+                    Some(MachineConfigOverlayValue::Integer(value)) => usize::try_from(*value).map_err(|_| {
+                        anyhow::anyhow!(
+                            "Overlay '{}': parameter '{}' cannot be used as a drive index: {}",
+                            name,
+                            selector,
+                            value
+                        )
+                    })?,
+                    None => {
+                        return Err(anyhow::anyhow!(
+                            "Overlay '{}': selector parameter '{}' was not bound",
+                            name,
+                            selector
+                        ));
+                    }
+                };
+                let drive = value
+                    .try_into::<FloppyDriveConfig>()
+                    .map_err(|err| anyhow::anyhow!("Overlay '{}': invalid fdc.drive value: {}", name, err))?;
+                let fdc = self.fdc.as_mut().ok_or_else(|| {
+                    anyhow::anyhow!(
+                        "Overlay '{}': cannot merge fdc.drive[{}] because the machine has no floppy controller",
+                        name,
+                        drive_index
+                    )
+                })?;
+                let maximum = fdc.fdc_type.max_drives();
+                if maximum == 0 {
+                    return Err(anyhow::anyhow!(
+                        "Overlay '{}': floppy controller {:?} does not support any drives",
+                        name,
+                        fdc.fdc_type
+                    ));
+                }
+                if fdc.drive.len() > maximum {
+                    return Err(anyhow::anyhow!(
+                        "Floppy controller {:?} has {} configured drives but supports at most {}",
+                        fdc.fdc_type,
+                        fdc.drive.len(),
+                        maximum
+                    ));
+                }
+                if drive_index >= maximum {
+                    return Err(anyhow::anyhow!(
+                        "Overlay '{}': floppy controller {:?} supports drive indices 0 through {}, received {}",
+                        name,
+                        fdc.fdc_type,
+                        maximum - 1,
+                        drive_index
+                    ));
+                }
+
+                match drive_index.cmp(&fdc.drive.len()) {
+                    std::cmp::Ordering::Less => {
+                        log::debug!(
+                            "Overlay '{}': replacing fdc.drive[{}] with {:?}",
+                            name,
+                            drive_index,
+                            drive
+                        );
+                        fdc.drive[drive_index] = drive;
+                    }
+                    std::cmp::Ordering::Equal => {
+                        log::debug!(
+                            "Overlay '{}': appending fdc.drive[{}] as {:?}",
+                            name,
+                            drive_index,
+                            drive
+                        );
+                        fdc.drive.push(drive);
+                    }
+                    std::cmp::Ordering::Greater => {
+                        return Err(anyhow::anyhow!(
+                            "Overlay '{}': cannot create fdc.drive[{}] before fdc.drive[{}] is configured",
+                            name,
+                            drive_index,
+                            fdc.drive.len()
+                        ));
+                    }
+                }
+            }
+        }
+        Ok(())
     }
 
     pub fn to_machine_config(&self) -> MachineConfiguration {
@@ -478,6 +946,274 @@ impl MachineConfigFileEntry {
             controller_layout: self.game_port.as_ref().map(|gp| gp.controller_layout.clone()).flatten(),
             conventional_expansion: self.conventional_expansion.clone().unwrap_or_default(),
             media: self.media.clone(),
+        }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use marty_core::machine_types::FloppyDriveType;
+
+    const TEST_CONFIG: &str = r#"
+[[machine]]
+name = "xt"
+type = "Ibm5160"
+rom_set = "auto"
+overlays = ["ibm_nec_fdc"]
+
+[machine.memory]
+conventional.size = 0xA0000
+conventional.wait_states = 0
+
+[[machine]]
+name = "pcjr"
+type = "IbmPCJr"
+rom_set = "auto"
+overlays = []
+
+[machine.memory]
+conventional.size = 0x20000
+conventional.wait_states = 0
+
+[machine.fdc]
+type = "IbmPCJrNec"
+
+[[machine]]
+name = "bare"
+type = "Ibm5160"
+rom_set = "auto"
+overlays = []
+
+[machine.memory]
+conventional.size = 0xA0000
+conventional.wait_states = 0
+
+[[overlay]]
+name = "ibm_nec_fdc"
+operation = "replace"
+
+[overlay.fdc]
+type = "IbmNec"
+
+[[overlay]]
+name = "floppy_360k"
+operation = "merge"
+target = "fdc.drive"
+selector = "drive"
+
+[[overlay.parameters]]
+name = "drive"
+type = "integer"
+min = 0
+max = 3
+required = true
+
+[overlay.value]
+type = "360k"
+
+[[overlay]]
+name = "floppy_720k"
+operation = "merge"
+target = "fdc.drive"
+selector = "drive"
+
+[[overlay.parameters]]
+name = "drive"
+type = "integer"
+min = 0
+max = 3
+required = true
+
+[overlay.value]
+type = "720k"
+"#;
+
+    fn test_manager() -> MachineManager {
+        let mut file = toml::from_str::<MachineConfigFile>(TEST_CONFIG).expect("test configuration should parse");
+        let mut manager = MachineManager::new();
+
+        for config in file.machine.take().unwrap_or_default() {
+            manager.configs.insert(config.name.clone(), config);
+        }
+        for overlay in file.overlay.take().unwrap_or_default() {
+            overlay.validate_definition().expect("test overlay should validate");
+            manager.overlays.insert(overlay.name.clone(), overlay);
+        }
+        manager
+    }
+
+    fn test_overlay(source: &str) -> MachineConfigFileOverlayEntry {
+        toml::from_str::<MachineConfigFile>(source)
+            .expect("test overlay should parse")
+            .overlay
+            .expect("test overlay file should contain an overlay")
+            .remove(0)
+    }
+
+    #[test]
+    fn indexed_floppy_overlays_build_mixed_drive_configuration() {
+        let mut manager = test_manager();
+        let overlays = vec!["floppy_360k:0".to_string(), "floppy_720k:drive=1".to_string()];
+        let config = manager.get_config_with_overlays("xt", &overlays).unwrap();
+        let drives = &config.fdc.as_ref().unwrap().drive;
+
+        assert_eq!(drives.len(), 2);
+        assert_eq!(drives[0].fd_type, FloppyDriveType::Floppy360K);
+        assert_eq!(drives[1].fd_type, FloppyDriveType::Floppy720K);
+    }
+
+    #[test]
+    fn indexed_floppy_overlay_replaces_an_existing_slot() {
+        let mut manager = test_manager();
+        let overlays = vec![
+            "floppy_720k:0".to_string(),
+            "floppy_720k:1".to_string(),
+            "floppy_360k:0".to_string(),
+        ];
+        let config = manager.get_config_with_overlays("xt", &overlays).unwrap();
+        let drives = &config.fdc.as_ref().unwrap().drive;
+
+        assert_eq!(drives.len(), 2);
+        assert_eq!(drives[0].fd_type, FloppyDriveType::Floppy360K);
+        assert_eq!(drives[1].fd_type, FloppyDriveType::Floppy720K);
+    }
+
+    #[test]
+    fn indexed_floppy_overlay_rejects_missing_and_invalid_parameters() {
+        let mut manager = test_manager();
+
+        let missing = manager
+            .get_config_with_overlays("xt", &vec!["floppy_360k".to_string()])
+            .unwrap_err()
+            .to_string();
+        assert!(missing.contains("missing required parameter 'drive'"));
+
+        let out_of_range = manager
+            .get_config_with_overlays("xt", &vec!["floppy_360k:4".to_string()])
+            .unwrap_err()
+            .to_string();
+        assert!(out_of_range.contains("must be between 0 and 3"));
+
+        let unknown = manager
+            .get_config_with_overlays("xt", &vec!["floppy_360k:slot=0".to_string()])
+            .unwrap_err()
+            .to_string();
+        assert!(unknown.contains("unknown parameter 'slot'"));
+    }
+
+    #[test]
+    fn malformed_merge_overlays_return_errors_instead_of_panicking() {
+        let manager = test_manager();
+        let mut config = manager.configs.get("xt").unwrap().clone();
+        let arguments = BTreeMap::from([("drive".to_string(), MachineConfigOverlayValue::Integer(0))]);
+
+        let missing_target = test_overlay(
+            r#"
+[[overlay]]
+name = "missing_target"
+operation = "merge"
+"#,
+        );
+        assert!(config
+            .apply_overlay(missing_target, &arguments)
+            .unwrap_err()
+            .to_string()
+            .contains("requires a target"));
+
+        let missing_selector = test_overlay(
+            r#"
+[[overlay]]
+name = "missing_selector"
+operation = "merge"
+target = "fdc.drive"
+"#,
+        );
+        assert!(config
+            .apply_overlay(missing_selector, &arguments)
+            .unwrap_err()
+            .to_string()
+            .contains("requires a selector"));
+
+        let missing_value = test_overlay(
+            r#"
+[[overlay]]
+name = "missing_value"
+operation = "merge"
+target = "fdc.drive"
+selector = "drive"
+"#,
+        );
+        assert!(config
+            .apply_overlay(missing_value, &arguments)
+            .unwrap_err()
+            .to_string()
+            .contains("requires a value"));
+    }
+
+    #[test]
+    fn indexed_floppy_overlay_rejects_gaps_and_missing_controllers() {
+        let mut manager = test_manager();
+
+        let gap = manager
+            .get_config_with_overlays("xt", &vec!["floppy_360k:1".to_string()])
+            .unwrap_err()
+            .to_string();
+        assert!(gap.contains("before fdc.drive[0] is configured"));
+
+        let no_controller = manager
+            .get_config_with_overlays("bare", &vec!["floppy_360k:0".to_string()])
+            .unwrap_err()
+            .to_string();
+        assert!(no_controller.contains("machine has no floppy controller"));
+    }
+
+    #[test]
+    fn pcjr_controller_rejects_a_second_drive() {
+        let mut manager = test_manager();
+        let overlays = vec!["floppy_360k:0".to_string(), "floppy_360k:1".to_string()];
+        let error = manager
+            .get_config_with_overlays("pcjr", &overlays)
+            .unwrap_err()
+            .to_string();
+
+        assert!(error.contains("supports drive indices 0 through 0"));
+    }
+
+    #[cfg(all(feature = "ega", feature = "vga"))]
+    #[test]
+    fn installed_machine_configurations_resolve_with_new_floppy_overlays() {
+        let machine_dir = std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("../../../../install/configs/machines");
+        let mut manager = MachineManager::new();
+        let mut machine_configs = Vec::new();
+        let mut overlay_configs = Vec::new();
+
+        for entry in std::fs::read_dir(&machine_dir).unwrap() {
+            let path = entry.unwrap().path();
+            if path.extension().and_then(|extension| extension.to_str()) != Some("toml") {
+                continue;
+            }
+            let source = std::fs::read_to_string(&path).unwrap();
+
+            let file = toml::from_str::<MachineConfigFile>(&source)
+                .unwrap_or_else(|err| panic!("Failed to parse {}: {}", path.display(), err));
+            machine_configs.append(&mut file.machine.unwrap_or_default());
+            overlay_configs.append(&mut file.overlay.unwrap_or_default());
+        }
+
+        for config in machine_configs {
+            assert!(manager.configs.insert(config.name.clone(), config).is_none());
+        }
+        for overlay in overlay_configs {
+            overlay.validate_definition().unwrap();
+            assert!(manager.overlays.insert(overlay.name.clone(), overlay).is_none());
+        }
+
+        let names = manager.get_config_names();
+        for name in names {
+            manager
+                .get_config_with_overlays(&name, &Vec::new())
+                .unwrap_or_else(|err| panic!("Failed to resolve machine '{}': {}", name, err));
         }
     }
 }

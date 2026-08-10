@@ -78,7 +78,7 @@ pub const FDC_LOG_LEN: usize = 1000;
 
 pub const FDC_IRQ: u8 = 0x06;
 pub const FDC_DMA: usize = 2;
-pub const FDC_MAX_DRIVES: usize = 4;
+pub const FDC_MAX_DRIVES: usize = FdcType::IbmNec.max_drives();
 //pub const SECTOR_SIZE: usize = 512;
 
 pub const PCXT_IO_BASE: u16 = 0x03F0;
@@ -652,7 +652,7 @@ impl FloppyController {
             1
         }
         else {
-            drives.len()
+            drives.len().min(fdc_type.max_drives())
         };
 
         let mut fdc = FloppyController {
@@ -668,7 +668,7 @@ impl FloppyController {
             fdc.data_interface.set_pio_service_timeout(None);
         }
 
-        for (i, drive) in drives.iter().take(FDC_MAX_DRIVES).enumerate() {
+        for (i, drive) in drives.iter().take(fdc_type.max_drives()).enumerate() {
             fdc.drives[i] = FloppyDiskDrive::new(i, drive.fd_type);
         }
 
@@ -873,7 +873,7 @@ impl FloppyController {
         if idx >= self.drive_ct {
             panic!("Invalid drive index");
         }
-        &self.drives[self.drive_select]
+        &self.drives[idx]
     }
 
     /// Load a disk into the specified drive
@@ -2340,6 +2340,26 @@ impl FloppyController {
 mod tests {
     use super::*;
     use crate::{devices::pic::Pic, machine_types::FloppyDriveType};
+
+    #[test]
+    fn drive_accessor_returns_the_requested_drive() {
+        let fdc = FloppyController::new(
+            FdcType::IbmNec,
+            vec![
+                FloppyDriveConfig {
+                    fd_type: FloppyDriveType::Floppy360K,
+                    image:   None,
+                },
+                FloppyDriveConfig {
+                    fd_type: FloppyDriveType::Floppy720K,
+                    image:   None,
+                },
+            ],
+        );
+
+        assert_eq!(fdc.drive(0).get_type(), FloppyDriveType::Floppy360K);
+        assert_eq!(fdc.drive(1).get_type(), FloppyDriveType::Floppy720K);
+    }
 
     #[test]
     fn rate_250_kbps_has_32_us_byte_period() {

@@ -1,8 +1,8 @@
 {
     "gui": [
         {
-            "window_name": "MartyPC Launcher 0.1.0",
-            "command": "martypc %prefer_oem% --mount=\"fd:0:%floppy0%\" --mount=\"fd:0:%floppy1%\" --mount=\"hd:0:%hdd0%\" --mount=\"hd:1:%hdd1%\" --configfile %config_file% --machine-config-name=%machine_config_name% --machine-config-overlays=%v20%%ems%%hdc_overlay%%sound_overlay%%video_overlay% %extra_cmds%",
+            "window_name": "MartyPC Launcher 0.2.0",
+            "command": "martypc %prefer_oem% --mount=\"fd:0:%floppy0%\" --mount=\"fd:1:%floppy1%\" --mount=\"hd:0:%hdd0%\" --mount=\"hd:1:%hdd1%\" --configfile %config_file% --machine-config-name=%machine_config_name% --machine-config-overlays=%v20%%ems%%hdc_overlay%%sound_overlay%%video_overlay%%floppy0_overlay%%floppy1_overlay% %extra_cmds%",
             "components": [
                 {
                     "type": "static_text",
@@ -136,7 +136,7 @@
                         },
                         {
                             "label": "MDA",
-                            "value": "ibm_mda"
+                            "value": "ibm_mda,"
                         },
                         {
                             "label": "Hercules",
@@ -153,6 +153,66 @@
                         {
                             "label": "VGA",
                             "value": "ibm_vga,"
+                        }
+                    ]
+                },
+                {
+                    "type": "static_text",
+                    "label": "Floppy Drive Configuration"
+                },
+                {
+                    "type": "combo",
+                    "default": 0,
+                    "label": "Floppy Drive 0 (A:) Type",
+                    "id": "floppy0_overlay",
+                    "items": [
+                        {
+                            "label": "Machine Default",
+                            "value": ""
+                        },
+                        {
+                            "label": "360K",
+                            "value": "floppy_360k:0,"
+                        },
+                        {
+                            "label": "720K",
+                            "value": "floppy_720k:0,"
+                        },
+                        {
+                            "label": "1.2M",
+                            "value": "floppy_1_2m:0,"
+                        },
+                        {
+                            "label": "1.44M",
+                            "value": "floppy_1_44m:0,"
+                        }
+                    ]
+                },
+                {
+                    "type": "combo",
+                    "default": 0,
+                    "label": "Floppy Drive 1 (B:) Type",
+                    "id": "floppy1_overlay",
+                    "items": [
+                        {
+                            "label": "Machine Default",
+                            "value": ""
+                        },
+                        {
+                            "label": "360K",
+                            "value": "floppy_360k:1,"
+                        },
+                        {
+                            "label": "720K",
+                            "value": "floppy_720k:1,"
+                        },
+                        {
+                            "label": "1.2M",
+                            "value": "floppy_1_2m:1,"
+                        },
+                        {
+                            "label": "1.44M",
+                            "value": "floppy_1_44m:1,"
                         }
                     ]
                 },

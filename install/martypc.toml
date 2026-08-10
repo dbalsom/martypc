@@ -43,7 +43,12 @@ config_name = "ibm5160_xtide"
 # MDA or CGA, for example.
 #
 # - See 'machine_config_overlays.toml' for more examples, or define your own.
+
 #config_overlays = ["ega"]
+
+# Parameterized overlays can target a specific component. This example installs
+# a 360K A: drive and a 720K B: drive:
+#config_overlays = ["floppy_360k:0", "floppy_720k:1"]
 
 # Prefer OEM ROMs over other compatible ROMs, if present.
 prefer_oem = false

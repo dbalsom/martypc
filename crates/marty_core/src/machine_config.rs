@@ -233,6 +233,7 @@ pub struct ParallelPortConfig {
 pub struct FloppyControllerConfig {
     #[serde(rename = "type")]
     pub fdc_type: FdcType,
+    #[serde(default)]
     pub drive:    Vec<FloppyDriveConfig>,
 }
 

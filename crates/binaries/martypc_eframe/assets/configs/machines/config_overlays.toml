@@ -207,45 +207,75 @@ name = "ibm_vga"
 #    wait_states = 0
 
 
+# Install an empty PC/XT floppy controller, then add drives by applying one of
+# the parameterized floppy overlays to a drive index from 0 through 3.
+# Example: --machine-config-overlays=floppy_360k:0,floppy_720k:1
 [[overlay]]
-name = "pcxt_2_720k_floppies"
-    # Floppy disk controller
+name = "ibm_nec_fdc"
+operation = "replace"
     [overlay.fdc]
-    bus_type = "ISA"
     type = "IbmNec"
-        # Drives connected to controller. Maximum of 4.
-        [[overlay.fdc.drive]]
-        type  = "720k"
-        [[overlay.fdc.drive]]
-        type  = "720k"
+    drive = []
 
 [[overlay]]
-name = "pcxt_2_360k_floppies"
-# Floppy disk controller
-    [overlay.fdc]
-    bus_type = "ISA"
-    type = "IbmNec"
-        # Drives connected to controller. Maximum of 4.
-        [[overlay.fdc.drive]]
-        type  = "360k"
-        [[overlay.fdc.drive]]
-        type  = "360k"
+name = "floppy_360k"
+operation = "merge"
+target = "fdc.drive"
+selector = "drive"
+    [[overlay.parameters]]
+    name = "drive"
+    type = "integer"
+    min = 0
+    max = 3
+    required = true
+    label = "Floppy drive"
+    [overlay.value]
+    type = "360k"
 
 [[overlay]]
-name = "pcxt_4_360k_floppies"
-    # Floppy disk controller
-    [overlay.fdc]
-    bus_type = "ISA"
-    type = "IbmNec"
-        # Drives connected to controller. Maximum of 4.
-        [[overlay.fdc.drive]]
-        type  = "360k"
-        [[overlay.fdc.drive]]
-        type  = "360k"   
-        [[overlay.fdc.drive]]
-        type  = "360k"
-        [[overlay.fdc.drive]]
-        type  = "360k"       
+name = "floppy_720k"
+operation = "merge"
+target = "fdc.drive"
+selector = "drive"
+    [[overlay.parameters]]
+    name = "drive"
+    type = "integer"
+    min = 0
+    max = 3
+    required = true
+    label = "Floppy drive"
+    [overlay.value]
+    type = "720k"
+
+[[overlay]]
+name = "floppy_1_2m"
+operation = "merge"
+target = "fdc.drive"
+selector = "drive"
+    [[overlay.parameters]]
+    name = "drive"
+    type = "integer"
+    min = 0
+    max = 3
+    required = true
+    label = "Floppy drive"
+    [overlay.value]
+    type = "1.2m"
+
+[[overlay]]
+name = "floppy_1_44m"
+operation = "merge"
+target = "fdc.drive"
+selector = "drive"
+    [[overlay.parameters]]
+    name = "drive"
+    type = "integer"
+    min = 0
+    max = 3
+    required = true
+    label = "Floppy drive"
+    [overlay.value]
+    type = "1.44m"
         
 [[overlay]]
 name = "microsoft_serial_mouse"

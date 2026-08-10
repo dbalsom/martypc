@@ -266,6 +266,15 @@ pub enum FdcType {
     IbmPCJrNec,
 }
 
+impl FdcType {
+    pub const fn max_drives(self) -> usize {
+        match self {
+            Self::IbmNec => 4,
+            Self::IbmPCJrNec => 1,
+        }
+    }
+}
+
 #[derive(Copy, Clone, Debug, Deserialize, Eq, PartialEq)]
 pub enum HardDiskControllerType {
     IbmXebec,
