@@ -262,6 +262,13 @@ macos_stripe_fix = false
 # Set this to false to disable sound system initialization.
 enabled = true
 
+# Enable recorded physical machine sounds.
+# If 'false' will disable 'floppy_sounds'. Eventually will control more sound types.
+machine_sounds = true
+
+# Specifically enable floppy drive motor, seek, insertion, and ejection sounds.
+floppy_sounds = true
+
 [emulator.media]
 
 # A list of file extensions to interpret as floppy raw sector images.

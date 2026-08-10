@@ -149,6 +149,10 @@ pub struct Media {
 pub struct Audio {
     #[serde(default = "_default_true")]
     pub enabled: bool,
+    #[serde(default = "_default_true")]
+    pub machine_sounds: bool,
+    #[serde(default = "_default_true")]
+    pub floppy_sounds: bool,
 }
 
 #[derive(Debug, Deserialize)]

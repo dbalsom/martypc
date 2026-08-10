@@ -725,17 +725,18 @@ impl EmulatorBuilder {
         #[allow(unused_mut)]
         let mut machine = machine_builder.build()?;
 
+        // Machine sounds control all recorded device sounds, while individual categories can be
+        // disabled independently.
+        let machine_sounds = config.emulator.audio.enabled && config.emulator.audio.machine_sounds;
+        let floppy_sounds = machine_sounds && config.emulator.audio.floppy_sounds && machine.bus().fdc().is_some();
+
+        let sound_file_manager_options = SoundFileManagerOptions {
+            machine_sounds,
+            floppy_sounds,
+        };
+
         // Only load sound assets if we actually need to, ie, anything has enabled sound effects
-        let mut load_sound_assets = false;
-
-        // Instantiate default sound options.
-        let mut sound_file_manager_options = SoundFileManagerOptions::default();
-
-        // Enable floppy drive sounds if we have a FDC and they are enabled in config.
-        if machine.bus().fdc().is_some() {
-            sound_file_manager_options = SoundFileManagerOptions { floppy_sounds: true };
-            load_sound_assets |= true;
-        }
+        let load_sound_assets = floppy_sounds;
 
         let mut sound_file_manager = SoundFileManager::new(sound_file_manager_options);
 
