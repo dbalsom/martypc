@@ -57,8 +57,8 @@ impl ResourceManager {
         resource: &str,
         subdir: Option<&OsStr>,
         multipath: bool,
-        _resursive: bool,
-        _extension_filter: Option<Vec<OsString>>,
+        recursive: bool,
+        extension_filter: Option<Vec<OsString>>,
     ) -> Result<Vec<ResourceItem>, Error> {
         let mut items: Vec<ResourceItem> = Vec::new();
 
@@ -77,42 +77,47 @@ impl ResourceManager {
             return Err(anyhow::anyhow!("No paths defined for resource: {}", resource));
         }
 
+        let mut search_roots = Vec::with_capacity(roots.len());
         let mut item_map = MartyHashMap::default();
 
         log::debug!("Got {} path(s) for resource: {}", roots.len(), resource);
-        for path in roots.iter() {
-            let mut path = PathBuf::from(&path);
-            //let mut path = path.clone().canonicalize()?;
+        for root in roots.iter() {
+            let mut path = root.clone();
 
             if let Some(subdir) = subdir.clone() {
                 path.push(subdir);
             }
+            search_roots.push(path.clone());
 
             log::debug!("Descending into directory: {}", path.display());
             for entry in self.manifest.read_dir(&String::from(path.clone().to_string_lossy())) {
-                if entry.path().is_dir() {
+                let entry_path = entry.path();
+                if !Self::path_is_within_resource_scope(&entry_path, &path, recursive) {
+                    continue;
+                }
+
+                if entry_path.is_dir() {
                     log::debug!("Enumerating Directory entry {:?}", entry);
                     let resource_item = ResourceItem {
                         rtype: ResourceItemType::Directory(ResourceFsType::Native),
-                        location: entry.path().clone(),
+                        location: entry_path.clone(),
                         relative_path: None,
-                        filename_only: Some(entry.path().file_name().unwrap_or_default().to_os_string()),
+                        filename_only: Some(entry_path.file_name().unwrap_or_default().to_os_string()),
                         flags: 0,
                         size: entry.size(),
                     };
-                    item_map.insert(entry.path().clone(), resource_item);
+                    item_map.insert(entry_path, resource_item);
                 }
                 else {
-                    let foo = entry.path().file_name().unwrap_or_default().to_os_string();
                     let resource_item = ResourceItem {
                         rtype: ResourceItemType::File(ResourceFsType::Native),
-                        location: entry.path().clone(),
+                        location: entry_path.clone(),
                         relative_path: None,
-                        filename_only: Some(entry.path().file_name().unwrap_or_default().to_os_string()),
+                        filename_only: Some(entry_path.file_name().unwrap_or_default().to_os_string()),
                         flags: 0,
                         size: entry.size(),
                     };
-                    item_map.insert(entry.path().clone(), resource_item);
+                    item_map.insert(entry_path, resource_item);
                 }
             }
         }
@@ -122,45 +127,45 @@ impl ResourceManager {
             let overlay_items = overlay.list_resources();
 
             for overlay_item in overlay_items {
-                let mut overlay_path = &overlay_item.location;
+                let overlay_path = &overlay_item.location;
+                if !search_roots
+                    .iter()
+                    .any(|root| Self::path_is_within_resource_scope(overlay_path, root, recursive))
+                {
+                    continue;
+                }
 
-                //log::debug!("Have roots: {:?}, item: {:?}", roots, overlay_path);
-
-                roots.iter().any(|root| {
-                    if overlay_path.starts_with(root) {
-                        log::debug!("Item {:?} matched resource root {:?}", overlay_item, root.display());
-
-                        if item_map.contains_key(overlay_path) {
-                            log::debug!(
-                                "Item {:?} already exists, local fs takes precedence. skipping.",
-                                overlay_item.location.display()
-                            );
-                        }
-                        else {
-                            log::debug!("Adding new overlay item {:?}", overlay_item.location.display());
-                            item_map.insert(overlay_path.clone(), overlay_item.clone());
-                        };
-                        true
-                    }
-                    else {
-                        log::debug!(
-                            "Item {:?} did not match root {:?}",
-                            overlay_item.location.display(),
-                            root.display()
-                        );
-                        false
-                    }
-                });
+                if item_map.contains_key(overlay_path) {
+                    log::debug!(
+                        "Item {:?} already exists, manifest takes precedence. skipping.",
+                        overlay_item.location.display()
+                    );
+                }
+                else {
+                    log::debug!("Adding new overlay item {:?}", overlay_item.location.display());
+                    item_map.insert(overlay_path.clone(), overlay_item);
+                }
             }
         }
 
         items.extend(item_map.into_values());
+        items.retain(|item| Self::item_matches_extension(item, extension_filter.as_deref()));
         log::debug!(
             "enumerate_items(): Found {} items for resource: {}",
             items.len(),
             resource
         );
         Ok(items)
+    }
+
+    pub(crate) fn resource_file_is_contained(&self, resource: &str, item: &ResourceItem) -> Result<bool, Error> {
+        let root = self
+            .pm
+            .resource_path(resource)
+            .ok_or_else(|| anyhow::anyhow!("Resource path not found: {resource}"))?;
+        let recursive = self.pm.resource_recurse(resource).unwrap_or(false);
+        Ok(matches!(item.rtype, ResourceItemType::File(_))
+            && Self::path_is_within_resource_scope(&item.location, &root, recursive))
     }
 
     pub fn items_to_tree(&self, resource: &str, items: &Vec<ResourceItem>) -> Result<TreeNode, Error> {

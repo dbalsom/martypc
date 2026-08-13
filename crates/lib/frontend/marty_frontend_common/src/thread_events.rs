@@ -58,6 +58,9 @@ impl FileSelectionContext {
 /// If `VhdDiskImage` is used, then the selected path is opened directly as a writable VHD.
 #[derive(Clone, Debug)]
 pub enum FileOpenContext {
+    ServiceHostFile {
+        fsc: FileSelectionContext,
+    },
     FloppyDiskImage {
         drive_select: usize,
         fsc: FileSelectionContext,
@@ -75,6 +78,9 @@ pub enum FileOpenContext {
 impl FileOpenContext {
     pub fn set_fsc(&mut self, fsc: FileSelectionContext) {
         match self {
+            FileOpenContext::ServiceHostFile { fsc: fsc_ref } => {
+                *fsc_ref = fsc;
+            }
             FileOpenContext::FloppyDiskImage { fsc: fsc_ref, .. } => {
                 *fsc_ref = fsc;
             }
@@ -89,8 +95,14 @@ impl FileOpenContext {
 
 /// [FileSaveContext] provides a way to identify for what purpose a file was saved.
 /// If `FloppyDiskImage` is used, then the file was saved as a floppy disk image.
+/// If `GuestFile` is used, then the contents were received through a guest file transfer.
 #[derive(Clone, Debug)]
 pub enum FileSaveContext {
+    GuestFile {
+        filename: String,
+        contents: Vec<u8>,
+        fsc:      FileSelectionContext,
+    },
     FloppyDiskImage {
         drive_select: usize,
         format: DiskImageFileFormat,
@@ -99,8 +111,33 @@ pub enum FileSaveContext {
 }
 
 impl FileSaveContext {
+    pub fn guest_file(filename: impl Into<String>, contents: Vec<u8>) -> Self {
+        let filename = filename.into();
+        let suggested_filename = filename
+            .rsplit(['/', '\\'])
+            .find(|component| !component.is_empty())
+            .unwrap_or("guest-file.bin")
+            .to_string();
+
+        Self::GuestFile {
+            filename: suggested_filename,
+            contents,
+            fsc: FileSelectionContext::Uninitialized,
+        }
+    }
+
+    pub fn suggested_filename(&self) -> Option<&str> {
+        match self {
+            FileSaveContext::GuestFile { filename, .. } => Some(filename),
+            FileSaveContext::FloppyDiskImage { .. } => None,
+        }
+    }
+
     pub fn set_fsc(&mut self, fsc: FileSelectionContext) {
         match self {
+            FileSaveContext::GuestFile { fsc: fsc_ref, .. } => {
+                *fsc_ref = fsc;
+            }
             FileSaveContext::FloppyDiskImage { fsc: fsc_ref, .. } => {
                 *fsc_ref = fsc;
             }
@@ -125,6 +162,7 @@ pub enum FrontendThreadEvent<D> {
     FileSaveDialogComplete(FileSaveContext),
     FileOpenError(FileOpenContext, String),
     FileSaveError(String),
+    FileOpenDialogCancelled(FileOpenContext),
     FileDialogCancelled,
     FloppyImageLoadError(String),
     FloppyImageBeginLongLoad,

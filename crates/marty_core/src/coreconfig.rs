@@ -62,6 +62,10 @@ pub trait CoreConfig {
     fn get_audio_enabled(&self) -> bool;
     fn get_machine_noroms(&self) -> bool;
     fn get_machine_turbo(&self) -> bool;
+    fn get_service_interrupt(&self) -> Option<u8>;
+    fn get_service_interrupt_gate(&self) -> bool {
+        false
+    }
     //fn get_keyboard_type(&self) -> Option<KeyboardType>;
     fn get_keyboard_layout(&self) -> Option<String>;
     fn get_keyboard_debug(&self) -> bool;

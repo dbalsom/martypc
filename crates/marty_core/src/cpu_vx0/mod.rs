@@ -610,7 +610,8 @@ pub struct NecVx0 {
     reset_vector: CpuAddress,
     reset_queue:  Option<Vec<u8>>,
 
-    enable_service_interrupt: bool,
+    service_interrupt_vector: Option<u8>,
+    service_interrupt_enabled: bool,
     trace_enabled: bool,
     trace_mode: TraceMode,
     trace_logger: TraceLogger,

@@ -44,9 +44,9 @@ mod wasm;
 
 use std::{
     collections::HashSet,
-    ffi::OsString,
+    ffi::{OsStr, OsString},
     future::Future,
-    path::{Path, PathBuf},
+    path::{Component, Path, PathBuf},
 };
 
 #[cfg(target_arch = "wasm32")]
@@ -173,31 +173,95 @@ impl ResourceManager {
         resource: &str,
         file_name: impl AsRef<Path>,
     ) -> Result<PathBuf, Error> {
-        let file_extension = file_name.as_ref().extension().map(|s| s.to_os_string());
-
-        let mut extensions = Vec::new();
-        if let Some(ext) = file_extension {
-            extensions.push(ext);
-        }
-
-        let items = self.enumerate_items(resource, None, false, true, Some(extensions))?;
+        let file_name = Self::validate_resource_filename(file_name.as_ref())?;
+        let extension_filter = Path::new(file_name)
+            .extension()
+            .map(|extension| vec![extension.to_ascii_lowercase()]);
+        let recursive = self
+            .pm
+            .resource_recurse(resource)
+            .ok_or_else(|| anyhow::anyhow!("Resource path not found: {resource}"))?;
+        let items = self.enumerate_items(resource, None, false, recursive, extension_filter)?;
 
         for item in items {
-            if item.filename_only == Some(file_name.as_ref().as_os_str().to_os_string()) {
+            if matches!(item.rtype, ResourceItemType::File(_))
+                && item
+                    .filename_only
+                    .as_deref()
+                    .is_some_and(|candidate| candidate.eq_ignore_ascii_case(file_name))
+                && self.resource_file_is_contained(resource, &item)?
+            {
                 return Ok(item.location.clone());
             }
         }
 
         Err(anyhow::anyhow!(
             "Failed to resolve path for file: {}",
-            file_name.as_ref().to_string_lossy()
+            file_name.to_string_lossy()
         ))
+    }
+
+    fn validate_resource_filename(file_name: &Path) -> Result<&OsStr, Error> {
+        let file_name_text = file_name.as_os_str().to_string_lossy();
+        if file_name_text.is_empty()
+            || file_name_text == "."
+            || file_name_text == ".."
+            || file_name_text.contains(['/', '\\', ':'])
+        {
+            return Err(anyhow::anyhow!(
+                "Resource filename must not contain a directory: {}",
+                file_name.display()
+            ));
+        }
+
+        let mut components = file_name.components();
+        match (components.next(), components.next()) {
+            (Some(Component::Normal(file_name)), None) => Ok(file_name),
+            _ => Err(anyhow::anyhow!(
+                "Resource filename must be a single normal path component: {}",
+                file_name.display()
+            )),
+        }
+    }
+
+    fn item_matches_extension(item: &ResourceItem, extension_filter: Option<&[OsString]>) -> bool {
+        let Some(extension_filter) = extension_filter
+        else {
+            return true;
+        };
+        if extension_filter.is_empty() {
+            return true;
+        }
+
+        item.location.extension().is_some_and(|extension| {
+            extension_filter
+                .iter()
+                .any(|filter| extension.eq_ignore_ascii_case(filter))
+        })
+    }
+
+    /// Check that a path is a valid item under a given root at the configured recursion level
+    fn path_is_within_resource_scope(path: &Path, root: &Path, recursive: bool) -> bool {
+        let Ok(relative_path) = path.strip_prefix(root)
+        else {
+            return false;
+        };
+
+        let mut component_count = 0;
+        for component in relative_path.components() {
+            if !matches!(component, Component::Normal(_)) {
+                return false;
+            }
+            component_count += 1;
+        }
+
+        component_count > 0 && (recursive || component_count == 1)
     }
 
     pub fn from_config(base_path: PathBuf, config: &[PathConfigItem]) -> Result<Self, Error> {
         let mut rm = Self::new(base_path);
         for item in config {
-            rm.pm.add_path(&item.resource, &item.path, item.create)?;
+            rm.pm.add_path(&item.resource, &item.path, item.create, item.recurse)?;
         }
         //rm.pm.create_paths()?;
         Ok(rm)
@@ -311,15 +375,15 @@ impl ResourceManager {
         Ok(path)
     }
 
-    pub fn path_contains_dir(path: &PathBuf, dir: &str) -> bool {
+    pub fn path_contains_dir(path: &Path, dir: &str) -> bool {
         path.iter().any(|component| component == dir)
     }
 
-    pub fn path_contains_dirs(path: &PathBuf, dirs: &Vec<&str>) -> bool {
+    pub fn path_contains_dirs(path: &Path, dirs: &Vec<&str>) -> bool {
         dirs.iter().any(|&dir| path.iter().any(|component| component == dir))
     }
 
-    pub fn set_relative_paths_for_items(base: PathBuf, items: &mut Vec<ResourceItem>) {
+    pub fn set_relative_paths_for_items(base: PathBuf, items: &mut [ResourceItem]) {
         // Strip the base path from all items.
         for item in items.iter_mut() {
             item.relative_path = Some(
@@ -329,5 +393,198 @@ impl ResourceManager {
                     .to_path_buf(),
             );
         }
+    }
+}
+
+#[cfg(all(test, not(target_arch = "wasm32")))]
+mod tests {
+    use super::*;
+    use std::{
+        fs,
+        sync::atomic::{AtomicU64, Ordering},
+    };
+
+    static NEXT_TEST_DIRECTORY: AtomicU64 = AtomicU64::new(0);
+
+    struct TestDirectory {
+        path: PathBuf,
+    }
+
+    impl TestDirectory {
+        fn new() -> Self {
+            let path = std::env::temp_dir().join(format!(
+                "martypc-resource-manager-{}-{}",
+                std::process::id(),
+                NEXT_TEST_DIRECTORY.fetch_add(1, Ordering::Relaxed)
+            ));
+            fs::create_dir(&path).unwrap();
+            Self { path }
+        }
+    }
+
+    impl Drop for TestDirectory {
+        fn drop(&mut self) {
+            let temp_dir = std::env::temp_dir();
+            let is_test_directory = self.path.starts_with(&temp_dir)
+                && self
+                    .path
+                    .file_name()
+                    .is_some_and(|name| name.to_string_lossy().starts_with("martypc-resource-manager-"));
+            if is_test_directory {
+                let _ = fs::remove_dir_all(&self.path);
+            }
+        }
+    }
+
+    fn resource_manager(path: &Path, recurse: bool) -> ResourceManager {
+        ResourceManager::from_config(
+            PathBuf::new(),
+            &[PathConfigItem {
+                resource: "test".to_string(),
+                path: path.to_string_lossy().into_owned(),
+                create: false,
+                recurse,
+            }],
+        )
+        .unwrap()
+    }
+
+    #[test]
+    fn resolver_handles_extensionless_and_mixed_case_filenames() {
+        let test_dir = TestDirectory::new();
+        fs::write(test_dir.path.join("README"), b"extensionless").unwrap();
+        fs::write(test_dir.path.join("MiXeD.TxT"), b"mixed case").unwrap();
+        let mut rm = resource_manager(&test_dir.path, false);
+
+        assert_eq!(
+            rm.resolve_path_from_filename("test", "readme")
+                .unwrap()
+                .canonicalize()
+                .unwrap(),
+            test_dir.path.join("README").canonicalize().unwrap()
+        );
+        assert_eq!(
+            rm.resolve_path_from_filename("test", "MIXED.TXT")
+                .unwrap()
+                .canonicalize()
+                .unwrap(),
+            test_dir.path.join("MiXeD.TxT").canonicalize().unwrap()
+        );
+
+        let unfiltered = rm
+            .enumerate_items("test", None, false, false, Some(Vec::new()))
+            .unwrap();
+        assert_eq!(unfiltered.len(), 2);
+    }
+
+    #[test]
+    fn resolver_honors_configured_recursion_and_does_not_return_directories() {
+        let test_dir = TestDirectory::new();
+        let nested = test_dir.path.join("nested");
+        fs::create_dir(&nested).unwrap();
+        fs::write(nested.join("DEEP.BIN"), b"nested").unwrap();
+
+        let mut non_recursive_rm = resource_manager(&test_dir.path, false);
+        assert!(non_recursive_rm.resolve_path_from_filename("test", "DEEP.BIN").is_err());
+        assert!(non_recursive_rm.resolve_path_from_filename("test", "nested").is_err());
+
+        let mut recursive_rm = resource_manager(&test_dir.path, true);
+        assert_eq!(
+            recursive_rm
+                .resolve_path_from_filename("test", "deep.bin")
+                .unwrap()
+                .canonicalize()
+                .unwrap(),
+            nested.join("DEEP.BIN").canonicalize().unwrap()
+        );
+    }
+
+    #[test]
+    fn resolver_rejects_directory_components_and_lexical_traversal() {
+        let test_dir = TestDirectory::new();
+        fs::write(test_dir.path.join("SAFE.BIN"), b"safe").unwrap();
+        let mut rm = resource_manager(&test_dir.path, true);
+
+        for filename in [
+            "../SAFE.BIN",
+            "..\\SAFE.BIN",
+            "subdir/SAFE.BIN",
+            "subdir\\SAFE.BIN",
+            "C:\\SAFE.BIN",
+            "SAFE.BIN:stream",
+            "/SAFE.BIN",
+            ".",
+            "..",
+        ] {
+            assert!(
+                rm.resolve_path_from_filename("test", filename).is_err(),
+                "unexpectedly resolved {filename}"
+            );
+            assert!(
+                rm.resolve_resource_path_for_write("test", filename).is_err(),
+                "unexpectedly constructed a write path for {filename}"
+            );
+        }
+
+        assert!(!ResourceManager::path_is_within_resource_scope(
+            Path::new("root/../outside.bin"),
+            Path::new("root"),
+            true
+        ));
+    }
+
+    #[test]
+    fn write_paths_are_confined_to_the_resource_root() {
+        let test_dir = TestDirectory::new();
+        let rm = resource_manager(&test_dir.path, false);
+        let path = rm.resolve_resource_path_for_write("test", "OUTPUT.BIN").unwrap();
+
+        assert_eq!(path.parent().unwrap(), test_dir.path.canonicalize().unwrap());
+    }
+
+    #[test]
+    fn resolver_and_writer_reject_symlinks_outside_the_resource_root() {
+        let test_dir = TestDirectory::new();
+        let resource_root = test_dir.path.join("resource");
+        fs::create_dir(&resource_root).unwrap();
+        let outside_file = test_dir.path.join("outside.bin");
+        fs::write(&outside_file, b"outside").unwrap();
+        let link = resource_root.join("LINK.BIN");
+
+        #[cfg(unix)]
+        let symlink_result = std::os::unix::fs::symlink(&outside_file, &link);
+        #[cfg(windows)]
+        let symlink_result = std::os::windows::fs::symlink_file(&outside_file, &link);
+        if symlink_result.is_err() {
+            // Creating symlinks can require an elevated token or Developer Mode on Windows.
+            return;
+        }
+
+        let mut rm = resource_manager(&resource_root, false);
+        assert!(rm.resolve_path_from_filename("test", "LINK.BIN").is_err());
+        assert!(rm.resolve_resource_path_for_write("test", "LINK.BIN").is_err());
+        assert_eq!(fs::read(&outside_file).unwrap(), b"outside");
+    }
+
+    #[test]
+    fn recursive_enumeration_does_not_follow_directory_symlinks_outside_the_resource_root() {
+        let test_dir = TestDirectory::new();
+        let resource_root = test_dir.path.join("resource");
+        let outside_directory = test_dir.path.join("outside");
+        fs::create_dir(&resource_root).unwrap();
+        fs::create_dir(&outside_directory).unwrap();
+        fs::write(outside_directory.join("SECRET.BIN"), b"secret").unwrap();
+        let link = resource_root.join("outside-link");
+
+        #[cfg(unix)]
+        let symlink_result = std::os::unix::fs::symlink(&outside_directory, &link);
+        #[cfg(windows)]
+        let symlink_result = std::os::windows::fs::symlink_dir(&outside_directory, &link);
+        if symlink_result.is_err() {
+            return;
+        }
+
+        let mut rm = resource_manager(&resource_root, true);
+        assert!(rm.resolve_path_from_filename("test", "SECRET.BIN").is_err());
     }
 }

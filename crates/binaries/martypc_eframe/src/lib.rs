@@ -30,6 +30,7 @@ pub mod counter;
 pub mod emulator;
 pub mod emulator_builder;
 pub mod event_loop;
+mod file_transfer;
 pub mod floppy;
 pub mod input;
 pub mod sound;

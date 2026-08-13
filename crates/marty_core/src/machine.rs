@@ -82,6 +82,7 @@ use crate::{
     keys::MartyKey,
     machine_config::{get_machine_descriptor, MachineConfiguration, MachineDescriptor},
     machine_types::{MachineType, OnHaltBehavior},
+    service_interrupt::ServiceInterruptManager,
     tracelogger::TraceLogger,
 };
 
@@ -114,7 +115,7 @@ pub struct KeybufferEntry {
     pub translate: bool,
 }
 
-#[derive(Copy, Clone, Debug)]
+#[derive(Clone, Debug)]
 pub enum MachineEvent {
     CheckpointHit(usize, u32),
     Halted,
@@ -437,6 +438,7 @@ pub struct Machine {
     rom_manifest: MachineRomManifest,
     load_bios: bool,
     cpu: CpuDispatch,
+    service_interrupt_manager: ServiceInterruptManager,
     //pit_data: PitData,
     #[cfg(feature = "sound")]
     sound_sources: Vec<SoundSourceDescriptor>,
@@ -478,6 +480,9 @@ impl Machine {
         disassembly_listing_file: Option<PathBuf>,
         //rom_manager: RomManager,
     ) -> Result<Machine, Error> {
+        let service_interrupt_vector = core_config.get_service_interrupt();
+        let service_interrupt_enabled = !core_config.get_service_interrupt_gate();
+
         // Create PIT output log file if specified
         //let pit_output_file_option = None;
         /*
@@ -559,6 +564,8 @@ impl Machine {
         }
 
         cpu.set_option(CpuOption::TraceLoggingEnabled(core_config.get_cpu_trace_on()));
+        cpu.set_option(CpuOption::ServiceInterruptVector(service_interrupt_vector));
+        cpu.set_option(CpuOption::ServiceInterruptEnabled(service_interrupt_enabled));
 
         // Set bus options from core configuration now that CPU has created the bus
         cpu.bus_mut().set_options(core_config.get_title_hacks());
@@ -662,6 +669,10 @@ impl Machine {
             rom_manifest,
             load_bios: !core_config.get_machine_noroms(),
             cpu,
+            service_interrupt_manager: ServiceInterruptManager::new(
+                service_interrupt_vector,
+                service_interrupt_enabled,
+            ),
             //pit_data,
             #[cfg(feature = "sound")]
             sound_sources,
@@ -820,6 +831,30 @@ impl Machine {
 
     pub fn get_event(&mut self) -> Option<MachineEvent> {
         self.events.pop()
+    }
+
+    /// Stage a host file for a subsequent host-to-guest service interrupt transfer.
+    pub fn stage_service_host_file(&mut self, filename: impl Into<String>, data: Vec<u8>) {
+        if let Err(error) = self
+            .service_interrupt_manager
+            .complete_host_file_request(&mut self.cpu, filename, data)
+        {
+            log::error!("Failed to complete host file transfer request: {:04X}h", error);
+        }
+    }
+
+    /// Mark a pending host-to-guest transfer request as aborted.
+    pub fn abort_service_host_file_request(&mut self) {
+        if let Err(error) = self.service_interrupt_manager.abort_host_file_request(&mut self.cpu) {
+            log::error!("Failed to abort host file transfer request: {:04X}h", error);
+        }
+    }
+
+    /// Mark a pending non-interactive host-to-guest transfer as not found.
+    pub fn service_host_file_not_found(&mut self) {
+        if let Err(error) = self.service_interrupt_manager.host_file_not_found(&mut self.cpu) {
+            log::error!("Failed to report missing host transfer file: {:04X}h", error);
+        }
     }
 
     pub fn get_cpu_factor(&mut self) -> ClockFactor {
@@ -1181,6 +1216,10 @@ impl Machine {
 
         // Reset CPU.
         self.cpu.reset();
+        self.service_interrupt_manager.reset();
+        self.cpu.set_option(CpuOption::ServiceInterruptEnabled(
+            self.service_interrupt_manager.enabled(),
+        ));
 
         // Clear RAM
         self.cpu.bus_mut().clear();
@@ -1501,18 +1540,7 @@ impl Machine {
             }
 
             if let Some(event) = self.cpu.get_service_event() {
-                match event {
-                    ServiceEvent::TriggerPITLogging => {
-                        log::debug!("TriggerPITLogging ServiceEvent received.");
-                        //self.pit_data.logging_triggered = true;
-                    }
-                    ServiceEvent::QuitEmulator(delay) => {
-                        log::debug!("Quit ServiceEvent received, delay parameter: {}", delay);
-                        // Forward the quit event to the frontend.
-                        self.events
-                            .push(MachineEvent::Service(ServiceEvent::QuitEmulator(delay)));
-                    }
-                }
+                self.handle_service_event(event);
             }
         }
 
@@ -1520,6 +1548,52 @@ impl Machine {
 
         self.cpu_instructions += instr_count;
         instr_count
+    }
+
+    fn handle_service_event(&mut self, event: ServiceEvent) {
+        match event {
+            ServiceEvent::ServiceInterrupt(function) => {
+                let event = self.service_interrupt_manager.handle_interrupt(function, &mut self.cpu);
+                if let Some(event) = event {
+                    self.handle_service_event(event);
+                }
+            }
+            ServiceEvent::ServiceInterruptProbe => {
+                self.service_interrupt_manager.handle_probe(&mut self.cpu);
+            }
+            ServiceEvent::ServiceInterruptEnabled(state) => {
+                self.cpu.set_option(CpuOption::ServiceInterruptEnabled(state));
+            }
+            ServiceEvent::TriggerPITLogging => {
+                log::debug!("TriggerPITLogging ServiceEvent received.");
+                //self.pit_data.logging_triggered = true;
+            }
+            ServiceEvent::QuitEmulator(delay) => {
+                log::debug!("Quit ServiceEvent received, delay parameter: {}", delay);
+                // Forward the quit event to the frontend.
+                self.events
+                    .push(MachineEvent::Service(ServiceEvent::QuitEmulator(delay)));
+            }
+            ServiceEvent::GuestFileTransferComplete {
+                filename,
+                data,
+                non_interactive,
+            } => {
+                log::debug!("Guest file transfer committed: '{}' ({} bytes)", filename, data.len());
+                self.events
+                    .push(MachineEvent::Service(ServiceEvent::GuestFileTransferComplete {
+                        filename,
+                        data,
+                        non_interactive,
+                    }));
+            }
+            ServiceEvent::HostFileTransferRequested { filename } => {
+                self.events
+                    .push(MachineEvent::Service(ServiceEvent::HostFileTransferRequested {
+                        filename,
+                    }));
+            }
+        }
     }
 
     /// Run the other devices in the machine for the specified number of cpu cycles.

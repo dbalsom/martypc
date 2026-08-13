@@ -147,9 +147,6 @@ impl Emulator {
         self.machine.set_cpu_option(CpuOption::OffRailsDetection(
             self.config.machine.cpu.off_rails_detection.unwrap_or(false),
         ));
-        self.machine.set_cpu_option(CpuOption::EnableServiceInterrupt(
-            self.config.machine.cpu.service_interrupt.unwrap_or(false),
-        ));
 
         // TODO: Re-enable these
         //gui.set_option(GuiBoolean::EnableSnow, config.machine.cga_snow.unwrap_or(false));

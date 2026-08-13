@@ -41,6 +41,9 @@ pub fn open_file(
     sender: crossbeam_channel::Sender<FrontendThreadEvent<Arc<DiskImage>>>,
 ) -> Result<(), Error> {
     let path = match context {
+        FileOpenContext::ServiceHostFile { .. } => {
+            return Err(anyhow!("ServiceHostFile not supported by URL file open"));
+        }
         FileOpenContext::FloppyDiskImage { drive_select, ref fsc } => match fsc {
             FileSelectionContext::Path(path) => path,
             FileSelectionContext::Index(index) => return Err(anyhow!("Index context not supported on wasm")),
@@ -150,6 +153,9 @@ pub fn open_file_dialog(
                             array.copy_to(&mut bytes[..]);
 
                             let new_context = match inner_inner_context.clone() {
+                                FileOpenContext::ServiceHostFile { .. } => FileOpenContext::ServiceHostFile {
+                                    fsc: FileSelectionContext::Path(inner_name.clone().into()),
+                                },
                                 FileOpenContext::FloppyDiskImage { drive_select, fsc } => {
                                     FileOpenContext::FloppyDiskImage {
                                         drive_select,

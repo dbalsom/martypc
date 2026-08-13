@@ -14,6 +14,14 @@ config_version = "0.4"
 # General emulator options are given in [emulator] below.
 # ----------------------------------------------------------------------------
 [machine]
+# MartyPC's internal emulator service interrupt vector. Comment out to disable the service
+# interrupt. The service interrupt is required for the `m*.com` utilities to function such as
+# `mdebug.com`.
+service_interrupt = 0xFC
+# If true, emulator services start disabled and must be enabled through service control
+# function AH==00h. Requires updated `m*.com` utilities if you have older utilies than 0.4.2.
+service_interrupt_gate = true
+
 # `config_name`: The name of the machine configuration to load.
 # Machine configurations are defined in the various machine configuration
 # definition files in /configs/machines.
@@ -138,11 +146,6 @@ on_halt = "Warn"
 # when enabled. Only enable if debugging.
 instruction_history = false
 
-# Enable MartyPC's internal emulator serivce interrupt at 0xFC. You may need
-# to disable this if conflicts arise. 'mdebug.com' requires this to be set 
-# true.
-service_interrupt = true
-
 # CPU Tracing Options
 # ----------------------------------------------------------------------------
 # CPU tracing may be enabled by specifying trace_mode
@@ -195,6 +198,7 @@ paths = [
     { resource = "rom", path = "$basedir$/media/roms", recurse = true },
     { resource = "hdd", path = "$basedir$/media/hdds", recurse = true },
     { resource = "autofloppy", path = "$basedir$/mount/floppy", create = true, recurse = false },
+    { resource = "file_transfer", path = "$basedir$/mount/file_transfer", create = true, recurse = false },
     { resource = "floppy", path = "$basedir$/media/floppies", recurse = true, create = true },
     { resource = "cartridge", path = "$basedir$/media/cartridges", recurse = true, create = true },
     { resource = "cassette", path = "$basedir$/media/cassettes", recurse = true, create = true },

@@ -34,48 +34,56 @@ use crate::{
     cpu_808x::*,
     cpu_common::{Segment, ServiceEvent},
     cycles_mc,
+    service_interrupt::{is_martypc_probe, is_service_control, FUNC_DEBUGGER, FUNC_SERVICE_CTRL},
 };
 
 impl Intel808x {
     /// Perform a software interrupt
     pub fn sw_interrupt(&mut self, interrupt: u8) {
-        // Interrupt FC, emulator internal services.
-        if self.enable_service_interrupt && interrupt == 0xFC {
-            match self.a.h() {
-                0x01 => {
-                    log::debug!(
-                        "Received emulator trap interrupt: CS: {:04X} IP: {:04X}",
-                        self.b.x(),
-                        self.c.x()
-                    );
-                    self.biu_fetch_suspend();
-                    self.cycles(4);
-
-                    self.cs = self.b.x();
-                    self.pc = self.c.x();
-
-                    // Set execution segments
-                    self.ds = self.cs;
-                    self.es = self.cs;
-                    self.ss = self.cs;
-                    // Create stack
-                    self.sp = 0xFFFE;
-
-                    self.biu_queue_flush();
-                    self.cycles(4);
-                    self.set_breakpoint_flag();
-                }
-                0x02 => {
-                    self.service_events.push_back(ServiceEvent::TriggerPITLogging);
-                    // Trigger PIT logging
-                }
-                0x03 => {
-                    // Request to quit.
-                    self.service_events.push_back(ServiceEvent::QuitEmulator(self.a.l()));
-                }
-                _ => {}
-            }
+        if is_martypc_probe(interrupt, self) {
+            self.service_events.push_back(ServiceEvent::ServiceInterruptProbe);
             return;
+        }
+
+        // Configured emulator internal service interrupt.
+        if self.service_interrupt_vector == Some(interrupt) {
+            let function = self.a.h();
+
+            if function == FUNC_SERVICE_CTRL {
+                if is_service_control(self) {
+                    self.service_events.push_back(ServiceEvent::ServiceInterrupt(function));
+                    return;
+                }
+            }
+            else if self.service_interrupt_enabled {
+                match function {
+                    FUNC_DEBUGGER => {
+                        log::debug!(
+                            "Received emulator trap interrupt: CS: {:04X} IP: {:04X}",
+                            self.b.x(),
+                            self.c.x()
+                        );
+                        self.biu_fetch_suspend();
+                        self.cycles(4);
+
+                        self.cs = self.b.x();
+                        self.pc = self.c.x();
+
+                        // Set execution segments
+                        self.ds = self.cs;
+                        self.es = self.cs;
+                        self.ss = self.cs;
+                        // Create stack
+                        self.sp = 0xFFFE;
+
+                        self.biu_queue_flush();
+                        self.cycles(4);
+                        self.set_breakpoint_flag();
+                    }
+                    function => self.service_events.push_back(ServiceEvent::ServiceInterrupt(function)),
+                }
+                return;
+            }
         }
 
         self.intr_routine(interrupt, InterruptType::Software, false);

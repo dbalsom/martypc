@@ -52,7 +52,13 @@ pub struct PathConfigItem {
 
 pub struct PathManager {
     base_path: PathBuf,
-    paths: HashMap<String, Vec<PathBuf>>,
+    paths: HashMap<String, Vec<ResourcePath>>,
+}
+
+#[derive(Clone, Debug)]
+struct ResourcePath {
+    path:    PathBuf,
+    recurse: bool,
 }
 
 impl PathManager {
@@ -63,7 +69,7 @@ impl PathManager {
         }
     }
 
-    pub fn add_path(&mut self, resource_name: &str, path_str: &str, create: bool) -> Result<(), Error> {
+    pub fn add_path(&mut self, resource_name: &str, path_str: &str, create: bool, recurse: bool) -> Result<(), Error> {
         let resolved_path = self.resolve_path_internal(path_str)?;
 
         // Attempt to create directories if they don't exist and their `create` flag is set.
@@ -82,12 +88,16 @@ impl PathManager {
             }
         }
 
+        let resource_path = ResourcePath {
+            path: resolved_path,
+            recurse,
+        };
         self.paths
             .entry(resource_name.to_string())
             .and_modify(|e| {
-                e.push(resolved_path.clone());
+                e.push(resource_path.clone());
             })
-            .or_insert(vec![resolved_path.clone()]);
+            .or_insert(vec![resource_path]);
         Ok(())
     }
 
@@ -119,11 +129,23 @@ impl PathManager {
     }
 
     pub fn resource_path(&self, resource_name: &str) -> Option<PathBuf> {
-        self.paths.get(resource_name).map(|p| p[0].clone())
+        self.paths
+            .get(resource_name)
+            .and_then(|paths| paths.first())
+            .map(|resource_path| resource_path.path.clone())
     }
 
     pub fn get_resource_paths(&self, resource_name: &str) -> Option<Vec<PathBuf>> {
-        self.paths.get(resource_name).map(|p| p.clone())
+        self.paths
+            .get(resource_name)
+            .map(|paths| paths.iter().map(|resource_path| resource_path.path.clone()).collect())
+    }
+
+    pub fn resource_recurse(&self, resource_name: &str) -> Option<bool> {
+        self.paths
+            .get(resource_name)
+            .and_then(|paths| paths.first())
+            .map(|resource_path| resource_path.recurse)
     }
 
     pub fn get_base_path(&self) -> PathBuf {
@@ -132,9 +154,9 @@ impl PathManager {
 
     pub fn create_paths(&self) -> Result<(), Error> {
         for (_, paths) in self.paths.iter() {
-            for path in paths.iter() {
-                if !ResourceManager::path_exists(path) {
-                    ResourceManager::create_path(path)?;
+            for resource_path in paths.iter() {
+                if !ResourceManager::path_exists(&resource_path.path) {
+                    ResourceManager::create_path(&resource_path.path)?;
                 }
             }
         }
@@ -144,8 +166,12 @@ impl PathManager {
     pub fn dump_paths(&self) -> Vec<PathBuf> {
         self.paths
             .values()
-            .map(|p| p.iter().map(|pi| pi.clone()).collect::<Vec<PathBuf>>())
-            .flatten()
+            .flat_map(|paths| {
+                paths
+                    .iter()
+                    .map(|resource_path| resource_path.path.clone())
+                    .collect::<Vec<PathBuf>>()
+            })
             .collect()
     }
 }

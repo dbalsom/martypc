@@ -296,7 +296,6 @@ pub struct Cpu {
     pub off_rails_detection: Option<bool>,
     pub on_halt: Option<OnHaltBehavior>,
     pub instruction_history: Option<bool>,
-    pub service_interrupt: Option<bool>,
     #[serde(default)]
     pub trace_on: bool,
     pub trace_mode: Option<TraceMode>,
@@ -313,6 +312,9 @@ pub struct MachineInput {
 pub struct Machine {
     pub config_name: String,
     pub config_overlays: Option<Vec<String>>,
+    pub service_interrupt: Option<u8>,
+    #[serde(default)]
+    pub service_interrupt_gate: bool,
     #[serde(default = "_default_true")]
     pub prefer_oem: bool,
     //pub model: MachineType,
@@ -582,4 +584,71 @@ pub fn read_config_string(toml_string: impl AsRef<str>) -> Result<ConfigFilePara
     }
 
     read_config(toml_string, shell_args)
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[derive(Deserialize)]
+    struct MachineConfig {
+        machine: Machine,
+    }
+
+    #[test]
+    fn service_interrupt_is_an_optional_machine_level_vector() {
+        let configured: MachineConfig = toml::from_str(
+            r#"
+                [machine]
+                config_name = "test"
+                service_interrupt = 0xFC
+
+                [machine.cpu]
+                [machine.input]
+            "#,
+        )
+        .unwrap();
+        assert_eq!(configured.machine.service_interrupt, Some(0xFC));
+        assert!(!configured.machine.service_interrupt_gate);
+
+        let gated: MachineConfig = toml::from_str(
+            r#"
+                [machine]
+                config_name = "test"
+                service_interrupt = 0xFC
+                service_interrupt_gate = true
+
+                [machine.cpu]
+                [machine.input]
+            "#,
+        )
+        .unwrap();
+        assert_eq!(gated.machine.service_interrupt, Some(0xFC));
+        assert!(gated.machine.service_interrupt_gate);
+
+        let disabled: MachineConfig = toml::from_str(
+            r#"
+                [machine]
+                config_name = "test"
+
+                [machine.cpu]
+                [machine.input]
+            "#,
+        )
+        .unwrap();
+        assert_eq!(disabled.machine.service_interrupt, None);
+        assert!(!disabled.machine.service_interrupt_gate);
+
+        let invalid = toml::from_str::<MachineConfig>(
+            r#"
+                [machine]
+                config_name = "test"
+                service_interrupt = 0x100
+
+                [machine.cpu]
+                [machine.input]
+            "#,
+        );
+        assert!(invalid.is_err());
+    }
 }

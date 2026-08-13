@@ -301,9 +301,13 @@ impl Cpu for Intel808x {
                     self.trace_flush();
                 }
             }
-            CpuOption::EnableServiceInterrupt(state) => {
-                log::debug!("Setting EnableServiceInterrupt to: {:?}", state);
-                self.enable_service_interrupt = state;
+            CpuOption::ServiceInterruptVector(vector) => {
+                log::debug!("Setting service interrupt vector to: {:?}", vector);
+                self.service_interrupt_vector = vector;
+            }
+            CpuOption::ServiceInterruptEnabled(state) => {
+                log::debug!("Setting service interrupt enabled state to: {}", state);
+                self.service_interrupt_enabled = state;
             }
         }
     }
@@ -318,7 +322,8 @@ impl Cpu for Intel808x {
             CpuOption::OffRailsDetection(_) => self.off_rails_detection,
             CpuOption::EnableWaitStates(_) => self.enable_wait_states,
             CpuOption::TraceLoggingEnabled(_) => self.trace_enabled,
-            CpuOption::EnableServiceInterrupt(_) => self.enable_service_interrupt,
+            CpuOption::ServiceInterruptVector(_) => self.service_interrupt_vector.is_some(),
+            CpuOption::ServiceInterruptEnabled(_) => self.service_interrupt_enabled,
         }
     }
 

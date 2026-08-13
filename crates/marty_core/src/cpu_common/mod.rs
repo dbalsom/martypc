@@ -493,7 +493,8 @@ pub enum CpuOption {
     OffRailsDetection(bool),
     EnableWaitStates(bool),
     TraceLoggingEnabled(bool),
-    EnableServiceInterrupt(bool),
+    ServiceInterruptVector(Option<u8>),
+    ServiceInterruptEnabled(bool),
 }
 
 #[derive(Debug)]
@@ -513,11 +514,22 @@ pub enum StepResult {
 // Internal Emulator interrupt service events. These are returned to the machine when
 // the internal service interrupt is called to request an emulator action that cannot
 // be handled by the CPU alone.
-#[derive(Copy, Clone, Debug)]
+#[derive(Clone, Debug)]
 pub enum ServiceEvent {
+    /// A request for the machine-level service interrupt manager to handle a function.
+    ServiceInterrupt(u8),
+    /// A request for the machine-level service interrupt manager to answer the MartyPC probe.
+    ServiceInterruptProbe,
+    /// Enable or disable interception of non-control service interrupt functions.
+    ServiceInterruptEnabled(bool),
+    /// Trigger detailed PIT logging
     TriggerPITLogging,
     /// A request to quit the emulator immediately. Triggered by the `mquit` utility.
     QuitEmulator(u8),
+    /// A guest-to-host file transfer was committed and is ready to be saved by the frontend.
+    GuestFileTransferComplete { filename: String, data: Vec<u8>, non_interactive: bool },
+    /// A host-to-guest transfer needs the frontend to select or resolve a host file.
+    HostFileTransferRequested { filename: Option<String> },
 }
 
 #[derive(Copy, Clone, Debug, Default, PartialEq)]

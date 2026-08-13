@@ -63,6 +63,10 @@ impl GuiState {
         match self.dialog_provider {
             DialogProvider::EguiFileDialog => {
                 log::warn!("egui-file-dialog not implemented");
+                let _ = self.thread_sender.send(FrontendThreadEvent::FileOpenError(
+                    context,
+                    "egui-file-dialog not implemented".to_string(),
+                ));
             }
             #[cfg(feature = "use_rfd")]
             DialogProvider::Rfd => {
@@ -100,7 +104,7 @@ impl GuiState {
                             }
                         }
                         else {
-                            FrontendThreadEvent::FileDialogCancelled
+                            FrontendThreadEvent::FileOpenDialogCancelled(resolved_context)
                         };
                     }
 
@@ -126,7 +130,7 @@ impl GuiState {
                             }
                         }
                         else {
-                            FrontendThreadEvent::FileDialogCancelled
+                            FrontendThreadEvent::FileOpenDialogCancelled(resolved_context)
                         };
                     }
                 });
@@ -138,50 +142,45 @@ impl GuiState {
         match self.dialog_provider {
             DialogProvider::EguiFileDialog => {
                 log::warn!("egui-file-dialog not implemented");
+                let _ = self
+                    .thread_sender
+                    .send(FrontendThreadEvent::FileSaveError("egui-file-dialog not implemented".to_string()));
             }
             #[cfg(feature = "use_rfd")]
             DialogProvider::Rfd => {
                 let mut dialog = rfd::AsyncFileDialog::new().set_title(title.as_ref());
 
+                if let Some(filename) = context.suggested_filename() {
+                    dialog = dialog.set_file_name(filename);
+                }
+
                 for filter in filters {
                     dialog = dialog.add_filter(filter.desc, &filter.extensions);
                 }
                 let task = dialog.save_file();
-                exec_async(self.thread_sender.clone(), async {
-                    let rfd_handle = task.await;
+                exec_async(self.thread_sender.clone(), async move {
+                    let Some(file_handle) = task.await
+                    else {
+                        return FrontendThreadEvent::FileDialogCancelled;
+                    };
 
                     #[cfg(not(target_arch = "wasm32"))]
-                    {
-                        return if let Some(file_handle) = rfd_handle {
-                            let path_buf = file_handle.path().to_path_buf();
-                            let fsc = FileSelectionContext::Path(path_buf.clone());
-
-                            let mut new_context = context;
-                            new_context.set_fsc(fsc);
-
-                            FrontendThreadEvent::FileSaveDialogComplete(new_context)
-                        }
-                        else {
-                            FrontendThreadEvent::FileDialogCancelled
-                        };
-                    }
+                    let fsc = FileSelectionContext::Path(file_handle.path().to_path_buf());
 
                     #[cfg(target_arch = "wasm32")]
-                    {
-                        use std::path::PathBuf;
-                        return if let Some(file_handle) = rfd_handle {
-                            let file_name = file_handle.file_name().to_string();
-                            let fsc = FileSelectionContext::Path(PathBuf::from(file_name.clone()));
+                    let fsc = FileSelectionContext::Path(std::path::PathBuf::from(file_handle.file_name()));
 
-                            let mut new_context = context;
-                            new_context.set_fsc(fsc);
+                    let mut resolved_context = context;
+                    resolved_context.set_fsc(fsc);
 
-                            FrontendThreadEvent::FileSaveDialogComplete(new_context)
+                    if let FileSaveContext::GuestFile { contents, .. } = &mut resolved_context {
+                        let contents = std::mem::take(contents);
+                        if let Err(error) = file_handle.write(&contents).await {
+                            return FrontendThreadEvent::FileSaveError(error.to_string());
                         }
-                        else {
-                            FrontendThreadEvent::FileDialogCancelled
-                        };
                     }
+
+                    FrontendThreadEvent::FileSaveDialogComplete(resolved_context)
                 });
             }
         }

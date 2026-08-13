@@ -26,9 +26,18 @@
 */
 
 use anyhow::{anyhow, Result};
+use marty_frontend_common::resource_manager::ResourceManager;
 use wasm_bindgen::prelude::*;
 
 use web_sys::{js_sys, window, Blob, BlobPropertyBag, Url};
+
+pub(crate) fn save_non_interactive_file(
+    _resource_manager: &ResourceManager,
+    _filename: &str,
+    _data: &[u8],
+) -> std::result::Result<String, String> {
+    Err("Non-interactive guest-to-host file transfers are not supported on WASM".to_string())
+}
 
 /// Initiate a file save operation from the browser, saving the provided `bytes` with the given
 /// suggested filename as `path`.

@@ -44,14 +44,27 @@ use std::{path::PathBuf, sync::Arc};
 pub fn handle_thread_event(emu: &mut Emulator, ctx: &egui::Context) {
     while let Ok(event) = emu.receiver.try_recv() {
         match event {
+            FrontendThreadEvent::FileOpenDialogCancelled(context) => {
+                if let FileOpenContext::ServiceHostFile { .. } = context {
+                    emu.machine.abort_service_host_file_request();
+                }
+                emu.gui.modal.close();
+            }
             FrontendThreadEvent::FileDialogCancelled => {
                 emu.gui.modal.close();
             }
-            FrontendThreadEvent::FileOpenError(_context, error) => {
-                log::error!("File open error: {}", error);
+            FrontendThreadEvent::FileOpenError(context, error) => {
+                let error_prefix = if let FileOpenContext::ServiceHostFile { .. } = context {
+                    emu.machine.abort_service_host_file_request();
+                    "Host file open error"
+                }
+                else {
+                    "File open error"
+                };
+                log::error!("{}: {}", error_prefix, error);
                 emu.gui
                     .toasts()
-                    .error(format!("File open error: {}", error))
+                    .error(format!("{}: {}", error_prefix, error))
                     .duration(Some(LONG_NOTIFICATION_TIME));
                 emu.gui.modal.close();
             }
@@ -68,6 +81,30 @@ pub fn handle_thread_event(emu: &mut Emulator, ctx: &egui::Context) {
                 path,
                 contents,
             } => {
+                if let FileOpenContext::ServiceHostFile { fsc } = &context {
+                    let filename = match fsc {
+                        FileSelectionContext::Path(path) => path
+                            .file_name()
+                            .unwrap_or(path.as_os_str())
+                            .to_string_lossy()
+                            .into_owned(),
+                        _ => {
+                            log::error!("Host file dialog returned without a filename");
+                            emu.machine.abort_service_host_file_request();
+                            emu.gui.modal.close();
+                            continue;
+                        }
+                    };
+                    log::debug!(
+                        "Selected host file for guest transfer: '{}' ({} bytes)",
+                        filename,
+                        contents.len()
+                    );
+                    emu.machine.stage_service_host_file(filename, contents);
+                    emu.gui.modal.close();
+                    continue;
+                }
+
                 emu.gui
                     .toasts()
                     .info(format!(
@@ -78,6 +115,7 @@ pub fn handle_thread_event(emu: &mut Emulator, ctx: &egui::Context) {
                     .duration(Some(NORMAL_NOTIFICATION_TIME));
 
                 match context {
+                    FileOpenContext::ServiceHostFile { .. } => unreachable!(),
                     FileOpenContext::FloppyDiskImage { drive_select, fsc } => {
                         let mut floppy_path = None;
 
@@ -118,6 +156,15 @@ pub fn handle_thread_event(emu: &mut Emulator, ctx: &egui::Context) {
             }
             FrontendThreadEvent::FileSaveDialogComplete(save_context) => {
                 let (drive_select, format, fsc) = match save_context {
+                    FileSaveContext::GuestFile { filename, .. } => {
+                        log::info!("Guest file saved: {}", filename);
+                        emu.gui
+                            .toasts()
+                            .info(format!("Guest file saved: {}", filename))
+                            .duration(Some(NORMAL_NOTIFICATION_TIME));
+                        emu.gui.modal.close();
+                        continue;
+                    }
                     FileSaveContext::FloppyDiskImage {
                         drive_select,
                         format,

@@ -30,6 +30,11 @@
 */
 
 use crate::event_loop::egui_update::update_egui;
+use crate::file_transfer::{load_non_interactive_file, NonInteractiveFileLoadError};
+#[cfg(not(target_arch = "wasm32"))]
+use crate::native::file_save::save_non_interactive_file;
+#[cfg(target_arch = "wasm32")]
+use crate::wasm::file_save::save_non_interactive_file;
 use web_time::{Duration, Instant};
 
 use crate::{emulator::Emulator, event_loop::render_frame::render_frame, input::GamepadEvent};
@@ -39,7 +44,7 @@ use marty_frontend_common::{
     constants::{LONG_NOTIFICATION_TIME, NORMAL_NOTIFICATION_TIME, SHORT_NOTIFICATION_TIME},
     marty_common::types::ui::MouseCaptureMode,
     sound_file_manager::PresentableSoundAction,
-    thread_events::FrontendThreadEvent,
+    thread_events::{FileOpenContext, FileSaveContext, FileSelectionContext, FrontendThreadEvent},
     timestep_manager::{MachinePerfStats, TimestepManager},
 };
 use marty_videocard_renderer::RendererEvent;
@@ -327,6 +332,50 @@ pub fn process_update(emu: &mut Emulator, dm: &mut EFrameDisplayManager, tm: &mu
                             let _ = emuc.sender.send(FrontendThreadEvent::QuitRequested);
                             log::warn!("Emulator quit requested after delay {}", delay);
                         }
+                        ServiceEvent::GuestFileTransferComplete {
+                            filename,
+                            data,
+                            non_interactive,
+                        } => {
+                            if non_interactive {
+                                match save_non_interactive_file(&emuc.rm, &filename, &data) {
+                                    Ok(path) => log::info!("Guest file transferred non-interactively to '{}'", path),
+                                    Err(error) => log::error!("Non-interactive guest file transfer failed: {}", error),
+                                }
+                            }
+                            else {
+                                emuc.gui.save_file_dialog(
+                                    FileSaveContext::guest_file(filename, data),
+                                    "Save File from Guest",
+                                    Vec::new(),
+                                );
+                            }
+                        }
+                        ServiceEvent::HostFileTransferRequested { filename } => {
+                            if let Some(filename) = filename {
+                                match load_non_interactive_file(&mut emuc.rm, &filename) {
+                                    Ok((filename, data)) => emuc.machine.stage_service_host_file(filename, data),
+                                    Err(NonInteractiveFileLoadError::NotFound(error)) => {
+                                        log::warn!("Non-interactive host file was not found: {}", error);
+                                        emuc.machine.service_host_file_not_found();
+                                    }
+                                    Err(NonInteractiveFileLoadError::Other(error)) => {
+                                        log::error!("Non-interactive host file transfer failed: {}", error);
+                                        emuc.machine.abort_service_host_file_request();
+                                    }
+                                }
+                            }
+                            else {
+                                emuc.gui.open_file_dialog(
+                                    FileOpenContext::ServiceHostFile {
+                                        fsc: FileSelectionContext::Uninitialized,
+                                    },
+                                    "Receive File from Host",
+                                    Vec::new(),
+                                    true,
+                                );
+                            }
+                        }
                         _ => {}
                     },
                 }
@@ -344,9 +393,7 @@ pub fn process_update(emu: &mut Emulator, dm: &mut EFrameDisplayManager, tm: &mu
                             PresentableSoundAction::StartLoop { key, intro, looping } => {
                                 sound_interface.start_loop(key, intro, looping)
                             }
-                            PresentableSoundAction::StopLoop { key, outro } => {
-                                sound_interface.stop_loop(key, outro)
-                            }
+                            PresentableSoundAction::StopLoop { key, outro } => sound_interface.stop_loop(key, outro),
                         };
 
                         if let Err(err) = result {

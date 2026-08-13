@@ -112,6 +112,9 @@ icon.png
 # Disk dumps
 /install/*.img
 
+# File transfer resource
+/install/mount/file_transfer/*
+
 # Frontend files
 /frontends/martypc_web_player_wgpu/web/bin
 
@@ -123,6 +126,8 @@ icon.png
 /tree.txt
 /test-gen/
 /exo_demo/
-/util/mquit/mquit.com
+
+/util/build_utils.bat
+/util/**/*.com
 
 

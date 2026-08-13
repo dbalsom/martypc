@@ -78,10 +78,10 @@ impl ResourceManager {
         resource: &str,
         subdir: Option<&OsStr>,
         multipath: bool,
-        resursive: bool,
+        recursive: bool,
         extension_filter: Option<Vec<OsString>>,
     ) -> Result<Vec<ResourceItem>, Error> {
-        let mut items = if resursive {
+        let mut items = if recursive {
             self.enumerate_items_recursive(multipath, resource, subdir)?
         }
         else {
@@ -145,21 +145,7 @@ impl ResourceManager {
 
         let item_unfiltered_ct = items.len();
 
-        // If extension filter was provided, filter items by extension
-        if let Some(extension_filter) = extension_filter {
-            items = items
-                .iter()
-                .filter_map(|item| {
-                    if let Some(extension) = item.location.extension() {
-                        if extension_filter.contains(&extension.to_ascii_lowercase()) {
-                            return Some(item);
-                        }
-                    }
-                    return None;
-                })
-                .cloned()
-                .collect::<Vec<_>>();
-        }
+        items.retain(|item| Self::item_matches_extension(item, extension_filter.as_deref()));
 
         // Convert paths to relative paths
         let path_prefix = self
@@ -219,20 +205,27 @@ impl ResourceManager {
         let mut item_map = MartyHashMap::default();
 
         for root in roots.iter() {
+            let canonical_root = root.canonicalize()?;
             let ignore_dirs = self.ignore_dirs.iter().map(|s| s.as_str()).collect();
-            ResourceManager::visit_dirs(&root, &mut visited, &ignore_dirs, &mut |entry: &fs::DirEntry| {
-                let path = entry.path();
-                let resource_item = ResourceItem {
-                    rtype: ResourceItemType::File(ResourceFsType::Native),
-                    location: entry.path(),
-                    relative_path: None,
-                    filename_only: Some(entry.path().file_name().unwrap_or_default().to_os_string()),
-                    flags: 0,
-                    size: Some(entry.path().metadata().unwrap().len()),
-                };
+            ResourceManager::visit_dirs(
+                root,
+                &canonical_root,
+                &mut visited,
+                &ignore_dirs,
+                &mut |entry: &fs::DirEntry| {
+                    let path = entry.path();
+                    let resource_item = ResourceItem {
+                        rtype: ResourceItemType::File(ResourceFsType::Native),
+                        location: entry.path(),
+                        relative_path: None,
+                        filename_only: Some(entry.path().file_name().unwrap_or_default().to_os_string()),
+                        flags: 0,
+                        size: Some(entry.path().metadata().unwrap().len()),
+                    };
 
-                item_map.insert(path.clone(), resource_item);
-            })?
+                    item_map.insert(path.clone(), resource_item);
+                },
+            )?
         }
 
         for overlay in &mut self.overlays {
@@ -279,21 +272,28 @@ impl ResourceManager {
         Ok(items)
     }
 
-    pub fn enumerate_items_from_path(&self, path: &PathBuf) -> Result<Vec<ResourceItem>, Error> {
+    pub fn enumerate_items_from_path(&self, path: &Path) -> Result<Vec<ResourceItem>, Error> {
         let mut items: Vec<ResourceItem> = Vec::new();
         let mut visited = HashSet::new();
 
         let ignore_dirs = self.ignore_dirs.iter().map(|s| s.as_str()).collect();
-        ResourceManager::visit_dirs(&path, &mut visited, &ignore_dirs, &mut |entry: &fs::DirEntry| {
-            items.push(ResourceItem {
-                rtype: ResourceItemType::File(ResourceFsType::Native),
-                location: entry.path(),
-                relative_path: None,
-                filename_only: Some(entry.path().file_name().unwrap_or_default().to_os_string()),
-                flags: 0,
-                size: Some(entry.path().metadata().unwrap().len()),
-            });
-        })?;
+        let canonical_root = path.canonicalize()?;
+        ResourceManager::visit_dirs(
+            path,
+            &canonical_root,
+            &mut visited,
+            &ignore_dirs,
+            &mut |entry: &fs::DirEntry| {
+                items.push(ResourceItem {
+                    rtype: ResourceItemType::File(ResourceFsType::Native),
+                    location: entry.path(),
+                    relative_path: None,
+                    filename_only: Some(entry.path().file_name().unwrap_or_default().to_os_string()),
+                    flags: 0,
+                    size: Some(entry.path().metadata().unwrap().len()),
+                });
+            },
+        )?;
 
         Ok(items)
     }
@@ -340,6 +340,7 @@ impl ResourceManager {
 
     fn visit_dirs(
         dir: &Path,
+        root: &Path,
         visited: &mut HashSet<PathBuf>,
         ignore_dirs: &Vec<&str>,
         cb: &mut dyn FnMut(&fs::DirEntry),
@@ -351,7 +352,9 @@ impl ResourceManager {
 
                 // Resolve the symlink (if any) and check if it's already visited
                 let canonical_path = fs::canonicalize(&path)?;
-                if visited.contains(&canonical_path) {
+
+                // Enforce that path starts with root to avoid traversal
+                if !canonical_path.starts_with(root) || visited.contains(&canonical_path) {
                     continue;
                 }
 
@@ -361,7 +364,7 @@ impl ResourceManager {
                 visited.insert(canonical_path);
 
                 if path.is_dir() {
-                    ResourceManager::visit_dirs(&path, visited, ignore_dirs, cb)?;
+                    ResourceManager::visit_dirs(&path, root, visited, ignore_dirs, cb)?;
                 }
                 else {
                     cb(&entry);
@@ -372,7 +375,7 @@ impl ResourceManager {
     }
 
     /// Converts a list of resource items into a tree structure.
-    pub fn items_to_tree(&self, resource: &str, items: &Vec<ResourceItem>) -> Result<TreeNode, Error> {
+    pub fn items_to_tree(&self, resource: &str, items: &[ResourceItem]) -> Result<TreeNode, Error> {
         // TODO: support multipath
         let root_path = self
             .pm
@@ -391,7 +394,7 @@ impl ResourceManager {
         build_tree(String::from(root_path.to_string_lossy()), items, skip_size)
     }
 
-    pub fn items_to_tree_raw(&self, items: &Vec<ResourceItem>) -> Result<TreeNode, Error> {
+    pub fn items_to_tree_raw(&self, items: &[ResourceItem]) -> Result<TreeNode, Error> {
         build_tree(".".to_string(), items, 0)
     }
 
@@ -409,13 +412,74 @@ impl ResourceManager {
     }
 
     /// Returns whether the specified path is a directory.
-    pub fn path_is_dir(path: &PathBuf) -> bool {
+    pub fn path_is_dir(path: &Path) -> bool {
         let canonical_path = path.canonicalize();
         if let Ok(path) = canonical_path {
             //log::debug!("Path: {} dir?: {}", path.to_str().unwrap_or_default(), path.is_dir());
             return path.is_dir();
         }
         false
+    }
+
+    /// Verify a [ResourceItem] is genuinely a member of the requested resource
+    pub(crate) fn resource_file_is_contained(&self, resource: &str, item: &ResourceItem) -> Result<bool, Error> {
+        let root = self
+            .pm
+            .resource_path(resource)
+            .ok_or_else(|| anyhow::anyhow!("Resource path not found: {resource}"))?;
+
+        match item.rtype {
+            ResourceItemType::File(ResourceFsType::Native) => {
+                let root = root.canonicalize()?;
+                let file = item.location.canonicalize()?;
+                Ok(file.starts_with(root) && file.is_file())
+            }
+            ResourceItemType::File(ResourceFsType::Overlay(_)) => {
+                let recursive = self.pm.resource_recurse(resource).unwrap_or(false);
+                Ok(Self::path_is_within_resource_scope(&item.location, &root, recursive))
+            }
+            ResourceItemType::Directory(_) => Ok(false),
+        }
+    }
+
+    /// Construct a path for creating or replacing a file directly within a resource root.
+    ///
+    /// The filename must be a single path component. Existing symbolic links are rejected so
+    /// that opening the returned path cannot follow a guest-selected name outside the resource.
+    pub fn resolve_resource_path_for_write(
+        &self,
+        resource: &str,
+        file_name: impl AsRef<Path>,
+    ) -> Result<PathBuf, Error> {
+        let file_name = Self::validate_resource_filename(file_name.as_ref())?;
+        let root = self
+            .pm
+            .resource_path(resource)
+            .ok_or_else(|| anyhow::anyhow!("Resource path not found: {resource}"))?
+            .canonicalize()?;
+        let path = root.join(file_name);
+
+        match fs::symlink_metadata(&path) {
+            Ok(metadata) => {
+                if metadata.file_type().is_symlink() {
+                    return Err(anyhow::anyhow!(
+                        "Refusing to write through a symbolic link in resource '{resource}': {}",
+                        path.display()
+                    ));
+                }
+                let canonical_path = path.canonicalize()?;
+                if !canonical_path.starts_with(&root) || !canonical_path.is_file() {
+                    return Err(anyhow::anyhow!(
+                        "Resource file is outside its configured root: {}",
+                        path.display()
+                    ));
+                }
+            }
+            Err(error) if error.kind() == std::io::ErrorKind::NotFound => {}
+            Err(error) => return Err(error.into()),
+        }
+
+        Ok(path)
     }
 
     /// Mount an ArchiveOverlay from a specified path, or return an error.

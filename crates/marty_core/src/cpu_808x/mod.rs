@@ -579,7 +579,8 @@ pub struct Intel808x {
     reset_vector: CpuAddress,
     reset_queue:  Option<Vec<u8>>,
 
-    enable_service_interrupt: bool,
+    service_interrupt_vector: Option<u8>,
+    service_interrupt_enabled: bool,
     trace_enabled: bool,
     trace_mode: TraceMode,
     trace_logger: TraceLogger,
@@ -869,6 +870,7 @@ impl Intel808x {
 
     pub fn reset(&mut self) {
         log::debug!("CPU Resetting...");
+
         /*
         let trace_logger = std::mem::replace(&mut self.trace_logger, TraceLogger::None);
 

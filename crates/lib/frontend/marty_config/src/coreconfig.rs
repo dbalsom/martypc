@@ -71,6 +71,12 @@ impl CoreConfig for ConfigFileParams {
     fn get_machine_turbo(&self) -> bool {
         self.machine.turbo
     }
+    fn get_service_interrupt(&self) -> Option<u8> {
+        self.machine.service_interrupt
+    }
+    fn get_service_interrupt_gate(&self) -> bool {
+        self.machine.service_interrupt_gate
+    }
     //fn get_keyboard_type(&self) -> Option<KeyboardType> { self.machine.keyboard_type }
     fn get_keyboard_layout(&self) -> Option<String> {
         self.machine.input.keyboard_layout.clone()

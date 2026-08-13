@@ -102,10 +102,6 @@ impl Emulator {
         self.machine.set_cpu_option(CpuOption::OffRailsDetection(
             self.config.machine.cpu.off_rails_detection.unwrap_or(false),
         ));
-        self.machine.set_cpu_option(CpuOption::EnableServiceInterrupt(
-            self.config.machine.cpu.service_interrupt.unwrap_or(false),
-        ));
-
         // Load program binary if one was specified in config options
         if let Some(prog_bin) = self.config.emulator.run_bin.clone() {
             if let Some(prog_seg) = self.config.emulator.run_bin_seg {
