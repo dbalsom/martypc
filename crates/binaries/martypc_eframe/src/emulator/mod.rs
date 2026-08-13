@@ -520,7 +520,7 @@ impl Emulator {
         vhd_os_name: &OsStr,
         vhd_idx: Option<usize>,
     ) -> Result<(), Error> {
-        match VirtualHardDisk::parse(Box::new(vhd_file), false) {
+        match VirtualHardDisk::parse(vhd_file, false) {
             Ok(vhd) => {
                 if let Some(hdc) = self.machine.hdc_mut() {
                     match hdc.set_vhd(drive_idx, vhd) {
