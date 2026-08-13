@@ -263,7 +263,7 @@ impl GuiState {
                 });
             }
             ui.add_enabled_ui(!self.machine_state.is_on(), |ui| {
-                ui.menu_button("Load image", |ui| {
+                ui.menu_button("Quick Access Image...", |ui| {
                     self.hdd_tree_menu.draw(ui, drive_idx, true, &mut |image_idx| {
                         self.event_queue.send(GuiEvent::LoadVHD(drive_idx, image_idx));
                     });
