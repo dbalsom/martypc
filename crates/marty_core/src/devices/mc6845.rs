@@ -785,26 +785,26 @@ impl Crtc6845 {
     /// Tick the CRTC to the next character.
     pub fn tick(&mut self) -> (&CrtcStatus, u16) {
         // Evaluate coincidence circuits.
-        let _c5_r5 = self.vtac_c5 == self.reg[VerticalTotalAdjustR5];
-        let _c3l_r3 = self.hsc_c3l == self.reg[SyncWidthR3];
+        //let _c5_r5 = self.vtac_c5 == self.reg[VerticalTotalAdjustR5];
+        //let _c3l_r3 = self.hsc_c3l == self.reg[SyncWidthR3];
         // C4 comparisons
-        let _c4_r7 = self.vcc_c4 == self.reg[VerticalSyncR7];
-        let _c4_r6 = self.vcc_c4 == self.reg[VerticalDisplayedR6];
+        //let _c4_r7 = self.vcc_c4 == self.reg[VerticalSyncR7];
+        //let _c4_r6 = self.vcc_c4 == self.reg[VerticalDisplayedR6];
         let c4_r4 = self.vcc_c4 == self.reg[VerticalTotalR4];
 
         // C0 comparisons
         let c0_r0 = self.hcc_c0 == self.reg[HorizontalTotalR0];
         let c0_r0_half = self.hcc_c0 == (self.reg[HorizontalTotalR0] >> 1);
-        let _c0_r2 = self.hcc_c0 == self.reg[HorizontalSyncPositionR2];
-        let _c0_r1 = self.hcc_c0 == self.reg[HorizontalDisplayedR1];
+        //let _c0_r2 = self.hcc_c0 == self.reg[HorizontalSyncPositionR2];
+        //let _c0_r1 = self.hcc_c0 == self.reg[HorizontalDisplayedR1];
         // C9 comparisons
-        let c9i_r9 = self.vlc_c9i == (self.reg[MaximumScanlineAddressR9] >> 1);
+        //let _c9i_r9 = self.vlc_c9i == (self.reg[MaximumScanlineAddressR9] >> 1);
         let c9_r9_half = self.vlc_c9 == (self.reg[MaximumScanlineAddressR9] >> 1);
         let c9_r9 = self.vlc_c9 == self.reg[MaximumScanlineAddressR9];
         let c9_ivm_split = self.interlaced_mode.is_interlaced_video() && c9_r9_half;
 
-        let _c9_r11 = self.vlc_c9 == self.reg[CursorEndLine];
-        let _c9_r10 = self.vlc_c9 == self.cursor_start_line; // Coincidence circuit is 5 bit.
+        //let _c9_r11 = self.vlc_c9 == self.reg[CursorEndLine];
+        //let _c9_r10 = self.vlc_c9 == self.cursor_start_line; // Coincidence circuit is 5 bit.
 
         let _vma_cursor = self.vma == self.cursor_address;
 

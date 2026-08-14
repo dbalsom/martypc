@@ -248,27 +248,25 @@ impl FloppyManager {
         self.image_map.clear();
 
         // Scan through all entries in the directory and find all files with matching extension
-        for entry in dir {
-            if let Ok(entry) = entry {
-                if entry.path().is_file() {
-                    if let Some(extension) = entry.path().extension() {
-                        if self.extensions.contains(&extension.to_ascii_lowercase()) {
-                            println!(
-                                "Found floppy image: {:?} size: {}",
-                                entry.path(),
-                                entry.metadata().unwrap().len()
-                            );
+        for entry in dir.flatten() {
+            if entry.path().is_file() {
+                if let Some(extension) = entry.path().extension() {
+                    if self.extensions.contains(&extension.to_ascii_lowercase()) {
+                        println!(
+                            "Found floppy image: {:?} size: {}",
+                            entry.path(),
+                            entry.metadata().unwrap().len()
+                        );
 
-                            let idx = self.image_vec.len();
-                            self.image_vec.push(FloppyImage {
-                                idx,
-                                name: entry.file_name(),
-                                path: entry.path(),
-                                size: entry.metadata().unwrap().len(),
-                            });
+                        let idx = self.image_vec.len();
+                        self.image_vec.push(FloppyImage {
+                            idx,
+                            name: entry.file_name(),
+                            path: entry.path(),
+                            size: entry.metadata().unwrap().len(),
+                        });
 
-                            self.image_map.insert(entry.file_name(), idx);
-                        }
+                        self.image_map.insert(entry.file_name(), idx);
                     }
                 }
             }
@@ -333,10 +331,10 @@ impl FloppyManager {
         };
 
         // TODO: use regex instead of simple extension check for kryoflux
-        if floppy_path.extension().unwrap().to_ascii_lowercase() == "raw" {
+        if floppy_path.extension().unwrap().eq_ignore_ascii_case("raw") {
             Ok(FloppyImageSource::KryoFluxSet(floppy_vec, floppy_path))
         }
-        else if floppy_path.extension().unwrap().to_ascii_lowercase() == "zip" {
+        else if floppy_path.extension().unwrap().eq_ignore_ascii_case("zip") {
             // Determine whether we should treat the zip as a mountable archive or a compressed image.
             // The current logic is to treat it as a mountable archive, unless:
             // - The zip contains a single file with a known image extension
@@ -459,7 +457,7 @@ impl FloppyManager {
 
             if let Some(src_root_node) = src_root_node_opt {
                 if let Err(err) = build_autofloppy_dir(
-                    &src_root_node,
+                    src_root_node,
                     dst_root_dir,
                     rm,
                     &files_visited,
