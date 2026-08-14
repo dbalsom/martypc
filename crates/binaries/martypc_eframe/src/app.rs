@@ -664,6 +664,28 @@ impl MartyApp {
             }
 
             let dm = self.dm.as_mut().unwrap();
+
+            #[cfg(target_arch = "wasm32")]
+            {
+                let browser_captured = crate::wasm::util::canvas_has_pointer_lock();
+                if browser_captured != emu.mouse_data.is_captured {
+                    emu.mouse_data.is_captured = browser_captured;
+
+                    let dtc = dm.main_display_target();
+                    if let Ok(mut dtc_ref) = dtc.write() {
+                        dtc_ref.set_grabbed(browser_captured, emu.mouse_data.capture_mode);
+                    }
+
+                    let message = if browser_captured {
+                        "Mouse captured! Middle-click to release."
+                    }
+                    else {
+                        "Mouse released!"
+                    };
+                    emu.gui.toasts().info(message).duration(Some(NORMAL_NOTIFICATION_TIME));
+                }
+            }
+
             // Process timestep.
             process_update(emu, dm, &mut self.tm);
             handle_thread_event(emu, ctx);
@@ -738,7 +760,7 @@ impl MartyApp {
                 &mut emu.gui,
                 !self.hide_menu,
                 fill_color,
-                |ctx, gui, capture_state| {
+                |ctx, _gui, _capture_state| {
                     if let Some(DisplayTargetType::GuiWidget) = dm.display_type(DtHandle::MAIN) {
                         let dtc = dm.main_display_target();
                         let mut dtc_lock = dtc.write();
@@ -801,12 +823,15 @@ impl MartyApp {
                                         ctx.send_viewport_cmd(ViewportCommand::CursorGrab(GRAB_MODE));
                                         ctx.send_viewport_cmd(ViewportCommand::CursorVisible(false));
 
-                                        *capture_state = Some(true);
-                                        dtc_ref.set_grabbed(true, emu.mouse_data.capture_mode);
+                                        #[cfg(not(target_arch = "wasm32"))]
+                                        {
+                                            *_capture_state = Some(true);
+                                            dtc_ref.set_grabbed(true, emu.mouse_data.capture_mode);
 
-                                        gui.toasts()
-                                            .info("Mouse captured! Middle-click to release.")
-                                            .duration(Some(NORMAL_NOTIFICATION_TIME));
+                                            _gui.toasts()
+                                                .info("Mouse captured! Middle-click to release.")
+                                                .duration(Some(NORMAL_NOTIFICATION_TIME));
+                                        }
                                     }
                                 }
                                 else if ungrab {
@@ -814,12 +839,15 @@ impl MartyApp {
                                     ctx.send_viewport_cmd(ViewportCommand::CursorGrab(CursorGrab::None));
                                     ctx.send_viewport_cmd(ViewportCommand::CursorVisible(true));
 
-                                    *capture_state = Some(false);
-                                    dtc_ref.set_grabbed(false, emu.mouse_data.capture_mode);
+                                    #[cfg(not(target_arch = "wasm32"))]
+                                    {
+                                        *_capture_state = Some(false);
+                                        dtc_ref.set_grabbed(false, emu.mouse_data.capture_mode);
 
-                                    gui.toasts()
-                                        .info("Mouse released!")
-                                        .duration(Some(NORMAL_NOTIFICATION_TIME));
+                                        _gui.toasts()
+                                            .info("Mouse released!")
+                                            .duration(Some(NORMAL_NOTIFICATION_TIME));
+                                    }
                                 }
                             });
                         }
@@ -828,7 +856,7 @@ impl MartyApp {
                         }
                     }
                 },
-                |ui, gui, menu_height, capture_state| {
+                |ui, _gui, menu_height, _capture_state| {
                     self.menu_height = menu_height;
                     if let Some(DisplayTargetType::WindowBackground) = dm.display_type(DtHandle::MAIN) {
                         let dtc = dm.main_display_target();
@@ -862,12 +890,15 @@ impl MartyApp {
                                 ctx.send_viewport_cmd(ViewportCommand::CursorGrab(GRAB_MODE));
                                 ctx.send_viewport_cmd(ViewportCommand::CursorVisible(false));
 
-                                *capture_state = Some(true);
-                                dtc_ref.set_grabbed(true, emu.mouse_data.capture_mode);
+                                #[cfg(not(target_arch = "wasm32"))]
+                                {
+                                    *_capture_state = Some(true);
+                                    dtc_ref.set_grabbed(true, emu.mouse_data.capture_mode);
 
-                                gui.toasts()
-                                    .info("Mouse captured! Middle-click to release.")
-                                    .duration(Some(NORMAL_NOTIFICATION_TIME));
+                                    _gui.toasts()
+                                        .info("Mouse captured! Middle-click to release.")
+                                        .duration(Some(NORMAL_NOTIFICATION_TIME));
+                                }
                             }
                         }
                         else if ungrab {
@@ -875,12 +906,15 @@ impl MartyApp {
                             ctx.send_viewport_cmd(ViewportCommand::CursorGrab(CursorGrab::None));
                             ctx.send_viewport_cmd(ViewportCommand::CursorVisible(true));
 
-                            *capture_state = Some(false);
-                            dtc_ref.set_grabbed(false, emu.mouse_data.capture_mode);
+                            #[cfg(not(target_arch = "wasm32"))]
+                            {
+                                *_capture_state = Some(false);
+                                dtc_ref.set_grabbed(false, emu.mouse_data.capture_mode);
 
-                            gui.toasts()
-                                .info("Mouse released!")
-                                .duration(Some(NORMAL_NOTIFICATION_TIME));
+                                _gui.toasts()
+                                    .info("Mouse released!")
+                                    .duration(Some(NORMAL_NOTIFICATION_TIME));
+                            }
                         }
                     }
                 },

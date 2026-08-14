@@ -41,9 +41,14 @@
       <sourceFolder url="file://$MODULE_DIR$/crates/lib/backend/display_backend_eframe_glow/src" isTestSource="false" />
       <sourceFolder url="file://$MODULE_DIR$/crates/lib/frontend/marty_scaler_glow/src" isTestSource="false" />
       <sourceFolder url="file://$MODULE_DIR$/crates/lib/frontend/marty_egui_common/src" isTestSource="false" />
+      <sourceFolder url="file://$MODULE_DIR$/crates/binaries/build_vhd/src" isTestSource="false" />
+      <sourceFolder url="file://$MODULE_DIR$/crates/binaries/marty_vhd_cli/src" isTestSource="false" />
+      <sourceFolder url="file://$MODULE_DIR$/crates/lib/marty_vhd/src" isTestSource="false" />
+      <sourceFolder url="file://$MODULE_DIR$/crates/lib/marty_vhd/tests" isTestSource="true" />
+      <excludeFolder url="file://$MODULE_DIR$/.venv" />
       <excludeFolder url="file://$MODULE_DIR$/target" />
     </content>
-    <orderEntry type="inheritedJdk" />
+    <orderEntry type="jdk" jdkName="Python 3.14 (marty)" jdkType="Python SDK" />
     <orderEntry type="sourceFolder" forTests="false" />
   </component>
 </module>

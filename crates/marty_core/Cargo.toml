@@ -30,7 +30,7 @@ serde_with = "2.1.0"
 strum.workspace = true
 strum_macros.workspace = true
 toml = "0.5.10"
-uuid = { version = "1.1.2", features = ["v4"] }
+uuid = { version = "1.1.2", features = ["v4", "js"] }
 anyhow.workspace = true
 serialport = { workspace = true, optional = true }
 enum_dispatch.workspace = true

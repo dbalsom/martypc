@@ -37,6 +37,44 @@ use display_manager_eframe::EFrameDisplayManager;
 use eframe::WebKeyboardEvent;
 use marty_common::types::keys::MartyKey;
 
+/// Returns whether MartyPC should suppress the browser's default action for a raw key event.
+pub fn should_prevent_default(event: &WebKeyboardEvent) -> bool {
+    let code = event.key.as_str();
+    let modifiers = event.modifiers;
+
+    // Suppress every modified key combination. The browser reports the Windows key as Meta;
+    // match the key itself as its modifier flag may not be set on the initial keydown event.
+    if !modifiers.is_none() || matches!(code, "MetaLeft" | "MetaRight") {
+        return true;
+    }
+
+    // Suppress browser actions for keys that need to reach the emulated machine unchanged.
+    // F12 is intentionally left available for opening the browser developer tools.
+    matches!(
+        code,
+        "Escape"
+            | "Tab"
+            | "Space"
+            | "PageDown"
+            | "PageUp"
+            | "Home"
+            | "End"
+            | "F1"
+            | "F2"
+            | "F3"
+            | "F4"
+            | "F5"
+            | "F6"
+            | "F7"
+            | "F9"
+            | "F10"
+            | "F11"
+            | "Slash"
+            | "Quote"
+            | "PrintScreen"
+    )
+}
+
 pub fn handle_web_key_event(
     emu: &mut Emulator,
     _dm: &mut EFrameDisplayManager,

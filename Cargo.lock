@@ -309,7 +309,7 @@ dependencies = [
  "objc2-foundation 0.3.2",
  "parking_lot",
  "percent-encoding",
- "windows-sys 0.52.0",
+ "windows-sys 0.59.0",
  "x11rb",
 ]
 
@@ -318,7 +318,7 @@ name = "arduinox86_client"
 version = "0.3.0"
 source = "git+https://github.com/dbalsom/arduino808x#2ccae6470ef2cc12e247b74e3ad2d226b7f74936"
 dependencies = [
- "binrw 0.15.1",
+ "binrw 0.15.2",
  "log",
  "modular-bitfield 0.11.2",
  "rand 0.9.0",
@@ -333,7 +333,7 @@ name = "arduinox86_client"
 version = "0.3.0"
 source = "git+https://github.com/dbalsom/arduinoX86#2ccae6470ef2cc12e247b74e3ad2d226b7f74936"
 dependencies = [
- "binrw 0.15.1",
+ "binrw 0.15.2",
  "log",
  "modular-bitfield 0.11.2",
  "rand 0.9.0",
@@ -679,12 +679,12 @@ dependencies = [
 
 [[package]]
 name = "binrw"
-version = "0.15.1"
+version = "0.15.2"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "d53195f985e88ab94d1cc87e80049dd2929fd39e4a772c5ae96a7e5c4aad3642"
+checksum = "6ad120d555272286c1017d25165ab8bd74806f13fc85b258484ec7e4ce75458f"
 dependencies = [
  "array-init",
- "binrw_derive 0.15.1",
+ "binrw_derive 0.15.2",
  "bytemuck",
 ]
 
@@ -703,9 +703,9 @@ dependencies = [
 
 [[package]]
 name = "binrw_derive"
-version = "0.15.1"
+version = "0.15.2"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "5910da05ee556b789032c8ff5a61fb99239580aa3fd0bfaa8f4d094b2aee00ad"
+checksum = "6df92e0e9baae4dc82c7bad7715ca40c0a5c71539057bf2ea04a5c29c980410b"
 dependencies = [
  "either",
  "owo-colors 4.3.0",
@@ -1078,7 +1078,7 @@ version = "3.0.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "fde0e0ec90c9dfb3b4b1a0891a7dcd0e2bffde2f7efed5fe7c9bb00e5bfb915e"
 dependencies = [
- "windows-sys 0.52.0",
+ "windows-sys 0.59.0",
 ]
 
 [[package]]
@@ -1537,7 +1537,7 @@ dependencies = [
 [[package]]
 name = "eframe"
 version = "0.34.2"
-source = "git+https://github.com/dbalsom/egui_martypc.git?branch=0.34.2_raw_web_hook#3485fb648eb3c84e7c81122b2fbdb026fb8657c6"
+source = "git+https://github.com/dbalsom/egui_martypc.git?branch=wasm-pointer-lock#92e7d93548e61619a226cf21bbf691ce558ef3d3"
 dependencies = [
  "ahash",
  "bytemuck",
@@ -1927,7 +1927,7 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "33d852cb9b869c2a9b3df2f71a3074817f01e1844f839a144f5fcef059a4eb5d"
 dependencies = [
  "libc",
- "windows-sys 0.52.0",
+ "windows-sys 0.59.0",
 ]
 
 [[package]]
@@ -1987,6 +1987,16 @@ name = "fastrand"
 version = "2.3.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "37909eebbb50d72f9059c3b6d82c0463f2ff062c9e95845c43a6c9c0355411be"
+
+[[package]]
+name = "fatfs"
+version = "0.4.0"
+source = "git+https://github.com/dbalsom/fluxfox_fat.git?branch=attributes#8b852390eade777af36d1913310290e2a648b61b"
+dependencies = [
+ "bitflags 2.11.1",
+ "chrono",
+ "log",
+]
 
 [[package]]
 name = "fatfs"
@@ -2055,7 +2065,7 @@ dependencies = [
  "bytemuck",
  "dyn-clone",
  "env_logger",
- "fatfs",
+ "fatfs 0.4.0 (git+https://github.com/dbalsom/fluxfox_fat.git?branch=bpb_fix)",
  "flate2",
  "getrandom 0.2.15",
  "histogram",
@@ -2274,6 +2284,17 @@ dependencies = [
  "wasi 0.13.3+wasi-0.2.2",
  "wasm-bindgen",
  "windows-targets 0.52.6",
+]
+
+[[package]]
+name = "getrandom"
+version = "0.4.3"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "300e883d756b2e4ec94e02791f39b04b522276138852cfc41d9fb7e904106099"
+dependencies = [
+ "cfg-if",
+ "libc",
+ "r-efi",
 ]
 
 [[package]]
@@ -2808,7 +2829,7 @@ checksum = "e19b23d53f35ce9f56aebc7d1bb4e6ac1e9c0db7ac85c8d1760c04379edced37"
 dependencies = [
  "hermit-abi",
  "libc",
- "windows-sys 0.52.0",
+ "windows-sys 0.59.0",
 ]
 
 [[package]]
@@ -2997,7 +3018,7 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "fc2f4eb4bc735547cfed7c0a4922cbd04a4655978c09b54f1f7b228750664c34"
 dependencies = [
  "cfg-if",
- "windows-targets 0.48.5",
+ "windows-targets 0.52.6",
 ]
 
 [[package]]
@@ -3289,7 +3310,7 @@ dependencies = [
  "cfg-if",
  "crossbeam-channel",
  "egui 0.34.2",
- "fatfs",
+ "fatfs 0.4.0 (git+https://github.com/dbalsom/fluxfox_fat.git?branch=bpb_fix)",
  "fluxfox",
  "gilrs",
  "hound",
@@ -3342,6 +3363,27 @@ dependencies = [
  "marty_frontend_common",
  "ultraviolet",
  "wgpu",
+]
+
+[[package]]
+name = "marty_vhd"
+version = "0.1.0"
+dependencies = [
+ "anyhow",
+ "binrw 0.15.2",
+ "fatfs 0.4.0 (git+https://github.com/dbalsom/fluxfox_fat.git?branch=attributes)",
+ "tempfile",
+ "thiserror 2.0.18",
+ "uuid",
+]
+
+[[package]]
+name = "marty_vhd_cli"
+version = "0.1.0"
+dependencies = [
+ "anyhow",
+ "bpaf",
+ "marty_vhd",
 ]
 
 [[package]]
@@ -3405,6 +3447,7 @@ dependencies = [
  "marty_egui",
  "marty_egui_eframe",
  "marty_frontend_common",
+ "marty_vhd",
  "marty_videocard_renderer",
  "marty_web_helpers",
  "rfd",
@@ -4593,6 +4636,12 @@ dependencies = [
 ]
 
 [[package]]
+name = "r-efi"
+version = "6.0.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "f8dcc9c7d52a811697d2151c701e0d08956f92b0e24136cf4cf27b57a6a0d9bf"
+
+[[package]]
 name = "rand"
 version = "0.8.5"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -4874,7 +4923,7 @@ dependencies = [
  "errno",
  "libc",
  "linux-raw-sys 0.4.15",
- "windows-sys 0.52.0",
+ "windows-sys 0.59.0",
 ]
 
 [[package]]
@@ -4887,7 +4936,7 @@ dependencies = [
  "errno",
  "libc",
  "linux-raw-sys 0.12.1",
- "windows-sys 0.52.0",
+ "windows-sys 0.61.2",
 ]
 
 [[package]]
@@ -5331,16 +5380,15 @@ dependencies = [
 
 [[package]]
 name = "tempfile"
-version = "3.15.0"
+version = "3.27.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "9a8a559c81686f576e8cd0290cd2a24a2a9ad80c98b3478856500fcbd7acd704"
+checksum = "32497e9a4c7b38532efcdebeef879707aa9f794296a4f0244f6f69e9bc8574bd"
 dependencies = [
- "cfg-if",
  "fastrand",
- "getrandom 0.2.15",
+ "getrandom 0.3.1",
  "once_cell",
- "rustix 0.38.44",
- "windows-sys 0.52.0",
+ "rustix 1.1.4",
+ "windows-sys 0.61.2",
 ]
 
 [[package]]
@@ -5692,12 +5740,14 @@ checksum = "06abde3611657adf66d383f00b093d7faecc7fa57071cce2578660c9f1010821"
 
 [[package]]
 name = "uuid"
-version = "1.12.1"
+version = "1.24.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "b3758f5e68192bb96cc8f9b7e2c2cfdabb435499a28499a42f8f984092adad4b"
+checksum = "bf3923a6f5c4c6382e0b653c4117f48d631ea17f38ed86e2a828e6f7412f5239"
 dependencies = [
- "getrandom 0.2.15",
- "serde",
+ "getrandom 0.4.3",
+ "js-sys",
+ "serde_core",
+ "wasm-bindgen",
 ]
 
 [[package]]
@@ -6219,7 +6269,7 @@ version = "0.1.9"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "cf221c93e13a30d793f7645a0e7762c55d169dbb0a49671918a2319d289b10bb"
 dependencies = [
- "windows-sys 0.52.0",
+ "windows-sys 0.59.0",
 ]
 
 [[package]]

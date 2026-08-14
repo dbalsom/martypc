@@ -213,7 +213,12 @@ fn main() {
             canvas.set_attribute("style", "display:block;").unwrap();
 
             // Initialize the app
-            let web_options = eframe::WebOptions::default();
+            let web_options = eframe::WebOptions {
+                should_prevent_default_for_raw_key: Box::new(
+                    martypc_eframe::event_loop::web_keyboard::should_prevent_default,
+                ),
+                ..Default::default()
+            };
             let app = MartyApp::new(&mut ()).await;
             log::debug!("App created, emu is Some?: {}", app.emu.is_some());
 
@@ -249,6 +254,7 @@ fn main() {
 
     // Wait for user interaction
     let document = web_sys::window().expect("No window").document().expect("No document");
+    document.set_title(&format!("MartyPC Web Edition {}", version_string()));
 
     let start_logo = document
         .get_element_by_id("start_logo")

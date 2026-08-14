@@ -7,6 +7,9 @@ Thumbs.db
 # Rust compiler output
 /target
 
+# Python virtual environment
+/.venv/
+
 # Visual Studio Code editor files
 #/.vscode
 /.vscode/settings.json

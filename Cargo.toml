@@ -11,6 +11,8 @@ members = [
     "crates/lib/frontend/marty_egui_common",
     "crates/lib/frontend/marty_config",
     "crates/lib/frontend/marty_web_helpers",
+    "crates/lib/marty_vhd",
+    "crates/binaries/marty_vhd_cli",
     "crates/binaries/martypc_headless",
     "crates/binaries/martypc_eframe",
     "crates/binaries/martypc_launcher"
@@ -33,6 +35,7 @@ bytemuck = "1.14"
 raw-window-handle = "0.6"
 thiserror = "2.0"
 anyhow = "1.0"
+bpaf = { version = "0.7", features = ["derive"] }
 log = "0.4.20"
 serde = { version = "1.0", features = ["derive"] }
 serde_derive = "1.0"
@@ -53,9 +56,12 @@ getrandom = "0.3"
 regex = "1.5"
 cfg-if = "1.0"
 binrw = "0.14"
+fatfs = { git = "https://github.com/dbalsom/fluxfox_fat.git", branch = "attributes", default-features = false, features = ["std", "chrono"] }
 rfd = "0.17.2"
 gilrs = { version = "0.11.1" }
 hound = "3.5.1"
+tempfile = "3.20"
+uuid = { version = "1.17", features = ["v4"] }
 
 # wasm workspace dependencies
 # ---------------------------------------------------------------------------------------------------------------------
@@ -96,7 +102,7 @@ default-features = false
 
 [workspace.dependencies.eframe]
 git = "https://github.com/dbalsom/egui_martypc.git"
-branch = "0.34.2_raw_web_hook"
+branch = "wasm-pointer-lock"
 default-features = false
 
 [workspace.dependencies.egui-winit]

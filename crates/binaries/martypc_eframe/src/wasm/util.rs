@@ -57,6 +57,13 @@ pub fn construct_full_url(relative_path: &str) -> String {
     url
 }
 
+pub(crate) fn canvas_has_pointer_lock() -> bool {
+    web_sys::window()
+        .and_then(|window| window.document())
+        .and_then(|document| document.pointer_lock_element())
+        .is_some_and(|element| element.id() == "the_canvas_id")
+}
+
 pub(crate) fn get_logo_image<'a>() -> Image<'a> {
     let url = construct_full_url("assets/fluxfox_logo.png");
     egui::Image::new(url).fit_to_original_size(1.0)
