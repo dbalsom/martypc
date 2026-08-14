@@ -36,7 +36,6 @@ use fluxfox::{DiskImageFileFormat, StandardFormat};
 use lazy_static::lazy_static;
 use std::{
     collections::{BTreeMap, HashMap, VecDeque},
-    ffi::OsString,
     hash::Hash,
     mem::Discriminant,
     path::PathBuf,
@@ -54,6 +53,7 @@ mod constants;
 mod image;
 
 mod file_dialogs;
+pub use file_dialogs::FileDialogFilter;
 mod glyphs;
 mod layouts;
 pub mod menu;
@@ -219,11 +219,23 @@ fn create_default_variant(ge: GuiEnum) -> GuiEnum {
 
 type GuiEnumMap = HashMap<(GuiVariableContext, Discriminant<GuiEnum>), GuiEnum>;
 
+#[derive(Clone, Debug)]
+pub struct VhdCreateRequest {
+    pub path: PathBuf,
+    pub format: HardDiskFormat,
+    pub partitioned: bool,
+    pub formatted: bool,
+    pub source: Option<PathBuf>,
+    pub mount_drive: Option<usize>,
+}
+
 #[allow(dead_code)]
 pub enum GuiEvent {
     LoadVHD(usize, usize),
     DetachVHD(usize),
-    CreateVHD(OsString, HardDiskFormat),
+    CreateVHD(VhdCreateRequest),
+    BrowseVhdOutputFile,
+    BrowseVhdSourceDirectory,
     LoadQuickFloppy(usize, usize),
     RequestLoadFloppyDialog(usize),
     RequestSaveFloppyDialog(usize, DiskImageFileFormat),

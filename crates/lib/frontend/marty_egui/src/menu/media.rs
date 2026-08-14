@@ -222,7 +222,7 @@ impl GuiState {
                                 let exts = fmt.extensions();
                                 filter_vec.push(FileDialogFilter::new(fmt_name, exts));
 
-                                self.save_file_dialog(fc, "Save Floppy Disk Image", filter_vec);
+                                self.save_file_dialog(fc, "Save Floppy Disk Image", filter_vec, None);
 
                                 self.modal.open(ModalContext::Notice(
                                     "A native File Save dialog is open.\nPlease make a selection or cancel to continue."

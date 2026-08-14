@@ -75,6 +75,13 @@ pub enum FileOpenContext {
     },
 }
 
+/// Identifies the purpose of a native directory picker.
+#[cfg(not(target_arch = "wasm32"))]
+#[derive(Clone, Debug)]
+pub enum DirectoryOpenContext {
+    VhdSource,
+}
+
 impl FileOpenContext {
     pub fn set_fsc(&mut self, fsc: FileSelectionContext) {
         match self {
@@ -96,16 +103,21 @@ impl FileOpenContext {
 /// [FileSaveContext] provides a way to identify for what purpose a file was saved.
 /// If `FloppyDiskImage` is used, then the file was saved as a floppy disk image.
 /// If `GuestFile` is used, then the contents were received through a guest file transfer.
+/// If `VhdDiskImage` is used, then the selected path will be used to create a VHD.
 #[derive(Clone, Debug)]
 pub enum FileSaveContext {
     GuestFile {
         filename: String,
         contents: Vec<u8>,
-        fsc:      FileSelectionContext,
+        fsc: FileSelectionContext,
     },
     FloppyDiskImage {
         drive_select: usize,
         format: DiskImageFileFormat,
+        fsc: FileSelectionContext,
+    },
+    #[cfg(not(target_arch = "wasm32"))]
+    VhdDiskImage {
         fsc: FileSelectionContext,
     },
 }
@@ -130,6 +142,8 @@ impl FileSaveContext {
         match self {
             FileSaveContext::GuestFile { filename, .. } => Some(filename),
             FileSaveContext::FloppyDiskImage { .. } => None,
+            #[cfg(not(target_arch = "wasm32"))]
+            FileSaveContext::VhdDiskImage { .. } => None,
         }
     }
 
@@ -139,6 +153,10 @@ impl FileSaveContext {
                 *fsc_ref = fsc;
             }
             FileSaveContext::FloppyDiskImage { fsc: fsc_ref, .. } => {
+                *fsc_ref = fsc;
+            }
+            #[cfg(not(target_arch = "wasm32"))]
+            FileSaveContext::VhdDiskImage { fsc: fsc_ref } => {
                 *fsc_ref = fsc;
             }
         }
@@ -159,6 +177,15 @@ pub enum FrontendThreadEvent<D> {
         context: FileOpenContext,
         path:    PathBuf,
     },
+    #[cfg(not(target_arch = "wasm32"))]
+    DirectoryOpenDialogComplete {
+        context: DirectoryOpenContext,
+        path:    PathBuf,
+    },
+    #[cfg(not(target_arch = "wasm32"))]
+    DirectoryOpenError(DirectoryOpenContext, String),
+    #[cfg(not(target_arch = "wasm32"))]
+    DirectoryOpenDialogCancelled(DirectoryOpenContext),
     FileSaveDialogComplete(FileSaveContext),
     FileOpenError(FileOpenContext, String),
     FileSaveError(String),

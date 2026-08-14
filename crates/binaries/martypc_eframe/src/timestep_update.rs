@@ -29,12 +29,14 @@
     Process an event loop update
 */
 
-use crate::event_loop::egui_update::update_egui;
-use crate::file_transfer::{load_non_interactive_file, NonInteractiveFileLoadError};
 #[cfg(not(target_arch = "wasm32"))]
 use crate::native::file_save::save_non_interactive_file;
 #[cfg(target_arch = "wasm32")]
 use crate::wasm::file_save::save_non_interactive_file;
+use crate::{
+    event_loop::egui_update::update_egui,
+    file_transfer::{load_non_interactive_file, NonInteractiveFileLoadError},
+};
 use web_time::{Duration, Instant};
 
 use crate::{emulator::Emulator, event_loop::render_frame::render_frame, input::GamepadEvent};
@@ -348,6 +350,7 @@ pub fn process_update(emu: &mut Emulator, dm: &mut EFrameDisplayManager, tm: &mu
                                     FileSaveContext::guest_file(filename, data),
                                     "Save File from Guest",
                                     Vec::new(),
+                                    None,
                                 );
                             }
                         }

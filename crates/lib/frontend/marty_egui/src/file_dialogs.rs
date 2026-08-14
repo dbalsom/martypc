@@ -29,6 +29,8 @@
 
 use crate::{state::GuiState, DialogProvider};
 
+#[cfg(not(target_arch = "wasm32"))]
+use marty_frontend_common::thread_events::DirectoryOpenContext;
 use marty_frontend_common::{
     exec_async,
     thread_events::{FileOpenContext, FileSaveContext, FileSelectionContext, FrontendThreadEvent},
@@ -51,6 +53,35 @@ impl FileDialogFilter {
 }
 
 impl GuiState {
+    /// Open a native directory picker and return the selected filesystem path.
+    #[cfg(not(target_arch = "wasm32"))]
+    pub fn open_directory_dialog(&mut self, context: DirectoryOpenContext, title: impl AsRef<str>) {
+        match self.dialog_provider {
+            DialogProvider::EguiFileDialog => {
+                log::warn!("egui-file-dialog directory picker not implemented");
+                let _ = self.thread_sender.send(FrontendThreadEvent::DirectoryOpenError(
+                    context,
+                    "egui-file-dialog directory picker not implemented".to_string(),
+                ));
+            }
+            #[cfg(feature = "use_rfd")]
+            DialogProvider::Rfd => {
+                let task = rfd::AsyncFileDialog::new().set_title(title.as_ref()).pick_folder();
+                exec_async(self.thread_sender.clone(), async move {
+                    if let Some(folder_handle) = task.await {
+                        FrontendThreadEvent::DirectoryOpenDialogComplete {
+                            context,
+                            path: folder_handle.path().to_path_buf(),
+                        }
+                    }
+                    else {
+                        FrontendThreadEvent::DirectoryOpenDialogCancelled(context)
+                    }
+                });
+            }
+        }
+    }
+
     /// Open a file picker. If `read_file` is true, read the selected file into memory; otherwise,
     /// return only its native filesystem path so the caller can retain direct file access.
     pub fn open_file_dialog(
@@ -138,17 +169,27 @@ impl GuiState {
         }
     }
 
-    pub fn save_file_dialog(&self, context: FileSaveContext, title: impl AsRef<str>, filters: Vec<FileDialogFilter>) {
+    pub fn save_file_dialog(
+        &self,
+        context: FileSaveContext,
+        title: impl AsRef<str>,
+        filters: Vec<FileDialogFilter>,
+        initial_directory: Option<&std::path::Path>,
+    ) {
         match self.dialog_provider {
             DialogProvider::EguiFileDialog => {
                 log::warn!("egui-file-dialog not implemented");
-                let _ = self
-                    .thread_sender
-                    .send(FrontendThreadEvent::FileSaveError("egui-file-dialog not implemented".to_string()));
+                let _ = self.thread_sender.send(FrontendThreadEvent::FileSaveError(
+                    "egui-file-dialog not implemented".to_string(),
+                ));
             }
             #[cfg(feature = "use_rfd")]
             DialogProvider::Rfd => {
                 let mut dialog = rfd::AsyncFileDialog::new().set_title(title.as_ref());
+
+                if let Some(directory) = initial_directory {
+                    dialog = dialog.set_directory(directory);
+                }
 
                 if let Some(filename) = context.suggested_filename() {
                     dialog = dialog.set_file_name(filename);

@@ -67,6 +67,7 @@ egui_commonmark = { workspace = true, optional = true }
 # ---------------------------------------------------------------------------------------------------------------------
 [target.'cfg(not(target_arch = "wasm32"))'.dependencies]
 env_logger = "0.11"
+marty_vhd = { path = "../../lib/marty_vhd", default-features = false, features = ["builder"] }
 egui-winit = { workspace = true, default-features = true, features = ["accesskit"]}
 eframe = { workspace = true, default-features = false, features = [
     "accesskit",     # Make egui compatible with screen readers. NOTE: adds a lot of dependencies.

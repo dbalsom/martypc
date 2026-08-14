@@ -601,6 +601,9 @@ impl GuiState {
 
     pub fn set_machine_state(&mut self, state: MachineState) {
         self.machine_state = state;
+        // Send machine state to VHD creator so it can warn if the machine is on
+        // before mounting a VHD
+        self.vhd_creator.set_machine_state(state);
     }
 
     pub fn set_floppy_drives(&mut self, drives: Vec<FloppyDriveType>) {

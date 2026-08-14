@@ -28,11 +28,15 @@
 //! Process events received from the emulator GUI.
 //! Typically, the GUI is implemented by the `marty_egui` crate.
 
-use std::{mem::discriminant, path::PathBuf, time::Duration};
+#[cfg(not(target_arch = "wasm32"))]
+use std::time::Duration;
+use std::{mem::discriminant, path::PathBuf};
 
 use crate::{emulator::Emulator, floppy::load_floppy::handle_load_floppy};
 use display_manager_eframe::EFrameDisplayManager;
 
+#[cfg(not(target_arch = "wasm32"))]
+use marty_frontend_common::thread_events::FileSaveContext;
 use marty_frontend_common::{
     constants::{LONG_NOTIFICATION_TIME, NORMAL_NOTIFICATION_TIME, SHORT_NOTIFICATION_TIME},
     thread_events::{FileSelectionContext, FrontendThreadEvent},
@@ -44,9 +48,10 @@ use marty_core::{
     cpu_common::{Cpu, CpuOption, Register16},
     device_traits::videocard::ClockingMode,
     machine::{MachineOption, MachineState},
-    vhd,
     vhd::VirtualHardDisk,
 };
+#[cfg(not(target_arch = "wasm32"))]
+use marty_egui::{modal::ModalContext, FileDialogFilter};
 use marty_egui::{
     state::FloppyDriveSelection,
     DeviceSelection,
@@ -308,45 +313,115 @@ pub fn handle_egui_event(
                     .duration(Some(NORMAL_NOTIFICATION_TIME));
             }
         }
-        GuiEvent::CreateVHD(filename, fmt) => {
-            // The user requested that a new VHD be created, with the given filename and format.
-            log::info!("Got CreateVHD event: {:?}, {:?}", filename, fmt);
+        GuiEvent::CreateVHD(request) => {
+            #[cfg(not(target_arch = "wasm32"))]
+            {
+                // The user requested that a new VHD be created at the selected output path.
+                log::info!("Got CreateVHD event: {:?}", request);
 
-            let mut vhd_path = emu.rm.resource_path("hdd").unwrap();
-            vhd_path.push(filename);
-
-            // TODO: Factor out VHD support into a separate library.
-            //       The emulator core should not be writing files.
-            match vhd::create_vhd(
-                vhd_path.into_os_string(),
-                fmt.geometry.c(),
-                fmt.geometry.h(),
-                fmt.geometry.s(),
-            ) {
-                Ok(_) => {
-                    // We don't actually do anything with the newly created file
-                    // But show a toast notification.
+                if request.mount_drive.is_some() && emu.machine.get_state().is_on() {
+                    let error = "Could not mount the new VHD: machine must be powered off";
+                    log::error!("{}", error);
                     emu.gui
                         .toasts()
-                        .info(format!("Created VHD: {}", filename.to_string_lossy()))
-                        .duration(Some(Duration::from_secs(5)));
+                        .error(error.to_string())
+                        .duration(Some(LONG_NOTIFICATION_TIME));
+                    return;
+                }
 
-                    // Rescan resource paths to show new file in list
-                    if let Err(e) = emu.vhd_manager.scan_resource(&mut emu.rm) {
-                        log::error!("Error scanning hdd directory: {}", e);
-                    };
-                    // Update VHD Image tree
-                    if let Ok(hdd_tree) = emu.vhd_manager.make_tree(&mut emu.rm) {
-                        emu.gui.set_hdd_tree(hdd_tree);
+                let result = marty_vhd::Geometry::new(
+                    request.format.geometry.c(),
+                    request.format.geometry.h(),
+                    request.format.geometry.s(),
+                )
+                .and_then(|geometry| {
+                    let mut builder =
+                        marty_vhd::VhdBuilder::new(&request.path, geometry).partitioned(request.partitioned);
+                    if request.formatted {
+                        builder = builder.formatted(request.source.clone());
+                    }
+                    builder.build()
+                });
+
+                match result {
+                    Ok(_) => {
+                        // Rescan resource paths to show new file in list
+                        if let Err(e) = emu.vhd_manager.scan_resource(&mut emu.rm) {
+                            log::error!("Error scanning hdd directory: {}", e);
+                        };
+                        // Update VHD Image tree
+                        if let Ok(hdd_tree) = emu.vhd_manager.make_tree(&mut emu.rm) {
+                            emu.gui.set_hdd_tree(hdd_tree);
+                        }
+
+                        if let Some(drive_idx) = request.mount_drive {
+                            match try_load_vhd(emu, drive_idx, FileSelectionContext::Path(request.path.clone())) {
+                                Ok(_) => {
+                                    emu.gui
+                                        .toasts()
+                                        .info(format!(
+                                            "Created and mounted VHD as drive {}: {}",
+                                            drive_idx,
+                                            request.path.display()
+                                        ))
+                                        .duration(Some(Duration::from_secs(5)));
+                                }
+                                Err(err) => {
+                                    let error = format!("Created VHD, but failed to mount it: {}", err);
+                                    log::error!("{}", error);
+                                    emu.gui.toasts().error(error).duration(Some(LONG_NOTIFICATION_TIME));
+                                }
+                            }
+                        }
+                        else {
+                            emu.gui
+                                .toasts()
+                                .info(format!("Created VHD: {}", request.path.display()))
+                                .duration(Some(Duration::from_secs(5)));
+                        }
+                    }
+                    Err(err) => {
+                        log::error!("Error creating VHD: {}", err);
+                        emu.gui
+                            .toasts()
+                            .error(format!("{}", err))
+                            .duration(Some(LONG_NOTIFICATION_TIME));
                     }
                 }
-                Err(err) => {
-                    log::error!("Error creating VHD: {}", err);
-                    emu.gui
-                        .toasts()
-                        .error(format!("{}", err))
-                        .duration(Some(LONG_NOTIFICATION_TIME));
-                }
+            }
+            #[cfg(target_arch = "wasm32")]
+            {
+                let _ = request;
+                log::error!("VHD creation is not supported on WASM");
+            }
+        }
+        GuiEvent::BrowseVhdOutputFile => {
+            #[cfg(not(target_arch = "wasm32"))]
+            {
+                let context = FileSaveContext::VhdDiskImage {
+                    fsc: FileSelectionContext::Uninitialized,
+                };
+                let filters = vec![FileDialogFilter::new("VHD Images", vec!["vhd"])];
+                let initial_directory = emu.rm.resource_path("hdd");
+
+                emu.gui
+                    .save_file_dialog(context, "Create VHD Image", filters, initial_directory.as_deref());
+                emu.gui.modal.open(ModalContext::Notice(
+                    "A native File Save dialog is open.\nPlease make a selection or cancel to continue.".to_string(),
+                ));
+            }
+        }
+        GuiEvent::BrowseVhdSourceDirectory => {
+            #[cfg(not(target_arch = "wasm32"))]
+            {
+                use marty_frontend_common::thread_events::DirectoryOpenContext;
+
+                emu.gui
+                    .open_directory_dialog(DirectoryOpenContext::VhdSource, "Select VHD Source Folder");
+                emu.gui.modal.open(ModalContext::Notice(
+                    "A native folder selection dialog is open.\nPlease make a selection or cancel to continue."
+                        .to_string(),
+                ));
             }
         }
         GuiEvent::RescanMediaFolders => {

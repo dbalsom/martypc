@@ -90,14 +90,30 @@ pub fn update_egui(emu: &mut Emulator, dm: &mut EFrameDisplayManager, tm: &Times
 
     // -- Update VHD Creator window
     if emu.gui.is_window_open(GuiWindow::VHDCreator) {
-        if let Some(hdc) = emu.machine.hdc_mut() {
-            emu.gui.vhd_creator.set_formats(hdc.get_supported_formats());
+        let controller_info = if let Some(hdc) = emu.machine.hdc_mut() {
+            Some((hdc.get_supported_formats(), hdc.drive_ct()))
         }
         else if let Some(hdc) = emu.machine.xtide_mut() {
-            emu.gui.vhd_creator.set_formats(hdc.get_supported_formats());
+            Some((hdc.get_supported_formats(), hdc.drive_ct()))
+        }
+        else if let Some(hdc) = emu.machine.jride_mut() {
+            Some((hdc.get_supported_formats(), hdc.drive_ct()))
         }
         else {
             log::error!("Couldn't query available formats: No Hard Disk Controller present!");
+            None
+        };
+
+        if let Some((formats, drive_ct)) = controller_info {
+            let drive_slots = (0..drive_ct)
+                .map(|drive_idx| (drive_idx, emu.vhd_manager.is_drive_loaded(drive_idx).1))
+                .collect();
+            emu.gui.vhd_creator.set_formats(formats);
+            emu.gui.vhd_creator.set_drive_slots(drive_slots);
+        }
+        else {
+            emu.gui.vhd_creator.set_formats(Vec::new());
+            emu.gui.vhd_creator.set_drive_slots(Vec::new());
         }
     }
 
