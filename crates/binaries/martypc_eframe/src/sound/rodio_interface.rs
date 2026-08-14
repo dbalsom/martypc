@@ -26,7 +26,10 @@
 */
 
 //! The rodio-backed sound interface used when the 'sound' feature is enabled.
+#[cfg(not(target_arch = "wasm32"))]
 const MAX_BUFFER_SIZE: u32 = 100;
+#[cfg(target_arch = "wasm32")]
+const MAX_BUFFER_SIZE: u32 = 1024;
 const DEFAULT_VOLUME: f32 = 0.25;
 
 const MAX_LATENCY: f32 = 150.0; // Maximum latency in milliseconds
@@ -78,7 +81,7 @@ pub struct SoundSource {
 }
 
 struct KeyedPresentableSound {
-    player: Player,
+    player:  Player,
     looping: bool,
 }
 
@@ -255,10 +258,12 @@ impl RodioSoundInterface {
         let channels = default_config.channels() as usize;
         let sample_format = default_config.sample_format().to_string();
 
-        let stream = DeviceSinkBuilder::from_device(audio_device.clone())?
+        let mut stream = DeviceSinkBuilder::from_device(audio_device.clone())?
             .with_supported_config(&default_config)
             .with_buffer_size(BufferSize::Fixed(new_max))
             .open_stream()?;
+        // Suppress stdout log on drop from rodio
+        stream.log_on_drop(false);
 
         let channels_nz = NonZero::new(default_config.channels()).ok_or(anyhow!("Audio device has zero channels."))?;
         let sample_rate_nz = NonZero::new(sample_rate).ok_or(anyhow!("Audio device has a zero sample rate."))?;
@@ -503,8 +508,7 @@ impl RodioSoundInterface {
                 // Only push more samples if the latency is below the maximum. Latency can "run away" if the window is minimized
                 if source.latency_ms < MAX_LATENCY {
                     source.sample_ct += block_len as u64;
-                    let sink_buffer =
-                        rodio::buffer::SamplesBuffer::new(source.channels_nz, source.sample_rate_nz, samples_in);
+                    let sink_buffer = SamplesBuffer::new(source.channels_nz, source.sample_rate_nz, samples_in);
                     source.player.append(sink_buffer);
                 }
                 source.player.set_speed(new_speed * self.master_speed);
