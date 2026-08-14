@@ -462,7 +462,7 @@ impl VideoCard for CGACard {
                 }
 
                 // Drain accumulator and tick by character clock.
-                while self.clocks_accum >= self.char_clock {
+                while self.clocks_accum > self.char_clock {
                     if self.clocks_accum > 10000 {
                         log::error!("excessive clocks in accumulator: {}", self.clocks_accum);
                     }
