@@ -38,6 +38,8 @@ use crate::{
 
 // Helper macro for pushing video card state entries.
 // For CGA, we put the decorator first as there is only one register file an we use it to show the register index.
+
+/*
 macro_rules! push_reg_str {
     ($vec: expr, $reg: expr, $decorator: expr, $val: expr ) => {
         $vec.push((
@@ -47,7 +49,6 @@ macro_rules! push_reg_str {
     };
 }
 
-/*
 macro_rules! push_reg_str_bin8 {
     ($vec: expr, $reg: expr, $decorator: expr, $val: expr ) => {
         $vec.push((String::from("{:?} {}", $reg, $decorator), VideoCardStateEntry::String(format!("{:08b}", $val))))
