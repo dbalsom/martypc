@@ -35,9 +35,11 @@ marty*.toml
 *.log
 *.exe
 *.dat
-/frontends/martypc_web_player_wgpu/wasm/
 icon.png
 *.crt
+
+# WASM stuff
+crates/binaries/martypc_eframe/assets/configs
 
 # Allow tests/tools directory
 !/tests/tools
@@ -117,9 +119,6 @@ icon.png
 
 # File transfer resource
 /install/mount/file_transfer/*
-
-# Frontend files
-/frontends/martypc_web_player_wgpu/web/bin
 
 # Assembly stuff
 /asm

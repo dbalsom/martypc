@@ -60,6 +60,7 @@ use crate::{
         fantasy_ems_stats_viewer::FantasyEMSStatsViewerControl,
         fdc_viewer::FdcViewerControl,
         floppy_viewer::FloppyViewerControl,
+        hotkeys::HotkeysWindow,
         instruction_history_viewer::InstructionHistoryControl,
         io_stats_viewer::IoStatsViewerControl,
         ivt_viewer::IvtViewerControl,
@@ -86,7 +87,7 @@ use crate::{
     PerformanceStats,
 };
 
-use marty_common::types::{joystick::ControllerLayout, ui::MouseCaptureMode};
+use marty_common::types::{joystick::ControllerLayout, keys::MartyKey, ui::MouseCaptureMode};
 use marty_core::{
     device_traits::videocard::{DisplayApertureDesc, VideoCardState, VideoCardStateEntry},
     devices::{pit::PitDisplayState, serial::SerialPortDescriptor},
@@ -107,6 +108,7 @@ use marty_frontend_common::{
         gamepad::{GamepadInfo, JoystickMapping},
         sound::SoundSourceInfo,
     },
+    HotkeyEvent,
     RelativeDirectory,
 };
 
@@ -317,6 +319,7 @@ pub struct GuiState {
     pub(crate) warning_string: String,
 
     pub about_dialog: AboutDialog,
+    pub hotkeys_window: HotkeysWindow,
     pub cpu_control: CpuControl,
     pub cpu_viewer: CpuViewerControl,
     pub cycle_trace_viewer: CycleTraceViewerControl,
@@ -467,6 +470,7 @@ impl GuiState {
             warning_string: String::new(),
 
             about_dialog: AboutDialog::new(),
+            hotkeys_window: HotkeysWindow::new(),
             cpu_control: CpuControl::new(exec_control.clone()),
             cpu_viewer: CpuViewerControl::new(exec_control.clone()),
             cycle_trace_viewer: CycleTraceViewerControl::new(),
@@ -520,6 +524,10 @@ impl GuiState {
 
     pub fn set_build_info(&mut self, version: impl Into<String>, build_id: impl Into<String>) {
         self.about_dialog.set_build_info(version, build_id);
+    }
+
+    pub fn set_hotkeys(&mut self, bindings: Vec<(HotkeyEvent, Vec<MartyKey>)>) {
+        self.hotkeys_window.set_bindings(bindings);
     }
 
     pub fn set_paths(&mut self, default_floppy_path: PathBuf) {

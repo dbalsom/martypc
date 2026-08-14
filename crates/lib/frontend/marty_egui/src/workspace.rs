@@ -140,6 +140,9 @@ impl GuiState {
                 GuiWindow::About => {
                     self.about_dialog.draw(ui, ctx, &mut self.event_queue);
                 }
+                GuiWindow::Hotkeys => {
+                    self.hotkeys_window.draw(ui);
+                }
                 GuiWindow::CpuControl => {
                     self.cpu_control.draw(ui, &mut self.option_flags, &mut self.event_queue);
                 }

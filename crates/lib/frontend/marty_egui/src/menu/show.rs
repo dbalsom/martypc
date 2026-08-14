@@ -46,10 +46,7 @@ impl GuiState {
                         ui.close_menu();
                     }
 
-                    if ui.button("❓ About...").clicked() {
-                        *self.window_flag(GuiWindow::About) = true;
-                        ui.close_menu();
-                    }
+                    #[cfg(not(target_arch = "wasm32"))]
                     ui.separator();
                 }
 
@@ -101,6 +98,13 @@ impl GuiState {
             }
 
             self.draw_debug_menu(ui);
+
+            ui.menu_button("Help", |ui| {
+                ui.set_min_width(120.0);
+                self.workspace_window_open_button(ui, GuiWindow::Hotkeys, true, true);
+                ui.separator();
+                self.workspace_window_open_button(ui, GuiWindow::About, true, true);
+            });
 
             // Draw drive indicators, etc.
             self.draw_status_widgets(ui);

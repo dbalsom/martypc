@@ -34,6 +34,7 @@ pub mod big_icon;
 pub mod color_swatch;
 pub mod file_tree_menu;
 pub mod greets;
+pub mod hotkey;
 pub mod pixel_canvas;
 pub mod tab_group;
 pub mod vu_meter;

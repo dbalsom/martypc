@@ -121,7 +121,6 @@ pub enum BuildPlatform {
     Web,
 }
 
-#[derive(Default)]
 pub struct EmulatorBuilder {
     platform: BuildPlatform,
     toml_config_path: Option<PathBuf>,
@@ -139,6 +138,28 @@ pub struct EmulatorBuilder {
     enable_mouse: bool,
     enable_serial: bool,
     enable_gui: bool,
+}
+
+impl Default for EmulatorBuilder {
+    fn default() -> Self {
+        Self {
+            platform: BuildPlatform::default(),
+            toml_config_path: None,
+            toml_config_url: None,
+            toml_manifest_url: None,
+            base_url: None,
+            #[cfg(feature = "cpu_validator")]
+            validator: None,
+            enable_floppy_manager: false,
+            enable_vhd_manager: false,
+            enable_cart_manager: false,
+            enable_sound: false,
+            enable_keyboard: false,
+            enable_mouse: false,
+            enable_serial: false,
+            enable_gui: true,
+        }
+    }
 }
 
 impl EmulatorBuilder {
@@ -799,6 +820,7 @@ impl EmulatorBuilder {
         // Create a GUI state object
         let mut gui = GuiState::new(exec_control.clone(), sender.clone(), render_callback);
         gui.set_build_info(env!("CARGO_PKG_VERSION"), crate::build_id());
+        gui.set_hotkeys(hotkey_manager.hotkey_bindings());
 
         // Set list of virtual serial ports
         gui.set_serial_ports(machine.bus().enumerate_serial_ports());

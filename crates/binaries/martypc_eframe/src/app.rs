@@ -59,6 +59,8 @@ use egui::{Context, CursorGrab, RawInput, Sense, ViewportCommand, ViewportId};
 
 use marty_display_common::display_manager::{DisplayTargetType, DtHandle};
 use marty_egui::state::FloppyDriveSelection;
+#[cfg(not(target_arch = "wasm32"))]
+use marty_frontend_common::HotkeyEvent;
 use marty_frontend_common::{color::MartyColor, constants::NORMAL_NOTIFICATION_TIME};
 use marty_videocard_renderer::AspectCorrectionMode;
 #[cfg(target_arch = "wasm32")]
@@ -83,6 +85,8 @@ pub struct MartyApp {
     focused: bool,
     hide_menu: bool,
     menu_height: f32,
+    #[serde(skip)]
+    mouse_capture_title_hint: String,
     #[serde(skip)]
     gui: GuiRenderContext,
     #[serde(skip)]
@@ -118,6 +122,7 @@ impl Default for MartyApp {
             ppp: None,
             focused: false,
             menu_height: 22.0,
+            mouse_capture_title_hint: String::new(),
             // Example stuff:
             gui: GuiRenderContext::default(),
             emu_loading: false,
@@ -686,6 +691,37 @@ impl MartyApp {
                 }
             }
 
+            #[cfg(not(target_arch = "wasm32"))]
+            let mouse_capture_hint = emu
+                .hkm
+                .hotkey_string(HotkeyEvent::CaptureMouse)
+                .map(|hotkey| format!("Press {hotkey} to release mouse"))
+                .unwrap_or_default();
+
+            #[cfg(not(target_arch = "wasm32"))]
+            {
+                let active_hint = if emu.mouse_data.is_captured {
+                    mouse_capture_hint.as_str()
+                }
+                else {
+                    ""
+                };
+
+                if self.mouse_capture_title_hint != active_hint {
+                    self.mouse_capture_title_hint.clear();
+                    self.mouse_capture_title_hint.push_str(active_hint);
+
+                    let title = if active_hint.is_empty() {
+                        format!("MartyPC {}", crate::version_string())
+                    }
+                    else {
+                        // Do not @ me about this em-dash
+                        format!("MartyPC {} — {active_hint}", crate::version_string())
+                    };
+                    ctx.send_viewport_cmd(ViewportCommand::Title(title));
+                }
+            }
+
             // Process timestep.
             process_update(emu, dm, &mut self.tm);
             handle_thread_event(emu, ctx);
@@ -755,10 +791,22 @@ impl MartyApp {
                 };
             });
 
-            // Draw the emulator GUI.
+            #[cfg(not(target_arch = "wasm32"))]
+            let mouse_capture_message = if mouse_capture_hint.is_empty() {
+                "Mouse captured!".to_string()
+            }
+            else {
+                format!("Mouse captured!\n{mouse_capture_hint}")
+            };
+
+            // Draw the emulator GUI. The egui frame and display callbacks must always run because
+            // the active video output may itself be an egui surface. render_gui controls only the
+            // menu and non-display windows.
+            let render_gui = emu.flags.render_gui;
             let capture_state = self.gui.show(
                 &mut emu.gui,
-                !self.hide_menu,
+                render_gui && !self.hide_menu,
+                render_gui,
                 fill_color,
                 |ctx, _gui, _capture_state| {
                     if let Some(DisplayTargetType::GuiWidget) = dm.display_type(DtHandle::MAIN) {
@@ -829,7 +877,7 @@ impl MartyApp {
                                             dtc_ref.set_grabbed(true, emu.mouse_data.capture_mode);
 
                                             _gui.toasts()
-                                                .info("Mouse captured! Middle-click to release.")
+                                                .info(mouse_capture_message.clone())
                                                 .duration(Some(NORMAL_NOTIFICATION_TIME));
                                         }
                                     }
@@ -896,7 +944,7 @@ impl MartyApp {
                                     dtc_ref.set_grabbed(true, emu.mouse_data.capture_mode);
 
                                     _gui.toasts()
-                                        .info("Mouse captured! Middle-click to release.")
+                                        .info(mouse_capture_message.clone())
                                         .duration(Some(NORMAL_NOTIFICATION_TIME));
                                 }
                             }

@@ -45,6 +45,7 @@ pub(crate) mod ems_virtual_memory_viewer;
 pub(crate) mod fantasy_ems_stats_viewer;
 pub mod fdc_viewer;
 pub mod floppy_viewer;
+pub mod hotkeys;
 #[cfg(feature = "markdown")]
 pub mod info_viewer;
 pub mod instruction_history_viewer;

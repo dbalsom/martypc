@@ -30,6 +30,8 @@
 
 */
 
+use std::fmt;
+
 use marty_common::types::keys::MartyKey;
 use serde_derive::Deserialize;
 use strum_macros::EnumIter;
@@ -54,6 +56,31 @@ pub enum HotkeyEvent {
     JoyDown,
 }
 
+impl fmt::Display for HotkeyEvent {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        let label = match self {
+            Self::Quit => "Quit",
+            Self::CaptureMouse => "Capture or release mouse",
+            Self::CtrlAltDel => "Send Ctrl+Alt+Del",
+            Self::Reboot => "Reboot",
+            Self::Screenshot => "Take screenshot",
+            Self::ToggleGui => "Toggle GUI",
+            Self::ToggleFullscreen => "Toggle fullscreen",
+            Self::DebugStep => "Debug step",
+            Self::DebugStepOver => "Debug step over",
+            Self::JoyToggle => "Toggle keyboard joystick",
+            Self::JoyButton1 => "Joystick button 1",
+            Self::JoyButton2 => "Joystick button 2",
+            Self::JoyUp => "Joystick up",
+            Self::JoyLeft => "Joystick left",
+            Self::JoyRight => "Joystick right",
+            Self::JoyDown => "Joystick down",
+        };
+
+        f.write_str(label)
+    }
+}
+
 #[derive(Copy, Clone, Debug, Deserialize)]
 pub enum HotkeyScope {
     Any,
@@ -68,4 +95,16 @@ pub struct HotkeyConfigEntry {
     pub keys: Vec<MartyKey>,
     pub capture_disable: bool,
     pub scope: HotkeyScope,
+}
+
+#[cfg(test)]
+mod tests {
+    use super::HotkeyEvent;
+
+    #[test]
+    fn event_labels_are_user_facing() {
+        assert_eq!(HotkeyEvent::CaptureMouse.to_string(), "Capture or release mouse");
+        assert_eq!(HotkeyEvent::CtrlAltDel.to_string(), "Send Ctrl+Alt+Del");
+        assert_eq!(HotkeyEvent::JoyButton1.to_string(), "Joystick button 1");
+    }
 }

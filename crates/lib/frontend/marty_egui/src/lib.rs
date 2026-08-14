@@ -102,6 +102,7 @@ impl Default for DialogProvider {
 #[derive(Clone, EnumIter, PartialEq, Eq, Hash, Serialize, Deserialize, Ord, PartialOrd, Debug)]
 pub enum GuiWindow {
     About,
+    Hotkeys,
     CpuControl,
     PerfViewer,
     MemoryViewer,
@@ -351,6 +352,16 @@ lazy_static! {
                 menu: "About",
                 width: 400.0,
                 resizable: false,
+            },
+        ),
+        (
+            GuiWindow::Hotkeys,
+            WorkspaceWindowDef {
+                id: GuiWindow::Hotkeys,
+                title: "Hotkeys",
+                menu: "Hotkeys",
+                width: 440.0,
+                resizable: true,
             },
         ),
         (

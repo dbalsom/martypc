@@ -148,6 +148,7 @@ impl GuiRenderContext {
         &mut self,
         state: &mut GuiState,
         show_menu: bool,
+        show_windows: bool,
         main_panel_fill: Option<Color32>,
         mut window_render: Fw,
         mut main_panel_render: Fm,
@@ -167,7 +168,9 @@ impl GuiRenderContext {
 
         self.ctx.set_visuals(self.main_theme.visuals());
 
-        state.show_windows(&self.ctx);
+        if show_windows {
+            state.show_windows(&self.ctx);
+        }
 
         let old_margin = self.ctx.style().spacing.window_margin;
         // Disable window margin for display window.

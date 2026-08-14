@@ -75,6 +75,8 @@ use marty_frontend_common::{
 
 /// Define flags to be used by emulator.
 pub struct EmuFlags {
+    /// Show the menu and non-display egui windows. The egui frame itself remains active so it can
+    /// continue presenting video.
     pub render_gui: bool,
     pub debug_keyboard: bool,
 }

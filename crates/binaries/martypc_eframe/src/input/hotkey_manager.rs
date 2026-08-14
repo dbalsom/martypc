@@ -25,29 +25,27 @@
     --------------------------------------------------------------------------
 */
 
-use std::collections::{HashMap, HashSet};
+use std::collections::HashMap;
 
-use marty_common::types::keys::MartyKey;
+use marty_common::{types::keys::MartyKey, MartyHashSet, MartyIndexSet};
 use marty_frontend_common::{HotkeyConfigEntry, HotkeyEvent, HotkeyScope};
 
 use strum::IntoEnumIterator;
 
 pub struct HotkeyState {
-    pub keyset: HashSet<MartyKey>,
-    pub pressed: HashSet<MartyKey>,
+    pub keyset: MartyIndexSet<MartyKey>,
+    pub pressed: MartyHashSet<MartyKey>,
     pub scope: HotkeyScope,
     pub capture_disable: bool,
-    pub len: usize,
 }
 
 impl Default for HotkeyState {
     fn default() -> Self {
         HotkeyState {
-            keyset: HashSet::new(),
-            pressed: HashSet::new(),
+            keyset: MartyIndexSet::default(),
+            pressed: MartyHashSet::default(),
             scope: HotkeyScope::Any,
             capture_disable: false,
-            len: 0,
         }
     }
 }
@@ -84,17 +82,42 @@ impl HotkeyManager {
         scope: HotkeyScope,
         capture_disable: bool,
     ) {
-        let len = keyvec.len();
+        let keyset = MartyIndexSet::from_iter(keyvec);
         self.hotkeys.insert(
             hotkey,
             HotkeyState {
-                keyset: HashSet::from_iter(keyvec.iter().cloned()),
-                pressed: HashSet::new(),
+                keyset,
+                pressed: MartyHashSet::default(),
                 scope,
                 capture_disable,
-                len,
             },
         );
+    }
+
+    /// Return the configured key combination in a stable, user-facing form.
+    pub fn hotkey_string(&self, hotkey: HotkeyEvent) -> Option<String> {
+        Some(
+            self.hotkey_keys(hotkey)?
+                .map(ToString::to_string)
+                .collect::<Vec<_>>()
+                .join("+"),
+        )
+    }
+
+    /// Iterate the configured key combination in definition order.
+    ///
+    /// This is the presentation-neutral counterpart to [`Self::hotkey_string`]. Frontends can
+    /// use it to render each key independently, such as with a pill-style hotkey widget.
+    pub fn hotkey_keys(&self, hotkey: HotkeyEvent) -> Option<impl ExactSizeIterator<Item = &MartyKey>> {
+        let state = self.hotkeys.get(&hotkey)?;
+        (!state.keyset.is_empty()).then_some(state.keyset.iter())
+    }
+
+    /// Return all configured bindings in a stable order suitable for presentation.
+    pub fn hotkey_bindings(&self) -> Vec<(HotkeyEvent, Vec<MartyKey>)> {
+        HotkeyEvent::iter()
+            .filter_map(|event| self.hotkey_keys(event).map(|keys| (event, keys.copied().collect())))
+            .collect()
     }
 
     pub fn keydown(&mut self, key: MartyKey, gui_focus: bool, input_captured: bool) -> Option<Vec<HotkeyEvent>> {
@@ -113,8 +136,8 @@ impl HotkeyManager {
 
             if process_key && state.keyset.contains(&key) {
                 state.pressed.insert(key);
-                if state.pressed.len() == state.len {
-                    log::debug!("Hotkey matched: {:?}, len: {}", hotkey, state.len);
+                if state.pressed.len() == state.keyset.len() {
+                    log::debug!("Hotkey matched: {:?}, len: {}", hotkey, state.keyset.len());
                     events.push(*hotkey);
                 }
             }
@@ -134,5 +157,86 @@ impl HotkeyManager {
                 state.pressed.remove(&key);
             }
         }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn stringifies_keys_in_configuration_order() {
+        let mut manager = HotkeyManager::new();
+        manager.add_hotkey(
+            HotkeyEvent::CaptureMouse,
+            vec![MartyKey::ControlLeft, MartyKey::F10],
+            HotkeyScope::Any,
+            false,
+        );
+
+        assert_eq!(
+            manager.hotkey_string(HotkeyEvent::CaptureMouse).as_deref(),
+            Some("Left Ctrl+F10")
+        );
+        assert_eq!(
+            manager
+                .hotkey_keys(HotkeyEvent::CaptureMouse)
+                .unwrap()
+                .copied()
+                .collect::<Vec<_>>(),
+            vec![MartyKey::ControlLeft, MartyKey::F10]
+        );
+    }
+
+    #[test]
+    fn duplicate_keys_are_deduplicated_for_matching() {
+        let mut manager = HotkeyManager::new();
+        manager.add_hotkey(
+            HotkeyEvent::CaptureMouse,
+            vec![MartyKey::ControlLeft, MartyKey::F10, MartyKey::ControlLeft],
+            HotkeyScope::Any,
+            false,
+        );
+
+        assert_eq!(
+            manager.hotkey_string(HotkeyEvent::CaptureMouse).as_deref(),
+            Some("Left Ctrl+F10")
+        );
+        assert!(manager.keydown(MartyKey::ControlLeft, false, false).is_none());
+        assert_eq!(
+            manager.keydown(MartyKey::F10, false, false),
+            Some(vec![HotkeyEvent::CaptureMouse])
+        );
+    }
+
+    #[test]
+    fn returns_none_for_an_unbound_event() {
+        let manager = HotkeyManager::new();
+        assert_eq!(manager.hotkey_string(HotkeyEvent::CaptureMouse), None);
+    }
+
+    #[test]
+    fn bindings_have_stable_event_and_key_order() {
+        let mut manager = HotkeyManager::new();
+        manager.add_hotkey(
+            HotkeyEvent::Screenshot,
+            vec![MartyKey::ControlLeft, MartyKey::F12],
+            HotkeyScope::Any,
+            false,
+        );
+        manager.add_hotkey(
+            HotkeyEvent::Quit,
+            vec![MartyKey::ControlLeft, MartyKey::KeyQ],
+            HotkeyScope::Any,
+            false,
+        );
+
+        assert_eq!(
+            manager.hotkey_bindings(),
+            vec![
+                (HotkeyEvent::Quit, vec![MartyKey::ControlLeft, MartyKey::KeyQ]),
+                (HotkeyEvent::Screenshot, vec![MartyKey::ControlLeft, MartyKey::F12]),
+            ]
+        );
     }
 }
