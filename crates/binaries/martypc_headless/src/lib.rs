@@ -59,11 +59,7 @@ use crate::cpu_test::run_tests::run_runtests;
 use marty_common::types::keys::MartyKey;
 use marty_config::TestMode;
 
-use marty_core::{
-    devices::keyboard_common::KeyboardModifiers,
-    machine::MachineBuilder,
-    supported_floppy_extensions,
-};
+use marty_core::{devices::keyboard_common::KeyboardModifiers, machine::MachineBuilder, supported_floppy_extensions};
 
 #[cfg(feature = "cpu_validator")]
 use marty_core::cpu_validator::ValidatorType;
