@@ -25,4 +25,3 @@ web-sys = { workspace = true , features = [
 ]}
 crossbeam-channel.workspace = true
 url.workspace = true
-gloo-timers = { version = "0.3", features = ["futures"] }

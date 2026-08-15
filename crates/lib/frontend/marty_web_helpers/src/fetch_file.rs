@@ -26,7 +26,6 @@
 */
 
 use crossbeam_channel::Sender;
-use gloo_timers::callback::Timeout;
 use web_time::{Duration, Instant};
 
 use crate::FetchResult;
