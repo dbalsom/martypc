@@ -29,7 +29,10 @@
     Implements the About dialog box for the emulator.
 
 */
-use crate::{widgets::greets::GreetsWidget, *};
+use crate::{
+    widgets::{about_logo::AboutLogoWidget, greets::GreetsWidget},
+    *,
+};
 use egui::FontId;
 
 const GREETS: &[&str] = &[
@@ -72,6 +75,7 @@ const GREETS: &[&str] = &[
     "NewRisingSun",
     "Aaron Giles",
     "PickledDog",
+    "Nicole Express",
     "VOGONS",
     "VCF",
     "r/emudev",
@@ -83,21 +87,19 @@ const GREETS: &[&str] = &[
 ];
 
 pub struct AboutDialog {
-    //texture: Option<egui::TextureHandle>,
-    _params:  bool,
-    greets:   GreetsWidget,
-    version:  String,
+    greets: GreetsWidget,
+    version: String,
     build_id: String,
+    logo: AboutLogoWidget,
 }
 
 impl AboutDialog {
     pub fn new() -> Self {
         Self {
-            //texture: None,
-            _params:  Default::default(),
-            greets:   GreetsWidget::new(GREETS, FontId::monospace(20.0), 0.5),
-            version:  env!("CARGO_PKG_VERSION").to_string(),
+            greets: GreetsWidget::new(GREETS, FontId::monospace(20.0), 0.5),
+            version: env!("CARGO_PKG_VERSION").to_string(),
             build_id: "000000".to_string(),
+            logo: AboutLogoWidget::new(),
         }
     }
 
@@ -107,9 +109,7 @@ impl AboutDialog {
     }
 
     pub fn draw(&mut self, ui: &mut egui::Ui, _ctx: &Context, _events: &mut GuiEventQueue) {
-        ui.add(
-            egui::Image::new(egui::include_image!("../../../../../../assets/marty_logo_about.png")), //        .fit_to_original_size(1.0),
-        );
+        self.logo.show(ui);
 
         ui.separator();
         ui.vertical(|ui| {
@@ -131,15 +131,10 @@ impl AboutDialog {
                     .color(ui.visuals().strong_text_color())
                     .font(egui::FontId::proportional(16.0)),
             );
+
             ui.label("Greets to:");
             self.greets.show(ui);
-            // ui.label(
-            //     egui::RichText::new(
-            //         "VileR, Scali, Trixter, UtterChaos, modem7, 640KB, BigBass, n0p, raphnet, everyone on VOGONS and /r/emudev",
-            //     )
-            //     .color(ui.visuals().strong_text_color())
-            //     .font(egui::FontId::proportional(16.0)),
-            // );
+
             ui.label("Dedicated to:");
             ui.label(
                 egui::RichText::new("Near")

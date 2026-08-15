@@ -30,6 +30,7 @@
 
 */
 
+pub mod about_logo;
 pub mod big_icon;
 pub mod color_swatch;
 pub mod file_tree_menu;
