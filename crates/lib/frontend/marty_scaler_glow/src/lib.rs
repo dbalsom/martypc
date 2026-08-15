@@ -25,19 +25,11 @@
     --------------------------------------------------------------------------
 */
 
-use bytemuck::{Pod, Zeroable};
-use std::{default::Default, sync::Arc};
+use std::sync::Arc;
 // Reexport trait items
 pub use marty_frontend_common::color::MartyColor;
 
-use marty_display_common::display_scaler::{
-    DisplayScaler,
-    ScalerEffect,
-    ScalerFilter,
-    ScalerGeometry,
-    ScalerMode,
-    ScalerOption,
-};
+use marty_display_common::display_scaler::{DisplayScaler, ScalerFilter, ScalerGeometry, ScalerMode, ScalerOption};
 
 use eframe::{
     glow,
@@ -52,113 +44,77 @@ pub struct SurfaceSize {
     pub height: u32,
 }
 
-#[repr(C)]
-#[derive(Copy, Clone, Debug, Pod, Zeroable)]
-struct CrtParamUniform {
-    h_curvature: f32,
-    v_curvature: f32,
-    corner_radius: f32,
-    scanlines: u32,
-    gamma: f32,
-    brightness: f32,
-    contrast: f32,
-    mono: u32,
-    mono_color: [f32; 4],
-}
-
-impl Default for CrtParamUniform {
-    fn default() -> Self {
-        Self {
-            h_curvature: 0.0,
-            v_curvature: 0.0,
-            corner_radius: 0.0,
-            scanlines: 0,
-            gamma: 1.0,
-            brightness: 1.0,
-            contrast: 1.0,
-            mono: 0,
-            mono_color: [1.0, 1.0, 1.0, 1.0],
-        }
-    }
-}
-
-#[repr(C)]
-#[derive(Clone, Copy, Debug, Default, bytemuck::Pod, bytemuck::Zeroable)]
-pub struct Vertex {
-    /// Logical pixel coordinates
-    /// (0,0) is the top left corner of the screen
-    pub pos: [f32; 2], // 64 bit
-
-    /// sRGBA with premultiplied alpha
-    //pub color: u32, // 32 bit
-
-    /// Normalized texture coordinates.
-    /// (0, 0) is the top left corner of the texture
-    /// (1, 1) is the bottom right corner of the texture
-    pub uv: [f32; 2],
-}
-
 #[derive(Copy, Clone, Debug)]
 struct ScalingMatrix {
     transform: Mat4,
 }
-#[repr(C)]
-#[derive(Copy, Clone, Debug, Default, Pod, Zeroable)]
-struct ScalerOptionsUniform {
-    mode: u32,
-    hres: u32,
-    vres: u32,
-    pad2: u32,
-    crt_params: CrtParamUniform,
-    fill_color: [f32; 4],
-    texture_order: u32,
-    _padding: [u32; 3], // 12 bytes to pad struct to 96 bytes
+
+struct ShaderUniforms {
+    texture: Option<UniformLocation>,
+    transform: Option<UniformLocation>,
+    h_curvature: Option<UniformLocation>,
+    v_curvature: Option<UniformLocation>,
+    corner_radius: Option<UniformLocation>,
+    scanlines: Option<UniformLocation>,
+    gamma: Option<UniformLocation>,
+    mono: Option<UniformLocation>,
+    mono_color: Option<UniformLocation>,
+    vres: Option<UniformLocation>,
+    texture_order: Option<UniformLocation>,
+    crtc_frame_parity: Option<UniformLocation>,
+    crtc_interlaced: Option<UniformLocation>,
+    crtc_interlace_support: Option<UniformLocation>,
+}
+
+impl ShaderUniforms {
+    fn new(gl: &Context, program: Program) -> Self {
+        unsafe {
+            Self {
+                texture: gl.get_uniform_location(program, "u_texture"),
+                transform: gl.get_uniform_location(program, "u_transform"),
+                h_curvature: gl.get_uniform_location(program, "u_h_curvature"),
+                v_curvature: gl.get_uniform_location(program, "u_v_curvature"),
+                corner_radius: gl.get_uniform_location(program, "u_corner_radius"),
+                scanlines: gl.get_uniform_location(program, "u_scanlines"),
+                gamma: gl.get_uniform_location(program, "u_gamma"),
+                mono: gl.get_uniform_location(program, "u_mono"),
+                mono_color: gl.get_uniform_location(program, "u_mono_color"),
+                vres: gl.get_uniform_location(program, "u_vres"),
+                texture_order: gl.get_uniform_location(program, "u_texture_order"),
+                crtc_frame_parity: gl.get_uniform_location(program, "u_crtc_frame_parity"),
+                crtc_interlaced: gl.get_uniform_location(program, "u_crtc_interlaced"),
+                crtc_interlace_support: gl.get_uniform_location(program, "u_crtc_interlace_support"),
+            }
+        }
+    }
 }
 
 pub struct MartyScaler {
     mode: ScalerMode,
 
     program: Program,
+    uniforms: ShaderUniforms,
     vertex_array: VertexArray,
-    vbo: glow::Buffer,
-    // texture: NativeTexture,
-    // u_transform: UniformLocation,
-    // u_texture: UniformLocation,
-    // transform: [f32; 16],
-    //
+    _vbo: glow::Buffer,
+
     screen_size: (u32, u32),
     target_size: (u32, u32),
     texture_size: (u32, u32),
     margin_y: u32,
 
     scaling_matrix: ScalingMatrix,
-    //u_transform: UniformLocation,
-    //u_texture: UniformLocation,
-
-    //
-    // bilinear: bool,
-    // //fill_color: wgpu::Color,
-    // margin_l: u32,
-    // margin_r: u32,
-    // margin_t: u32,
-    // margin_b: u32,
-    //
-    // brightness: f32,
-    // contrast: f32,
-    // gamma: f32,
-    //
-    // scanlines: u32,
-    // do_scanlines: bool,
-    // h_curvature: f32,
-    // v_curvature: f32,
-    // corner_radius: f32,
-    // mono: bool,
-    // //mono_color: wgpu::Color,
-    // #[allow(dead_code)]
-    // effect: ScalerEffect,
-    // #[allow(dead_code)]
-    // crt_params: CrtParamUniform,
-    // texture_order: u32,
+    bilinear: bool,
+    gamma: f32,
+    scanlines: u32,
+    do_scanlines: bool,
+    h_curvature: f32,
+    v_curvature: f32,
+    corner_radius: f32,
+    mono: bool,
+    mono_color: [f32; 4],
+    crtc_frame_parity: u32,
+    crtc_interlaced: bool,
+    crtc_interlace_support: bool,
 }
 
 impl MartyScaler {
@@ -188,45 +144,9 @@ impl MartyScaler {
                  1.0, -1.0, 1.0, 1.0, // bottom-right
             ];
 
-            let vertex_shader_src = r#"
-                layout(location = 0) in vec2 a_pos;
-                layout(location = 1) in vec2 a_uv;
-
-                uniform mat4 u_transform;
-                out vec2 v_uv;
-
-                void main() {
-                    gl_Position = u_transform * vec4(a_pos, 0.0, 1.0);
-                    v_uv = a_uv;
-                }
-            "#;
-
-            let fragment_shader_src = r#"
-                precision mediump float;
-                in vec2 v_uv;
-                uniform sampler2D u_texture;
-                out vec4 out_color;
-
-                void main() {
-                    out_color = texture(u_texture, v_uv);
-                }
-            "#;
-
-            // let fragment_shader_src = r#"
-            //     precision mediump float;
-            //     in vec2 v_uv;
-            //     uniform sampler2D u_texture;
-            //     out vec4 out_color;
-            //
-            //     void main() {
-            //         out_color = vec4(v_uv.x, v_uv.y, 1.0 - v_uv.x, 1.0);
-            //     }
-            // "#;
-
-
             let shader_sources = [
-                (glow::VERTEX_SHADER, vertex_shader_src),
-                (glow::FRAGMENT_SHADER, fragment_shader_src),
+                (glow::VERTEX_SHADER, include_str!("shaders/scaler.vert")),
+                (glow::FRAGMENT_SHADER, include_str!("shaders/scaler.frag")),
             ];
 
             let shaders: Vec<_> = shader_sources
@@ -257,6 +177,8 @@ impl MartyScaler {
                 gl.delete_shader(shader);
             }
 
+            let uniforms = ShaderUniforms::new(gl, program);
+
             // --- Vertex Array / Buffer setup ---
             let vao = gl.create_vertex_array().unwrap();
             gl.bind_vertex_array(Some(vao));
@@ -270,9 +192,6 @@ impl MartyScaler {
             gl.enable_vertex_attrib_array(1);
             gl.vertex_attrib_pointer_f32(1, 2, glow::FLOAT, false, 16, 8);
 
-            //let u_transform = gl.get_uniform_location(program, "u_transform").unwrap();
-            //let u_texture = gl.get_uniform_location(program, "u_texture").unwrap();
-
             let matrix = ScalingMatrix::new(
                 mode,
                 (texture_size.0 as f32, texture_size.1 as f32),
@@ -284,16 +203,82 @@ impl MartyScaler {
             Self {
                 mode,
                 program,
+                uniforms,
                 vertex_array: vao,
-                vbo,
+                _vbo: vbo,
                 screen_size,
                 target_size,
                 texture_size,
                 margin_y,
                 scaling_matrix: matrix,
-
+                bilinear: true,
+                gamma: 1.0,
+                scanlines: 0,
+                do_scanlines: false,
+                h_curvature: 0.0,
+                v_curvature: 0.0,
+                corner_radius: 0.0,
+                mono: false,
+                mono_color: [1.0, 1.0, 1.0, 1.0],
+                crtc_frame_parity: 0,
+                crtc_interlaced: false,
+                crtc_interlace_support: true,
             }
         }
+    }
+
+    fn output_height(&self) -> f32 {
+        let texture_width = self.texture_size.0 as f32;
+        let texture_height = self.texture_size.1 as f32;
+        let target_width = self.target_size.0 as f32;
+        let target_height = self.target_size.1 as f32;
+        let screen_width = self.screen_size.0 as f32;
+        let screen_height = self.screen_size.1 as f32;
+        let margin_y = self.margin_y as f32;
+
+        if texture_width <= 0.0 || texture_height <= 0.0 || target_height <= 0.0 || screen_height <= 0.0 {
+            return 0.0;
+        }
+
+        match self.mode {
+            ScalerMode::Null | ScalerMode::Fixed => target_height,
+            ScalerMode::Stretch => (screen_height - margin_y).max(0.0),
+            ScalerMode::Windowed => {
+                Self::fit_output_height(texture_width, target_height, target_width, target_height, margin_y)
+            }
+            ScalerMode::Integer => {
+                let adjusted_screen_h = screen_height - margin_y;
+                let max_height_factor = (adjusted_screen_h / screen_height).max(1.0);
+                let width_ratio = (screen_width / texture_width).max(1.0);
+                let height_ratio = (adjusted_screen_h / target_height).max(max_height_factor);
+                target_height * width_ratio.clamp(1.0, height_ratio).floor()
+            }
+            ScalerMode::Fit => {
+                Self::fit_output_height(texture_width, target_height, screen_width, screen_height, margin_y)
+            }
+        }
+    }
+
+    fn fit_output_height(
+        texture_width: f32,
+        target_height: f32,
+        screen_width: f32,
+        screen_height: f32,
+        margin_y: f32,
+    ) -> f32 {
+        if texture_width <= 0.0 || target_height <= 0.0 || screen_height <= 0.0 {
+            return 0.0;
+        }
+
+        let adjusted_screen_h = screen_height - margin_y;
+        let max_height_factor = (adjusted_screen_h / screen_height).max(1.0);
+        let width_ratio = (screen_width / texture_width).max(1.0);
+        let height_ratio = (adjusted_screen_h / target_height).max(max_height_factor);
+        target_height * width_ratio.min(height_ratio)
+    }
+
+    fn scanlines_allowed(&self) -> bool {
+        self.texture_size.1 > 0 && self.output_height() >= self.texture_size.1 as f32 * 2.0
     }
 }
 
@@ -323,28 +308,44 @@ impl DisplayScaler<Context, (), Texture> for MartyScaler {
             // Bind texture to unit 0
             gl.active_texture(glow::TEXTURE0);
             gl.bind_texture(glow::TEXTURE_2D, Some(*texture));
+            let filter = if self.bilinear { glow::LINEAR } else { glow::NEAREST } as i32;
+            gl.tex_parameter_i32(glow::TEXTURE_2D, glow::TEXTURE_MIN_FILTER, filter);
+            gl.tex_parameter_i32(glow::TEXTURE_2D, glow::TEXTURE_MAG_FILTER, filter);
 
-            // Set sampler uniform
-            if let Some(loc) = gl.get_uniform_location(self.program, "u_texture") {
-                gl.uniform_1_i32(Some(&loc), 0);
+            let scanlines = if self.do_scanlines && self.scanlines_allowed() {
+                self.scanlines
             }
+            else {
+                0
+            };
 
-            // Set transform uniform
-            if let Some(loc) = gl.get_uniform_location(self.program, "u_transform") {
-                // let transform = [
-                //     1.0, 0.0, 0.0, 0.0,
-                //     0.0, 1.0, 0.0, 0.0,
-                //     0.0, 0.0, 1.0, 0.0,
-                //     0.0, 0.0, 0.0, 1.0,
-                // ];
-
-                let transform = self.scaling_matrix.as_slice_f32();
-                gl.uniform_matrix_4_f32_slice(Some(&loc), true, transform);
-                // println!(
-                //     "texture size: {:?} target size: {:?} screen size: {:?}",
-                //     self.texture_size, self.target_size, self.screen_size
-                // );
-            }
+            gl.uniform_1_i32(self.uniforms.texture.as_ref(), 0);
+            gl.uniform_matrix_4_f32_slice(
+                self.uniforms.transform.as_ref(),
+                false,
+                self.scaling_matrix.as_slice_f32(),
+            );
+            gl.uniform_1_f32(self.uniforms.h_curvature.as_ref(), self.h_curvature);
+            gl.uniform_1_f32(self.uniforms.v_curvature.as_ref(), self.v_curvature);
+            gl.uniform_1_f32(self.uniforms.corner_radius.as_ref(), self.corner_radius);
+            gl.uniform_1_i32(self.uniforms.scanlines.as_ref(), scanlines as i32);
+            gl.uniform_1_f32(self.uniforms.gamma.as_ref(), self.gamma);
+            gl.uniform_1_i32(self.uniforms.mono.as_ref(), self.mono as i32);
+            gl.uniform_4_f32(
+                self.uniforms.mono_color.as_ref(),
+                self.mono_color[0],
+                self.mono_color[1],
+                self.mono_color[2],
+                self.mono_color[3],
+            );
+            gl.uniform_1_i32(self.uniforms.vres.as_ref(), self.texture_size.1 as i32);
+            gl.uniform_1_i32(self.uniforms.texture_order.as_ref(), 0); // Glow textures are RGBA.
+            gl.uniform_1_i32(self.uniforms.crtc_frame_parity.as_ref(), self.crtc_frame_parity as i32);
+            gl.uniform_1_i32(self.uniforms.crtc_interlaced.as_ref(), self.crtc_interlaced as i32);
+            gl.uniform_1_i32(
+                self.uniforms.crtc_interlace_support.as_ref(),
+                self.crtc_interlace_support as i32,
+            );
 
             gl.draw_arrays(glow::TRIANGLE_STRIP, 0, 4);
         }
@@ -402,8 +403,7 @@ impl DisplayScaler<Context, (), Texture> for MartyScaler {
         self.mode
     }
 
-    fn set_mode(&mut self, _device: &eframe::glow::Context, queue: &(), new_mode: ScalerMode) {
-        //println!(">>> set_mode(): {:?}", new_mode);
+    fn set_mode(&mut self, _device: &eframe::glow::Context, _queue: &(), new_mode: ScalerMode) {
         self.mode = new_mode;
         self.scaling_matrix = ScalingMatrix::new(
             self.mode,
@@ -425,150 +425,75 @@ impl DisplayScaler<Context, (), Texture> for MartyScaler {
         }
     }
 
-    fn set_margins(&mut self, l: u32, r: u32, t: u32, b: u32) {
-        // self.margin_l = l;
-        // self.margin_r = r;
-        // self.margin_t = t;
-        // self.margin_b = b;
-    }
+    fn set_margins(&mut self, _l: u32, _r: u32, _t: u32, _b: u32) {}
 
     fn set_bilinear(&mut self, bilinear: bool) {
-        //self.bilinear = bilinear
+        self.bilinear = bilinear;
     }
 
-    fn set_fill_color(&mut self, fill: MartyColor) {
-        //self.fill_color = fill.to_wgpu_color();
-    }
+    fn set_fill_color(&mut self, _fill: MartyColor) {}
 
-    /// Apply a ScalerOption. Update of uniform buffers is controlled by the 'update' boolean. If
-    /// it is true we will perform an immediate uniform update; if false it will be delayed and
-    /// set_option() will return true to indicate that the caller should perform an update.
+    /// Apply a scaler option. Glow uniforms are uploaded from this state immediately before each
+    /// draw, so there is no separate uniform-buffer update to defer.
     fn set_option(&mut self, device: &Context, queue: &(), opt: ScalerOption, _update: bool) -> bool {
         match opt {
             ScalerOption::Mode(new_mode) => {
                 self.set_mode(device, queue, new_mode);
             }
-            _ => {}
+            ScalerOption::Adjustment { g, .. } => {
+                self.gamma = g;
+            }
+            ScalerOption::Filtering(filter) => {
+                self.set_bilinear(matches!(filter, ScalerFilter::Linear));
+            }
+            ScalerOption::FillColor { r, g, b, a } => {
+                self.set_fill_color(MartyColor {
+                    r: r as f32,
+                    g: g as f32,
+                    b: b as f32,
+                    a: a as f32,
+                });
+            }
+            ScalerOption::Geometry {
+                h_curvature,
+                v_curvature,
+                corner_radius,
+            } => {
+                self.h_curvature = h_curvature;
+                self.v_curvature = v_curvature;
+                self.corner_radius = corner_radius;
+            }
+            ScalerOption::Mono { enabled, r, g, b, a } => {
+                self.mono = enabled;
+                self.mono_color = [r, g, b, a];
+            }
+            ScalerOption::Margins { l, r, t, b } => {
+                self.set_margins(l, r, t, b);
+            }
+            ScalerOption::Scanlines {
+                enabled,
+                lines,
+                intensity: _,
+            } => {
+                self.scanlines = lines.unwrap_or(self.scanlines);
+                self.do_scanlines = enabled.unwrap_or(self.do_scanlines);
+            }
+            ScalerOption::CrtcFrameParity { enabled, parity } => {
+                self.crtc_interlaced = enabled;
+                self.crtc_frame_parity = parity & 1;
+            }
+            ScalerOption::InterlaceSupport(enabled) => {
+                self.crtc_interlace_support = enabled;
+            }
+            ScalerOption::Effect(_) => {}
         }
-
-        // let mut update_uniform = false;
-        //
-        // match opt {
-        //     ScalerOption::Mode(new_mode) => {
-        //         self.set_mode(device, queue, new_mode);
-        //     }
-        //     ScalerOption::Adjustment { h: _h, s: _s, b, c, g } => {
-        //         self.brightness = b;
-        //         self.gamma = g;
-        //         self.contrast = c;
-        //         update_uniform = true;
-        //     }
-        //     ScalerOption::Filtering(filter) => {
-        //         let bilinear;
-        //         match filter {
-        //             ScalerFilter::Nearest => bilinear = false,
-        //             ScalerFilter::Linear => bilinear = true,
-        //         }
-        //         self.set_bilinear(bilinear);
-        //     }
-        //     ScalerOption::FillColor { r, g, b, a } => {
-        //         self.set_fill_color(MartyColor {
-        //             r: r as f32,
-        //             g: g as f32,
-        //             b: b as f32,
-        //             a: a as f32,
-        //         });
-        //         update_uniform = true;
-        //     }
-        //     ScalerOption::Geometry {
-        //         h_curvature,
-        //         v_curvature,
-        //         corner_radius,
-        //     } => {
-        //         self.h_curvature = h_curvature;
-        //         self.v_curvature = v_curvature;
-        //         self.corner_radius = corner_radius;
-        //         update_uniform = true;
-        //     }
-        //     ScalerOption::Mono { enabled, r, g, b, a } => {
-        //         self.mono = enabled;
-        //         self.mono_color = wgpu::Color {
-        //             r: r as f64,
-        //             g: g as f64,
-        //             b: b as f64,
-        //             a: a as f64,
-        //         };
-        //         update_uniform = true;
-        //     }
-        //     ScalerOption::Margins { l, r, t, b } => {
-        //         self.set_margins(l, r, t, b);
-        //     }
-        //     ScalerOption::Scanlines {
-        //         enabled,
-        //         lines,
-        //         intensity: _i,
-        //     } => {
-        //         self.scanlines = lines.unwrap_or(self.scanlines);
-        //         self.do_scanlines = enabled.unwrap_or(self.do_scanlines);
-        //         update_uniform = true;
-        //     }
-        //     ScalerOption::Effect(_) => {}
-        // }
-        //
-        // if update && update_uniform {
-        //     self.update_uniforms(queue);
-        // }
-        // else if update_uniform {
-        //     return true;
-        // }
         false
     }
 
-    /*
-    fn resize_texture(
-        &mut self,
-        pixels: &pixels::Pixels,
-        texture_width: u32,
-        texture_height: u32,
-    ) {
-
-        //self.texture_view = create_texture_view(pixels, self.screen_width, self.screen_height);
-        self.bind_group = create_bind_group(
-            pixels.device(),
-            &self.bind_group_layout,
-            &self.texture_view,
-            &self.sampler,
-            &self.uniform_buffer,
-        );
-
-        let matrix = ScalingMatrix::new(
-            (texture_width as f32, texture_height as f32),
-            (self.screen_width as f32, self.screen_height as f32),
-        );
-        let transform_bytes = matrix.as_bytes();
-
-        self.texture_width = texture_width;
-        self.texture_height = texture_height;
-
-        pixels
-            .queue()
-            .write_buffer(&self.uniform_buffer, 0, transform_bytes);
-    }
-    */
-
-    /// Iterate though a vector of ScalerOptions and apply them all. We can defer uniform update
-    /// until all options have been processed.
+    /// Apply a set of scaler options.
     fn set_options(&mut self, device: &eframe::glow::Context, queue: &(), opts: Vec<ScalerOption>) {
-        let mut update_uniform = false;
         for opt in opts {
-            let update_flag = self.set_option(device, queue, opt, false);
-            if update_flag {
-                update_uniform = true;
-            }
-        }
-
-        if update_uniform {
-            //self.update_uniforms(queue);
+            self.set_option(device, queue, opt, false);
         }
     }
 }
@@ -743,7 +668,7 @@ impl ScalingMatrix {
         let margin_ndc = (margin_y + offset) / (screen_size.1 / 2.0);
 
         let (texture_width, _texture_height) = texture_size;
-        let mut target_height = target_size.1;
+        let target_height = target_size.1;
         let (screen_width, screen_height) = screen_size;
         let adjusted_screen_h = screen_height - margin_y;
 
@@ -799,10 +724,6 @@ impl ScalingMatrix {
         Self {
             transform: Mat4::from(transform),
         }
-    }
-
-    fn as_bytes(&self) -> &[u8] {
-        self.transform.as_byte_slice()
     }
 
     fn as_slice_f32(&self) -> &[f32] {

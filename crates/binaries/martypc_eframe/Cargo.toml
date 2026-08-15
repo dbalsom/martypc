@@ -127,7 +127,7 @@ use_wgpu = [
     "marty_egui/scaler_params"
 ]
 # Use the glow backend
-use_glow = ["eframe/glow", "display_manager_eframe/use_glow", "marty_egui/scaler_ui"]
+use_glow = ["eframe/glow", "display_manager_eframe/use_glow", "marty_egui/scaler_ui", "marty_egui/scaler_params"]
 # Use serialport
 use_serialport = ["marty_core/serial", "marty_egui/use_serialport", "marty_egui_eframe/use_serialport"]
 # Use gilrs for gamepads

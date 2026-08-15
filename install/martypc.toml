@@ -368,6 +368,18 @@ card_id = 0
 # Setting this value overrides 'size' and 'resizable'.
 #card_scale = 1
 
+# Specify the scaler mode to use for this window when displaying a video card.
+# This has no effect if no card_id is provided.
+#
+# Valid options for Scaler mode are
+# Fixed   - Video and shader output will be displayed at native base resolution
+# Integer - Video and shader output will be scaled to the largest integer
+#           multiple that will fit in the window. This generally produces the
+#           clearest results, but can leave large black borders.
+# Fit     - Video will be scaled proportionally to fit the window.
+# Stretch - Video will be scaled to fit the window.
+scaler_mode = "Integer"
+
 # Specify the scaler preset to use for this window. See the 
 # [[emulator.scaler_preset]] definitions defined below for reference.
 scaler_preset = "default"
@@ -383,6 +395,7 @@ size = { w = 800, h = 600 }
 resizable = false
 card_id = 0
 card_scale = 1
+scaler_mode = "Integer"
 scaler_preset = "Green CRT"
 always_on_top = false
 
@@ -394,6 +407,7 @@ size = { w = 640, h = 480 }
 resizable = false
 card_id = 0
 card_scale = 1
+scaler_mode = "Integer"
 scaler_preset = "default"
 always_on_top = false
 
@@ -416,18 +430,6 @@ always_on_top = false
 # Provide a unique name for this preset. Reference this name in window 
 # definitions. A name is required.
 name = "default" # Default preset must exist! Do not rename.
-
-# Specify the scaler mode to use for this window when displaying a video card.
-# The default value is "Integer". This has no effect if no card_id is provided.
-#
-# Valid options for Scaler mode are
-# Fixed   - Video and shader output will be displayed at native base resolution
-# Integer - Video and shader output will be scaled to the largest integer
-#           multiple that will fit in the window. This generally produces the
-#           clearest results, but can leave large black borders.
-# Fit     - Video will be scaled proportionally to fit the window.
-# Stretch - Video will be scaled to fit the window.
-mode = "Integer"
 
 # Valid options for filter are:
 # Linear  - Bilinear filtering. Best results but may introduce blur. 

@@ -32,6 +32,17 @@
 use marty_common::VideoDimensions;
 use serde_derive::Deserialize;
 
+#[derive(Copy, Clone, Debug, Default, Eq, PartialEq, Deserialize)]
+pub enum ScalerMode {
+    Null,
+    Fixed,
+    #[default]
+    Integer,
+    Fit,
+    Stretch,
+    Windowed,
+}
+
 #[derive(Clone, Debug, Deserialize)]
 pub struct WindowDefinition {
     #[serde(default)]
@@ -47,6 +58,8 @@ pub struct WindowDefinition {
     pub resizable: bool,
     pub card_id: Option<usize>,
     pub card_scale: Option<f32>,
+    /// Initial scaling policy for this display target.
+    pub scaler_mode: Option<ScalerMode>,
     #[serde(default)]
     pub always_on_top: bool,
     pub scaler_preset: Option<String>,

@@ -3409,7 +3409,6 @@ name = "marty_web_helpers"
 version = "0.4.2"
 dependencies = [
  "crossbeam-channel",
- "gloo-timers",
  "log",
  "marty_common",
  "url",

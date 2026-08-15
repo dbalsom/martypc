@@ -408,6 +408,38 @@ impl egui_wgpu::CallbackTrait for DisplayTargetCallback {
     }
 }
 
+#[cfg(feature = "use_glow")]
+struct GlowDisplayTargetCallback {
+    lock: Arc<RwLock<DisplayTargetContext>>,
+}
+
+// SAFETY: On WASM, egui's glow paint callbacks are created and invoked on the browser's main
+// thread. The Send + Sync bounds allow the callback to be stored by egui; the WebGL resources
+// inside DisplayTargetContext are never transferred to or accessed from a worker.
+#[cfg(all(target_arch = "wasm32", feature = "use_glow"))]
+unsafe impl Send for GlowDisplayTargetCallback {}
+
+// SAFETY: See the Send implementation above.
+#[cfg(all(target_arch = "wasm32", feature = "use_glow"))]
+unsafe impl Sync for GlowDisplayTargetCallback {}
+
+#[cfg(feature = "use_glow")]
+impl GlowDisplayTargetCallback {
+    fn paint(&self, painter: &egui_glow::Painter) {
+        if let Ok(mut target) = self.lock.try_write() {
+            let surface = target.surface().unwrap();
+            let texture = surface.read().unwrap().backing_texture().clone();
+
+            if let Some(scaler) = &mut target.scaler {
+                scaler.render_with_context(painter.gl(), texture);
+            }
+        }
+        else {
+            log::warn!("Failed to acquire write lock on display target!");
+        }
+    }
+}
+
 pub struct EFrameDisplayManager {
     // All windows share a common event loop.
     //event_loop: Option<EventLoop<()>>,
@@ -573,14 +605,8 @@ impl DisplayTargetContext {
         };
         let scaler = self.scaler.as_mut().unwrap();
 
-        let mut mode = preset.mode.unwrap_or(scaler.mode());
-
-        if self.dt_type == DisplayTargetType::GuiWidget {
-            self.prev_scaler_mode = Some(mode);
-            mode = ScalerMode::Windowed;
-        }
-
-        scaler.set_mode(&*backend.device(), &*backend.queue(), mode);
+        // Scaler mode belongs to the display target and is changed independently. Applying a
+        // visual preset must not reset a mode selected in the window configuration or GUI.
         scaler.set_bilinear(bilinear);
         scaler.set_fill_color(MartyColor::from_u24(preset.border_color.unwrap_or(0)));
 
@@ -758,23 +784,15 @@ impl EFrameDisplayManager {
     }
 
     #[cfg(feature = "use_glow")]
-    pub fn main_display_callback(&self, ui: &mut egui::Ui, rect: egui::Rect) -> egui::PaintCallback {
-        let target = self.targets[0].clone();
+    pub fn main_display_callback(&self, _ui: &mut egui::Ui, rect: egui::Rect) -> egui::PaintCallback {
+        let callback = GlowDisplayTargetCallback {
+            lock: self.targets[0].clone(),
+        };
 
         egui::PaintCallback {
             rect,
             callback: Arc::new(egui_glow::CallbackFn::new(move |_info, painter| {
-                if let Ok(mut target) = target.try_write() {
-                    let surface = target.surface().unwrap();
-                    let texture = surface.read().unwrap().backing_texture().clone();
-
-                    if let Some(scaler) = &mut target.scaler {
-                        scaler.render_with_context(painter.gl(), texture.clone());
-                    }
-                }
-                else {
-                    log::warn!("Failed to acquire write lock on display target!");
-                }
+                callback.paint(painter);
             })),
         }
     }
@@ -817,6 +835,7 @@ impl<'p> DisplayManager<EFrameBackend, GuiRenderContext, ViewportId, ViewportId,
         viewport_opts: Option<DmViewportOptions>,
         card_id: Option<VideoCardId>,
         scaler_preset: String,
+        scaler_mode: ScalerMode,
         _gui_options: &DmGuiOptions,
     ) -> Result<DtHandle, Error> {
         // For now, we only support creating new WindowBackground targets.
@@ -932,10 +951,12 @@ impl<'p> DisplayManager<EFrameBackend, GuiRenderContext, ViewportId, ViewportId,
                     TextureDimensions { w: sw, h: sh },
                 )?;
 
-                // Create the scaler.
-                let _scale_mode = match dt_flags.main_window {
-                    true => ScalerMode::Integer,
-                    false => ScalerMode::Fixed,
+                // GUI-widget targets temporarily override their configured mode while embedded.
+                let active_scaler_mode = if dt_type == DisplayTargetType::GuiWidget {
+                    ScalerMode::Windowed
+                }
+                else {
+                    scaler_mode
                 };
 
                 // The texture sizes specified initially aren't important. Since DisplayManager can't
@@ -943,7 +964,7 @@ impl<'p> DisplayManager<EFrameBackend, GuiRenderContext, ViewportId, ViewportId,
                 // the Builder.
                 #[cfg(feature = "use_wgpu")]
                 let scaler = MartyScaler::new(
-                    scaler_preset.mode.unwrap_or(ScalerMode::Integer),
+                    active_scaler_mode,
                     &*self.backend.as_ref().unwrap().device(),
                     &resolve_dyn!(surface).backing_texture(),
                     resolve_dyn!(surface).backing_texture_format(),
@@ -964,7 +985,7 @@ impl<'p> DisplayManager<EFrameBackend, GuiRenderContext, ViewportId, ViewportId,
                     (DEFAULT_RESOLUTION_W, DEFAULT_RESOLUTION_H),
                     (sw, sh),
                     0,
-                    scaler_preset.mode.unwrap_or(ScalerMode::Integer),
+                    active_scaler_mode,
                 );
                 #[cfg(not(any(feature = "use_wgpu", feature = "use_glow")))]
                 let scaler = MartyScaler::new();
@@ -1036,7 +1057,12 @@ impl<'p> DisplayManager<EFrameBackend, GuiRenderContext, ViewportId, ViewportId,
                     aspect_ratio: scaler_preset.renderer.aspect_ratio.unwrap_or_default(),
                     //backend: Some(pb), // The graphics backend instance
                     surface: Some(surface),
-                    prev_scaler_mode: None,
+                    prev_scaler_mode: if dt_type == DisplayTargetType::GuiWidget {
+                        Some(scaler_mode)
+                    }
+                    else {
+                        None
+                    },
                     scaler: Some(Box::new(scaler)),
                     scaler_params: Some(ScalerParams::from(scaler_preset.clone())),
                     card_scale,

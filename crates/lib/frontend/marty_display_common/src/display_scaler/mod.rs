@@ -30,19 +30,10 @@
 
 */
 use marty_frontend_common::color::MartyColor;
+pub use marty_frontend_common::types::window::ScalerMode;
 use marty_videocard_renderer::RendererConfigParams;
 use serde::Deserialize;
 use std::sync::Arc;
-
-#[derive(Copy, Clone, Debug, Eq, PartialEq, Deserialize)]
-pub enum ScalerMode {
-    Null,
-    Fixed,
-    Integer,
-    Fit,
-    Stretch,
-    Windowed,
-}
 
 // This array is intended to represent modes to be displayed to the user. Since Null is an
 // internal mode, we don't include it.
@@ -107,6 +98,8 @@ fn default_true() -> bool {
 #[derive(Clone, Debug, Deserialize)]
 pub struct ScalerPreset {
     pub name: String,
+    /// Legacy default-mode setting. New configurations define mode per window; this field is
+    /// consulted only on the preset named `default` when a window omits `scaler_mode`.
     pub mode: Option<ScalerMode>,
     pub border_color: Option<u32>,
     // Fields below should be identical to ScalerParams
@@ -172,12 +165,6 @@ impl Default for ScalerParams {
             crt_phosphor_type: PhosphorType::Color,
             gamma: 1.0,
         }
-    }
-}
-
-impl Default for ScalerMode {
-    fn default() -> Self {
-        ScalerMode::Integer
     }
 }
 

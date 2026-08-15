@@ -279,6 +279,14 @@ impl<'a> EFrameDisplayManagerBuilder<'a> {
         viewport_opts.card_scale = window_def.card_scale;
 
         let preset_name = window_def.scaler_preset.clone().unwrap_or("default".to_string());
+        // Scaler mode is a property of the display target, not the visual preset. For
+        // compatibility with older configurations, an omitted window mode inherits only
+        // from the default preset; the selected visual preset must not determine it.
+        let scaler_mode = window_def.scaler_mode.unwrap_or_else(|| {
+            dm.scaler_preset("default".to_string())
+                .and_then(|preset| preset.mode)
+                .unwrap_or_default()
+        });
 
         // Construct window title.
         let window_title = format!("{}: {}", &window_def.name, card_string).to_string();
@@ -311,6 +319,7 @@ impl<'a> EFrameDisplayManagerBuilder<'a> {
             Some(viewport_opts),
             card_id_opt,
             preset_name,
+            scaler_mode,
             gui_options,
         )
         .expect("Failed to create window target!");

@@ -283,6 +283,7 @@ pub trait DisplayManager<B, G, Vh, V, C> {
         viewport_opts: Option<DmViewportOptions>,
         card_id: Option<VideoCardId>,
         scaler_preset: String,
+        scaler_mode: ScalerMode,
         gui_options: &DmGuiOptions,
     ) -> Result<DtHandle, Error>;
 
