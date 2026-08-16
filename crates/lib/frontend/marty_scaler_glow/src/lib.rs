@@ -75,6 +75,7 @@ struct ShaderUniforms {
     crtc_frame_parity: Option<UniformLocation>,
     crtc_interlaced: Option<UniformLocation>,
     crtc_interlace_support: Option<UniformLocation>,
+    power_off: Option<UniformLocation>,
 }
 
 impl ShaderUniforms {
@@ -95,6 +96,7 @@ impl ShaderUniforms {
                 crtc_frame_parity: gl.get_uniform_location(program, "u_crtc_frame_parity"),
                 crtc_interlaced: gl.get_uniform_location(program, "u_crtc_interlaced"),
                 crtc_interlace_support: gl.get_uniform_location(program, "u_crtc_interlace_support"),
+                power_off: gl.get_uniform_location(program, "u_power_off"),
             }
         }
     }
@@ -126,6 +128,7 @@ pub struct MartyScaler {
     crtc_frame_parity: u32,
     crtc_interlaced: bool,
     crtc_interlace_support: bool,
+    power_off: f32,
 }
 
 impl MartyScaler {
@@ -234,6 +237,7 @@ impl MartyScaler {
                 crtc_frame_parity: 0,
                 crtc_interlaced: false,
                 crtc_interlace_support: true,
+                power_off: 0.0,
             }
         }
     }
@@ -349,6 +353,7 @@ impl DisplayScaler<Context, (), Texture> for MartyScaler {
                 self.uniforms.crtc_interlace_support.as_ref(),
                 self.crtc_interlace_support as i32,
             );
+            gl.uniform_1_f32(self.uniforms.power_off.as_ref(), self.power_off);
 
             gl.draw_arrays(glow::TRIANGLE_STRIP, 0, 4);
         }
@@ -487,6 +492,9 @@ impl DisplayScaler<Context, (), Texture> for MartyScaler {
             }
             ScalerOption::InterlaceSupport(enabled) => {
                 self.crtc_interlace_support = enabled;
+            }
+            ScalerOption::PowerOff { progress } => {
+                self.power_off = progress.clamp(0.0, 1.0);
             }
             ScalerOption::Effect(_) => {}
         }

@@ -35,70 +35,75 @@ use marty_core::{device_traits::videocard::BufferSelect, machine::ExecutionState
 use marty_egui::GuiBoolean;
 
 pub fn render_frame(emu: &mut Emulator, dm: &mut EFrameDisplayManager) {
+    let rendering_active = !emu.display_power.frame_frozen();
+    dm.set_power_off_progress(emu.display_power.progress());
+
     let mut scaler_parity_updates = Vec::new();
 
     // First, run each renderer to resolve all videocard views.
     // Every renderer will have an associated card and backend.
-    dm.for_each_renderer(|renderer, vid, backend_buf| {
-        // Clippy false positive - we need a mutable videocard
-        #[allow(unused_mut)]
-        if let Some(mut videocard) = emu.machine.bus_mut().video_mut(&vid) {
-            // Check if the emulator is paused - if paused, optionally select the back buffer
-            // so we can watch the raster beam draw
-            let mut beam_pos = None;
-            match emu.exec_control.borrow_mut().get_state() {
-                ExecutionState::Paused | ExecutionState::BreakpointHit | ExecutionState::Halted => {
-                    if emu.gui.get_option(GuiBoolean::ShowBackBuffer).unwrap_or(false) {
-                        renderer.select_buffer(BufferSelect::Back);
-                        if emu.gui.get_option(GuiBoolean::ShowRasterPosition).unwrap_or(false) {
-                            beam_pos = videocard.beam_pos();
+    if rendering_active {
+        dm.for_each_renderer(|renderer, vid, backend_buf| {
+            // Clippy false positive - we need a mutable videocard
+            #[allow(unused_mut)]
+            if let Some(mut videocard) = emu.machine.bus_mut().video_mut(&vid) {
+                // Check if the emulator is paused - if paused, optionally select the back buffer
+                // so we can watch the raster beam draw
+                let mut beam_pos = None;
+                match emu.exec_control.borrow_mut().get_state() {
+                    ExecutionState::Paused | ExecutionState::BreakpointHit | ExecutionState::Halted => {
+                        if emu.gui.get_option(GuiBoolean::ShowBackBuffer).unwrap_or(false) {
+                            renderer.select_buffer(BufferSelect::Back);
+                            if emu.gui.get_option(GuiBoolean::ShowRasterPosition).unwrap_or(false) {
+                                beam_pos = videocard.beam_pos();
+                            }
+                        }
+                        else {
+                            renderer.select_buffer(BufferSelect::Front);
                         }
                     }
-                    else {
+                    _ => {
                         renderer.select_buffer(BufferSelect::Front);
                     }
                 }
-                _ => {
-                    renderer.select_buffer(BufferSelect::Front);
+
+                let extents = videocard.display_extents();
+                scaler_parity_updates.push((vid, videocard.interlaced_frame_parity()));
+
+                // Update mode byte.
+                if renderer.get_mode_byte() != extents.mode_byte {
+                    // Mode byte has changed, recalculate composite parameters
+                    renderer.cga_direct_mode_update(extents.mode_byte);
+                    renderer.set_mode_byte(extents.mode_byte);
                 }
-            }
 
-            let extents = videocard.display_extents();
-            scaler_parity_updates.push((vid, videocard.interlaced_frame_parity()));
+                //log::debug!("Drawing renderer for vid: {:?}", vid);
+                renderer.draw(
+                    videocard.buf(renderer.get_selected_buffer()),
+                    backend_buf,
+                    extents,
+                    beam_pos,
+                    videocard.palette(),
+                );
 
-            // Update mode byte.
-            if renderer.get_mode_byte() != extents.mode_byte {
-                // Mode byte has changed, recalculate composite parameters
-                renderer.cga_direct_mode_update(extents.mode_byte);
-                renderer.set_mode_byte(extents.mode_byte);
-            }
+                // Since we have the card and renderer together here, this is a good time to update
+                // the card with things like the light pen position.
+                if renderer.cursor_state() {
+                    let light_pen_pos = renderer.cursor_pos_absolute(&extents);
 
-            //log::debug!("Drawing renderer for vid: {:?}", vid);
-            renderer.draw(
-                videocard.buf(renderer.get_selected_buffer()),
-                backend_buf,
-                extents,
-                beam_pos,
-                videocard.palette(),
-            );
-
-            // Since we have the card and renderer together here, this is a good time to update
-            // the card with things like the light pen position.
-            if renderer.cursor_state() {
-                let light_pen_pos = renderer.cursor_pos_absolute(&extents);
-
-                if let Some(light_pen_latch_pos) = renderer.cursor_latch_absolute(&extents, None) {
-                    videocard.light_pen_trigger(light_pen_latch_pos.0, light_pen_latch_pos.1);
+                    if let Some(light_pen_latch_pos) = renderer.cursor_latch_absolute(&extents, None) {
+                        videocard.light_pen_trigger(light_pen_latch_pos.0, light_pen_latch_pos.1);
+                    }
+                    else {
+                        videocard.set_light_pen_pos(light_pen_pos.0, light_pen_pos.1);
+                    }
+                    videocard.set_light_pen_state(emu.mouse_data.l_button_is_pressed);
                 }
-                else {
-                    videocard.set_light_pen_pos(light_pen_pos.0, light_pen_pos.1);
-                }
-                videocard.set_light_pen_state(emu.mouse_data.l_button_is_pressed);
+                // Tell the card whether to draw debug colors.
+                videocard.set_debug_draw_state(renderer.is_debug());
             }
-            // Tell the card whether to draw debug colors.
-            videocard.set_debug_draw_state(renderer.is_debug());
-        }
-    });
+        });
+    }
 
     for (vid, parity) in scaler_parity_updates {
         dm.set_scaler_crtc_frame_parity(vid, parity);

@@ -69,17 +69,54 @@ pub enum ScalerEffect {
 
 pub enum ScalerOption {
     Mode(ScalerMode),
-    Adjustment { h: f32, s: f32, b: f32, c: f32, g: f32 },
-    Margins { l: u32, r: u32, t: u32, b: u32 },
+    Adjustment {
+        h: f32,
+        s: f32,
+        b: f32,
+        c: f32,
+        g: f32,
+    },
+    Margins {
+        l: u32,
+        r: u32,
+        t: u32,
+        b: u32,
+    },
     Filtering(ScalerFilter),
-    FillColor { r: u8, g: u8, b: u8, a: u8 },
-    Mono { enabled: bool, r: f32, g: f32, b: f32, a: f32 },
-    Geometry { h_curvature: f32, v_curvature: f32, corner_radius: f32 },
+    FillColor {
+        r: u8,
+        g: u8,
+        b: u8,
+        a: u8,
+    },
+    Mono {
+        enabled: bool,
+        r: f32,
+        g: f32,
+        b: f32,
+        a: f32,
+    },
+    Geometry {
+        h_curvature:   f32,
+        v_curvature:   f32,
+        corner_radius: f32,
+    },
     // `lines` is the number of desired CRT scanline bands. For doubled render textures this is
     // typically half the backing/render texture height.
-    Scanlines { enabled: Option<bool>, lines: Option<u32>, intensity: Option<f32> },
-    CrtcFrameParity { enabled: bool, parity: u32 },
+    Scanlines {
+        enabled: Option<bool>,
+        lines: Option<u32>,
+        intensity: Option<f32>,
+    },
+    CrtcFrameParity {
+        enabled: bool,
+        parity:  u32,
+    },
     InterlaceSupport(bool),
+    /// Normalized CRT power-off animation progress. Zero is normal display output; one is black.
+    PowerOff {
+        progress: f32,
+    },
     Effect(ScalerEffect),
 }
 

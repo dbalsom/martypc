@@ -793,6 +793,26 @@ impl DisplayTargetContext {
 }
 
 impl EFrameDisplayManager {
+    /// Apply a normalized power-off animation position to every display scaler.
+    pub fn set_power_off_progress(&mut self, progress: f32) {
+        let Some(backend) = &self.backend
+        else {
+            return;
+        };
+
+        for target in &mut self.targets {
+            let target = &mut resolve_dtc_mut!(target);
+            if let Some(scaler) = &mut target.scaler {
+                scaler.set_option(
+                    &*backend.device(),
+                    &*backend.queue(),
+                    ScalerOption::PowerOff { progress },
+                    true,
+                );
+            }
+        }
+    }
+
     pub fn set_scaler_crtc_frame_parity(&mut self, vid: VideoCardId, parity: Option<u8>) {
         let Some(idx_vec) = self.card_id_map.get(&vid).cloned()
         else {

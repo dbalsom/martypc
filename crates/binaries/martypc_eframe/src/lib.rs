@@ -27,6 +27,7 @@
 #![warn(clippy::all, rust_2018_idioms)]
 pub mod app;
 pub mod counter;
+pub mod display_power;
 pub mod emulator;
 pub mod emulator_builder;
 pub mod event_loop;

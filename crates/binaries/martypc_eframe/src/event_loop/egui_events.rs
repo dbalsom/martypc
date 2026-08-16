@@ -1111,13 +1111,15 @@ pub fn handle_egui_event(
         GuiEvent::MachineStateChange(state) => {
             match state {
                 MachineState::Off => {
+                    emu.display_power.begin_power_off();
                     // Prevent execution while ROM resources are reloaded after power-off.
                     if emu.config.machine.reload_roms {
                         // Tell the Machine to wait on execution until ROMs are reloaded
                         emu.machine.set_reload_pending(true);
                     }
                 }
-                _ => {
+                MachineState::On => {
+                    emu.display_power.power_on();
                     emu.machine.set_reload_pending(false);
                 }
             }

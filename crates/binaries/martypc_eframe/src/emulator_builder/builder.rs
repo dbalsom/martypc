@@ -942,6 +942,7 @@ impl EmulatorBuilder {
             romsets: rom_sets_resolved.clone(),
             config,
             machine,
+            display_power: Default::default(),
             machine_events,
             exec_control,
             mouse_data,

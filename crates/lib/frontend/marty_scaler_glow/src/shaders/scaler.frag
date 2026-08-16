@@ -16,10 +16,14 @@ uniform int u_texture_order;
 uniform int u_crtc_frame_parity;
 uniform int u_crtc_interlaced;
 uniform int u_crtc_interlace_support;
+uniform float u_power_off;
 
 out vec4 out_color;
 
 const float PI = 3.141592653589793;
+const float POWER_OFF_VERTICAL_COLLAPSE_SPEED = 2.85;
+const float POWER_OFF_HORIZONTAL_COLLAPSE_SPEED = 1.5;
+const float POWER_OFF_HORIZONTAL_COLLAPSE_DELAY = 0.25;
 
 float brightness(vec4 color) {
     return 0.2126 * color.r + 0.7152 * color.g + 0.0722 * color.b;
@@ -75,10 +79,50 @@ vec4 do_scanlines(vec4 color, float y_coord, float texture_lines, float lines, f
 }
 
 void main() {
-    vec2 curved_tex_coord = apply_crt_curvature(v_uv);
-    bool is_outside = any(lessThan(curved_tex_coord, vec2(0.0)))
-        || any(greaterThan(curved_tex_coord, vec2(1.0)));
-    bool is_inside_corner = is_inside_corner_radius(curved_tex_coord, u_corner_radius * 0.1);
+    float power_off = clamp(u_power_off, 0.0, 1.0);
+    vec2 effect_tex_coord = v_uv;
+    float power_mask = 1.0;
+    float vertical_collapse = 0.0;
+
+    if (power_off > 0.0) {
+        // Collapse the picture vertically until its entire contents occupy a thin horizontal line.
+        float vertical_time = clamp(power_off * POWER_OFF_VERTICAL_COLLAPSE_SPEED, 0.0, 1.0);
+        vertical_collapse = (1.0 - exp(-3.0 * vertical_time)) / (1.0 - exp(-3.0));
+        float half_height = mix(0.5, 0.0025, vertical_collapse);
+        float vertical_edge_softness = mix(0.002, 0.005, vertical_collapse);
+        float vertical_center_distance = abs(v_uv.y - 0.5);
+        power_mask = 1.0 - smoothstep(
+            half_height,
+            half_height + vertical_edge_softness,
+            vertical_center_distance
+        );
+        effect_tex_coord.y = clamp(0.5 + (v_uv.y - 0.5) / (half_height * 2.0), 0.0, 1.0);
+
+        // Collapse horizontally after a tunable delay, with an independently tunable speed.
+        float horizontal_time = clamp(
+            (power_off - POWER_OFF_HORIZONTAL_COLLAPSE_DELAY) * POWER_OFF_HORIZONTAL_COLLAPSE_SPEED,
+            0.0,
+            1.0
+        );
+        float horizontal_collapse = (1.0 - exp(-3.0 * horizontal_time)) / (1.0 - exp(-3.0));
+        float half_width = mix(0.5, 0.0025, horizontal_collapse);
+        float horizontal_edge_softness = mix(0.002, 0.005, horizontal_collapse);
+        float horizontal_center_distance = abs(v_uv.x - 0.5);
+        power_mask *= 1.0 - smoothstep(
+            half_width,
+            half_width + horizontal_edge_softness,
+            horizontal_center_distance
+        );
+        effect_tex_coord.x = clamp(0.5 + (v_uv.x - 0.5) / (half_width * 2.0), 0.0, 1.0);
+    }
+
+    // Keep containment tied to the original scaler geometry. Only texture sampling is animated.
+    vec2 containment_tex_coord = apply_crt_curvature(v_uv);
+    vec2 curved_tex_coord = apply_crt_curvature(effect_tex_coord);
+    bool is_outside = any(lessThan(containment_tex_coord, vec2(0.0)))
+        || any(greaterThan(containment_tex_coord, vec2(1.0)));
+    bool is_inside_corner = is_inside_corner_radius(containment_tex_coord, u_corner_radius * 0.1);
+
     bool interlace_shift_enabled = u_crtc_interlace_support != 0
         && u_crtc_interlaced != 0
         && u_crtc_frame_parity == 1;
@@ -93,22 +137,40 @@ void main() {
     if (is_outside || !is_inside_corner) {
         discard;
     }
+    else {
+        if (u_mono != 0) {
+            color = do_monochrome(color, u_gamma);
+        }
 
-    if (u_mono != 0) {
-        color = do_monochrome(color, u_gamma);
+        if (u_scanlines > 0) {
+            float scanline_phase_shift = interlace_shift_enabled
+                ? 0.5 / max(float(u_scanlines), 1.0)
+                : 0.0;
+            color = do_scanlines(
+                color,
+                curved_tex_coord.y - scanline_phase_shift,
+                float(u_vres),
+                float(u_scanlines),
+                0.3
+            );
+        }
     }
 
-    if (u_scanlines > 0) {
-        float scanline_phase_shift = interlace_shift_enabled
-            ? 0.5 / max(float(u_scanlines), 1.0)
-            : 0.0;
-        color = do_scanlines(
-            color,
-            curved_tex_coord.y - scanline_phase_shift,
-            float(u_vres),
-            float(u_scanlines),
-            0.3
-        );
+    if (power_off > 0.0) {
+        // Overdrive the source image as it collapses
+        float gamma = mix(1.0, 0.55, vertical_collapse);
+        float contrast = mix(1.0, 1.35, vertical_collapse);
+        float exposure = mix(1.0, 4.0, vertical_collapse);
+
+        vec3 gamma_color = pow(max(color.rgb, vec3(0.0)), vec3(gamma));
+        vec3 contrast_color = max((gamma_color - 0.5) * contrast + 0.5, vec3(0.0));
+
+        float white_point = 1.0 - exp(-exposure);
+        vec3 energized_color = (vec3(1.0) - exp(-contrast_color * exposure)) / white_point;
+        float vertical_duration = 1.0 / POWER_OFF_VERTICAL_COLLAPSE_SPEED;
+        float fade = 1.0 - smoothstep(vertical_duration, 1.0, power_off);
+
+        color = vec4(mix(color.rgb, energized_color, vertical_collapse) * fade * power_mask, 1.0);
     }
 
     // Override alpha for glow

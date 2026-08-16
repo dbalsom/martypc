@@ -128,7 +128,7 @@ struct ScalerOptionsUniform {
     mode: u32,
     hres: u32,
     vres: u32,
-    pad2: u32,
+    power_off: f32,
     crt_params: CrtParamUniform,
     fill_color: [f32; 4],
     texture_order: u32,
@@ -242,6 +242,7 @@ pub struct MartyScaler {
     crtc_frame_parity: u32,
     crtc_interlaced: bool,
     crtc_interlace_support: bool,
+    power_off: f32,
 }
 
 impl MartyScaler {
@@ -524,6 +525,7 @@ impl MartyScaler {
             crtc_frame_parity: 0,
             crtc_interlaced: false,
             crtc_interlace_support: true,
+            power_off: 0.0,
         }
     }
 
@@ -593,7 +595,7 @@ impl MartyScaler {
             mode: 0,
             hres: 0,
             vres: 0,
-            pad2: 0,
+            power_off: 0.0,
             crt_params,
             fill_color: MartyColor {
                 r: 0.0,
@@ -658,7 +660,7 @@ impl MartyScaler {
             mode: self.mode as u32,
             hres: self.screen_width,
             vres: self.texture_height,
-            pad2: 0,
+            power_off: self.power_off,
             crt_params,
             fill_color: MartyColor::from(self.fill_color).into(),
             texture_order: self.texture_order,
@@ -949,6 +951,13 @@ impl DisplayScaler<wgpu::Device, wgpu::Queue, wgpu::Texture> for MartyScaler {
             ScalerOption::InterlaceSupport(enabled) => {
                 if self.crtc_interlace_support != enabled {
                     self.crtc_interlace_support = enabled;
+                    update_uniform = true;
+                }
+            }
+            ScalerOption::PowerOff { progress } => {
+                let progress = progress.clamp(0.0, 1.0);
+                if self.power_off != progress {
+                    self.power_off = progress;
                     update_uniform = true;
                 }
             }

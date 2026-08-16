@@ -49,6 +49,7 @@ use marty_frontend_common::thread_events::{FileOpenContext, FileSelectionContext
 
 use crate::{
     counter::Counter,
+    display_power::DisplayPowerEffect,
     emulator::{joystick_state::JoystickState, keyboard_state::KeyboardData, mouse_state::MouseState},
     input::{GamepadInterface, HotkeyManager},
     sound::SoundInterface,
@@ -97,6 +98,7 @@ pub struct Emulator {
     pub romsets: Vec<String>,
     pub config: ConfigFileParams,
     pub machine: Machine,
+    pub display_power: DisplayPowerEffect,
     pub machine_events: Vec<MachineEvent>,
     pub exec_control: Rc<RefCell<ExecutionControl>>,
     pub mouse_data: MouseState,
@@ -131,9 +133,11 @@ impl Emulator {
 
         // Set the initial power-on state.
         if self.config.emulator.auto_poweron {
+            self.display_power.power_on();
             self.machine.change_state(MachineState::On);
         }
         else {
+            self.display_power.power_off_immediately();
             self.machine.change_state(MachineState::Off);
         }
 

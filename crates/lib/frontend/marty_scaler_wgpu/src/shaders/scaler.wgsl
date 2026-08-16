@@ -62,7 +62,7 @@ struct ScalerOptionsUniform {
     mode: u32,
     hres: u32,
     vres: u32,
-    pad2: u32,
+    power_off: f32,
     crt_params: CrtParamUniform,
     fill_color: vec4<f32>,
     texture_order: u32,
@@ -72,6 +72,9 @@ struct ScalerOptionsUniform {
 };
 
 const PI: f32 = 3.141592653589793;
+const POWER_OFF_VERTICAL_COLLAPSE_SPEED: f32 = 2.85;
+const POWER_OFF_HORIZONTAL_COLLAPSE_SPEED: f32 = 1.5;
+const POWER_OFF_HORIZONTAL_COLLAPSE_DELAY: f32 = 0.25;
 
 @group(0) @binding(2) var<uniform> r_locals: VertexUniform;
 @group(0) @binding(3) var<uniform> scaler_opts: ScalerOptionsUniform;
@@ -193,10 +196,50 @@ fn do_scanlines(color: vec4<f32>, y_coord: f32, texture_lines: u32, lines: u32, 
 
 @fragment
 fn fs_main(@location(0) tex_coord: vec2<f32>) -> @location(0) vec4<f32> {
-    let curved_tex_coord = apply_crt_curvature(tex_coord);
+    let power_off = clamp(scaler_opts.power_off, 0.0, 1.0);
+    var effect_tex_coord = tex_coord;
+    var power_mask = 1.0;
+    var vertical_collapse = 0.0;
 
-    let is_outside = any(curved_tex_coord < vec2<f32>(0.0, 0.0)) || any(curved_tex_coord > vec2<f32>(1.0, 1.0));
-    let is_inside_corner = is_inside_corner_radius(curved_tex_coord, scaler_opts.crt_params.corner_radius * 0.1);
+    if (power_off > 0.0) {
+        // Collapse the picture vertically until its entire contents occupy a thin horizontal line.
+        let vertical_time = clamp(power_off * POWER_OFF_VERTICAL_COLLAPSE_SPEED, 0.0, 1.0);
+        vertical_collapse = (1.0 - exp(-3.0 * vertical_time)) / (1.0 - exp(-3.0));
+        let half_height = mix(0.5, 0.0025, vertical_collapse);
+        let vertical_edge_softness = mix(0.002, 0.005, vertical_collapse);
+        let vertical_center_distance = abs(tex_coord.y - 0.5);
+        power_mask = 1.0 - smoothstep(
+            half_height,
+            half_height + vertical_edge_softness,
+            vertical_center_distance,
+        );
+        effect_tex_coord.y = clamp(0.5 + (tex_coord.y - 0.5) / (half_height * 2.0), 0.0, 1.0);
+
+        // Collapse horizontally after a tunable delay, with an independently tunable speed.
+        let horizontal_time = clamp(
+            (power_off - POWER_OFF_HORIZONTAL_COLLAPSE_DELAY) * POWER_OFF_HORIZONTAL_COLLAPSE_SPEED,
+            0.0,
+            1.0,
+        );
+        let horizontal_collapse = (1.0 - exp(-3.0 * horizontal_time)) / (1.0 - exp(-3.0));
+        let half_width = mix(0.5, 0.0025, horizontal_collapse);
+        let horizontal_edge_softness = mix(0.002, 0.005, horizontal_collapse);
+        let horizontal_center_distance = abs(tex_coord.x - 0.5);
+        power_mask *= 1.0 - smoothstep(
+            half_width,
+            half_width + horizontal_edge_softness,
+            horizontal_center_distance,
+        );
+        effect_tex_coord.x = clamp(0.5 + (tex_coord.x - 0.5) / (half_width * 2.0), 0.0, 1.0);
+    }
+
+    // Keep containment tied to the original scaler geometry. Only texture sampling is animated.
+    let containment_tex_coord = apply_crt_curvature(tex_coord);
+    let curved_tex_coord = apply_crt_curvature(effect_tex_coord);
+
+    let is_outside = any(containment_tex_coord < vec2<f32>(0.0, 0.0))
+        || any(containment_tex_coord > vec2<f32>(1.0, 1.0));
+    let is_inside_corner = is_inside_corner_radius(containment_tex_coord, scaler_opts.crt_params.corner_radius * 0.1);
     let interlace_shift_enabled = scaler_opts.crtc_interlace_support != 0u
         && scaler_opts.crtc_interlaced != 0u
         && scaler_opts.crtc_frame_parity == 1u;
@@ -234,8 +277,23 @@ fn fs_main(@location(0) tex_coord: vec2<f32>) -> @location(0) vec4<f32> {
             color = do_scanlines(color, curved_tex_coord.y - scanline_phase_shift, scaler_opts.vres, scanlines, 0.3);
         }
 
-        // We can emit a solid color for debugging...
-        // return vec4<f32>(0.0, 0.0, 1.0, 1.0);
-        return color;
     }
+
+    if (power_off > 0.0) {
+        // Overdrive the source image as it collapses instead of replacing it with solid white.
+        let gamma = mix(1.0, 0.55, vertical_collapse);
+        let contrast = mix(1.0, 1.35, vertical_collapse);
+        let exposure = mix(1.0, 4.0, vertical_collapse);
+        let gamma_color = pow(max(color.rgb, vec3<f32>(0.0)), vec3<f32>(gamma));
+        let contrast_color = max((gamma_color - 0.5) * contrast + 0.5, vec3<f32>(0.0));
+        let white_point = 1.0 - exp(-exposure);
+        let energized_color = (vec3<f32>(1.0) - exp(-contrast_color * exposure)) / white_point;
+        let vertical_duration = 1.0 / POWER_OFF_VERTICAL_COLLAPSE_SPEED;
+        let fade = 1.0 - smoothstep(vertical_duration, 1.0, power_off);
+        color = vec4<f32>(mix(color.rgb, energized_color, vertical_collapse) * fade * power_mask, 1.0);
+    }
+
+    // We can emit a solid color for debugging...
+    // return vec4<f32>(0.0, 0.0, 1.0, 1.0);
+    return color;
 }

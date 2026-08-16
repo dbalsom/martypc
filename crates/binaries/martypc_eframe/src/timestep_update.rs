@@ -442,14 +442,17 @@ pub fn process_update(emu: &mut Emulator, dm: &mut EFrameDisplayManager, tm: &mu
 
             let render_start = Instant::now();
 
-            // Check if any videocard has resized and handle it
-            emuc.machine.for_each_videocard(|vci| {
-                let extents = vci.card.display_extents();
-                // Resize the card.
-                if let Err(_) = dmc.on_card_resized(&vci.id, &extents) {
-                    log::error!("Error resizing videocard");
-                }
-            });
+            // Preserve the last rendered surface while the power-off effect is active. A reset can
+            // change card extents immediately, which would otherwise replace that captured frame.
+            if !emuc.display_power.frame_frozen() {
+                emuc.machine.for_each_videocard(|vci| {
+                    let extents = vci.card.display_extents();
+                    // Resize the card.
+                    if let Err(_) = dmc.on_card_resized(&vci.id, &extents) {
+                        log::error!("Error resizing videocard");
+                    }
+                });
+            }
             emuc.stat_counter.render_time = Instant::now() - render_start;
 
             // Update egui data
