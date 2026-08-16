@@ -97,7 +97,7 @@ impl GuiState {
                         .filter(|card| display_target_count_for_card(&display_info, *card) != 1)
                         .collect::<Vec<_>>();
 
-                    if display_info.len() > 1 {
+                    if display_info.len() >= 3 {
                         #[cfg(feature = "scaler_ui")]
                         {
                             ui.menu_button("All Displays", |ui| {
