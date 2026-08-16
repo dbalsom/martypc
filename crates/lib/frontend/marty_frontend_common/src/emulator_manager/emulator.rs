@@ -364,11 +364,8 @@ impl Emulator {
             dtc.set_aspect_mode(AspectCorrectionMode::Hardware);
         });
 
-        let mut vid_list = Vec::new();
-        // Get a list of all cards as we can't nest dm closures
-        self.dm.for_each_card(|vid| {
-            vid_list.push(vid.clone());
-        });
+        // Get the card list from the machine, including cards with no display targets.
+        let mut vid_list = self.machine.bus().enumerate_videocards();
 
         for vid in vid_list.iter() {
             if let Some(card) = self.machine.bus().video(vid) {
@@ -388,7 +385,7 @@ impl Emulator {
         let mut card_strs = Vec::new();
         for vid in vid_list.iter() {
             let card_str = format!("Card: {} ({:?})", vid.idx, vid.vtype);
-            card_strs.push(card_str);
+            card_strs.push((*vid, card_str));
         }
 
         // Set list of virtual serial ports

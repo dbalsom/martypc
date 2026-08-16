@@ -30,9 +30,17 @@
 use crate::{state::GuiState, GuiEvent, GuiWindow};
 
 #[cfg(feature = "use_display")]
-use marty_display_common::display_manager::DtHandle;
+use marty_core::device_traits::videocard::VideoCardId;
 
 use egui::RichText;
+
+#[cfg(feature = "use_display")]
+fn display_target_count_for_card(
+    display_info: &[marty_display_common::display_manager::DisplayTargetInfo],
+    card: VideoCardId,
+) -> usize {
+    display_info.iter().filter(|display| display.vid == Some(card)).count()
+}
 
 impl GuiState {
     pub fn show_menu(&mut self, ui: &mut egui::Ui) {
@@ -81,18 +89,69 @@ impl GuiState {
                 ui.menu_button("Display", |ui| {
                     ui.set_min_size(egui::vec2(240.0, 0.0));
 
-                    // If there is only one display, emit the display menu directly.
-                    // Otherwise, emit named menus for each display.
-                    if self.display_info.len() == 1 {
-                        self.draw_display_menu(ui, DtHandle::default());
+                    let display_info = self.display_info.clone();
+                    let separate_card_menus = self
+                        .video_cards
+                        .iter()
+                        .copied()
+                        .filter(|card| display_target_count_for_card(&display_info, *card) != 1)
+                        .collect::<Vec<_>>();
+
+                    if display_info.len() > 1 {
+                        #[cfg(feature = "scaler_ui")]
+                        {
+                            ui.menu_button("All Displays", |ui| {
+                                self.draw_all_displays_menu(ui);
+                            });
+                            ui.separator();
+                        }
                     }
-                    else if self.display_info.len() > 1 {
-                        // Use index here to avoid borrowing issues.
-                        for i in 0..self.display_info.len() {
-                            ui.menu_button(format!("Display {}: {}", i, &self.display_info[i].name), |ui| {
-                                self.draw_display_menu(ui, self.display_info[i].handle);
+
+                    // Cards with multiple display targets get a separate menu for card-level
+                    // actions. A zero-target card also needs a menu because it has no display
+                    // menu that could host those actions.
+                    for card in &separate_card_menus {
+                        ui.menu_button(format!("Card {}: {:?}", card.idx, card.vtype), |ui| {
+                            self.draw_video_card_menu(ui, *card);
+                        });
+                    }
+
+                    if !separate_card_menus.is_empty() && !display_info.is_empty() {
+                        ui.separator();
+                    }
+
+                    // If there is only one display, emit the display menu directly. Otherwise,
+                    // emit named menus for each display. Card-level actions remain inline when
+                    // the card has exactly one display target.
+                    if display_info.len() == 1 {
+                        self.draw_display_menu(ui, display_info[0].handle);
+
+                        if let Some(card) = display_info[0]
+                            .vid
+                            .filter(|card| display_target_count_for_card(&display_info, *card) == 1)
+                        {
+                            ui.separator();
+                            self.draw_video_card_menu(ui, card);
+                        }
+                    }
+                    else if display_info.len() > 1 {
+                        for (display_idx, display) in display_info.iter().enumerate() {
+                            let card = display
+                                .vid
+                                .filter(|card| display_target_count_for_card(&display_info, *card) == 1);
+
+                            ui.menu_button(format!("Display {}: {}", display_idx, display.name), |ui| {
+                                self.draw_display_menu(ui, display.handle);
+
+                                if let Some(card) = card {
+                                    ui.separator();
+                                    self.draw_video_card_menu(ui, card);
+                                }
                             });
                         }
+                    }
+                    else if separate_card_menus.is_empty() {
+                        ui.label(RichText::new("No video cards or display targets available.").italics());
                     }
                 });
             }

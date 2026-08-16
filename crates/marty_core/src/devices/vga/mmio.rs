@@ -107,14 +107,14 @@ impl MemoryMappedDevice for VGACard {
                 size: CGA_MEM_WINDOW,
                 cycle_cost: 0,
                 read_only: false,
-                priority: 0,
+                priority: 1,
             },
             MemRangeDescriptor {
                 address: 0xA0000,
                 size: EGA_GFX_PLANE_SIZE,
                 cycle_cost: 0,
                 read_only: false,
-                priority: 0,
+                priority: 1,
             },
         ]
     }

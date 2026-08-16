@@ -47,7 +47,7 @@ use marty_core::{
     device_traits::videocard::{DisplayApertureType, DisplayExtents, VideoCardId, VideoType},
     machine::Machine,
 };
-use marty_frontend_common::{GuiContextOptions, MartyGuiTheme};
+use marty_frontend_common::{types::window::BackgroundOrganization, GuiContextOptions, MartyGuiTheme};
 use marty_videocard_renderer::{RendererConfigParams, VideoRenderer};
 
 use anyhow::Error;
@@ -80,6 +80,30 @@ impl From<usize> for DtHandle {
 
 impl From<DtHandle> for usize {
     fn from(handle: DtHandle) -> usize {
+        handle.0
+    }
+}
+
+/// A stable handle identifying a configured viewport.
+#[derive(Copy, Clone, Debug, Default, Hash, PartialEq, Eq)]
+pub struct VpHandle(pub usize);
+
+impl VpHandle {
+    pub const ROOT: VpHandle = VpHandle(0);
+
+    pub fn idx(&self) -> usize {
+        self.0
+    }
+}
+
+impl From<usize> for VpHandle {
+    fn from(idx: usize) -> Self {
+        VpHandle(idx)
+    }
+}
+
+impl From<VpHandle> for usize {
+    fn from(handle: VpHandle) -> usize {
         handle.0
     }
 }
@@ -130,6 +154,7 @@ impl Display for DisplayTargetType {
 #[derive(Clone)]
 pub struct DisplayTargetInfo {
     pub handle: DtHandle,
+    pub viewport: Option<VpHandle>,
     pub backend_name: String,
     pub adapter_name: String,
     pub dtype: DisplayTargetType,
@@ -145,6 +170,13 @@ pub struct DisplayTargetInfo {
     pub scaler_mode: Option<ScalerMode>,
     pub scaler_params: Option<ScalerParams>,
     pub scaler_geometry: Option<ScalerGeometry>,
+}
+
+/// Information about a configured viewport, independent of any display assigned to it.
+#[derive(Clone, Debug)]
+pub struct ViewportInfo {
+    pub handle: VpHandle,
+    pub name:   String,
 }
 
 pub struct DmGuiOptions {
@@ -172,6 +204,7 @@ impl From<DmGuiOptions> for GuiContextOptions {
 /// Options for viewport-based display targets.
 /// All dimensions are specified as inner size (sometimes referred to as the client area, for
 /// window-based viewports).
+#[derive(Clone)]
 pub struct DmViewportOptions {
     pub size: DisplayTargetDimensions,
     pub min_size: Option<DisplayTargetDimensions>,
@@ -179,10 +212,13 @@ pub struct DmViewportOptions {
     pub margins: DisplayTargetMargins,
     pub title: String,
     pub resizable: bool,
+    pub fullscreen: bool,
     pub always_on_top: bool,
     pub is_on_top: bool,
     pub card_scale: Option<f32>,
     pub fill_color: Option<u32>,
+    pub background_organization: BackgroundOrganization,
+    pub can_grab: bool,
 }
 
 impl Default for DmViewportOptions {
@@ -194,10 +230,13 @@ impl Default for DmViewportOptions {
             margins: Default::default(),
             title: "New Window".to_string(),
             resizable: false,
+            fullscreen: false,
             always_on_top: false,
             is_on_top: false,
             card_scale: None,
             fill_color: None,
+            background_organization: BackgroundOrganization::default(),
+            can_grab: true,
         }
     }
 }
@@ -290,6 +329,13 @@ pub trait DisplayManager<B, G, Vh, V, C> {
     /// Return a vector of [DisplayTargetInfo] representing all displays in the manager. A reference
     /// to a [Machine] must be provided to query video card parameters.
     fn display_info(&self, machine: &Machine) -> Vec<DisplayTargetInfo>;
+
+    /// Return a vector describing every configured viewport, including empty viewports.
+    fn viewport_info(&self) -> Vec<ViewportInfo>;
+
+    /// Assign a display target to a configured viewport. Implementations may allow multiple
+    /// display targets to share a viewport.
+    fn set_display_viewport(&mut self, dt: DtHandle, viewport: VpHandle) -> Result<(), Error>;
 
     /// Return the main `Viewport`.
     /// This viewport should be where the main interface of the emulator is rendered.

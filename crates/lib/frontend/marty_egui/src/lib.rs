@@ -76,7 +76,7 @@ use marty_core::{
 use marty_common::types::ui::MouseCaptureMode;
 use marty_core::cpu_common::Register16;
 #[cfg(feature = "use_display")]
-use marty_display_common::display_manager::{DisplayTargetType, DtHandle};
+use marty_display_common::display_manager::{DisplayTargetType, DtHandle, VpHandle};
 use marty_frontend_common::types::gamepad::{GamepadId, JoystickMapping};
 #[cfg(feature = "use_display")]
 use marty_videocard_renderer::CompositeParams;
@@ -185,6 +185,8 @@ impl Default for GuiVariableContext {
 pub enum GuiEnum {
     #[cfg(feature = "use_display")]
     DisplayType(DisplayTargetType),
+    #[cfg(feature = "use_display")]
+    DisplayViewport(VpHandle),
     DisplayAspectCorrect(bool),
     DisplayAperture(DisplayApertureType),
     #[cfg(feature = "use_display")]
@@ -203,6 +205,8 @@ fn create_default_variant(ge: GuiEnum) -> GuiEnum {
     match ge {
         #[cfg(feature = "use_display")]
         GuiEnum::DisplayType(_) => GuiEnum::DisplayType(Default::default()),
+        #[cfg(feature = "use_display")]
+        GuiEnum::DisplayViewport(_) => GuiEnum::DisplayViewport(Default::default()),
         GuiEnum::DisplayAspectCorrect(_) => GuiEnum::DisplayAspectCorrect(Default::default()),
         GuiEnum::DisplayAperture(_) => GuiEnum::DisplayAperture(Default::default()),
         #[cfg(feature = "use_display")]
@@ -264,7 +268,7 @@ pub enum GuiEvent {
     #[cfg(feature = "use_display")]
     CompositeAdjust(DtHandle, CompositeParams),
     #[cfg(feature = "use_display")]
-    ScalerAdjust(usize, ScalerParams),
+    ScalerAdjust(DtHandle, ScalerParams),
     FlushLogs,
     DelayAdjust,
     TickDevice(DeviceSelection, u32),

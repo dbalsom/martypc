@@ -105,10 +105,10 @@ pub use marty_display_common::display_manager::{
     DmViewportOptions,
 };
 
-use marty_frontend_common::types::window::WindowDefinition;
+use marty_frontend_common::types::window::{BackgroundOrganization, WindowDefinition};
 
 use marty_display_common::{
-    display_manager::{DisplayDimensions, DisplayTargetInfo, DtHandle},
+    display_manager::{DisplayDimensions, DisplayTargetInfo, DtHandle, ViewportInfo, VpHandle},
     display_scaler::{
         PhosphorType,
         ScalerFilter,
@@ -327,11 +327,20 @@ impl DisplayTargetParams {
 
 /// Tracks state for a viewport, allowing us to query the viewport size and fullscreen status
 /// without a direct viewport reference.
-#[derive(Default)]
+#[derive(Clone, Default)]
 pub struct ViewportState {
     pub w: u32,
     pub h: u32,
     pub fullscreen: bool,
+    pub open: bool,
+    pub resize_pending: bool,
+}
+
+/// State owned by a configured egui viewport rather than by any display rendered into it.
+pub struct EFrameViewportContext {
+    pub id: ViewportId,
+    pub options: DmViewportOptions,
+    pub state: ViewportState,
 }
 
 #[derive(Default)]
@@ -344,8 +353,6 @@ pub struct DisplayTargetContext {
     pub resolved_params: DisplayTargetParams,
     pub requested_params: Option<DisplayTargetParams>,
     pub viewport: Option<ViewportId>, // The EGUI ViewportId
-    pub viewport_opts: Option<DmViewportOptions>,
-    pub viewport_state: ViewportState,
     pub(crate) fill_color: Option<u32>,
     pub(crate) gui_ctx: Option<GuiRenderContext>, // The egui render context, if any
     pub(crate) card_id: Option<VideoCardId>,      // The video card device id, if any
@@ -361,6 +368,33 @@ pub struct DisplayTargetContext {
 
 pub struct DisplayTargetCallback {
     pub lock: Arc<RwLock<DisplayTargetContext>>,
+}
+
+/// Divide a viewport's available background into one rectangle per display target.
+pub fn background_target_rects(
+    available_rect: egui::Rect,
+    target_count: usize,
+    organization: BackgroundOrganization,
+) -> Vec<egui::Rect> {
+    let (columns, rows) = organization.grid_dimensions(target_count);
+    if columns == 0 || rows == 0 {
+        return Vec::new();
+    }
+
+    let cell_width = available_rect.width() / columns as f32;
+    let cell_height = available_rect.height() / rows as f32;
+    (0..target_count)
+        .map(|target_idx| {
+            let column = target_idx % columns;
+            let row = target_idx / columns;
+            let min = egui::pos2(
+                available_rect.min.x + column as f32 * cell_width,
+                available_rect.min.y + row as f32 * cell_height,
+            );
+            let max = egui::pos2(min.x + cell_width, min.y + cell_height);
+            egui::Rect::from_min_max(min, max)
+        })
+        .collect()
 }
 
 #[cfg(all(target_arch = "wasm32", feature = "use_wgpu"))]
@@ -444,12 +478,10 @@ pub struct EFrameDisplayManager {
     // All windows share a common event loop.
     //event_loop: Option<EventLoop<()>>,
     backend: Option<EFrameBackend>,
-    // There can be multiple display windows. One for the main egui window, which may or may not
-    // be attached to a videocard.
-    // Optionally, one for each potential graphics adapter. For the moment I only plan to support
-    // two adapters - a primary and secondary adapter. This implies a limit of 3 windows.
-    // The window containing egui will always be at index 0.
+    // Display targets and egui viewports are deliberately independent: a viewport may contain
+    // multiple targets, and moving all targets away from a viewport leaves an empty window.
     targets: Vec<dtc!()>,
+    viewports: Vec<Arc<RwLock<EFrameViewportContext>>>,
     viewport_id_map: MartyHashMap<ViewportId, usize>,
     viewport_id_resize_requests: MartyHashMap<ViewportId, ResizeTarget>,
     card_id_map: MartyHashMap<VideoCardId, Vec<usize>>, // Card id maps to a Vec<usize> as a single card can have multiple targets.
@@ -463,6 +495,7 @@ impl Default for EFrameDisplayManager {
         Self {
             backend: None,
             targets: Vec::new(),
+            viewports: Vec::new(),
             viewport_id_map: MartyHashMap::default(),
             viewport_id_resize_requests: MartyHashMap::default(),
             card_id_map: MartyHashMap::default(),
@@ -476,6 +509,30 @@ impl Default for EFrameDisplayManager {
 impl EFrameDisplayManager {
     pub fn new() -> Self {
         Default::default()
+    }
+
+    /// Register an egui viewport independently from any display targets assigned to it.
+    pub fn create_viewport(&mut self, id: ViewportId, options: DmViewportOptions) -> Result<VpHandle, Error> {
+        if self.viewport_id_map.contains_key(&id) {
+            return Err(anyhow!("Duplicate viewport ID: {:?}", id));
+        }
+
+        let (w, h): (u32, u32) = options.size.into();
+        let viewport_idx = self.viewports.len();
+        self.viewports.push(Arc::new(RwLock::new(EFrameViewportContext {
+            id,
+            state: ViewportState {
+                w,
+                h,
+                fullscreen: options.fullscreen,
+                open: true,
+                resize_pending: false,
+            },
+            options,
+        })));
+        self.viewport_id_map.insert(id, viewport_idx);
+
+        Ok(VpHandle(viewport_idx))
     }
 }
 
@@ -559,19 +616,6 @@ impl DisplayTargetContext {
                 renderer.set_cursor_state(grabbed)
             }
         }
-    }
-
-    pub fn set_on_top(&mut self, on_top: bool) {
-        if let Some(wopts) = &mut self.viewport_opts {
-            wopts.is_on_top = on_top;
-        }
-    }
-
-    pub fn is_on_top(&self) -> bool {
-        if let Some(wopts) = &self.viewport_opts {
-            return wopts.is_on_top;
-        }
-        false
     }
 
     // pub fn create_gui_context(
@@ -783,24 +827,273 @@ impl EFrameDisplayManager {
         self.targets[0].clone()
     }
 
+    pub fn display_target(&self, display: DtHandle) -> Option<dtc!()> {
+        self.targets.get(display.idx()).cloned()
+    }
+
+    /// Return displays assigned to an egui viewport, optionally filtered by display type. Targets
+    /// without a renderer are empty configuration slots and are intentionally not returned as
+    /// displays.
+    pub fn displays_for_viewport(
+        &self,
+        viewport: ViewportId,
+        display_type: Option<DisplayTargetType>,
+    ) -> Vec<DtHandle> {
+        self.targets
+            .iter()
+            .enumerate()
+            .filter_map(|(idx, target)| {
+                target.read().ok().and_then(|target| {
+                    (target.renderer.is_some()
+                        && target.viewport == Some(viewport)
+                        && display_type.is_none_or(|display_type| target.dt_type == display_type))
+                    .then_some(DtHandle(idx))
+                })
+            })
+            .collect()
+    }
+
+    /// Return the first display assigned to a viewport for call sites that operate on one focused
+    /// display, such as mouse capture.
+    pub fn display_for_viewport(&self, viewport: ViewportId) -> Option<DtHandle> {
+        self.displays_for_viewport(viewport, None).into_iter().next()
+    }
+
+    pub fn grabbed_display_for_viewport(&self, viewport: ViewportId) -> Option<DtHandle> {
+        self.displays_for_viewport(viewport, None).into_iter().find(|display| {
+            self.display_target(*display)
+                .and_then(|target| target.read().ok().map(|target| target.grabbed()))
+                .unwrap_or(false)
+        })
+    }
+
+    pub fn grabbed_display(&self) -> Option<(ViewportId, DtHandle)> {
+        self.targets.iter().enumerate().find_map(|(idx, target)| {
+            target.read().ok().and_then(|target| {
+                if target.grabbed() {
+                    target.viewport.map(|viewport| (viewport, DtHandle(idx)))
+                }
+                else {
+                    None
+                }
+            })
+        })
+    }
+
+    pub fn viewport_fill_color(&self, viewport: ViewportId) -> Option<u32> {
+        let viewport_idx = *self.viewport_id_map.get(&viewport)?;
+        self.viewports
+            .get(viewport_idx)?
+            .read()
+            .ok()
+            .and_then(|viewport| viewport.options.fill_color)
+    }
+
+    pub fn viewport_background_organization(&self, viewport: ViewportId) -> BackgroundOrganization {
+        self.viewport_id_map
+            .get(&viewport)
+            .and_then(|viewport_idx| self.viewports.get(*viewport_idx))
+            .and_then(|viewport| viewport.read().ok())
+            .map(|viewport| viewport.options.background_organization)
+            .unwrap_or_default()
+    }
+
+    pub fn viewport_can_grab(&self, viewport: ViewportId) -> bool {
+        self.viewport_id_map
+            .get(&viewport)
+            .and_then(|viewport_idx| self.viewports.get(*viewport_idx))
+            .and_then(|viewport| viewport.read().ok())
+            .is_some_and(|viewport| viewport.options.can_grab)
+    }
+
+    fn viewport_size(&self, viewport: ViewportId) -> Option<(u32, u32)> {
+        let viewport_idx = *self.viewport_id_map.get(&viewport)?;
+        self.viewports.get(viewport_idx)?.read().ok().map(|viewport| {
+            let state = &viewport.state;
+            (state.w, state.h)
+        })
+    }
+
+    fn request_viewport_resize(&mut self, viewport: ViewportId) {
+        if let Some((w, h)) = self.viewport_size(viewport) {
+            self.viewport_id_resize_requests.insert(viewport, ResizeTarget { w, h });
+        }
+    }
+
+    /// Present every non-root display target as an egui viewport.
+    ///
+    /// Egui viewports are immediate-mode: this method must be called on every root viewport pass
+    /// for as long as the secondary windows should remain open.
+    pub fn show_secondary_viewports<F>(&self, ctx: &Context, mut target_ui: F)
+    where
+        F: FnMut(ViewportId, bool, DtHandle, &mut egui::Ui, &egui::Response, &mut DisplayTargetContext),
+    {
+        for viewport in &self.viewports {
+            let viewport = viewport.clone();
+
+            let Some((viewport_id, viewport_builder, fill_color, background_organization, can_grab)) = (|| {
+                let viewport_ref = viewport.read().ok()?;
+                if !viewport_ref.state.open {
+                    return None;
+                }
+
+                let viewport_id = viewport_ref.id;
+                if viewport_id == ViewportId::ROOT {
+                    return None;
+                }
+                let viewport_opts = &viewport_ref.options;
+                let (width, height): (u32, u32) = viewport_opts.size.into();
+
+                let mut builder = egui::ViewportBuilder::default()
+                    .with_title(viewport_opts.title.clone())
+                    .with_inner_size([width as f32, height as f32])
+                    .with_resizable(viewport_opts.resizable)
+                    .with_fullscreen(viewport_opts.fullscreen)
+                    .with_close_button(false);
+
+                if let Some(min_size) = viewport_opts.min_size {
+                    let (width, height): (u32, u32) = min_size.into();
+                    builder = builder.with_min_inner_size([width as f32, height as f32]);
+                }
+                if let Some(max_size) = viewport_opts.max_size {
+                    let (width, height): (u32, u32) = max_size.into();
+                    builder = builder.with_max_inner_size([width as f32, height as f32]);
+                }
+                if viewport_opts.always_on_top {
+                    builder = builder.with_always_on_top();
+                }
+
+                let fill_color = viewport_opts
+                    .fill_color
+                    .map_or(egui::Color32::BLACK, |color| MartyColor::from_u24(color).to_color32());
+
+                Some((
+                    viewport_id,
+                    builder,
+                    fill_color,
+                    viewport_opts.background_organization,
+                    viewport_opts.can_grab,
+                ))
+            })()
+            else {
+                continue;
+            };
+
+            let viewport_targets: Vec<_> = self
+                .displays_for_viewport(viewport_id, Some(DisplayTargetType::WindowBackground))
+                .into_iter()
+                .filter_map(|display| self.display_target(display).map(|target| (display, target)))
+                .collect();
+            let viewport_state = viewport.clone();
+            let viewport_target_ui = &mut target_ui;
+            let viewport_ui = move |ui: &mut egui::Ui, _class: egui::ViewportClass| {
+                if ui.input(|input| input.viewport().close_requested()) {
+                    ui.ctx().send_viewport_cmd(egui::ViewportCommand::CancelClose);
+                }
+
+                if let Some(size) = ui.input(|input| input.viewport().inner_rect.map(|rect| rect.size())) {
+                    let (w, h) = (size.x.max(1.0) as u32, size.y.max(1.0) as u32);
+                    if let Ok(mut viewport_ref) = viewport_state.write() {
+                        if viewport_ref.state.w != w || viewport_ref.state.h != h {
+                            viewport_ref.state.w = w;
+                            viewport_ref.state.h = h;
+                            viewport_ref.state.resize_pending = true;
+                        }
+                    }
+                }
+
+                egui::CentralPanel::default()
+                    .frame(egui::Frame::NONE.fill(fill_color))
+                    .show_inside(ui, |ui| {
+                        if viewport_targets.is_empty() {
+                            return;
+                        }
+
+                        let target_rects = background_target_rects(
+                            ui.available_rect_before_wrap(),
+                            viewport_targets.len(),
+                            background_organization,
+                        );
+                        for (rect, (display, target)) in target_rects.into_iter().zip(&viewport_targets) {
+                            let grabbed = target.read().ok().is_some_and(|target| target.grabbed());
+                            let sense = if can_grab || grabbed {
+                                egui::Sense::click()
+                            }
+                            else {
+                                egui::Sense::hover()
+                            };
+                            let response = ui.allocate_rect(rect, sense);
+
+                            #[cfg(feature = "use_wgpu")]
+                            {
+                                let callback = DisplayTargetCallback { lock: target.clone() };
+                                let paint_callback = egui_wgpu::Callback::new_paint_callback(rect, callback);
+                                ui.painter().add(paint_callback);
+                            }
+
+                            #[cfg(feature = "use_glow")]
+                            {
+                                let callback = GlowDisplayTargetCallback { lock: target.clone() };
+                                let paint_callback = egui::PaintCallback {
+                                    rect,
+                                    callback: Arc::new(egui_glow::CallbackFn::new(move |_info, painter| {
+                                        callback.paint(painter);
+                                    })),
+                                };
+                                ui.painter().add(paint_callback);
+                            }
+
+                            if let Ok(mut target) = target.write() {
+                                viewport_target_ui(viewport_id, can_grab, *display, ui, &response, &mut target);
+                            }
+                        }
+                    });
+            };
+
+            // Display textures are updated by the root app every frame. Immediate viewports keep
+            // native child windows in that same render pass, so changing a target's assignment is
+            // visible without waiting for a focus or resize event to wake a deferred viewport.
+            //
+            // Web backends also require the immediate mode because their Glow resources are bound
+            // to the browser's main thread.
+            ctx.show_viewport_immediate(viewport_id, viewport_builder, viewport_ui);
+        }
+    }
+
     #[cfg(feature = "use_glow")]
-    pub fn main_display_callback(&self, _ui: &mut egui::Ui, rect: egui::Rect) -> egui::PaintCallback {
+    pub fn display_callback(
+        &self,
+        display: DtHandle,
+        _ui: &mut egui::Ui,
+        rect: egui::Rect,
+    ) -> Option<egui::PaintCallback> {
         let callback = GlowDisplayTargetCallback {
-            lock: self.targets[0].clone(),
+            lock: self.display_target(display)?,
         };
 
-        egui::PaintCallback {
+        Some(egui::PaintCallback {
             rect,
             callback: Arc::new(egui_glow::CallbackFn::new(move |_info, painter| {
                 callback.paint(painter);
             })),
-        }
+        })
     }
+
+    #[cfg(feature = "use_glow")]
+    pub fn main_display_callback(&self, _ui: &mut egui::Ui, rect: egui::Rect) -> egui::PaintCallback {
+        self.display_callback(DtHandle::MAIN, _ui, rect).unwrap()
+    }
+
+    #[cfg(feature = "use_wgpu")]
+    pub fn display_callback(&self, display: DtHandle) -> Option<DisplayTargetCallback> {
+        Some(DisplayTargetCallback {
+            lock: self.display_target(display)?,
+        })
+    }
+
     #[cfg(feature = "use_wgpu")]
     pub fn main_display_callback(&self) -> DisplayTargetCallback {
-        DisplayTargetCallback {
-            lock: self.targets[0].clone(),
-        }
+        self.display_callback(DtHandle::MAIN).unwrap()
     }
 }
 
@@ -853,14 +1146,18 @@ impl<'p> DisplayManager<EFrameBackend, GuiRenderContext, ViewportId, ViewportId,
                     }
                 };
 
-                // Use the dimensions specified in window options, if supplied, otherwise fall back to default
-                let ((tw, th), _resizable) = if let Some(ref window_opts) = viewport_opts {
-                    (window_opts.size.into(), window_opts.resizable)
-                }
-                else {
-                    ((DEFAULT_RESOLUTION_W, DEFAULT_RESOLUTION_H), true)
-                };
-
+                let viewport = viewport.ok_or_else(|| anyhow!("create_target(): No viewport ID specified"))?;
+                let viewport_idx = *self
+                    .viewport_id_map
+                    .get(&viewport)
+                    .ok_or_else(|| anyhow!("create_target(): Viewport {:?} has not been created", viewport))?;
+                let configured_viewport_opts = self
+                    .viewports
+                    .get(viewport_idx)
+                    .and_then(|viewport| viewport.read().ok())
+                    .map(|viewport| viewport.options.clone())
+                    .ok_or_else(|| anyhow!("create_target(): Failed to read viewport {:?}", viewport))?;
+                let (tw, th): (u32, u32) = configured_viewport_opts.size.into();
                 let dt_idx = self.targets.len();
 
                 // TODO: Replace this with whatever is the current method
@@ -1027,14 +1324,6 @@ impl<'p> DisplayManager<EFrameBackend, GuiRenderContext, ViewportId, ViewportId,
 
                 let card_scale = viewport_opts.as_ref().and_then(|wo| wo.card_scale);
 
-                let viewport_state = ViewportState {
-                    w: tw,
-                    h: th,
-                    fullscreen: false,
-                };
-
-                let viewport = viewport.unwrap_or(ViewportId::ROOT);
-
                 let mut dtc = DisplayTargetContext {
                     name,
                     dt_type,
@@ -1048,8 +1337,6 @@ impl<'p> DisplayManager<EFrameBackend, GuiRenderContext, ViewportId, ViewportId,
                     },
                     requested_params: None,
                     viewport: Some(viewport),
-                    viewport_opts,
-                    viewport_state,
                     fill_color: None,
                     gui_ctx: None,
                     card_id,
@@ -1072,8 +1359,6 @@ impl<'p> DisplayManager<EFrameBackend, GuiRenderContext, ViewportId, ViewportId,
                 dtc.apply_scaler_preset(&self.backend.as_ref().unwrap(), &scaler_preset);
 
                 self.targets.push(new_dtc!(dtc));
-
-                self.viewport_id_map.insert(viewport, dt_idx);
 
                 if let Some(vid) = card_id {
                     if let Some(card_vec) = self.card_id_map.get_mut(&vid) {
@@ -1099,6 +1384,10 @@ impl<'p> DisplayManager<EFrameBackend, GuiRenderContext, ViewportId, ViewportId,
 
         for (i, vtc) in self.targets.iter().enumerate() {
             let vtc = resolve_dtc_mut!(vtc);
+            if vtc.renderer.is_none() {
+                continue;
+            }
+
             let mut vtype = None;
             if let Some(vid) = vtc.card_id {
                 vtype = machine.bus().video(&vid).and_then(|card| Some(card.video_type()));
@@ -1140,6 +1429,10 @@ impl<'p> DisplayManager<EFrameBackend, GuiRenderContext, ViewportId, ViewportId,
 
             info_vec.push(DisplayTargetInfo {
                 handle: DtHandle(i),
+                viewport: vtc
+                    .viewport
+                    .and_then(|viewport| self.viewport_id_map.get(&viewport).copied())
+                    .map(VpHandle),
                 backend_name,
                 adapter_name,
                 dtype: vtc.dt_type,
@@ -1161,22 +1454,83 @@ impl<'p> DisplayManager<EFrameBackend, GuiRenderContext, ViewportId, ViewportId,
         info_vec
     }
 
+    fn viewport_info(&self) -> Vec<ViewportInfo> {
+        self.viewports
+            .iter()
+            .enumerate()
+            .map(|(idx, viewport)| {
+                let name = viewport
+                    .read()
+                    .ok()
+                    .map(|viewport| viewport.options.title.clone())
+                    .unwrap_or_else(|| format!("Viewport {}", idx));
+
+                ViewportInfo {
+                    handle: VpHandle(idx),
+                    name,
+                }
+            })
+            .collect()
+    }
+
+    fn set_display_viewport(&mut self, dt: DtHandle, viewport: VpHandle) -> Result<(), Error> {
+        let destination = self
+            .viewports
+            .get(viewport.idx())
+            .cloned()
+            .ok_or_else(|| anyhow!("No viewport for handle: {:?}", viewport))?;
+        let target = self
+            .targets
+            .get(dt.idx())
+            .cloned()
+            .ok_or_else(|| anyhow!("No display target for handle: {:?}", dt))?;
+
+        let destination_id = destination
+            .read()
+            .map_err(|_| anyhow!("Viewport lock was poisoned"))?
+            .id;
+
+        let source_id = {
+            let mut target = target
+                .write()
+                .map_err(|_| anyhow!("Display target lock was poisoned"))?;
+            if target.renderer.is_none() {
+                return Err(anyhow!("Display target {:?} has no renderer", dt));
+            }
+
+            let source_id = target
+                .viewport
+                .ok_or_else(|| anyhow!("Display target {:?} has no viewport", dt))?;
+            target.viewport = Some(destination_id);
+            source_id
+        };
+
+        if let Ok(mut destination) = destination.write() {
+            destination.state.open = true;
+        }
+
+        self.request_viewport_resize(source_id);
+        if destination_id != source_id {
+            self.request_viewport_resize(destination_id);
+        }
+
+        Ok(())
+    }
+
     fn main_viewport(&self) -> Option<ViewportId> {
-        // Main display should always be index 0.
-        resolve_dtc!(self.targets[0]).viewport.clone()
+        self.viewport_id_map
+            .contains_key(&ViewportId::ROOT)
+            .then_some(ViewportId::ROOT)
     }
 
-    fn viewport_by_id(&self, _vid: ViewportId) -> Option<ViewportId> {
-        None
-        // self.viewport_id_map.get(&wid).and_then(|idx| {
-        //     //log::warn!("got id, running map():");
-        //     self.targets[*idx].window.as_ref()
-        // })
+    fn viewport_by_id(&self, vid: ViewportId) -> Option<ViewportId> {
+        self.viewport_id_map.contains_key(&vid).then_some(vid)
     }
 
-    fn viewport(&self, _dt: DtHandle) -> Option<ViewportId> {
-        //self.targets.get(dt.idx()).and_then(|dt| dt.window.as_ref())
-        None
+    fn viewport(&self, dt: DtHandle) -> Option<ViewportId> {
+        self.targets
+            .get(dt.idx())
+            .and_then(|target| resolve_dtc!(target).viewport)
     }
 
     fn display_type(&self, dt: DtHandle) -> Option<DisplayTargetType> {
@@ -1184,7 +1538,8 @@ impl<'p> DisplayManager<EFrameBackend, GuiRenderContext, ViewportId, ViewportId,
     }
 
     fn set_display_type(&mut self, dt: DtHandle, dtype: DisplayTargetType) -> Result<(), Error> {
-        resolve_handle_mut!(dt, self.targets, |vtc: &mut DisplayTargetContext| {
+        let viewport = self.viewport(dt);
+        let result = resolve_handle_mut!(dt, self.targets, |vtc: &mut DisplayTargetContext| {
             match dtype {
                 DisplayTargetType::GuiWidget => {
                     log::debug!("set_display_type(): Setting display target {} to GuiWidget.", dt.idx());
@@ -1220,7 +1575,16 @@ impl<'p> DisplayManager<EFrameBackend, GuiRenderContext, ViewportId, ViewportId,
                 }
             }
             Ok(())
-        })
+        });
+
+        // Send a resize request right away so that scaler doesn't show stale dimensions
+        if result.is_ok() {
+            if let Some(viewport) = viewport {
+                self.request_viewport_resize(viewport);
+            }
+        }
+
+        result
     }
 
     fn backend(&mut self) -> Option<&EFrameBackend> {
@@ -1243,8 +1607,8 @@ impl<'p> DisplayManager<EFrameBackend, GuiRenderContext, ViewportId, ViewportId,
     where
         F: FnOnce(&mut GuiRenderContext),
     {
-        if let Some(&idx) = self.viewport_id_map.get(&vid) {
-            if let Some(dtc) = self.targets.get(idx) {
+        if let Some(display) = self.display_for_viewport(vid) {
+            if let Some(dtc) = self.targets.get(display.idx()) {
                 if let Some(gui_ctx) = resolve_dtc_mut!(dtc).gui_ctx.as_mut() {
                     f(gui_ctx);
                 }
@@ -1297,6 +1661,37 @@ impl<'p> DisplayManager<EFrameBackend, GuiRenderContext, ViewportId, ViewportId,
 
             // log::debug!("card {:?} has {} display targets", id, idx_vec.len());
             for idx in idx_vec {
+                // Extract viewport info
+                let (viewport_id, is_background) = self.targets[*idx]
+                    .read()
+                    .ok()
+                    .map(|target| (target.viewport, target.dt_type == DisplayTargetType::WindowBackground))
+                    .unwrap_or((None, false));
+                let background_count = viewport_id
+                    .filter(|_| is_background)
+                    .map(|viewport| {
+                        self.displays_for_viewport(viewport, Some(DisplayTargetType::WindowBackground))
+                            .len()
+                            .max(1)
+                    })
+                    .unwrap_or(1);
+                let (top_margin, viewport_w, viewport_h) = viewport_id
+                    .and_then(|viewport| self.viewport_id_map.get(&viewport).copied())
+                    .and_then(|viewport_idx| self.viewports.get(viewport_idx))
+                    .and_then(|viewport| viewport.read().ok())
+                    .map(|viewport| {
+                        let (columns, rows) = viewport
+                            .options
+                            .background_organization
+                            .grid_dimensions(background_count);
+                        (
+                            viewport.options.margins.t,
+                            (viewport.state.w / columns.max(1) as u32).max(1),
+                            (viewport.state.h / rows.max(1) as u32).max(1),
+                        )
+                    })
+                    .unwrap_or((0, DEFAULT_RESOLUTION_W, DEFAULT_RESOLUTION_H));
+
                 let dtc = &mut resolve_dtc_mut!(self.targets[*idx]);
 
                 let mut aspect_dimensions: Option<BufferDimensions> = None;
@@ -1353,8 +1748,6 @@ impl<'p> DisplayManager<EFrameBackend, GuiRenderContext, ViewportId, ViewportId,
                 if resize_dt {
                     let mut resize_surface = false;
 
-                    let top_margin = dtc.viewport_opts.as_ref().map_or(0, |opts| opts.margins.t);
-
                     // Calculate the minimum client area we need (including top margin for gui menu)
                     let mut new_min_surface_size = match dtc.card_scale {
                         Some(card_scale) => {
@@ -1379,7 +1772,7 @@ impl<'p> DisplayManager<EFrameBackend, GuiRenderContext, ViewportId, ViewportId,
                         // its already big enough, and we don't have card scaling on.
 
                         // let win_dim = window.inner_size();
-                        let win_dim = DisplayDimensions::new(dtc.viewport_state.w, dtc.viewport_state.h);
+                        let win_dim = DisplayDimensions::new(viewport_w, viewport_h);
 
                         if dtc.card_scale.is_some() {
                             // window.set_max_inner_size(Some(new_min_surface_size));
@@ -1531,12 +1924,9 @@ impl<'p> DisplayManager<EFrameBackend, GuiRenderContext, ViewportId, ViewportId,
             w,
             h
         );
-        let _idx = match self.viewport_id_map.get(&vid) {
-            Some(idx) => *idx,
-            None => {
-                return Err(anyhow!("No display target for viewport id: {:?}", vid));
-            }
-        };
+        if !self.viewport_id_map.contains_key(&vid) {
+            return Err(anyhow!("No viewport for id: {:?}", vid));
+        }
 
         self.viewport_id_resize_requests
             .entry(vid)
@@ -1550,100 +1940,114 @@ impl<'p> DisplayManager<EFrameBackend, GuiRenderContext, ViewportId, ViewportId,
     }
 
     fn resize_viewports(&mut self) -> Result<(), Error> {
+        let deferred_resizes: Vec<_> = self
+            .viewports
+            .iter()
+            .filter_map(|viewport| {
+                viewport.write().ok().and_then(|mut viewport| {
+                    if viewport.state.resize_pending {
+                        viewport.state.resize_pending = false;
+                        Some((viewport.id, viewport.state.w, viewport.state.h))
+                    }
+                    else {
+                        None
+                    }
+                })
+            })
+            .collect();
+        for (viewport, w, h) in deferred_resizes {
+            self.viewport_id_resize_requests.insert(viewport, ResizeTarget { w, h });
+        }
+
         let vids: Vec<ViewportId> = self.viewport_id_resize_requests.keys().cloned().collect();
 
-        //log::debug!("resize_viewports(): processing {} resize requests", wids.len());
         for vid in vids {
             let rt = self.viewport_id_resize_requests.remove(&vid).unwrap();
             use anyhow::Context;
-            let idx = self.viewport_id_map.get(&vid).context("Failed to look up viewport")?;
+            let viewport_idx = *self.viewport_id_map.get(&vid).context("Failed to look up viewport")?;
 
-            let dtc = &mut resolve_dtc_mut!(self.targets[*idx]);
+            let background_organization = self
+                .viewports
+                .get(viewport_idx)
+                .and_then(|viewport| viewport.write().ok())
+                .map(|mut viewport| {
+                    viewport.state.w = rt.w;
+                    viewport.state.h = rt.h;
+                    viewport.options.background_organization
+                })
+                .unwrap_or_default();
+
+            let target_indices: Vec<usize> = self
+                .targets
+                .iter()
+                .enumerate()
+                .filter_map(|(idx, target)| {
+                    target.read().ok().and_then(|target| {
+                        (target.renderer.is_some()
+                            && target.viewport == Some(vid)
+                            && target.dt_type == DisplayTargetType::WindowBackground)
+                            .then_some(idx)
+                    })
+                })
+                .collect();
+
+            if target_indices.is_empty() {
+                continue;
+            }
+
+            let (columns, rows) = background_organization.grid_dimensions(target_indices.len());
+            let panel_w = (rt.w / columns.max(1) as u32).max(1);
+            let panel_h = (rt.h / rows.max(1) as u32).max(1);
 
             log::debug!(
-                "resize_viewports(): resizing viewport id: {:?} to {}x{}",
+                "resize_viewports(): resizing viewport id: {:?} to {}x{} across {} display panels in a {}x{} grid",
                 vid,
                 rt.w,
-                rt.h
+                rt.h,
+                target_indices.len(),
+                columns,
+                rows
             );
-            if let Some(backend) = &mut self.backend {
-                if let Some(_viewport) = &dtc.viewport {
-                    // TODO: Fix this stuff for eframe viewports
+            let Some(backend) = &mut self.backend
+            else {
+                continue;
+            };
 
-                    // let scale_factor = viewport.scale_factor();
-                    //let resize_string = format!("{}x{} (scale factor: {})", rt.w, rt.h, scale_factor);
-                    let resize_string = format!("{}x{} (scale factor: {})", rt.w, rt.h, 1.0);
+            for idx in target_indices {
+                let dtc = &mut resolve_dtc_mut!(self.targets[idx]);
+                let resize_string = format!("{}x{} (scale factor: {})", panel_w, panel_h, 1.0);
 
-                    log::debug!(
-                        "resize_viewports(): dt{}: resizing backend surface to {}",
-                        *idx,
-                        resize_string
-                    );
-                    backend.resize_surface_texture(
-                        &mut dtc.surface.as_mut().unwrap(),
-                        TextureDimensions { w: rt.w, h: rt.h },
-                    )?;
+                log::debug!(
+                    "resize_viewports(): dt{}: resizing backend surface to {}",
+                    idx,
+                    resize_string
+                );
+                backend.resize_surface_texture(
+                    dtc.surface.as_mut().context("Display target has no surface")?,
+                    TextureDimensions { w: panel_w, h: panel_h },
+                )?;
 
-                    // We may receive this event in response to an on_card_resized event that triggered a window size
-                    // change. We should get the current aspect ratio from the renderer.
-                    if let Some(renderer) = &mut dtc.renderer {
-                        let buf_dimensions = renderer.get_buf_dimensions();
-                        let aspect_dimensions = renderer.get_display_dimensions();
+                let dimensions = dtc
+                    .renderer
+                    .as_mut()
+                    .map(|renderer| (renderer.get_buf_dimensions(), renderer.get_display_dimensions()));
 
-                        // Resize the DisplayScaler if present.
-                        dtc.destructure_surface(|surface, scaler, _gui| {
-                            if let Some(scaler) = scaler {
-                                log::debug!("resize_viewports(): dt{}: resizing scaler to {}", *idx, resize_string);
-
-                                scaler.resize(
-                                    &*backend.device(),
-                                    &*backend.queue(),
-                                    &surface.read().unwrap().backing_texture(),
-                                    buf_dimensions.w,
-                                    buf_dimensions.h,
-                                    aspect_dimensions.w,
-                                    aspect_dimensions.h,
-                                    rt.w,
-                                    rt.h,
-                                );
-                            }
-                        });
+                dtc.destructure_surface(|surface, scaler, _gui| {
+                    if let (Some(scaler), Some((buf_dimensions, aspect_dimensions))) = (scaler, dimensions) {
+                        log::debug!("resize_viewports(): dt{}: resizing scaler to {}", idx, resize_string);
+                        scaler.resize(
+                            &*backend.device(),
+                            &*backend.queue(),
+                            &surface.read().unwrap().backing_texture(),
+                            buf_dimensions.w,
+                            buf_dimensions.h,
+                            aspect_dimensions.w,
+                            aspect_dimensions.h,
+                            panel_w,
+                            panel_h,
+                        );
                     }
-                    else {
-                        // Resize the DisplayScaler if present.
-                        dtc.destructure_surface(|surface, scaler, _gui| {
-                            if let Some(scaler) = scaler {
-                                log::debug!("resize_windows(): dt{}: resizing scaler to {}", *idx, resize_string);
-                                scaler.resize_surface(
-                                    &*backend.device(),
-                                    &*backend.queue(),
-                                    &surface.read().unwrap().backing_texture(),
-                                    rt.w,
-                                    rt.h,
-                                )
-                            }
-                        });
-                    }
-
-                    // Update the viewport state.
-                    dtc.viewport_state.w = rt.w;
-                    dtc.viewport_state.h = rt.h;
-                }
-                else {
-                    log::warn!("resize_viewports(): dt{}: no viewport id: {:?}", *idx, vid);
-                }
-
-                //eframe doesn't host GUIs
-
-                // if let Some(gui_ctx) = &mut dt.gui_ctx {
-                //     log::debug!(
-                //         "resize_windows(): dt{}: resizing gui context for window id: {:?} to {}",
-                //         *idx,
-                //         wid,
-                //         resize_string
-                //     );
-                //     gui_ctx.resize(viewport, rt.w, rt.h);
-                // }
+                });
             }
         }
 
@@ -1668,10 +2072,9 @@ impl<'p> DisplayManager<EFrameBackend, GuiRenderContext, ViewportId, ViewportId,
         for dtc in &mut self.targets {
             let dtc = &mut resolve_dtc_mut!(dtc);
 
-            let card_id = dtc.card_id.unwrap();
-            let surface = dtc.surface.as_ref().unwrap().clone();
-
-            if let Some(renderer) = &mut dtc.renderer {
+            if let (Some(card_id), Some(surface), Some(renderer)) =
+                (dtc.card_id, dtc.surface.as_ref().cloned(), dtc.renderer.as_mut())
+            {
                 let mut surface_lock = surface.write().unwrap();
                 let buf_mut = surface_lock.buf_mut();
                 f(renderer, card_id, buf_mut)
@@ -1791,8 +2194,8 @@ impl<'p> DisplayManager<EFrameBackend, GuiRenderContext, ViewportId, ViewportId,
     where
         F: FnMut(&mut DisplayTargetContext),
     {
-        if let Some(idx) = self.viewport_id_map.get(&vid) {
-            f(&mut resolve_dtc_mut!(self.targets[*idx]))
+        for display in self.displays_for_viewport(vid, None) {
+            f(&mut resolve_dtc_mut!(self.targets[display.idx()]))
         }
     }
 
@@ -1812,7 +2215,17 @@ impl<'p> DisplayManager<EFrameBackend, GuiRenderContext, ViewportId, ViewportId,
     fn apply_scaler_preset(&mut self, dt: DtHandle, name: String) -> Result<(), Error> {
         if is_valid_handle!(dt, self.targets) {
             let preset = self.scaler_preset(name).unwrap().clone();
-            resolve_dtc_mut!(self.targets[dt.idx()]).apply_scaler_preset(self.backend.as_ref().unwrap(), &preset);
+            let viewport = {
+                let mut target = resolve_dtc_mut!(self.targets[dt.idx()]);
+                target.apply_scaler_preset(self.backend.as_ref().unwrap(), &preset);
+                target.viewport
+            };
+            if let Some(viewport) = viewport {
+                // Presets can change renderer aperture and aspect parameters. Re-run the same
+                // viewport/grid layout pass used by a real resize so the scaler receives the
+                // current panel dimensions immediately on the next update.
+                self.request_viewport_resize(viewport);
+            }
         }
         else {
             return Err(anyhow!("Display target out of range!"));

@@ -357,6 +357,9 @@ menu_adjust = true
 # aperture is changed.
 resizable = true
 
+# Allow double-clicking a display in this window to capture the mouse.
+can_grab = true
+
 # If this field is present, the window will display the specified card in its
 # client area. If you do not want the window to display a card, comment this
 # out.
@@ -393,7 +396,7 @@ enabled = false
 name = "Secondary Window"
 size = { w = 800, h = 600 }
 resizable = false
-card_id = 0
+can_grab = true
 card_scale = 1
 scaler_mode = "Integer"
 scaler_preset = "Green CRT"
@@ -405,11 +408,35 @@ enabled = false
 name = "Tertiary Window"
 size = { w = 640, h = 480 }
 resizable = false
-card_id = 0
+can_grab = true
 card_scale = 1
 scaler_mode = "Integer"
 scaler_preset = "default"
 always_on_top = false
+
+# ----------------------------------------------------------------------------
+# Display Target Allocation
+#
+# Each [[emulator.display_targets.card]] entry corresponds to a video-card
+# slot index and sets how many render targets that card creates.
+# Omitted cards will default to one target.
+# Entries beyond the machine's installed video-card count are ignored.
+# The total number of targets created across all installed cards cannot exceed
+# 16.
+#
+# The only reason to set these to anything but 1 is if you want to have the
+# same video card render to two displays, as sort of splitter cable emulation.
+# Each display can have its own shader parameters associated.
+# ----------------------------------------------------------------------------
+[emulator.display_targets]
+
+# Card slot 0: Main adapater
+[[emulator.display_targets.card]]
+targets = 1
+
+# Card slot 1 (MDA/Hercules)
+[[emulator.display_targets.card]]
+targets = 1
 
 # ----------------------------------------------------------------------------
 # Emulator Scaler Presets

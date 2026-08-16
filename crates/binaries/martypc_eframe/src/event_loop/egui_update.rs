@@ -463,15 +463,15 @@ pub fn update_egui(emu: &mut Emulator, dm: &mut EFrameDisplayManager, tm: &Times
 
     // Update text mode viewer.
     if emu.gui.is_window_open(GuiWindow::TextModeViewer) {
-        dm.for_each_card(|vid| {
+        for vid in emu.machine.bus().enumerate_videocards() {
             emu.gui.text_mode_viewer.set_content(
-                vid.idx,
+                vid,
                 emu.machine
                     .bus()
-                    .video(vid)
+                    .video(&vid)
                     .map_or(Vec::new(), |v| v.get_text_mode_strings()),
             );
-        });
+        }
     }
 
     // Update SN chip viewer.

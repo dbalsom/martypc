@@ -152,6 +152,10 @@ name = "ibm_xebec"
         format = "Mfm"
         vhd = "xebec20MB.vhd"
 
+# Video overlays normally replace the configured adapter list. The MDA and Hercules overlays are
+# indexed so they can replace the primary adapter by default or be appended as secondary adapters.
+# Examples: --machine-config-overlays=ibm_cga,ibm_mda:1
+#           --machine-config-overlays=ibm_cga,hercules:1
 [[overlay]]
 name = "ibm_cga"
     # Video card
@@ -181,8 +185,17 @@ name = "ibm_cga"
 
 [[overlay]]
 name = "ibm_mda"
-    # Video card
-    [[overlay.video]]
+operation = "merge"
+target = "video"
+selector = "card"
+    [[overlay.parameters]]
+    name = "card"
+    type = "integer"
+    min = 0
+    required = false
+    default = 0
+    label = "Video card slot"
+    [overlay.value]
     bus_type = "ISA"
     type = "MDA"
     clock_mode = "Default"
@@ -190,8 +203,17 @@ name = "ibm_mda"
     
 [[overlay]]
 name = "hercules"
-    # Video card
-    [[overlay.video]]
+operation = "merge"
+target = "video"
+selector = "card"
+    [[overlay.parameters]]
+    name = "card"
+    type = "integer"
+    min = 0
+    required = false
+    default = 0
+    label = "Video card slot"
+    [overlay.value]
     bus_type = "ISA"
     type = "MDA"
     subtype = "Hercules"
@@ -229,21 +251,6 @@ name = "ibm_ega_on_cga"
     # 0111 = EGA on CGA monitor.
     dip_switch = 0b0111
 
-[[overlay]]
-name = "ibm_cga_and_mda"
-    # Video card
-    [[overlay.video]]
-    bus_type = "ISA"
-    type = "CGA"
-    clock_mode = "Default"
-    monitor_emulation = true
-    # Video card
-    [[overlay.video]]
-    bus_type = "ISA"
-    type = "MDA"
-    clock_mode = "Default"
-    monitor_emulation = true
-    
 [[overlay]]
 name = "ibm_vga"
     # Video card

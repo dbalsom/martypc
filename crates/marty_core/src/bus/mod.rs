@@ -292,6 +292,7 @@ pub struct MemRangeDescriptor {
     pub size: usize,
     pub cycle_cost: u32,
     pub read_only: bool,
+    /// Mapping precedence. Lower values supersede higher values.
     pub priority: u32,
 }
 
@@ -436,6 +437,21 @@ pub enum MmioDeviceType {
     JrIde,
 }
 
+#[derive(Copy, Clone, Debug)]
+struct MmioMapEntry {
+    device:   MmioDeviceType,
+    priority: u32,
+}
+
+impl MmioMapEntry {
+    const fn unmapped() -> Self {
+        Self {
+            device:   MmioDeviceType::Memory,
+            priority: u32::MAX,
+        }
+    }
+}
+
 // Main bus struct.
 // Bus contains both the system memory and IO, and owns all connected devices.
 // This ownership hierarchy allows us to avoid needing RefCells for devices.
@@ -456,7 +472,7 @@ pub struct BusInterface {
     open_bus_byte: u8,
     desc_vec: Vec<MemRangeDescriptor>,
     mmio_map: Vec<(MemRangeDescriptor, MmioDeviceType)>,
-    mmio_map_fast: [MmioDeviceType; MMIO_MAP_LEN],
+    mmio_map_fast: [MmioMapEntry; MMIO_MAP_LEN],
     mmio_data: MmioData,
     cursor: usize,
     intr_imminent: bool,
@@ -545,7 +561,7 @@ impl Default for BusInterface {
             open_bus_byte: 0xFF,
             desc_vec: Vec::new(),
             mmio_map: Vec::new(),
-            mmio_map_fast: [MmioDeviceType::Memory; MMIO_MAP_LEN],
+            mmio_map_fast: [MmioMapEntry::unmapped(); MMIO_MAP_LEN],
             mmio_data: MmioData::new(),
             cursor: 0,
             intr_imminent: false,
@@ -719,19 +735,8 @@ impl BusInterface {
     /// the range specified by the device's [MemRangeDescriptor].
     ///
     /// Ranges must have a granularity no less than MMIO_MAP_SIZE (8K).
+    /// A mapping replaces an occupied segment only when it has a lower priority number.
     pub fn register_map(&mut self, device: MmioDeviceType, mem_descriptor: MemRangeDescriptor) {
-        if mem_descriptor.address < self.mmio_data.first_map {
-            self.mmio_data.first_map = mem_descriptor.address;
-        }
-        if (mem_descriptor.address + mem_descriptor.size) > self.mmio_data.last_map {
-            self.mmio_data.last_map = mem_descriptor.address + mem_descriptor.size;
-        }
-
-        // Mark memory flag bit as MMIO for this range.
-        for i in mem_descriptor.address..(mem_descriptor.address + mem_descriptor.size) {
-            self.memory_mask[i] |= MEM_MMIO_BIT;
-        }
-
         // Add entry to mmio_map_fast
         assert_eq!(mem_descriptor.size % MMIO_MAP_SIZE, 0);
         let map_segs = mem_descriptor.size / MMIO_MAP_SIZE;
@@ -743,8 +748,50 @@ impl BusInterface {
             mem_descriptor.size,
             map_segs
         );
+
+        let mut installed_segments = 0;
         for i in 0..map_segs {
-            self.mmio_map_fast[(mem_descriptor.address >> MMIO_MAP_SHIFT) + i] = device;
+            let segment_index = (mem_descriptor.address >> MMIO_MAP_SHIFT) + i;
+            let existing = self.mmio_map_fast[segment_index];
+
+            if mem_descriptor.priority < existing.priority {
+                self.mmio_map_fast[segment_index] = MmioMapEntry {
+                    device,
+                    priority: mem_descriptor.priority,
+                };
+                installed_segments += 1;
+
+                let segment_address = segment_index << MMIO_MAP_SHIFT;
+                if segment_address < self.mmio_data.first_map {
+                    self.mmio_data.first_map = segment_address;
+                }
+                if segment_address + MMIO_MAP_SIZE > self.mmio_data.last_map {
+                    self.mmio_data.last_map = segment_address + MMIO_MAP_SIZE;
+                }
+                for address in segment_address..(segment_address + MMIO_MAP_SIZE) {
+                    self.memory_mask[address] |= MEM_MMIO_BIT;
+                }
+            }
+            else {
+                log::debug!(
+                    "register_map: Rejecting mapping for device {:?} at {:#X}; priority {} does not supersede {:?} at priority {}",
+                    device,
+                    segment_index << MMIO_MAP_SHIFT,
+                    mem_descriptor.priority,
+                    existing.device,
+                    existing.priority
+                );
+            }
+        }
+
+        if installed_segments < map_segs {
+            log::warn!(
+                "register_map: Device {:?} lost {} of {} MMIO segments at {:#X} to an equal-or-higher-priority mapping",
+                device,
+                map_segs - installed_segments,
+                map_segs,
+                mem_descriptor.address
+            );
         }
 
         self.mmio_map.push((mem_descriptor, device));
@@ -2081,5 +2128,49 @@ impl BusInterface {
             stats.1.reads_dirty = false;
             stats.1.writes_dirty = false;
         }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    fn mapping(priority: u32) -> MemRangeDescriptor {
+        MemRangeDescriptor {
+            address: 0xB8000,
+            size: MMIO_MAP_SIZE,
+            cycle_cost: 0,
+            read_only: false,
+            priority,
+        }
+    }
+
+    #[test]
+    fn mmio_mapping_requires_a_lower_priority_number_to_overwrite() {
+        let mut bus = BusInterface::default();
+        let segment = 0xB8000 >> MMIO_MAP_SHIFT;
+
+        bus.register_map(MmioDeviceType::Cga, mapping(1));
+        bus.register_map(MmioDeviceType::Ega, mapping(3));
+
+        assert_eq!(bus.mmio_map_fast[segment].device, MmioDeviceType::Cga);
+        assert_eq!(bus.mmio_map_fast[segment].priority, 1);
+
+        bus.register_map(MmioDeviceType::Vga, mapping(0));
+
+        assert_eq!(bus.mmio_map_fast[segment].device, MmioDeviceType::Vga);
+        assert_eq!(bus.mmio_map_fast[segment].priority, 0);
+    }
+
+    #[test]
+    fn mmio_mapping_does_not_overwrite_an_equal_priority() {
+        let mut bus = BusInterface::default();
+        let segment = 0xB8000 >> MMIO_MAP_SHIFT;
+
+        bus.register_map(MmioDeviceType::Cga, mapping(1));
+        bus.register_map(MmioDeviceType::Ega, mapping(1));
+
+        assert_eq!(bus.mmio_map_fast[segment].device, MmioDeviceType::Cga);
+        assert_eq!(bus.mmio_map_fast[segment].priority, 1);
     }
 }

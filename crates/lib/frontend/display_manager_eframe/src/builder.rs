@@ -27,6 +27,9 @@
 
 use std::path::PathBuf;
 
+// lib.rs should conditionally re-export the correct EFrameBackend for active features.
+use super::EFrameBackend;
+
 use crate::{DefaultResolver, EFrameDisplayManager};
 
 use marty_core::device_traits::videocard::VideoCardId;
@@ -41,28 +44,34 @@ use marty_display_common::{
     },
     display_scaler::ScalerPreset,
 };
-use marty_frontend_common::types::window::WindowDefinition;
-
-// lib.rs should conditionally re-export the correct EFrameBackend for active features.
-use super::EFrameBackend;
+use marty_frontend_common::types::window::{
+    CardDisplayTargetConfiguration,
+    ScalerMode,
+    WindowDefinition,
+    MAX_DISPLAY_TARGETS,
+};
 
 use anyhow::{anyhow, Error};
-
 use egui::{Context, ViewportId};
-
-use winit::window::Icon;
 
 #[derive(Default)]
 pub struct EFrameDisplayManagerBuilder<'a> {
     egui_ctx: Context,
     backend: Option<EFrameBackend>,
     win_configs: Vec<WindowDefinition>,
+    display_target_configs: Vec<CardDisplayTargetConfiguration>,
     cards: Vec<VideoCardId>,
     scaler_presets: Vec<ScalerPreset>,
     icon_path: Option<PathBuf>,
     icon_buf: Option<&'a [u8]>,
     gui_options: Option<&'a DmGuiOptions>,
     display_type: Option<DisplayTargetType>,
+}
+
+struct GeneratedDisplayTarget {
+    card_id: VideoCardId,
+    target_idx: usize,
+    target_count: usize,
 }
 
 /// Display managers should be constructed via a [DisplayManagerBuilder]. This allows display targets
@@ -99,6 +108,11 @@ impl<'a> EFrameDisplayManagerBuilder<'a> {
         self
     }
 
+    pub fn with_display_target_configs(mut self, display_target_configs: &[CardDisplayTargetConfiguration]) -> Self {
+        self.display_target_configs = display_target_configs.to_vec();
+        self
+    }
+
     pub fn with_cards(mut self, cards: Vec<VideoCardId>) -> Self {
         self.cards = cards;
         self
@@ -125,7 +139,7 @@ impl<'a> EFrameDisplayManagerBuilder<'a> {
     }
 
     pub fn build(&mut self) -> Result<EFrameDisplayManager, Error> {
-        let icon = {
+        let _icon = {
             if let Some(path) = &self.icon_path {
                 if let Ok(image) = image::open(path.clone()) {
                     log::debug!("Using icon from path: {}", path.display());
@@ -185,149 +199,389 @@ impl<'a> EFrameDisplayManagerBuilder<'a> {
             dm.add_scaler_preset(preset.clone());
         }
 
-        // Only create windows if the config specifies any!
-        if self.gui_options.is_some() && self.win_configs.len() > 0 {
-            // Create the main window.
-            Self::create_target_from_window_def(
-                &mut dm,
-                self.egui_ctx.clone(),
-                true,
-                &self.win_configs[0],
-                &self.cards,
-                self.gui_options.unwrap(),
-                icon.clone(),
-            )
-            .expect("EFrameDisplayManagerBuilder::build(): FATAL: Failed to create a window target");
+        // Only create viewports if the config specifies any.
+        if self.gui_options.is_some() && !self.win_configs.is_empty() {
+            let gui_options = self.gui_options.unwrap();
+            // Per-card target counts decouple viewport creation from render-target creation.
+            let generated_targets = self.generated_display_targets()?;
+            let mut configured_viewports = Vec::with_capacity(self.win_configs.len());
+            for (window_idx, window_def) in self.win_configs.iter().enumerate() {
+                if window_idx == 0 || window_def.enabled {
+                    let (viewport_id, viewport_options) =
+                        Self::create_viewport_from_window_def(&mut dm, window_idx, window_def, gui_options)?;
+                    configured_viewports.push((window_idx, viewport_id, viewport_options));
+                }
+            }
 
-            // TODO: Reimplement this for egui Viewports
-
-            // // Create the rest of the windows
-            // for window_def in win_configs.iter().skip(1) {
-            //     if window_def.enabled {
-            //         Self::create_target_from_window_def(
-            //             &mut dm,
-            //             egui_ctx.clone(),
-            //             false,
-            //             &window_def,
-            //             &cards,
-            //             gui_options,
-            //             icon.clone(),
-            //         )
-            //         .expect("FATAL: Failed to create a window target");
-            //     }
-            // }
+            configured_viewports
+                .first()
+                .ok_or_else(|| anyhow!("Display target configuration requires a main viewport"))?;
+            let viewport_positions =
+                Self::initial_viewport_positions(generated_targets.len(), configured_viewports.len());
+            for (target, viewport_position) in generated_targets.into_iter().zip(viewport_positions) {
+                let (window_idx, viewport_id, viewport_options) = &configured_viewports[viewport_position];
+                let window_def = &self.win_configs[*window_idx];
+                Self::create_generated_target(
+                    &mut dm,
+                    self.egui_ctx.clone(),
+                    &target,
+                    *viewport_id,
+                    viewport_options,
+                    window_def,
+                    gui_options,
+                )?;
+            }
         }
 
         Ok(dm)
     }
 
-    pub fn create_target_from_window_def(
-        dm: &mut EFrameDisplayManager,
-        egui_ctx: Context,
-        main_window: bool,
-        window_def: &WindowDefinition,
-        cards: &Vec<VideoCardId>,
-        gui_options: &DmGuiOptions,
-        _icon: Option<Icon>,
-    ) -> Result<(), Error> {
-        let resolved_def = window_def.resolve_with_defaults();
-        log::debug!("{:?}", window_def);
+    /// Generate requested targets - a config can specify multiple targets for a single card slot
+    /// This supports attaching multiple monitors to a single card. The maximum number of display
+    /// targets that can be created is MAX_DISPLAY_TARGETS and is a pool across all card slots.
+    fn generated_display_targets(&self) -> Result<Vec<GeneratedDisplayTarget>, Error> {
+        let target_counts: Vec<_> = (0..self.cards.len())
+            .map(|card_idx| {
+                self.display_target_configs
+                    .get(card_idx)
+                    .map_or(1, |config| config.targets)
+            })
+            .collect();
+        let total_targets = target_counts.iter().copied().fold(0usize, usize::saturating_add);
+        if total_targets > MAX_DISPLAY_TARGETS {
+            return Err(anyhow!(
+                "Display target configuration requests {} targets; the maximum total is {}",
+                total_targets,
+                MAX_DISPLAY_TARGETS
+            ));
+        }
 
-        let mut card_id_opt = None;
-        let mut card_string = String::new();
-
-        if let Some(w_card_id) = resolved_def.card_id {
-            if w_card_id < cards.len() {
-                card_id_opt = Some(cards[w_card_id]);
-                card_string.push_str(&format!("{:?}", cards[w_card_id].vtype))
+        let mut targets = Vec::with_capacity(total_targets);
+        for (card_id, target_count) in self.cards.iter().copied().zip(target_counts) {
+            for target_idx in 0..target_count {
+                targets.push(GeneratedDisplayTarget {
+                    card_id,
+                    target_idx,
+                    target_count,
+                });
             }
-            card_string.push_str(&format!("({})", w_card_id));
         }
 
-        log::debug!(
-            "Creating WindowBackground display target from window definition with card id: {:?}",
-            card_id_opt
-        );
+        Ok(targets)
+    }
 
-        // TODO: Implement FROM for this?
-        let mut viewport_opts: DmViewportOptions = Default::default();
-
-        // Honor initial window size, but we may have to resize it later.
-        viewport_opts.size = window_def.size.unwrap_or_default().into();
-        viewport_opts.always_on_top = window_def.always_on_top;
-        // Set the viewport fill color. This is used to control the panel fill color, which will
-        // be the background color when rendering with a RenderCallback in eframe.
-        viewport_opts.fill_color = window_def.background_color;
-
-        // If this is the main window, and we have a GUI...
-        if main_window && gui_options.enabled {
-            // Set the top margin to clear the egui menu bar.
-            viewport_opts.margins = DisplayTargetMargins::from_t(gui_options.menubar_h);
+    /// Assign the last target to the last viewport and continue backwards, leaving any targets
+    /// that outnumber secondary viewports in the main viewport at position zero.
+    fn initial_viewport_positions(target_count: usize, viewport_count: usize) -> Vec<usize> {
+        if target_count == 0 || viewport_count == 0 {
+            return Vec::new();
         }
 
-        // Is window resizable?
-        if !window_def.resizable {
-            viewport_opts.min_size = Some(viewport_opts.size);
-            viewport_opts.max_size = Some(viewport_opts.size);
-            viewport_opts.resizable = false;
+        let main_target_count = target_count.saturating_sub(viewport_count.saturating_sub(1));
+        (0..target_count)
+            .map(|target_idx| {
+                if target_idx < main_target_count {
+                    0
+                }
+                else {
+                    viewport_count - (target_count - target_idx)
+                }
+            })
+            .collect()
+    }
+
+    /// Generate UI-compatible target name
+    fn generated_target_name(target: &GeneratedDisplayTarget) -> String {
+        let card_name = format!("{:?}({}) Display", target.card_id.vtype, target.card_id.idx);
+        if target.target_count > 1 {
+            format!("{} {}", card_name, target.target_idx)
         }
         else {
-            viewport_opts.resizable = true;
+            card_name
         }
+    }
 
-        // If this is Some, it locks the window resolution to some scale factor of card resolution
-        viewport_opts.card_scale = window_def.card_scale;
-
-        let preset_name = window_def.scaler_preset.clone().unwrap_or("default".to_string());
-        // Scaler mode is a property of the display target, not the visual preset. For
-        // compatibility with older configurations, an omitted window mode inherits only
-        // from the default preset; the selected visual preset must not determine it.
+    /// Get defined scaler preset / scaler mode for the given window definition
+    fn window_scaler_options(dm: &mut EFrameDisplayManager, window_def: &WindowDefinition) -> (String, ScalerMode) {
+        let preset_name = window_def
+            .scaler_preset
+            .clone()
+            .unwrap_or_else(|| "default".to_string());
+        // Scaler mode is a property of the display target, not the visual preset. An
+        // omitted window mode inherits only from the default preset; the selected visual
+        // preset must not determine it.
         let scaler_mode = window_def.scaler_mode.unwrap_or_else(|| {
             dm.scaler_preset("default".to_string())
                 .and_then(|preset| preset.mode)
                 .unwrap_or_default()
         });
 
-        // Construct window title.
-        let window_title = format!("{}: {}", &window_def.name, card_string).to_string();
+        (preset_name, scaler_mode)
+    }
 
-        let (dt_type, dt_flags) = if window_def.background {
-            let dt_type = DisplayTargetType::WindowBackground;
-            let dt_flags = DisplayTargetFlags {
-                main_window,
-                has_gui: main_window,
-                has_menu: main_window,
-            };
-            (dt_type, dt_flags)
+    fn create_viewport_from_window_def(
+        dm: &mut EFrameDisplayManager,
+        window_idx: usize,
+        window_def: &WindowDefinition,
+        gui_options: &DmGuiOptions,
+    ) -> Result<(ViewportId, DmViewportOptions), Error> {
+        let resolved_def = window_def.resolve_with_defaults();
+        let main_window = window_idx == 0;
+        let viewport_id = if main_window {
+            ViewportId::ROOT
         }
         else {
-            let dt_type = DisplayTargetType::GuiWidget;
-            let dt_flags = DisplayTargetFlags {
-                main_window,
-                has_gui: main_window,
-                has_menu: main_window,
-            };
-            (dt_type, dt_flags)
+            ViewportId::from_hash_of(("martypc-display-target", window_idx))
+        };
+
+        let mut viewport_opts = DmViewportOptions {
+            size: resolved_def.size.unwrap_or_default().into(),
+            fullscreen: resolved_def.fullscreen,
+            always_on_top: resolved_def.always_on_top,
+            fill_color: resolved_def.background_color,
+            background_organization: resolved_def.background_organization,
+            title: resolved_def.name.clone(),
+            resizable: resolved_def.resizable,
+            can_grab: resolved_def.can_grab,
+            ..Default::default()
+        };
+
+        if main_window && gui_options.enabled {
+            viewport_opts.margins = DisplayTargetMargins::from_t(gui_options.menubar_h);
+        }
+        if !resolved_def.resizable {
+            viewport_opts.min_size = Some(viewport_opts.size);
+            viewport_opts.max_size = Some(viewport_opts.size);
+        }
+
+        dm.create_viewport(viewport_id, viewport_opts.clone())?;
+        Ok((viewport_id, viewport_opts))
+    }
+
+    fn create_generated_target(
+        dm: &mut EFrameDisplayManager,
+        egui_ctx: Context,
+        target: &GeneratedDisplayTarget,
+        viewport_id: ViewportId,
+        viewport_opts: &DmViewportOptions,
+        window_def: &WindowDefinition,
+        gui_options: &DmGuiOptions,
+    ) -> Result<(), Error> {
+        let target_name = Self::generated_target_name(target);
+        let (preset_name, scaler_mode) = Self::window_scaler_options(dm, window_def);
+        let main_window = viewport_id == ViewportId::ROOT;
+        let dt_flags = DisplayTargetFlags {
+            main_window,
+            has_gui: main_window,
+            has_menu: main_window,
         };
 
         dm.create_target(
-            window_title,
-            dt_type,
+            target_name,
+            DisplayTargetType::WindowBackground,
             dt_flags,
             Some(&egui_ctx),
-            if main_window { Some(ViewportId::ROOT) } else { None },
-            Some(viewport_opts),
-            card_id_opt,
+            Some(viewport_id),
+            Some(viewport_opts.clone()),
+            Some(target.card_id),
             preset_name,
             scaler_mode,
             gui_options,
-        )
-        .expect("Failed to create window target!");
-
-        // TODO: figure out how to set icon here
-        //let last_idx = dm.targets.len() - 1;
-        //dm.targets[last_idx].window.as_mut().unwrap().set_window_icon(icon);
+        )?;
 
         Ok(())
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use marty_core::device_traits::videocard::VideoType;
+    use marty_frontend_common::types::window::BackgroundOrganization;
+
+    fn window_with_scaler(preset: Option<&str>, mode: Option<ScalerMode>) -> WindowDefinition {
+        WindowDefinition {
+            enabled: true,
+            name: "Main GUI".to_string(),
+            background_color: None,
+            background_organization: BackgroundOrganization::default(),
+            background: true,
+            fullscreen: false,
+            size: None,
+            resizable: true,
+            card_id: None,
+            card_scale: None,
+            scaler_mode: mode,
+            always_on_top: false,
+            can_grab: true,
+            scaler_preset: preset.map(str::to_string),
+        }
+    }
+
+    #[test]
+    fn per_card_count_generates_multiple_targets() {
+        let builder = EFrameDisplayManagerBuilder {
+            cards: vec![VideoCardId {
+                idx:   0,
+                vtype: VideoType::CGA,
+            }],
+            display_target_configs: vec![CardDisplayTargetConfiguration { targets: 2 }],
+            ..Default::default()
+        };
+
+        let targets = builder.generated_display_targets().unwrap();
+        assert_eq!(targets.len(), 2);
+        assert!(targets.iter().all(|target| target.card_id.idx == 0));
+        assert_eq!(targets[0].target_idx, 0);
+        assert_eq!(targets[1].target_idx, 1);
+        assert_eq!(
+            EFrameDisplayManagerBuilder::generated_target_name(&targets[0]),
+            "CGA(0) Display 0"
+        );
+        assert_eq!(
+            EFrameDisplayManagerBuilder::generated_target_name(&targets[1]),
+            "CGA(0) Display 1"
+        );
+    }
+
+    #[test]
+    fn zero_targets_suppresses_a_cards_display_targets() {
+        let builder = EFrameDisplayManagerBuilder {
+            cards: vec![VideoCardId {
+                idx:   0,
+                vtype: VideoType::CGA,
+            }],
+            display_target_configs: vec![CardDisplayTargetConfiguration { targets: 0 }],
+            ..Default::default()
+        };
+
+        assert!(builder.generated_display_targets().unwrap().is_empty());
+    }
+
+    #[test]
+    fn omitted_card_count_defaults_to_one_target() {
+        let builder = EFrameDisplayManagerBuilder {
+            cards: vec![
+                VideoCardId {
+                    idx:   0,
+                    vtype: VideoType::CGA,
+                },
+                VideoCardId {
+                    idx:   1,
+                    vtype: VideoType::MDA,
+                },
+            ],
+            display_target_configs: vec![CardDisplayTargetConfiguration { targets: 2 }],
+            ..Default::default()
+        };
+
+        let targets = builder.generated_display_targets().unwrap();
+        assert_eq!(targets.len(), 3);
+        assert_eq!(targets[2].card_id.idx, 1);
+        assert_eq!(targets[2].target_count, 1);
+    }
+
+    #[test]
+    fn empty_display_target_configuration_defaults_each_card_to_one_target() {
+        let builder = EFrameDisplayManagerBuilder {
+            cards: vec![
+                VideoCardId {
+                    idx:   0,
+                    vtype: VideoType::CGA,
+                },
+                VideoCardId {
+                    idx:   1,
+                    vtype: VideoType::MDA,
+                },
+            ],
+            ..Default::default()
+        };
+
+        let targets = builder.generated_display_targets().unwrap();
+        assert_eq!(targets.len(), 2);
+        assert_eq!(targets[0].card_id.idx, 0);
+        assert_eq!(targets[1].card_id.idx, 1);
+        assert!(targets.iter().all(|target| target.target_count == 1));
+    }
+
+    #[test]
+    fn display_target_counts_for_missing_cards_are_ignored() {
+        let builder = EFrameDisplayManagerBuilder {
+            cards: vec![VideoCardId {
+                idx:   0,
+                vtype: VideoType::CGA,
+            }],
+            display_target_configs: vec![
+                CardDisplayTargetConfiguration { targets: 16 },
+                CardDisplayTargetConfiguration { targets: usize::MAX },
+            ],
+            ..Default::default()
+        };
+
+        let targets = builder.generated_display_targets().unwrap();
+        assert_eq!(targets.len(), MAX_DISPLAY_TARGETS);
+        assert!(targets.iter().all(|target| target.card_id.idx == 0));
+    }
+
+    #[test]
+    fn total_display_target_count_cannot_exceed_sixteen() {
+        let builder = EFrameDisplayManagerBuilder {
+            cards: vec![
+                VideoCardId {
+                    idx:   0,
+                    vtype: VideoType::CGA,
+                },
+                VideoCardId {
+                    idx:   1,
+                    vtype: VideoType::MDA,
+                },
+            ],
+            display_target_configs: vec![
+                CardDisplayTargetConfiguration { targets: 9 },
+                CardDisplayTargetConfiguration { targets: 8 },
+            ],
+            ..Default::default()
+        };
+
+        let err = builder.generated_display_targets().err().unwrap();
+        assert!(err.to_string().contains("maximum total is 16"));
+    }
+
+    #[test]
+    fn generated_target_settings_inherit_window_scaler_options() {
+        let mut dm = EFrameDisplayManager::new();
+        let window = window_with_scaler(Some("IBM 5153"), Some(ScalerMode::Fit));
+
+        let (preset, mode) = EFrameDisplayManagerBuilder::window_scaler_options(&mut dm, &window);
+
+        assert_eq!(preset, "IBM 5153");
+        assert_eq!(mode, ScalerMode::Fit);
+    }
+
+    #[test]
+    fn inherited_window_preset_does_not_supply_scaler_mode() {
+        let mut dm = EFrameDisplayManager::new();
+        let window = window_with_scaler(Some("IBM 5153"), None);
+
+        let (preset, mode) = EFrameDisplayManagerBuilder::window_scaler_options(&mut dm, &window);
+
+        assert_eq!(preset, "IBM 5153");
+        assert_eq!(mode, ScalerMode::default());
+    }
+
+    #[test]
+    fn generated_targets_fill_extra_viewports_from_the_end() {
+        assert_eq!(
+            EFrameDisplayManagerBuilder::initial_viewport_positions(5, 3),
+            vec![0, 0, 0, 1, 2]
+        );
+        assert_eq!(
+            EFrameDisplayManagerBuilder::initial_viewport_positions(2, 4),
+            vec![2, 3]
+        );
+        assert_eq!(
+            EFrameDisplayManagerBuilder::initial_viewport_positions(3, 1),
+            vec![0, 0, 0]
+        );
     }
 }

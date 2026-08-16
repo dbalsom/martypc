@@ -138,7 +138,7 @@ impl BusInterface {
         // If one is found, set a flag to fall back to the slow path.
         let mut range_has_mmio = false;
         for i in start_mmio_block..=end_mmio_block {
-            if self.mmio_map_fast[i] != MmioDeviceType::None {
+            if self.mmio_map_fast[i].device != MmioDeviceType::None {
                 range_has_mmio = true;
             }
         }
@@ -170,7 +170,7 @@ impl BusInterface {
                 // Handle memory-mapped devices
                 let system_ticks = self.cpu_cycles_to_system_ticks(cycles);
 
-                match self.mmio_map_fast[address >> MMIO_MAP_SHIFT] {
+                match self.mmio_map_fast[address >> MMIO_MAP_SHIFT].device {
                     MmioDeviceType::Video(vid) => {
                         if let Some(card_dispatch) = self.videocards.get_mut(&vid) {
                             let syswait = card_dispatch.mmio_read_wait(address, system_ticks);
@@ -206,7 +206,7 @@ impl BusInterface {
                 let system_ticks = self.cpu_cycles_to_system_ticks(cycles);
 
                 // Handle memory-mapped devices
-                match self.mmio_map_fast[address >> MMIO_MAP_SHIFT] {
+                match self.mmio_map_fast[address >> MMIO_MAP_SHIFT].device {
                     MmioDeviceType::Video(vid) => {
                         if let Some(card_dispatch) = self.videocards.get_mut(&vid) {
                             let syswait = card_dispatch.mmio_write_wait(address, system_ticks);
@@ -242,7 +242,7 @@ impl BusInterface {
                 // Handle memory-mapped devices
                 let system_ticks = self.cpu_cycles_to_system_ticks(cycles);
 
-                match self.mmio_map_fast[address >> MMIO_MAP_SHIFT] {
+                match self.mmio_map_fast[address >> MMIO_MAP_SHIFT].device {
                     MmioDeviceType::Video(vid) => {
                         if let Some(card_dispatch) = self.videocards.get_mut(&vid) {
                             return Ok(card_dispatch.mmio_read_u8(address, system_ticks, Some(&self.memory)));
@@ -306,7 +306,7 @@ impl BusInterface {
             }
             else {
                 // Handle memory-mapped devices
-                match self.mmio_map_fast[address >> MMIO_MAP_SHIFT] {
+                match self.mmio_map_fast[address >> MMIO_MAP_SHIFT].device {
                     MmioDeviceType::Video(vid) => {
                         if let Some(card_dispatch) = self.videocards.get(&vid) {
                             return Ok(card_dispatch.mmio_peek_u8(address, Some(&self.memory)));
@@ -395,7 +395,7 @@ impl BusInterface {
             }
             else {
                 // Handle memory-mapped devices.
-                match self.mmio_map_fast[address >> MMIO_MAP_SHIFT] {
+                match self.mmio_map_fast[address >> MMIO_MAP_SHIFT].device {
                     MmioDeviceType::Video(vid) => {
                         if let Some(card_dispatch) = self.videocards.get_mut(&vid) {
                             let system_ticks = self.cycles_to_ticks[cycles as usize];

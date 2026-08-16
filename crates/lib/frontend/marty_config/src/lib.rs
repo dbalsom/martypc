@@ -51,7 +51,7 @@ use marty_display_common::display_scaler::ScalerPreset;
 
 use marty_frontend_common::{
     resource_manager::PathConfigItem,
-    types::window::WindowDefinition,
+    types::window::{DisplayTargetConfiguration, WindowDefinition},
     BenchmarkEndCondition,
     HotkeyConfigEntry,
     JoyKeyEntry,
@@ -218,6 +218,8 @@ pub struct Emulator {
     pub pit_output_int_trigger: bool,
 
     pub window: Vec<WindowDefinition>,
+    #[serde(default)]
+    pub display_targets: DisplayTargetConfiguration,
     #[cfg(feature = "use_display")]
     pub scaler_preset: Vec<ScalerPreset>,
     pub input: EmulatorInput,

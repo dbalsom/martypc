@@ -117,14 +117,14 @@ impl MemoryMappedDevice for MDACard {
                     size: HGC_MEM_APERTURE_HALF,
                     cycle_cost: 0,
                     read_only: false,
-                    priority: 3, // Allow another MDA card to override this
+                    priority: 1,
                 });
                 mapping.push(MemRangeDescriptor {
                     address: 0xB8000,
                     size: HGC_MEM_APERTURE_HALF,
                     cycle_cost: 0,
                     read_only: false,
-                    priority: 0,
+                    priority: 3, // Allow a color adapter to retain the B8000 aperture
                 });
             }
             _ => {

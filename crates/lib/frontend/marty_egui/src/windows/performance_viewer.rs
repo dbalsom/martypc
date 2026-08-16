@@ -105,9 +105,10 @@ impl PerformanceViewerControl {
             .show(ui, |ui| {
                 #[cfg(feature = "use_display")]
                 {
+                    let displays_default_open = self.dti.len() <= 2;
                     for (i, dt) in self.dti.iter().enumerate() {
                         CollapsingHeader::new(&format!("Display {}: {} ({})", i, dt.name, dt.dtype))
-                            .default_open(true)
+                            .default_open(displays_default_open)
                             .show(ui, |ui| {
                                 egui::Grid::new("displays").striped(false).show(ui, |ui| {
                                     ui.label("Backend: ");

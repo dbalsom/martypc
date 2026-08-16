@@ -110,6 +110,18 @@ pub struct Vertex {
 struct ScalingMatrix {
     transform: Mat4,
 }
+
+fn fit_scale(texture_width: f32, target_height: f32, screen_width: f32, screen_height: f32, margin_y: f32) -> f32 {
+    if texture_width <= 0.0 || target_height <= 0.0 || screen_width <= 0.0 || screen_height <= 0.0 {
+        return 0.0;
+    }
+
+    let adjusted_screen_h = (screen_height - margin_y).max(0.0);
+    let width_ratio = screen_width / texture_width;
+    let height_ratio = adjusted_screen_h / target_height;
+    width_ratio.min(height_ratio).max(0.0)
+}
+
 #[repr(C)]
 #[derive(Copy, Clone, Debug, Default, Pod, Zeroable)]
 struct ScalerOptionsUniform {
@@ -567,15 +579,7 @@ impl MartyScaler {
         screen_height: f32,
         margin_y: f32,
     ) -> f32 {
-        if texture_width <= 0.0 || target_height <= 0.0 || screen_height <= 0.0 {
-            return 0.0;
-        }
-
-        let adjusted_screen_h = screen_height - margin_y;
-        let max_height_factor = (adjusted_screen_h / screen_height).max(1.0);
-        let width_ratio = (screen_width / texture_width).max(1.0);
-        let height_ratio = (adjusted_screen_h / target_height).max(max_height_factor);
-        target_height * width_ratio.min(height_ratio)
+        target_height * fit_scale(texture_width, target_height, screen_width, screen_height, margin_y)
     }
 
     fn scanlines_allowed(&self) -> bool {
@@ -1173,27 +1177,20 @@ impl ScalingMatrix {
     /// Create a transformation matrix that fits the texture by scaling it proportionally to the
     /// largest size that will fit the surface, proportionally
     fn fit_matrix(texture_size: (f32, f32), target_size: (f32, f32), screen_size: (f32, f32), margin_y: f32) -> Self {
-        //let margin_y = margin_y / 2.0;
-        let offset = 0.0;
-        let margin_ndc = (margin_y + offset) / (screen_size.1 / 2.0);
-
         let (texture_width, _texture_height) = texture_size;
         let target_height = target_size.1;
         let (screen_width, screen_height) = screen_size;
-        let adjusted_screen_h = screen_height - margin_y;
 
-        if texture_width <= 0.0 || target_height <= 0.0 {
+        if texture_width <= 0.0 || target_height <= 0.0 || screen_width <= 0.0 || screen_height <= 0.0 {
             return Self {
                 transform: Mat4::identity(),
             };
         }
 
-        let max_height_factor = ((screen_height - margin_y) / screen_height).max(1.0);
-        let width_ratio = (screen_width / texture_width).max(1.0);
-        let height_ratio = (adjusted_screen_h / target_height).max(max_height_factor);
+        let margin_ndc = margin_y / (screen_height / 2.0);
 
-        // Get the smallest scale size. (Removed floor() call from integer scaler)
-        let scale = width_ratio.min(height_ratio);
+        // Fit may scale either up or down while preserving the target aspect ratio.
+        let scale = fit_scale(texture_width, target_height, screen_width, screen_height, margin_y);
 
         let scaled_width = texture_width * scale;
         let scaled_height = target_height * scale;
@@ -1233,5 +1230,16 @@ impl ScalingMatrix {
 
     fn as_bytes(&self) -> &[u8] {
         self.transform.as_byte_slice()
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::fit_scale;
+
+    #[test]
+    fn fit_scale_can_scale_up_and_down() {
+        assert_eq!(fit_scale(640.0, 400.0, 320.0, 200.0, 0.0), 0.5);
+        assert_eq!(fit_scale(640.0, 400.0, 1280.0, 800.0, 0.0), 2.0);
     }
 }

@@ -144,6 +144,19 @@ pub fn handle_egui_event(
                     _ => {}
                 },
                 GuiVariableContext::Display(dth) => match op {
+                    GuiEnum::DisplayViewport(viewport) => {
+                        log::debug!("Assigning display target {:?} to viewport {:?}", dth, viewport);
+                        match dm.set_display_viewport(*dth, *viewport) {
+                            Ok(()) => {
+                                // Viewport reassignment queues relayouts for both the source and destination viewports.
+                                if let Err(err) = dm.resize_viewports() {
+                                    log::error!("Failed to resize viewports after moving display target: {err:?}");
+                                }
+                                emu.gui.init_display_info(dm.display_info(&emu.machine));
+                            }
+                            Err(err) => log::error!("Failed to assign display target to viewport: {err:?}"),
+                        }
+                    }
                     GuiEnum::DisplayType(display_type) => {
                         log::debug!("Got display type update event: {:?}", display_type);
                         if let Err(e) = dm.set_display_type(*dth, *display_type) {
@@ -1144,9 +1157,9 @@ pub fn handle_egui_event(
                 renderer.cga_direct_param_update(params);
             });
         }
-        GuiEvent::ScalerAdjust(dt_idx, params) => {
+        GuiEvent::ScalerAdjust(dt, params) => {
             // User adjusted the scaler parameters
-            if let Err(err) = dm.apply_scaler_params(DtHandle::from(*dt_idx), params) {
+            if let Err(err) = dm.apply_scaler_params(*dt, params) {
                 log::error!("Failed to apply scaler params: {}", err);
             }
         }

@@ -138,6 +138,17 @@ enum MachineConfigOverlayOperation {
 enum MachineConfigOverlayTarget {
     #[serde(rename = "fdc.drive")]
     FdcDrive,
+    #[serde(rename = "video")]
+    Video,
+}
+
+impl MachineConfigOverlayTarget {
+    fn name(self) -> &'static str {
+        match self {
+            Self::FdcDrive => "fdc.drive",
+            Self::Video => "video",
+        }
+    }
 }
 
 #[derive(Clone, Debug, Deserialize)]
@@ -328,14 +339,16 @@ impl MachineConfigFileOverlayEntry {
                 let target = self
                     .target
                     .ok_or_else(|| anyhow::anyhow!("Overlay '{}': merge operation requires a target", self.name))?;
+                let target_name = target.name();
                 let selector = self
                     .selector
                     .as_ref()
                     .ok_or_else(|| anyhow::anyhow!("Overlay '{}': merge operation requires a selector", self.name))?;
                 if self.parameters.len() != 1 {
                     return Err(anyhow::anyhow!(
-                        "Overlay '{}': fdc.drive merge requires exactly one parameter",
-                        self.name
+                        "Overlay '{}': {} merge requires exactly one parameter",
+                        self.name,
+                        target_name
                     ));
                 }
                 let parameter = self
@@ -351,8 +364,9 @@ impl MachineConfigFileOverlayEntry {
                     })?;
                 if !matches!(parameter, MachineConfigOverlayParameter::Integer { .. }) {
                     return Err(anyhow::anyhow!(
-                        "Overlay '{}': fdc.drive selector '{}' must be an integer parameter",
+                        "Overlay '{}': {} selector '{}' must be an integer parameter",
                         self.name,
+                        target_name,
                         selector
                     ));
                 }
@@ -365,6 +379,12 @@ impl MachineConfigFileOverlayEntry {
                         value.clone().try_into::<FloppyDriveConfig>().map_err(|err| {
                             anyhow::anyhow!("Overlay '{}': invalid fdc.drive value: {}", self.name, err)
                         })?;
+                    }
+                    MachineConfigOverlayTarget::Video => {
+                        value
+                            .clone()
+                            .try_into::<VideoCardConfig>()
+                            .map_err(|err| anyhow::anyhow!("Overlay '{}': invalid video value: {}", self.name, err))?;
                     }
                 }
                 if self.has_replacement_payload() {
@@ -837,26 +857,29 @@ impl MachineConfigFileEntry {
         let selector =
             selector.ok_or_else(|| anyhow::anyhow!("Overlay '{}': merge operation requires a selector", name))?;
         let value = value.ok_or_else(|| anyhow::anyhow!("Overlay '{}': merge operation requires a value", name))?;
+        let target_name = target.name();
+        let target_index = match arguments.get(&selector) {
+            Some(MachineConfigOverlayValue::Integer(value)) => usize::try_from(*value).map_err(|_| {
+                anyhow::anyhow!(
+                    "Overlay '{}': parameter '{}' cannot be used as a {} index: {}",
+                    name,
+                    selector,
+                    target_name,
+                    value
+                )
+            })?,
+            None => {
+                return Err(anyhow::anyhow!(
+                    "Overlay '{}': selector parameter '{}' was not bound",
+                    name,
+                    selector
+                ));
+            }
+        };
 
         match target {
             MachineConfigOverlayTarget::FdcDrive => {
-                let drive_index = match arguments.get(&selector) {
-                    Some(MachineConfigOverlayValue::Integer(value)) => usize::try_from(*value).map_err(|_| {
-                        anyhow::anyhow!(
-                            "Overlay '{}': parameter '{}' cannot be used as a drive index: {}",
-                            name,
-                            selector,
-                            value
-                        )
-                    })?,
-                    None => {
-                        return Err(anyhow::anyhow!(
-                            "Overlay '{}': selector parameter '{}' was not bound",
-                            name,
-                            selector
-                        ));
-                    }
-                };
+                let drive_index = target_index;
                 let drive = value
                     .try_into::<FloppyDriveConfig>()
                     .map_err(|err| anyhow::anyhow!("Overlay '{}': invalid fdc.drive value: {}", name, err))?;
@@ -922,6 +945,31 @@ impl MachineConfigFileEntry {
                     }
                 }
             }
+            MachineConfigOverlayTarget::Video => {
+                let card = value
+                    .try_into::<VideoCardConfig>()
+                    .map_err(|err| anyhow::anyhow!("Overlay '{}': invalid video value: {}", name, err))?;
+                let video = self.video.get_or_insert_default();
+
+                match target_index.cmp(&video.len()) {
+                    std::cmp::Ordering::Less => {
+                        log::debug!("Overlay '{}': replacing video[{}] with {:?}", name, target_index, card);
+                        video[target_index] = card;
+                    }
+                    std::cmp::Ordering::Equal => {
+                        log::debug!("Overlay '{}': appending video[{}] as {:?}", name, target_index, card);
+                        video.push(card);
+                    }
+                    std::cmp::Ordering::Greater => {
+                        return Err(anyhow::anyhow!(
+                            "Overlay '{}': cannot create video[{}] before video[{}] is configured",
+                            name,
+                            target_index,
+                            video.len()
+                        ));
+                    }
+                }
+            }
         }
         Ok(())
     }
@@ -953,7 +1001,10 @@ impl MachineConfigFileEntry {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use marty_core::machine_types::FloppyDriveType;
+    use marty_core::{
+        device_traits::videocard::{VideoCardSubType, VideoType},
+        machine_types::FloppyDriveType,
+    };
 
     const TEST_CONFIG: &str = r#"
 [[machine]]
@@ -1027,6 +1078,46 @@ required = true
 
 [overlay.value]
 type = "720k"
+
+[[overlay]]
+name = "ibm_cga"
+operation = "replace"
+
+[[overlay.video]]
+type = "CGA"
+
+[[overlay]]
+name = "ibm_mda"
+operation = "merge"
+target = "video"
+selector = "card"
+
+[[overlay.parameters]]
+name = "card"
+type = "integer"
+min = 0
+required = false
+default = 0
+
+[overlay.value]
+type = "MDA"
+
+[[overlay]]
+name = "hercules"
+operation = "merge"
+target = "video"
+selector = "card"
+
+[[overlay.parameters]]
+name = "card"
+type = "integer"
+min = 0
+required = false
+default = 0
+
+[overlay.value]
+type = "MDA"
+subtype = "Hercules"
 "#;
 
     fn test_manager() -> MachineManager {
@@ -1077,6 +1168,53 @@ type = "720k"
         assert_eq!(drives.len(), 2);
         assert_eq!(drives[0].fd_type, FloppyDriveType::Floppy360K);
         assert_eq!(drives[1].fd_type, FloppyDriveType::Floppy720K);
+    }
+
+    #[test]
+    fn indexed_video_overlay_defaults_to_primary_slot() {
+        let mut manager = test_manager();
+        let overlays = vec!["ibm_cga".to_string(), "ibm_mda".to_string()];
+        let config = manager.get_config_with_overlays("bare", &overlays).unwrap();
+        let cards = config.video.as_ref().unwrap();
+
+        assert_eq!(cards.len(), 1);
+        assert_eq!(cards[0].video_type, VideoType::MDA);
+    }
+
+    #[test]
+    fn indexed_video_overlay_builds_dual_adapter_configuration() {
+        let mut manager = test_manager();
+        let overlays = vec!["ibm_cga".to_string(), "ibm_mda:1".to_string()];
+        let config = manager.get_config_with_overlays("bare", &overlays).unwrap();
+        let cards = config.video.as_ref().unwrap();
+
+        assert_eq!(cards.len(), 2);
+        assert_eq!(cards[0].video_type, VideoType::CGA);
+        assert_eq!(cards[1].video_type, VideoType::MDA);
+    }
+
+    #[test]
+    fn indexed_hercules_overlay_builds_dual_adapter_configuration() {
+        let mut manager = test_manager();
+        let overlays = vec!["ibm_cga".to_string(), "hercules:1".to_string()];
+        let config = manager.get_config_with_overlays("bare", &overlays).unwrap();
+        let cards = config.video.as_ref().unwrap();
+
+        assert_eq!(cards.len(), 2);
+        assert_eq!(cards[0].video_type, VideoType::CGA);
+        assert_eq!(cards[1].video_type, VideoType::MDA);
+        assert_eq!(cards[1].video_subtype, Some(VideoCardSubType::Hercules));
+    }
+
+    #[test]
+    fn indexed_video_overlay_rejects_gaps() {
+        let mut manager = test_manager();
+        let error = manager
+            .get_config_with_overlays("bare", &vec!["ibm_mda:1".to_string()])
+            .unwrap_err()
+            .to_string();
+
+        assert!(error.contains("cannot create video[1] before video[0] is configured"));
     }
 
     #[test]
@@ -1182,7 +1320,7 @@ selector = "drive"
 
     #[cfg(all(feature = "ega", feature = "vga"))]
     #[test]
-    fn installed_machine_configurations_resolve_with_new_floppy_overlays() {
+    fn installed_machine_configurations_resolve_with_parameterized_overlays() {
         let machine_dir = std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("../../../../install/configs/machines");
         let mut manager = MachineManager::new();
         let mut machine_configs = Vec::new();

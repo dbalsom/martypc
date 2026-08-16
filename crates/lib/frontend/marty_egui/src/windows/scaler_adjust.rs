@@ -34,21 +34,28 @@ use crate::{layouts::MartyLayout, *};
 use marty_display_common::display_scaler::{PhosphorType, ScalerFilter, ScalerParams};
 
 pub struct ScalerAdjustControl {
-    params:   Vec<ScalerParams>,
+    params: Vec<ScalerParams>,
     dt_descs: Vec<String>,
-    dt_idx:   usize,
+    dt_handles: Vec<DtHandle>,
+    dt_idx: usize,
 }
 
 impl ScalerAdjustControl {
     pub fn new() -> Self {
         Self {
-            params:   Default::default(),
+            params: Default::default(),
             dt_descs: Vec::new(),
-            dt_idx:   0,
+            dt_handles: Vec::new(),
+            dt_idx: 0,
         }
     }
 
     pub fn draw(&mut self, ui: &mut egui::Ui, events: &mut GuiEventQueue) {
+        if self.dt_handles.is_empty() {
+            ui.label("No displays available.");
+            return;
+        }
+
         if self.dt_idx < self.dt_descs.len() {
             MartyLayout::new(layouts::Layout::KeyValue, "composite-adjust-card-grid").show(ui, |ui| {
                 MartyLayout::kv_row(ui, "Card", None, |ui| {
@@ -179,17 +186,24 @@ impl ScalerAdjustControl {
 
                 if update {
                     //log::debug!("Sending ScalerAdjust event!");
-                    events.send(GuiEvent::ScalerAdjust(self.dt_idx, self.params[self.dt_idx]));
+                    events.send(GuiEvent::ScalerAdjust(
+                        self.dt_handles[self.dt_idx],
+                        self.params[self.dt_idx],
+                    ));
                 }
             });
     }
 
     pub fn select_card(&mut self, dth: DtHandle) {
-        self.dt_idx = dth.idx();
+        if let Some(idx) = self.dt_handles.iter().position(|handle| *handle == dth) {
+            self.dt_idx = idx;
+        }
     }
 
-    pub fn set_dt_list(&mut self, dt_list: Vec<String>) {
+    pub fn set_dt_list(&mut self, dt_list: Vec<String>, dt_handles: Vec<DtHandle>) {
         self.dt_descs = dt_list;
+        self.dt_handles = dt_handles;
+        self.dt_idx = 0;
         self.params.clear();
         for _ in self.dt_descs.iter() {
             self.params.push(ScalerParams::default());
@@ -197,20 +211,16 @@ impl ScalerAdjustControl {
     }
 
     pub fn set_params(&mut self, dth: DtHandle, params: ScalerParams) {
-        let dt_idx = dth.idx();
-        if dt_idx < self.params.len() {
+        if let Some(dt_idx) = self.dt_handles.iter().position(|handle| *handle == dth) {
             self.params[dt_idx] = params;
         }
     }
 
     #[allow(dead_code)]
     pub fn get_params(&self, dth: DtHandle) -> Option<&ScalerParams> {
-        let dt_idx = dth.idx();
-        if dt_idx < self.params.len() {
-            Some(&self.params[dt_idx])
-        }
-        else {
-            None
-        }
+        self.dt_handles
+            .iter()
+            .position(|handle| *handle == dth)
+            .and_then(|dt_idx| self.params.get(dt_idx))
     }
 }

@@ -195,23 +195,34 @@ pub fn process_hotkeys(
                 emu.flags.render_gui = !emu.flags.render_gui;
             }
             HotkeyEvent::CaptureMouse => {
-                log::debug!("CaptureMouse hotkey triggered. Toggling mosue capture.");
-                let dtc = dm.main_display_target();
+                log::debug!("CaptureMouse hotkey triggered. Toggling mouse capture.");
+                let Some((viewport_id, display)) = dm.grabbed_display().or_else(|| {
+                    dm.display_for_viewport(egui::ViewportId::ROOT)
+                        .map(|display| (egui::ViewportId::ROOT, display))
+                })
+                else {
+                    log::warn!("No display is assigned to the main viewport; mouse capture ignored.");
+                    continue;
+                };
+                let Some(dtc) = dm.display_target(display)
+                else {
+                    continue;
+                };
                 match dtc.try_write() {
                     Ok(mut dtc_lock) => {
                         if !dtc_lock.grabbed() {
                             // Mouse cursor is not grabbed, grab it.
                             dtc_lock.set_grabbed(true, emu.mouse_data.capture_mode);
                             emu.mouse_data.is_captured = true;
-                            ctx.send_viewport_cmd(ViewportCommand::CursorGrab(GRAB_MODE));
-                            ctx.send_viewport_cmd(ViewportCommand::CursorVisible(false));
+                            ctx.send_viewport_cmd_to(viewport_id, ViewportCommand::CursorGrab(GRAB_MODE));
+                            ctx.send_viewport_cmd_to(viewport_id, ViewportCommand::CursorVisible(false));
                         }
                         else {
                             // Mouse cursor is grabbed, un-grab it.
                             dtc_lock.set_grabbed(false, emu.mouse_data.capture_mode);
                             emu.mouse_data.is_captured = false;
-                            ctx.send_viewport_cmd(ViewportCommand::CursorGrab(CursorGrab::None));
-                            ctx.send_viewport_cmd(ViewportCommand::CursorVisible(true));
+                            ctx.send_viewport_cmd_to(viewport_id, ViewportCommand::CursorGrab(CursorGrab::None));
+                            ctx.send_viewport_cmd_to(viewport_id, ViewportCommand::CursorVisible(true));
                         }
                     }
                     Err(_e) => {

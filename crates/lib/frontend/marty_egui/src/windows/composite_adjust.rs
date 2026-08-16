@@ -36,7 +36,8 @@ use marty_videocard_renderer::CompositeParams;
 
 pub struct CompositeAdjustControl {
     dt_descs: Vec<String>,
-    dt_idx:   usize,
+    dt_handles: Vec<DtHandle>,
+    dt_idx: usize,
 
     params: Vec<CompositeParams>,
     temp_phase: Vec<f64>,
@@ -46,6 +47,7 @@ impl CompositeAdjustControl {
     pub fn new() -> Self {
         Self {
             dt_descs: Vec::new(),
+            dt_handles: Vec::new(),
             dt_idx: 0,
             params: Default::default(),
             temp_phase: Vec::new(),
@@ -53,6 +55,11 @@ impl CompositeAdjustControl {
     }
 
     pub fn draw(&mut self, ui: &mut egui::Ui, events: &mut GuiEventQueue) {
+        if self.dt_handles.is_empty() {
+            ui.label("No displays available.");
+            return;
+        }
+
         if self.dt_idx < self.dt_descs.len() {
             MartyLayout::new(layouts::Layout::KeyValue, "composite-adjust-card-grid").show(ui, |ui| {
                 MartyLayout::kv_row(ui, "Card", None, |ui| {
@@ -127,19 +134,23 @@ impl CompositeAdjustControl {
                 if update {
                     self.params[self.dt_idx].phase = (self.temp_phase[self.dt_idx] / 90.0).round() as usize;
                     events.send(GuiEvent::CompositeAdjust(
-                        DtHandle::from(self.dt_idx),
+                        self.dt_handles[self.dt_idx],
                         self.params[self.dt_idx],
                     ));
                 }
             });
     }
 
-    pub fn select_card(&mut self, dt_idx: usize) {
-        self.dt_idx = dt_idx;
+    pub fn select_card(&mut self, dth: DtHandle) {
+        if let Some(idx) = self.dt_handles.iter().position(|handle| *handle == dth) {
+            self.dt_idx = idx;
+        }
     }
 
-    pub fn set_dt_list(&mut self, dt_list: Vec<String>) {
+    pub fn set_dt_list(&mut self, dt_list: Vec<String>, dt_handles: Vec<DtHandle>) {
         self.dt_descs = dt_list;
+        self.dt_handles = dt_handles;
+        self.dt_idx = 0;
         self.params.clear();
         self.temp_phase.clear();
         for _ in self.dt_descs.iter() {
@@ -149,19 +160,17 @@ impl CompositeAdjustControl {
     }
 
     #[allow(dead_code)]
-    pub fn update_params(&mut self, dt_idx: usize, params: CompositeParams) {
-        if dt_idx < self.params.len() {
+    pub fn update_params(&mut self, dth: DtHandle, params: CompositeParams) {
+        if let Some(dt_idx) = self.dt_handles.iter().position(|handle| *handle == dth) {
             self.params[dt_idx] = params;
         }
     }
 
     #[allow(dead_code)]
-    pub fn get_params(&self, dt_idx: usize) -> Option<&CompositeParams> {
-        if dt_idx < self.params.len() {
-            Some(&self.params[dt_idx])
-        }
-        else {
-            None
-        }
+    pub fn get_params(&self, dth: DtHandle) -> Option<&CompositeParams> {
+        self.dt_handles
+            .iter()
+            .position(|handle| *handle == dth)
+            .and_then(|dt_idx| self.params.get(dt_idx))
     }
 }

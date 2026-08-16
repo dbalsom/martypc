@@ -89,7 +89,7 @@ use crate::{
 
 use marty_common::types::{joystick::ControllerLayout, keys::MartyKey, ui::MouseCaptureMode};
 use marty_core::{
-    device_traits::videocard::{DisplayApertureDesc, VideoCardState, VideoCardStateEntry},
+    device_traits::videocard::{DisplayApertureDesc, VideoCardId, VideoCardState, VideoCardStateEntry},
     devices::{pit::PitDisplayState, serial::SerialPortDescriptor},
     machine::{ExecutionControl, MachineState},
     machine_types::FloppyDriveType,
@@ -97,7 +97,7 @@ use marty_core::{
 
 #[cfg(feature = "use_display")]
 use marty_display_common::{
-    display_manager::{DisplayTargetInfo, DtHandle},
+    display_manager::{DisplayTargetInfo, DtHandle, ViewportInfo},
     display_scaler::{ScalerMode, ScalerPreset},
 };
 
@@ -336,8 +336,11 @@ pub struct GuiState {
     pub ppi_viewer:    PpiViewerControl,
 
     pub videocard_state: VideoCardState,
+    pub video_cards: Vec<VideoCardId>,
     #[cfg(feature = "use_display")]
-    pub display_info:    Vec<DisplayTargetInfo>,
+    pub display_info: Vec<DisplayTargetInfo>,
+    #[cfg(feature = "use_display")]
+    pub viewport_info: Vec<ViewportInfo>,
 
     pub disassembly_viewer: DisassemblyControl,
     pub dma_viewer: DmaViewerControl,
@@ -486,8 +489,11 @@ impl GuiState {
             ppi_viewer: PpiViewerControl::new(),
 
             videocard_state: Default::default(),
+            video_cards: Vec::new(),
             #[cfg(feature = "use_display")]
             display_info: Vec::new(),
+            #[cfg(feature = "use_display")]
+            viewport_info: Vec::new(),
             disassembly_viewer: DisassemblyControl::new(),
             dma_viewer: DmaViewerControl::new(),
             trace_viewer: InstructionHistoryControl::new(),
@@ -759,9 +765,9 @@ impl GuiState {
     }
 
     /// Provide the list of graphics cards to all windows that need them.
-    /// TODO: We can create this from update_display_info, no need for a separate method..
-    pub fn set_card_list(&mut self, cards: Vec<String>) {
-        self.text_mode_viewer.set_cards(cards.clone());
+    pub fn set_card_list(&mut self, cards: Vec<(VideoCardId, String)>) {
+        self.video_cards = cards.iter().map(|(card, _)| *card).collect();
+        self.text_mode_viewer.set_cards(cards);
     }
 
     #[cfg(feature = "use_display")]
@@ -895,17 +901,19 @@ impl GuiState {
 
         // Create a list of display target strings to give to the composite and scaler adjustment windows.
         let mut dt_descs = Vec::new();
+        let mut dt_handles = Vec::new();
         for (idx, display) in self.display_info.iter().enumerate() {
             let mut dt_str = format!("Display {}", idx);
             if let Some(vid) = display.vid {
                 dt_str.push_str(&format!(" Card: {} [{:?}]", vid.idx, vid.vtype));
             }
             dt_descs.push(dt_str);
+            dt_handles.push(display.handle);
         }
-        self.scaler_adjust.set_dt_list(dt_descs.clone());
-        self.composite_adjust.set_dt_list(dt_descs.clone());
+        self.scaler_adjust.set_dt_list(dt_descs.clone(), dt_handles.clone());
+        self.composite_adjust.set_dt_list(dt_descs, dt_handles);
 
-        for (idx, display) in self.display_info.iter().enumerate() {
+        for display in &self.display_info {
             log::debug!("init_display_info(): Initializing Display {:?}", display.handle);
 
             if let Some(renderer) = &display.renderer {
@@ -940,6 +948,13 @@ impl GuiState {
                 Some(GuiVariableContext::Display(display.handle)),
             ));
 
+            if let Some(viewport) = display.viewport {
+                enum_vec.push((
+                    GuiEnum::DisplayViewport(viewport),
+                    Some(GuiVariableContext::Display(display.handle)),
+                ));
+            }
+
             // Create GuiEnum for Bezel status (true if bezel is enabled)
             enum_vec.push((
                 GuiEnum::WindowBezel(false),
@@ -948,7 +963,7 @@ impl GuiState {
 
             // Set the initial scaler params for the Scaler Adjustments window if we have them.
             if let Some(scaler_params) = &display.scaler_params {
-                self.scaler_adjust.set_params(DtHandle(idx), scaler_params.clone());
+                self.scaler_adjust.set_params(display.handle, scaler_params.clone());
             }
         }
 
@@ -958,10 +973,15 @@ impl GuiState {
         }
     }
 
+    #[cfg(feature = "use_display")]
+    pub fn init_viewport_info(&mut self, viewport_info: Vec<ViewportInfo>) {
+        self.viewport_info = viewport_info;
+    }
+
     // This is a hack interface - figure out where to better expose this state
     #[cfg(feature = "use_display")]
-    pub fn primary_video_has_bezel(&mut self) -> bool {
-        let vctx = GuiVariableContext::Display(DtHandle::MAIN);
+    pub fn display_has_bezel(&mut self, display: DtHandle) -> bool {
+        let vctx = GuiVariableContext::Display(display);
         if !self.display_info.is_empty() {
             if let Some(enum_mut) = self.get_option_enum_mut(GuiEnum::WindowBezel(Default::default()), Some(vctx)) {
                 let checked = *enum_mut == GuiEnum::WindowBezel(true);
@@ -971,6 +991,12 @@ impl GuiState {
         }
         false
     }
+
+    #[cfg(feature = "use_display")]
+    pub fn primary_video_has_bezel(&mut self) -> bool {
+        self.display_has_bezel(DtHandle::MAIN)
+    }
+
     #[cfg(not(feature = "use_display"))]
     pub fn primary_video_has_bezel(&mut self) -> bool {
         false
