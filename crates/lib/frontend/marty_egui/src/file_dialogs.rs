@@ -214,8 +214,7 @@ impl GuiState {
                     let mut resolved_context = context;
                     resolved_context.set_fsc(fsc);
 
-                    if let FileSaveContext::GuestFile { contents, .. } = &mut resolved_context {
-                        let contents = std::mem::take(contents);
+                    if let Some(contents) = resolved_context.take_contents() {
                         if let Err(error) = file_handle.write(&contents).await {
                             return FrontendThreadEvent::FileSaveError(error.to_string());
                         }

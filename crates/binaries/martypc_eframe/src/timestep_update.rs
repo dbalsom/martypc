@@ -36,8 +36,9 @@ use crate::wasm::file_save::save_non_interactive_file;
 use crate::{
     event_loop::egui_update::update_egui,
     file_transfer::{load_non_interactive_file, NonInteractiveFileLoadError},
+    screenshot,
 };
-use web_time::{Duration, Instant};
+use web_time::Instant;
 
 use crate::{emulator::Emulator, event_loop::render_frame::render_frame, input::GamepadEvent};
 use display_manager_eframe::{DisplayManager, EFrameDisplayManager};
@@ -49,7 +50,6 @@ use marty_frontend_common::{
     thread_events::{FileOpenContext, FileSaveContext, FileSelectionContext, FrontendThreadEvent},
     timestep_manager::{MachinePerfStats, TimestepManager},
 };
-use marty_videocard_renderer::RendererEvent;
 /*use crate::{
     event_loop::{egui_update::update_egui, render_frame::render_frame},
     Emulator,
@@ -467,20 +467,7 @@ pub fn process_update(emu: &mut Emulator, dm: &mut EFrameDisplayManager, tm: &mu
 
             // Render the current frame for all window display targets.
             render_frame(emuc, dmc);
-
-            // Handle renderer events
-            dmc.for_each_renderer(|renderer, _vid, _backend_buf| {
-                while let Some(event) = renderer.get_event() {
-                    match event {
-                        RendererEvent::ScreenshotSaved => {
-                            emuc.gui
-                                .toasts()
-                                .info("Screenshot saved!".to_string())
-                                .duration(Some(Duration::from_secs(5)));
-                        }
-                    }
-                }
-            });
+            screenshot::process_events(emuc, dmc);
         },
     );
 }

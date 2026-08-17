@@ -39,13 +39,17 @@
 #![allow(dead_code)]
 #![allow(clippy::identity_op)] // Adding 0 lines things up nicely for formatting.
 
-use marty_core::devices::cga;
-use std::{collections::VecDeque, mem::size_of, path::Path};
+use std::{
+    collections::VecDeque,
+    mem::size_of,
+    path::{Path, PathBuf},
+};
 
-use web_time::Duration;
+use marty_core::devices::cga;
 
 use image;
 use log;
+use web_time::Duration;
 
 use composite_new::{ReCompositeBuffers, ReCompositeContext};
 pub use display_backend_trait::DisplayBackend;
@@ -80,9 +84,16 @@ pub const OSD_CURSOR_APERTURE: i32 = 4;
 
 /// Events that the renderer can return. These must be read and handled every frame to avoid
 /// memory leaks.
-#[derive(Copy, Clone, Debug)]
+#[derive(Debug)]
 pub enum RendererEvent {
-    ScreenshotSaved,
+    ScreenshotSaved { path: PathBuf },
+    ScreenshotCaptured { suggested_filename: String, png_data: Vec<u8> },
+    ScreenshotFailed(String),
+}
+
+enum ScreenshotRequest {
+    Save(PathBuf),
+    Capture(String),
 }
 
 #[derive(Copy, Clone, Default, PartialEq)]
@@ -228,8 +239,7 @@ pub struct VideoRenderer {
     buffer_select: BufferSelect,
 
     screenshot_buf: Vec<u8>,
-    screenshot_path: Option<std::path::PathBuf>,
-    screenshot_requested: bool,
+    screenshot_request: Option<ScreenshotRequest>,
 
     last_render_time: Duration,
     event_queue: VecDeque<RendererEvent>,
@@ -282,8 +292,7 @@ impl VideoRenderer {
             buffer_select: BufferSelect::Front,
 
             screenshot_buf: Vec::new(),
-            screenshot_path: None,
-            screenshot_requested: false,
+            screenshot_request: None,
 
             last_render_time: Duration::from_secs(0),
             event_queue: VecDeque::new(),
@@ -642,18 +651,21 @@ impl VideoRenderer {
     /// This is deferred to the next rendering pass for simplicity so we don't have to retrieve backend
     /// or card buffers when requesting a screenshot.
     pub fn request_screenshot(&mut self, path: &Path) {
-        self.screenshot_buf = vec![
-            0;
-            (self.params.backend.w as usize * self.params.backend.h as usize * std::mem::size_of::<u32>())
-                as usize
-        ];
-        self.screenshot_path = Some(path.to_path_buf());
-        self.screenshot_requested = true;
+        self.screenshot_buf =
+            vec![0; (self.params.backend.w as usize * self.params.backend.h as usize * size_of::<u32>()) as usize];
+        self.screenshot_request = Some(ScreenshotRequest::Save(path.to_path_buf()));
+    }
+
+    /// Request a screenshot be returned as PNG data on the renderer event queue.
+    pub fn request_screenshot_capture(&mut self, suggested_filename: impl Into<String>) {
+        self.screenshot_buf =
+            vec![0; (self.params.backend.w as usize * self.params.backend.h as usize * size_of::<u32>()) as usize];
+        self.screenshot_request = Some(ScreenshotRequest::Capture(suggested_filename.into()));
     }
 
     pub fn render_screenshot(&self, frame: &[u8], path: &Path) {
         let frame_slice =
-            &frame[0..(self.params.backend.w as usize * self.params.backend.h as usize * std::mem::size_of::<u32>())];
+            &frame[0..(self.params.backend.w as usize * self.params.backend.h as usize * size_of::<u32>())];
 
         /*
         self.draw(

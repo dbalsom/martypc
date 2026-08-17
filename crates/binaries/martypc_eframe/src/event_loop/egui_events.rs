@@ -1132,13 +1132,17 @@ pub fn handle_egui_event(
             emu.machine.reboot();
         }
         GuiEvent::TakeScreenshot(dt_idx) => {
-            // User requested to take a screenshot
-            let screenshot_path = emu.rm.resource_path("screenshot").unwrap();
-
-            // TODO: Fix this (2024)
-
-            if let Err(err) = dm.save_screenshot(DtHandle::from(*dt_idx), screenshot_path) {
-                log::error!("Failed to save screenshot: {}", err);
+            if let Err(err) = dm.request_screenshot_capture(DtHandle::from(*dt_idx), "screenshot.png") {
+                log::error!("Failed to request screenshot: {}", err);
+                emu.gui
+                    .toasts()
+                    .error(format!("{}", err))
+                    .duration(Some(LONG_NOTIFICATION_TIME));
+            }
+        }
+        GuiEvent::TakeShaderScreenshot(dt_idx) => {
+            if let Err(err) = dm.request_shader_screenshot_capture(DtHandle::from(*dt_idx), "screenshot_shader.png") {
+                log::error!("Failed to request shader-output screenshot: {}", err);
                 emu.gui
                     .toasts()
                     .error(format!("{}", err))

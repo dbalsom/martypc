@@ -180,6 +180,19 @@ pub fn handle_thread_event(emu: &mut Emulator, ctx: &egui::Context) {
             }
             FrontendThreadEvent::FileSaveDialogComplete(save_context) => {
                 let (drive_select, format, fsc) = match save_context {
+                    FileSaveContext::Screenshot { filename, fsc, .. } => {
+                        let saved_as = match fsc {
+                            FileSelectionContext::Path(path) => path.display().to_string(),
+                            _ => filename,
+                        };
+                        log::info!("Screenshot saved: {}", saved_as);
+                        emu.gui
+                            .toasts()
+                            .info(format!("Screenshot saved!\n{}", saved_as))
+                            .duration(Some(NORMAL_NOTIFICATION_TIME));
+                        emu.gui.modal.close();
+                        continue;
+                    }
                     FileSaveContext::GuestFile { filename, .. } => {
                         log::info!("Guest file saved: {}", filename);
                         emu.gui

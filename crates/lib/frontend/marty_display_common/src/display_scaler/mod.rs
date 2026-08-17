@@ -228,6 +228,18 @@ pub trait DisplayScaler<D, Q, T>: ThreadSafe {
     //fn texture_view(&self) -> &Self::NativeTextureView;
     fn render(&self, encoder: &mut Self::NativeEncoder, render_target: &Self::NativeTextureView);
 
+    /// Render to the supplied target after clearing it to an explicit color.
+    ///
+    /// Backends that do not support encoder-based rendering may retain the default implementation.
+    fn render_with_clear_color(
+        &self,
+        encoder: &mut Self::NativeEncoder,
+        render_target: &Self::NativeTextureView,
+        _clear_color: MartyColor,
+    ) {
+        self.render(encoder, render_target);
+    }
+
     fn render_with_context(&self, _context: &Self::NativeContext, _texture: Arc<Self::NativeTexture>) {
         // Default implementation does nothing
     }

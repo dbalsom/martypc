@@ -24,6 +24,7 @@ egui-wgpu = { workspace = true, optional = true }
 egui_glow = { workspace = true, optional = true }
 winit.workspace = true
 anyhow.workspace = true
+crossbeam-channel.workspace = true
 image.workspace = true
 log.workspace = true
 

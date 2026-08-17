@@ -307,8 +307,8 @@ impl DisplayScaler<Context, (), Texture> for MartyScaler {
     fn render_with_context(&self, gl: &Context, texture: Arc<Self::NativeTexture>) {
         unsafe {
             gl.disable(glow::CULL_FACE);
-            gl.bind_framebuffer(glow::FRAMEBUFFER, None);
-
+            // Binding moved to intermediate fbo in glow callback
+            //gl.bind_framebuffer(glow::FRAMEBUFFER, None);
             gl.use_program(Some(self.program));
             gl.bind_vertex_array(Some(self.vertex_array));
 

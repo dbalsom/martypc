@@ -518,4 +518,9 @@ pub trait DisplayManager<B, G, Vh, V, C> {
     /// A unique filename will be generated assuming the path is a directory.
     /// No operational error is returned as screenshot operation may be deferred.
     fn save_screenshot(&mut self, dt: DtHandle, path: impl AsRef<Path>) -> Result<PathBuf, Error>;
+
+    /// Save the post-scaler, post-shader output of the specified display target.
+    /// A unique filename will be generated assuming the path is a directory.
+    /// The GPU readback and file delivery are deferred.
+    fn save_shader_screenshot(&mut self, dt: DtHandle, path: impl AsRef<Path>) -> Result<PathBuf, Error>;
 }

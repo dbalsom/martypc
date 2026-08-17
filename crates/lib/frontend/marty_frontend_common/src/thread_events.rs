@@ -103,10 +103,16 @@ impl FileOpenContext {
 /// [FileSaveContext] provides a way to identify for what purpose a file was saved.
 /// If `FloppyDiskImage` is used, then the file was saved as a floppy disk image.
 /// If `GuestFile` is used, then the contents were received through a guest file transfer.
+/// If `Screenshot` is used, then encoded screenshot data should be written by the file dialog.
 /// If `VhdDiskImage` is used, then the selected path will be used to create a VHD.
 #[derive(Clone, Debug)]
 pub enum FileSaveContext {
     GuestFile {
+        filename: String,
+        contents: Vec<u8>,
+        fsc: FileSelectionContext,
+    },
+    Screenshot {
         filename: String,
         contents: Vec<u8>,
         fsc: FileSelectionContext,
@@ -138,9 +144,18 @@ impl FileSaveContext {
         }
     }
 
+    pub fn screenshot(filename: impl Into<String>, contents: Vec<u8>) -> Self {
+        Self::Screenshot {
+            filename: filename.into(),
+            contents,
+            fsc: FileSelectionContext::Uninitialized,
+        }
+    }
+
     pub fn suggested_filename(&self) -> Option<&str> {
         match self {
             FileSaveContext::GuestFile { filename, .. } => Some(filename),
+            FileSaveContext::Screenshot { filename, .. } => Some(filename),
             FileSaveContext::FloppyDiskImage { .. } => None,
             #[cfg(not(target_arch = "wasm32"))]
             FileSaveContext::VhdDiskImage { .. } => None,
@@ -152,6 +167,9 @@ impl FileSaveContext {
             FileSaveContext::GuestFile { fsc: fsc_ref, .. } => {
                 *fsc_ref = fsc;
             }
+            FileSaveContext::Screenshot { fsc: fsc_ref, .. } => {
+                *fsc_ref = fsc;
+            }
             FileSaveContext::FloppyDiskImage { fsc: fsc_ref, .. } => {
                 *fsc_ref = fsc;
             }
@@ -159,6 +177,17 @@ impl FileSaveContext {
             FileSaveContext::VhdDiskImage { fsc: fsc_ref } => {
                 *fsc_ref = fsc;
             }
+        }
+    }
+
+    pub fn take_contents(&mut self) -> Option<Vec<u8>> {
+        match self {
+            FileSaveContext::GuestFile { contents, .. } | FileSaveContext::Screenshot { contents, .. } => {
+                Some(std::mem::take(contents))
+            }
+            FileSaveContext::FloppyDiskImage { .. } => None,
+            #[cfg(not(target_arch = "wasm32"))]
+            FileSaveContext::VhdDiskImage { .. } => None,
         }
     }
 }

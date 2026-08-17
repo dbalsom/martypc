@@ -301,8 +301,13 @@ impl GuiState {
 
         ui.separator();
 
-        if ui.button("🖼 Take Screenshot").clicked() {
+        if ui.button("🖼 Save Screenshot (Native Output)...").clicked() {
             self.event_queue.send(GuiEvent::TakeScreenshot(display.into()));
+            ui.close_menu();
+        };
+
+        if ui.button("🖼 Take Screenshot (Shader output)...").clicked() {
+            self.event_queue.send(GuiEvent::TakeShaderScreenshot(display.into()));
             ui.close_menu();
         };
     }

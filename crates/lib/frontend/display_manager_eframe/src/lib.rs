@@ -48,6 +48,7 @@ compile_error!("You must select either the use_wgpu or use_glow features!");
 
 pub mod builder;
 
+use crossbeam_channel::{unbounded, Receiver, Sender};
 use marty_common::*;
 use marty_core::{
     device_traits::videocard::{DisplayApertureType, DisplayExtents, VideoCardId},
@@ -135,6 +136,11 @@ use egui::{Context, ViewportId};
 
 #[cfg(feature = "use_wgpu")]
 use egui_wgpu::wgpu;
+
+#[cfg(feature = "use_glow")]
+use egui_glow::glow::{self, HasContext, PixelPackData, PixelUnpackData};
+
+use image::{codecs::png::PngEncoder, ImageEncoder};
 
 use anyhow::{anyhow, Error};
 use marty_common::types::ui::MouseCaptureMode;
@@ -364,10 +370,192 @@ pub struct DisplayTargetContext {
     pub(crate) scaler_params: Option<ScalerParams>,
     pub(crate) card_scale: Option<f32>, // If Some, the card resolution is scaled by this factor
     mouse_grabbed: bool,                // Is the mouse grabbed by this display target?
+    shader_screenshot_request: Option<ShaderScreenshotRequest>,
+    #[cfg(feature = "use_wgpu")]
+    shader_screenshot_readback: Option<WgpuScreenshotReadback>,
 }
 
+enum ShaderScreenshotRequest {
+    Save(PathBuf),
+    Capture(String),
+}
+
+/// An asynchronous event produced by the display manager.
+pub enum DisplayManagerEvent {
+    ShaderScreenshotReady { path: PathBuf, png_data: Vec<u8> },
+    ShaderScreenshotCaptured { suggested_filename: String, png_data: Vec<u8> },
+    ShaderScreenshotFailed { target: String, error: String },
+}
+
+#[cfg(feature = "use_wgpu")]
+struct WgpuScreenshotReadback {
+    buffer: Arc<wgpu::Buffer>,
+    request: ShaderScreenshotRequest,
+    width: u32,
+    height: u32,
+    unpadded_bytes_per_row: u32,
+    padded_bytes_per_row: u32,
+    bgra: bool,
+}
+
+#[derive(Copy, Clone, Debug, Eq, PartialEq)]
+struct ShaderScreenshotRect {
+    x: u32,
+    y: u32,
+    w: u32,
+    h: u32,
+}
+
+fn scaler_screenshot_rect(
+    mode: ScalerMode,
+    geometry: ScalerGeometry,
+    surface_w: u32,
+    surface_h: u32,
+) -> Option<ShaderScreenshotRect> {
+    if geometry.texture_w == 0
+        || geometry.target_h == 0
+        || geometry.surface_w == 0
+        || geometry.surface_h == 0
+        || surface_w == 0
+        || surface_h == 0
+    {
+        return None;
+    }
+
+    let texture_w = geometry.texture_w as f64;
+    let target_w = geometry.target_w as f64;
+    let target_h = geometry.target_h as f64;
+    let scaler_surface_w = geometry.surface_w as f64;
+    let scaler_surface_h = geometry.surface_h as f64;
+
+    let fit = |screen_w: f64, screen_h: f64| {
+        let scale = (screen_w / texture_w).min(screen_h / target_h).max(0.0);
+        (texture_w * scale, target_h * scale)
+    };
+
+    let (render_w, render_h) = match mode {
+        ScalerMode::Null | ScalerMode::Fixed => (texture_w, target_h),
+        ScalerMode::Integer => {
+            if scaler_surface_w <= 0.0 || scaler_surface_h <= 0.0 {
+                return None;
+            }
+            let width_ratio = (scaler_surface_w / texture_w).max(1.0);
+            let height_ratio = (scaler_surface_h / target_h).max(1.0);
+            let scale = width_ratio.clamp(1.0, height_ratio).floor();
+            (texture_w * scale, target_h * scale)
+        }
+        ScalerMode::Fit => fit(scaler_surface_w, scaler_surface_h),
+        ScalerMode::Stretch => (scaler_surface_w, scaler_surface_h),
+        ScalerMode::Windowed => {
+            if target_w <= 0.0 || target_h <= 0.0 {
+                return None;
+            }
+            let (windowed_w, windowed_h) = fit(target_w, target_h);
+            (
+                windowed_w / target_w * scaler_surface_w,
+                windowed_h / target_h * scaler_surface_h,
+            )
+        }
+    };
+
+    let render_w = render_w * surface_w as f64 / scaler_surface_w;
+    let render_h = render_h * surface_h as f64 / scaler_surface_h;
+    let clipped_w = render_w.clamp(0.0, surface_w as f64);
+    let clipped_h = render_h.clamp(0.0, surface_h as f64);
+    let w = clipped_w.floor().max(1.0) as u32;
+    let h = clipped_h.floor().max(1.0) as u32;
+    let x = ((surface_w as f64 - clipped_w) / 2.0).floor().max(0.0) as u32;
+    let y = ((surface_h as f64 - clipped_h) / 2.0).floor().max(0.0) as u32;
+
+    Some(ShaderScreenshotRect { x, y, w, h })
+}
+
+#[cfg(feature = "use_wgpu")]
 pub struct DisplayTargetCallback {
     pub lock: Arc<RwLock<DisplayTargetContext>>,
+    event_sender: Sender<DisplayManagerEvent>,
+}
+
+fn finish_shader_screenshot(
+    event_sender: &Sender<DisplayManagerEvent>,
+    request: ShaderScreenshotRequest,
+    rgba: &[u8],
+    width: u32,
+    height: u32,
+) {
+    let mut png_data = Vec::new();
+    let result = PngEncoder::new(&mut png_data).write_image(rgba, width, height, image::ExtendedColorType::Rgba8);
+
+    let event = match result {
+        Ok(()) => match request {
+            ShaderScreenshotRequest::Save(path) => DisplayManagerEvent::ShaderScreenshotReady { path, png_data },
+            ShaderScreenshotRequest::Capture(suggested_filename) => DisplayManagerEvent::ShaderScreenshotCaptured {
+                suggested_filename,
+                png_data,
+            },
+        },
+        Err(err) => DisplayManagerEvent::ShaderScreenshotFailed {
+            target: match request {
+                ShaderScreenshotRequest::Save(path) => path.display().to_string(),
+                ShaderScreenshotRequest::Capture(suggested_filename) => suggested_filename,
+            },
+            error:  format!("Failed to encode shader-output screenshot: {err}"),
+        },
+    };
+    if event_sender.send(event).is_err() {
+        log::error!("Failed to send shader-output screenshot event");
+    }
+}
+
+fn fail_shader_screenshot(
+    event_sender: &Sender<DisplayManagerEvent>,
+    request: ShaderScreenshotRequest,
+    error: impl Into<String>,
+) {
+    let target = match request {
+        ShaderScreenshotRequest::Save(path) => path.display().to_string(),
+        ShaderScreenshotRequest::Capture(suggested_filename) => suggested_filename,
+    };
+    let _ = event_sender.send(DisplayManagerEvent::ShaderScreenshotFailed {
+        target,
+        error: error.into(),
+    });
+}
+
+#[cfg(feature = "use_wgpu")]
+fn map_wgpu_screenshot(readback: WgpuScreenshotReadback, event_sender: Sender<DisplayManagerEvent>) {
+    let buffer = readback.buffer;
+    let buffer_for_slice = Arc::clone(&buffer);
+    let buffer_slice = buffer_for_slice.slice(..);
+
+    buffer_slice.map_async(wgpu::MapMode::Read, move |result| {
+        if let Err(err) = result {
+            fail_shader_screenshot(
+                &event_sender,
+                readback.request,
+                format!("Failed to read shader-output screenshot from the GPU: {err}"),
+            );
+            return;
+        }
+
+        let mapped = buffer.slice(..).get_mapped_range();
+        let mut rgba = Vec::with_capacity((readback.width * readback.height * 4) as usize);
+        for padded_row in mapped.chunks(readback.padded_bytes_per_row as usize) {
+            let row = &padded_row[..readback.unpadded_bytes_per_row as usize];
+            if readback.bgra {
+                for pixel in row.chunks_exact(4) {
+                    rgba.extend_from_slice(&[pixel[2], pixel[1], pixel[0], pixel[3]]);
+                }
+            }
+            else {
+                rgba.extend_from_slice(row);
+            }
+        }
+        drop(mapped);
+        buffer.unmap();
+
+        finish_shader_screenshot(&event_sender, readback.request, &rgba, readback.width, readback.height);
+    });
 }
 
 /// Divide a viewport's available background into one rectangle per display target.
@@ -405,6 +593,123 @@ unsafe impl Sync for DisplayTargetCallback {}
 
 #[cfg(feature = "use_wgpu")]
 impl egui_wgpu::CallbackTrait for DisplayTargetCallback {
+    fn prepare(
+        &self,
+        device: &wgpu::Device,
+        _queue: &wgpu::Queue,
+        _screen_descriptor: &egui_wgpu::ScreenDescriptor,
+        encoder: &mut wgpu::CommandEncoder,
+        _callback_resources: &mut egui_wgpu::CallbackResources,
+    ) -> Vec<wgpu::CommandBuffer> {
+        let mut target = self.lock.write().unwrap();
+
+        let Some(request) = target.shader_screenshot_request.take()
+        else {
+            return Vec::new();
+        };
+        let Some(surface) = &target.surface
+        else {
+            fail_shader_screenshot(&self.event_sender, request, "Display target has no surface");
+            return Vec::new();
+        };
+        let Some(scaler) = &target.scaler
+        else {
+            fail_shader_screenshot(&self.event_sender, request, "Display target has no scaler");
+            return Vec::new();
+        };
+
+        let surface = surface.read().unwrap();
+        let dimensions = surface.surface_dimensions();
+        let format = surface.backing_texture_format();
+        if dimensions.w == 0 || dimensions.h == 0 {
+            fail_shader_screenshot(&self.event_sender, request, "Display target has zero dimensions");
+            return Vec::new();
+        }
+        let Some(crop) = scaler_screenshot_rect(scaler.mode(), scaler.geometry(), dimensions.w, dimensions.h)
+        else {
+            fail_shader_screenshot(&self.event_sender, request, "Display scaler has invalid dimensions");
+            return Vec::new();
+        };
+
+        let bgra = match format {
+            wgpu::TextureFormat::Rgba8Unorm | wgpu::TextureFormat::Rgba8UnormSrgb => false,
+            wgpu::TextureFormat::Bgra8Unorm | wgpu::TextureFormat::Bgra8UnormSrgb => true,
+            _ => {
+                fail_shader_screenshot(
+                    &self.event_sender,
+                    request,
+                    format!("Unsupported shader-output screenshot texture format: {format:?}"),
+                );
+                return Vec::new();
+            }
+        };
+
+        let texture = device.create_texture(&wgpu::TextureDescriptor {
+            label: Some("martypc_shader_screenshot_texture"),
+            size: wgpu::Extent3d {
+                width: dimensions.w,
+                height: dimensions.h,
+                depth_or_array_layers: 1,
+            },
+            mip_level_count: 1,
+            sample_count: 1,
+            dimension: wgpu::TextureDimension::D2,
+            format,
+            usage: wgpu::TextureUsages::RENDER_ATTACHMENT | wgpu::TextureUsages::COPY_SRC,
+            view_formats: &[],
+        });
+        let texture_view = texture.create_view(&wgpu::TextureViewDescriptor::default());
+        scaler.render_with_clear_color(encoder, &texture_view, MartyColor::default());
+
+        let unpadded_bytes_per_row = crop.w * 4;
+        let padded_bytes_per_row = unpadded_bytes_per_row.next_multiple_of(wgpu::COPY_BYTES_PER_ROW_ALIGNMENT);
+        let buffer = Arc::new(device.create_buffer(&wgpu::BufferDescriptor {
+            label: Some("martypc_shader_screenshot_buffer"),
+            size: (padded_bytes_per_row * crop.h) as u64,
+            usage: wgpu::BufferUsages::COPY_DST | wgpu::BufferUsages::MAP_READ,
+            mapped_at_creation: false,
+        }));
+
+        encoder.copy_texture_to_buffer(
+            wgpu::TexelCopyTextureInfo {
+                texture:   &texture,
+                mip_level: 0,
+                origin:    wgpu::Origin3d {
+                    x: crop.x,
+                    y: crop.y,
+                    z: 0,
+                },
+                aspect:    wgpu::TextureAspect::All,
+            },
+            wgpu::TexelCopyBufferInfo {
+                buffer: &buffer,
+                layout: wgpu::TexelCopyBufferLayout {
+                    offset: 0,
+                    bytes_per_row: Some(padded_bytes_per_row),
+                    rows_per_image: Some(crop.h),
+                },
+            },
+            wgpu::Extent3d {
+                width: crop.w,
+                height: crop.h,
+                depth_or_array_layers: 1,
+            },
+        );
+
+        drop(surface);
+        target.shader_screenshot_readback = Some(WgpuScreenshotReadback {
+            buffer,
+            request,
+            width: crop.w,
+            height: crop.h,
+            unpadded_bytes_per_row,
+            padded_bytes_per_row,
+            bgra,
+        });
+
+        Vec::new()
+    }
+
     // Required method
     fn paint(
         &self,
@@ -445,6 +750,7 @@ impl egui_wgpu::CallbackTrait for DisplayTargetCallback {
 #[cfg(feature = "use_glow")]
 struct GlowDisplayTargetCallback {
     lock: Arc<RwLock<DisplayTargetContext>>,
+    event_sender: Sender<DisplayManagerEvent>,
 }
 
 // SAFETY: On WASM, egui's glow paint callbacks are created and invoked on the browser's main
@@ -459,12 +765,164 @@ unsafe impl Sync for GlowDisplayTargetCallback {}
 
 #[cfg(feature = "use_glow")]
 impl GlowDisplayTargetCallback {
+    unsafe fn capture(
+        &self,
+        gl: &glow::Context,
+        scaler: &EFrameScalerType,
+        source_texture: Arc<glow::Texture>,
+        width: u32,
+        height: u32,
+        crop: ShaderScreenshotRect,
+        restore_framebuffer: Option<glow::Framebuffer>,
+    ) -> Result<Vec<u8>, Error> {
+        // On WebGL, FRAMEBUFFER_BINDING may be an eframe-created resource that Glow cannot represent.
+        // The painter thus needs to provide a callback framebuffer
+        let mut previous_viewport = [0; 4];
+        gl.get_parameter_i32_slice(glow::VIEWPORT, &mut previous_viewport);
+        let scissor_enabled = gl.is_enabled(glow::SCISSOR_TEST);
+        let mut previous_scissor = [0; 4];
+        gl.get_parameter_i32_slice(glow::SCISSOR_BOX, &mut previous_scissor);
+        let mut previous_clear_color = [0.0; 4];
+        gl.get_parameter_f32_slice(glow::COLOR_CLEAR_VALUE, &mut previous_clear_color);
+
+        let capture_texture = gl
+            .create_texture()
+            .map_err(|err| anyhow!("Failed to create shader screenshot texture: {err}"))?;
+        gl.bind_texture(glow::TEXTURE_2D, Some(capture_texture));
+        gl.tex_parameter_i32(glow::TEXTURE_2D, glow::TEXTURE_MIN_FILTER, glow::NEAREST as i32);
+        gl.tex_parameter_i32(glow::TEXTURE_2D, glow::TEXTURE_MAG_FILTER, glow::NEAREST as i32);
+        gl.tex_image_2d(
+            glow::TEXTURE_2D,
+            0,
+            glow::RGBA as i32,
+            width as i32,
+            height as i32,
+            0,
+            glow::RGBA,
+            glow::UNSIGNED_BYTE,
+            PixelUnpackData::Slice(None),
+        );
+
+        let framebuffer = match gl.create_framebuffer() {
+            Ok(framebuffer) => framebuffer,
+            Err(err) => {
+                gl.delete_texture(capture_texture);
+                return Err(anyhow!("Failed to create shader screenshot framebuffer: {err}"));
+            }
+        };
+        gl.bind_framebuffer(glow::FRAMEBUFFER, Some(framebuffer));
+        gl.framebuffer_texture_2d(
+            glow::FRAMEBUFFER,
+            glow::COLOR_ATTACHMENT0,
+            glow::TEXTURE_2D,
+            Some(capture_texture),
+            0,
+        );
+
+        if gl.check_framebuffer_status(glow::FRAMEBUFFER) != glow::FRAMEBUFFER_COMPLETE {
+            gl.bind_framebuffer(glow::FRAMEBUFFER, restore_framebuffer);
+            gl.delete_framebuffer(framebuffer);
+            gl.delete_texture(capture_texture);
+            return Err(anyhow!("Shader screenshot framebuffer is incomplete"));
+        }
+
+        gl.disable(glow::SCISSOR_TEST);
+        gl.viewport(0, 0, width as i32, height as i32);
+        gl.clear_color(0.0, 0.0, 0.0, 0.0);
+        gl.clear(glow::COLOR_BUFFER_BIT);
+        scaler.render_with_context(gl, source_texture);
+
+        let mut bottom_up_rgba = vec![0; crop.w as usize * crop.h as usize * 4];
+        gl.read_pixels(
+            crop.x as i32,
+            (height - crop.y - crop.h) as i32,
+            crop.w as i32,
+            crop.h as i32,
+            glow::RGBA,
+            glow::UNSIGNED_BYTE,
+            PixelPackData::Slice(Some(&mut bottom_up_rgba)),
+        );
+
+        gl.bind_framebuffer(glow::FRAMEBUFFER, restore_framebuffer);
+        gl.viewport(
+            previous_viewport[0],
+            previous_viewport[1],
+            previous_viewport[2],
+            previous_viewport[3],
+        );
+        gl.scissor(
+            previous_scissor[0],
+            previous_scissor[1],
+            previous_scissor[2],
+            previous_scissor[3],
+        );
+        if scissor_enabled {
+            gl.enable(glow::SCISSOR_TEST);
+        }
+        else {
+            gl.disable(glow::SCISSOR_TEST);
+        }
+        gl.clear_color(
+            previous_clear_color[0],
+            previous_clear_color[1],
+            previous_clear_color[2],
+            previous_clear_color[3],
+        );
+        gl.delete_framebuffer(framebuffer);
+        gl.delete_texture(capture_texture);
+
+        let row_bytes = crop.w as usize * 4;
+        let mut rgba = vec![0; bottom_up_rgba.len()];
+        for row in 0..crop.h as usize {
+            let source_start = (crop.h as usize - row - 1) * row_bytes;
+            let target_start = row * row_bytes;
+            rgba[target_start..target_start + row_bytes]
+                .copy_from_slice(&bottom_up_rgba[source_start..source_start + row_bytes]);
+        }
+
+        Ok(rgba)
+    }
+
     fn paint(&self, painter: &egui_glow::Painter) {
         if let Ok(mut target) = self.lock.try_write() {
-            let surface = target.surface().unwrap();
-            let texture = surface.read().unwrap().backing_texture().clone();
+            let surface = target.surface().unwrap().clone();
+            let (texture, dimensions) = {
+                let surface = surface.read().unwrap();
+                (surface.backing_texture().clone(), surface.surface_dimensions())
+            };
+            let shader_screenshot_request = target.shader_screenshot_request.take();
 
             if let Some(scaler) = &mut target.scaler {
+                if let Some(request) = shader_screenshot_request {
+                    if let Some(crop) =
+                        scaler_screenshot_rect(scaler.mode(), scaler.geometry(), dimensions.w, dimensions.h)
+                    {
+                        let result = unsafe {
+                            self.capture(
+                                painter.gl(),
+                                scaler,
+                                texture.clone(),
+                                dimensions.w,
+                                dimensions.h,
+                                crop,
+                                painter.intermediate_fbo(),
+                            )
+                        };
+                        match result {
+                            Ok(rgba) => finish_shader_screenshot(&self.event_sender, request, &rgba, crop.w, crop.h),
+                            Err(err) => fail_shader_screenshot(&self.event_sender, request, err.to_string()),
+                        }
+                    }
+                    else {
+                        fail_shader_screenshot(&self.event_sender, request, "Display scaler has invalid dimensions");
+                    }
+                }
+
+                unsafe {
+                    painter
+                        .gl()
+                        .bind_framebuffer(glow::FRAMEBUFFER, painter.intermediate_fbo());
+                }
                 scaler.render_with_context(painter.gl(), texture);
             }
         }
@@ -488,10 +946,14 @@ pub struct EFrameDisplayManager {
     primary_idx: Option<usize>,
     scaler_presets: MartyHashMap<String, ScalerPreset>,
     last_screenshot: Option<PathBuf>,
+    last_shader_screenshot: Option<PathBuf>,
+    event_sender: Sender<DisplayManagerEvent>,
+    event_receiver: Receiver<DisplayManagerEvent>,
 }
 
 impl Default for EFrameDisplayManager {
     fn default() -> Self {
+        let (event_sender, event_receiver) = unbounded();
         Self {
             backend: None,
             targets: Vec::new(),
@@ -502,6 +964,9 @@ impl Default for EFrameDisplayManager {
             primary_idx: None,
             scaler_presets: MartyHashMap::default(),
             last_screenshot: None,
+            last_shader_screenshot: None,
+            event_sender,
+            event_receiver,
         }
     }
 }
@@ -509,6 +974,70 @@ impl Default for EFrameDisplayManager {
 impl EFrameDisplayManager {
     pub fn new() -> Self {
         Default::default()
+    }
+
+    pub fn get_event(&self) -> Option<DisplayManagerEvent> {
+        #[cfg(feature = "use_wgpu")]
+        {
+            for target in &self.targets {
+                if let Ok(mut target) = target.write() {
+                    if let Some(readback) = target.shader_screenshot_readback.take() {
+                        map_wgpu_screenshot(readback, self.event_sender.clone());
+                    }
+                }
+            }
+            // Mapping callbacks only make progress while the device is polled. Keep this
+            // non-blocking so an in-flight readback cannot stall emulation.
+            if let Some(backend) = &self.backend {
+                let _ = backend.device().poll(wgpu::PollType::Poll);
+            }
+        }
+
+        self.event_receiver.try_recv().ok()
+    }
+
+    pub fn request_screenshot_capture(
+        &mut self,
+        dt: DtHandle,
+        suggested_filename: impl Into<String>,
+    ) -> Result<(), Error> {
+        let target = self
+            .targets
+            .get(dt.idx())
+            .ok_or_else(|| anyhow!("Display target out of range!"))?;
+        let mut target = target
+            .write()
+            .map_err(|_| anyhow!("Display target lock was poisoned"))?;
+        let renderer = target
+            .renderer
+            .as_mut()
+            .ok_or_else(|| anyhow!("No renderer for display target!"))?;
+        renderer.request_screenshot_capture(suggested_filename);
+        Ok(())
+    }
+
+    pub fn request_shader_screenshot_capture(
+        &mut self,
+        dt: DtHandle,
+        suggested_filename: impl Into<String>,
+    ) -> Result<(), Error> {
+        let target = self
+            .targets
+            .get(dt.idx())
+            .ok_or_else(|| anyhow!("Display target out of range!"))?;
+        let mut target = target
+            .write()
+            .map_err(|_| anyhow!("Display target lock was poisoned"))?;
+        if target.scaler.is_none() {
+            return Err(anyhow!("No scaler for display target!"));
+        }
+        if target.shader_screenshot_request.is_some() {
+            return Err(anyhow!(
+                "A shader-output screenshot is already pending for this display target"
+            ));
+        }
+        target.shader_screenshot_request = Some(ShaderScreenshotRequest::Capture(suggested_filename.into()));
+        Ok(())
     }
 
     /// Register an egui viewport independently from any display targets assigned to it.
@@ -1006,6 +1535,7 @@ impl EFrameDisplayManager {
                 .collect();
             let viewport_state = viewport.clone();
             let viewport_target_ui = &mut target_ui;
+            let event_sender = self.event_sender.clone();
             let viewport_ui = move |ui: &mut egui::Ui, _class: egui::ViewportClass| {
                 if ui.input(|input| input.viewport().close_requested()) {
                     ui.ctx().send_viewport_cmd(egui::ViewportCommand::CancelClose);
@@ -1046,14 +1576,20 @@ impl EFrameDisplayManager {
 
                             #[cfg(feature = "use_wgpu")]
                             {
-                                let callback = DisplayTargetCallback { lock: target.clone() };
+                                let callback = DisplayTargetCallback {
+                                    lock: target.clone(),
+                                    event_sender: event_sender.clone(),
+                                };
                                 let paint_callback = egui_wgpu::Callback::new_paint_callback(rect, callback);
                                 ui.painter().add(paint_callback);
                             }
 
                             #[cfg(feature = "use_glow")]
                             {
-                                let callback = GlowDisplayTargetCallback { lock: target.clone() };
+                                let callback = GlowDisplayTargetCallback {
+                                    lock: target.clone(),
+                                    event_sender: event_sender.clone(),
+                                };
                                 let paint_callback = egui::PaintCallback {
                                     rect,
                                     callback: Arc::new(egui_glow::CallbackFn::new(move |_info, painter| {
@@ -1089,6 +1625,7 @@ impl EFrameDisplayManager {
     ) -> Option<egui::PaintCallback> {
         let callback = GlowDisplayTargetCallback {
             lock: self.display_target(display)?,
+            event_sender: self.event_sender.clone(),
         };
 
         Some(egui::PaintCallback {
@@ -1108,6 +1645,7 @@ impl EFrameDisplayManager {
     pub fn display_callback(&self, display: DtHandle) -> Option<DisplayTargetCallback> {
         Some(DisplayTargetCallback {
             lock: self.display_target(display)?,
+            event_sender: self.event_sender.clone(),
         })
     }
 
@@ -1374,6 +1912,9 @@ impl<'p> DisplayManager<EFrameBackend, GuiRenderContext, ViewportId, ViewportId,
                     scaler_params: Some(ScalerParams::from(scaler_preset.clone())),
                     card_scale,
                     mouse_grabbed: false,
+                    shader_screenshot_request: None,
+                    #[cfg(feature = "use_wgpu")]
+                    shader_screenshot_readback: None,
                 };
 
                 dtc.apply_scaler_preset(&self.backend.as_ref().unwrap(), &scaler_preset);
@@ -2329,6 +2870,75 @@ impl<'p> DisplayManager<EFrameBackend, GuiRenderContext, ViewportId, ViewportId,
             return Err(anyhow!("No renderer for display target!"));
         }
 
+        self.last_screenshot = Some(filename.clone());
         Ok(filename)
+    }
+
+    fn save_shader_screenshot(&mut self, dt: DtHandle, path: impl AsRef<Path>) -> Result<PathBuf, Error> {
+        if is_bad_handle!(dt, self.targets) {
+            return Err(anyhow!("Display target out of range!"));
+        }
+
+        let filename = find_unique_filename(
+            path.as_ref(),
+            "screenshot_shader",
+            "png",
+            self.last_shader_screenshot.as_ref(),
+        );
+        let target = &mut resolve_dtc_mut!(self.targets[dt.idx()]);
+        if target.scaler.is_none() {
+            return Err(anyhow!("No scaler for display target!"));
+        }
+        if target.shader_screenshot_request.is_some() {
+            return Err(anyhow!(
+                "A shader-output screenshot is already pending for this display target"
+            ));
+        }
+        target.shader_screenshot_request = Some(ShaderScreenshotRequest::Save(filename.clone()));
+        self.last_shader_screenshot = Some(filename.clone());
+
+        Ok(filename)
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    fn geometry(surface_w: u32, surface_h: u32) -> ScalerGeometry {
+        ScalerGeometry {
+            texture_w: 640,
+            texture_h: 200,
+            target_w: 640,
+            target_h: 400,
+            surface_w,
+            surface_h,
+        }
+    }
+
+    #[test]
+    fn shader_screenshot_crop_removes_fit_letterboxing() {
+        assert_eq!(
+            scaler_screenshot_rect(ScalerMode::Fit, geometry(1000, 700), 1000, 700),
+            Some(ShaderScreenshotRect {
+                x: 0,
+                y: 37,
+                w: 1000,
+                h: 625,
+            })
+        );
+    }
+
+    #[test]
+    fn shader_screenshot_crop_tracks_fixed_scaler_bounds() {
+        assert_eq!(
+            scaler_screenshot_rect(ScalerMode::Fixed, geometry(1000, 700), 1000, 700),
+            Some(ShaderScreenshotRect {
+                x: 180,
+                y: 150,
+                w: 640,
+                h: 400,
+            })
+        );
     }
 }

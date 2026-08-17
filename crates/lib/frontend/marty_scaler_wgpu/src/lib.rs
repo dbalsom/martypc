@@ -697,6 +697,15 @@ impl DisplayScaler<wgpu::Device, wgpu::Queue, wgpu::Texture> for MartyScaler {
     // }
 
     fn render(&self, encoder: &mut wgpu::CommandEncoder, render_target: &wgpu::TextureView) {
+        self.render_with_clear_color(encoder, render_target, MartyColor::from(self.fill_color));
+    }
+
+    fn render_with_clear_color(
+        &self,
+        encoder: &mut wgpu::CommandEncoder,
+        render_target: &wgpu::TextureView,
+        clear_color: MartyColor,
+    ) {
         let mut render_pass = encoder.begin_render_pass(&wgpu::RenderPassDescriptor {
             label: Some("marty_renderer marty_render pass"),
             color_attachments: &[Some(wgpu::RenderPassColorAttachment {
@@ -704,7 +713,7 @@ impl DisplayScaler<wgpu::Device, wgpu::Queue, wgpu::Texture> for MartyScaler {
                 depth_slice: None,
                 resolve_target: None,
                 ops: wgpu::Operations {
-                    load:  wgpu::LoadOp::Clear(MartyColor::from(self.fill_color).to_wgpu_color_linear()),
+                    load:  wgpu::LoadOp::Clear(clear_color.to_wgpu_color_linear()),
                     store: wgpu::StoreOp::Store,
                 },
             })],

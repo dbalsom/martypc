@@ -30,6 +30,7 @@
 */
 
 use crate::{consts::*, resize::*};
+use image::ImageEncoder;
 use marty_core::devices::cga;
 use web_time::Instant;
 
@@ -54,9 +55,9 @@ impl VideoRenderer {
         let render_start = Instant::now();
 
         let do_software_aspect = matches!(self.params.aspect_correction, AspectCorrectionMode::Software);
-        let mut screenshot_taken = false;
+        let mut screenshot_event = None;
 
-        let (first_pass_buf, mut second_pass_buf) = if self.screenshot_requested {
+        let (first_pass_buf, mut second_pass_buf) = if self.screenshot_request.is_some() {
             // Either we are rendering a screenshot this pass, or we are doing software aspect correction.
             // Render to internal buffer first instead of backend.
             (&mut self.screenshot_buf[..], Some(output_buf))
@@ -191,28 +192,41 @@ impl VideoRenderer {
         // We have now drawn to 'first_pass_buf' which might have been internal or the buffer
         // specified by the draw() call (most likely the backend's display buffer).
 
-        if self.screenshot_requested {
-            // We can now write the screenshot out to the specified file, then copy the image to the
-            // second pass buffer.
-            if let Some(path) = self.screenshot_path.as_ref() {
-                // We may not have been given a path, in which case the caller can retrieve the
-                // internal screenshot buffer, ie, for use in a GUI.
-                match image::save_buffer(
-                    path.clone(),
+        if let Some(screenshot_request) = self.screenshot_request.take() {
+            screenshot_event = Some(match screenshot_request {
+                ScreenshotRequest::Save(path) => match image::save_buffer(
+                    &path,
                     first_pass_buf,
                     self.params.render.w,
                     self.params.render.h,
                     image::ColorType::Rgba8,
                 ) {
-                    Ok(_) => {
-                        screenshot_taken = true;
-                        log::info!("Saved screenshot: {}", path.display())
+                    Ok(()) => {
+                        log::info!("Saved screenshot: {}", path.display());
+                        RendererEvent::ScreenshotSaved { path }
                     }
-                    Err(e) => {
-                        log::error!("Error writing screenshot: {}: {}", path.display(), e)
+                    Err(err) => {
+                        let error = format!("Error writing screenshot {}: {err}", path.display());
+                        log::error!("{error}");
+                        RendererEvent::ScreenshotFailed(error)
+                    }
+                },
+                ScreenshotRequest::Capture(suggested_filename) => {
+                    let mut png_data = Vec::new();
+                    match image::codecs::png::PngEncoder::new(&mut png_data).write_image(
+                        first_pass_buf,
+                        self.params.render.w,
+                        self.params.render.h,
+                        image::ExtendedColorType::Rgba8,
+                    ) {
+                        Ok(()) => RendererEvent::ScreenshotCaptured {
+                            suggested_filename,
+                            png_data,
+                        },
+                        Err(err) => RendererEvent::ScreenshotFailed(format!("Failed to encode screenshot: {err}")),
                     }
                 }
-            }
+            });
 
             if !do_software_aspect {
                 // If software aspect correction is on, we don't need to blit the image as the resampling
@@ -221,9 +235,6 @@ impl VideoRenderer {
                     second_pass.copy_from_slice(first_pass_buf);
                 }
             }
-
-            self.screenshot_path = None;
-            self.screenshot_requested = false;
         }
 
         // If we are doing software aspect correction, we now need to draw into the output_buf.
@@ -242,8 +253,8 @@ impl VideoRenderer {
             }
         }
 
-        if screenshot_taken {
-            self.send_event(RendererEvent::ScreenshotSaved);
+        if let Some(event) = screenshot_event {
+            self.send_event(event);
         }
 
         self.last_render_time = render_start.elapsed();

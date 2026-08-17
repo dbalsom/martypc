@@ -34,6 +34,7 @@ pub mod event_loop;
 mod file_transfer;
 pub mod floppy;
 pub mod input;
+mod screenshot;
 pub mod sound;
 pub mod timestep_update;
 

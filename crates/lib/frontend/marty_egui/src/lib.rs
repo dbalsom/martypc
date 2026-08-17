@@ -275,6 +275,7 @@ pub enum GuiEvent {
     MachineStateChange(MachineState),
     Reboot,
     TakeScreenshot(usize),
+    TakeShaderScreenshot(usize),
     ToggleFullscreen(usize),
     Exit,
     SetNMI(bool),
