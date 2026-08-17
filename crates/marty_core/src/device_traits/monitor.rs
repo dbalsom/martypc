@@ -28,14 +28,18 @@ use enum_dispatch::enum_dispatch;
 
 use crate::{
     device_traits::videocard::VideoCardStateEntry,
-    devices::monitors::{ega::EgaMonitor, fifteen_hertz::FifteenHertzMonitor, mda::MdaMonitor},
+    devices::monitors::{fifteen_hertz::FifteenHertzMonitor, mda::MdaMonitor},
     video_pll::SyncPolarity,
 };
+
+#[cfg(feature = "ega")]
+use crate::devices::monitors::ega::EgaMonitor;
 
 #[enum_dispatch]
 pub enum MonitorDispatch {
     MdaMonitor,
     FifteenHertzMonitor,
+    #[cfg(feature = "ega")]
     EgaMonitor,
 }
 

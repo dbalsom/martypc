@@ -27,6 +27,7 @@
 
 //! Monitor module
 
+#[cfg(feature = "ega")]
 pub mod ega;
 pub mod fifteen_hertz;
 pub mod mda;
