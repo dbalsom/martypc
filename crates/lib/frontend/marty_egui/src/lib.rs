@@ -242,7 +242,6 @@ pub enum GuiEvent {
     BrowseVhdOutputFile,
     BrowseVhdSourceDirectory,
     LoadQuickFloppy(usize, usize),
-    RequestLoadFloppyDialog(usize),
     RequestSaveFloppyDialog(usize, DiskImageFileFormat),
     LoadFloppyAs(usize, PathBuf),
     LoadAutoFloppy(usize, PathBuf),

@@ -25,7 +25,7 @@
     --------------------------------------------------------------------------
 */
 
-use std::{ffi::OsString, io::Cursor, path::Path, sync::Arc};
+use std::{io::Cursor, path::Path, sync::Arc};
 
 #[cfg(not(target_arch = "wasm32"))]
 use std::thread::spawn;
@@ -36,28 +36,31 @@ use crate::wasm::{file_open::open_file, worker::spawn};
 use marty_frontend_common::thread_events::FileOpenContext;
 
 use crate::emulator::Emulator;
-use fluxfox::{DiskImage, LoadingStatus};
-use marty_common::types::floppy::FloppyImageType;
-use marty_egui::state::FloppyDriveSelection;
+use fluxfox::{
+    file_system::FileSystemType,
+    types::TrackDataResolution,
+    DiskImage,
+    ImageBuilder,
+    LoadingStatus,
+    StandardFormat,
+};
 use marty_frontend_common::{
     constants::NORMAL_NOTIFICATION_TIME,
     floppy_manager::FloppyError,
-    thread_events::{FileSelectionContext, FrontendThreadEvent},
+    thread_events::{FileSelectionContext, FloppyImageLoadSource, FrontendThreadEvent},
     types::floppy::FloppyImageSource,
 };
 
 /// Load a floppy image into the emulator, given a file selection context which will either
 /// reference a path or the index of the image in the floppy manager (for quick-access menu).
 pub fn handle_load_floppy(emu: &mut Emulator, drive_select: usize, context: FileSelectionContext) {
-    if let Some(fdc) = emu.machine.fdc() {
+    if emu.machine.fdc().is_some() {
         let mut floppy_result: Option<Result<FloppyImageSource, FloppyError>> = None;
-        let mut floppy_name = None;
         match context.clone() {
             FileSelectionContext::Index(item_idx) => {
                 let name = emu.floppy_manager.get_floppy_name(item_idx);
 
                 if let Some(name) = name {
-                    floppy_name = Some(name.clone());
                     log::info!(
                         "Loading floppy image by index: {}->{:?} into drive: {}",
                         item_idx,
@@ -99,10 +102,6 @@ pub fn handle_load_floppy(emu: &mut Emulator, drive_select: usize, context: File
                 };
             }
             FileSelectionContext::Path(path) => {
-                if let Some(file_name) = path.file_name() {
-                    floppy_name = Some(file_name.to_os_string());
-                }
-
                 log::info!("Loading floppy image by path: {:?} into drive: {}", path, drive_select);
                 //floppy_result = Some(emu.floppy_manager.load_floppy_by_path(path, &emu.rm).await);
             }
@@ -113,85 +112,12 @@ pub fn handle_load_floppy(emu: &mut Emulator, drive_select: usize, context: File
 
         if let Some(floppy_result) = floppy_result {
             match floppy_result {
-                Ok(FloppyImageSource::ZipArchive(zip_vec, _path)) => {
-                    // TODO: Move autofloppy image building to fluxfox
-                    //let mut image_type = Some(fdc.drive(drive_select).get_largest_supported_image_format());
-                    match emu.floppy_manager.build_autofloppy_image_from_zip(
-                        zip_vec,
-                        Some(FloppyImageType::Image360K),
-                        &mut emu.rm,
-                    ) {
-                        Ok(vec) => match fdc.load_image_from(drive_select, vec, None, true) {
-                            Ok(image_lock) => {
-                                log::info!("Floppy image successfully loaded into virtual drive.");
-
-                                let image = image_lock.read().unwrap();
-                                let compat_formats = image.compatible_formats(true);
-
-                                let name = floppy_name.unwrap_or_else(|| OsString::from("Unknown"));
-
-                                emu.gui.set_floppy_selection(
-                                    drive_select,
-                                    None,
-                                    FloppyDriveSelection::ZipArchive(name.into()),
-                                    image.source_format(),
-                                    compat_formats,
-                                    None,
-                                );
-
-                                emu.gui.set_floppy_write_protected(drive_select, true);
-
-                                emu.gui
-                                    .toasts()
-                                    .info("Directory successfully mounted!".to_string())
-                                    .duration(Some(NORMAL_NOTIFICATION_TIME));
-                            }
-                            Err(err) => {
-                                log::warn!("Floppy image failed to load: {}", err);
-                            }
-                        },
-                        Err(err) => {
-                            log::error!("Failed to build autofloppy image. Error: {}", err);
-                            emu.gui
-                                .toasts()
-                                .error(format!("Directory mount failed: {}", err))
-                                .duration(Some(NORMAL_NOTIFICATION_TIME));
-                        }
-                    }
+                Ok(FloppyImageSource::ZipArchive(zip_vec, floppy_path)) => {
+                    load_zip_archive(emu, drive_select, context, zip_vec, floppy_path);
                 }
                 Ok(FloppyImageSource::KryoFluxSet(floppy_image, floppy_path))
                 | Ok(FloppyImageSource::DiskImage(floppy_image, floppy_path)) => {
-                    let sender = emu.sender.clone();
-                    spawn(move || {
-                        let mut image_buffer = Cursor::new(floppy_image);
-                        let inner_sender = sender.clone();
-                        let loading_callback = Arc::new(Box::new(move |status| match status {
-                            LoadingStatus::Progress(progress) => {
-                                _ = inner_sender.send(FrontendThreadEvent::FloppyImageLoadProgress(
-                                    "Loading floppy image...".to_string(),
-                                    progress,
-                                ));
-                            }
-                            LoadingStatus::ProgressSupport => {
-                                _ = inner_sender.send(FrontendThreadEvent::FloppyImageBeginLongLoad);
-                            }
-                            _ => {}
-                        }));
-
-                        match DiskImage::load(&mut image_buffer, Some(&floppy_path), None, Some(loading_callback)) {
-                            Ok(disk_image) => {
-                                _ = sender.send(FrontendThreadEvent::FloppyImageLoadComplete {
-                                    drive_select,
-                                    image: Arc::new(disk_image),
-                                    item: context,
-                                    path: Some(floppy_path),
-                                });
-                            }
-                            Err(err) => {
-                                _ = sender.send(FrontendThreadEvent::FloppyImageLoadError(err.to_string()));
-                            }
-                        }
-                    });
+                    load_disk_image(emu, drive_select, context, floppy_image, floppy_path);
                 }
                 Err(e) => {
                     log::error!("Failed to load floppy image: {}", e);
@@ -221,12 +147,47 @@ pub fn load_floppy_image(
     image_buffer: Vec<u8>,
     image_path: Option<&Path>,
 ) {
+    let Some(image_path) = image_path
+    else {
+        let error = "Floppy image has no filename";
+        log::error!("{}", error);
+        emu.gui.toasts().error(error).duration(Some(NORMAL_NOTIFICATION_TIME));
+        return;
+    };
+
+    match emu
+        .floppy_manager
+        .load_floppy_from_bytes(image_buffer, image_path.to_path_buf())
+    {
+        Ok(FloppyImageSource::ZipArchive(zip_vec, floppy_path)) => {
+            load_zip_archive(emu, drive_select, context, zip_vec, floppy_path);
+        }
+        Ok(FloppyImageSource::KryoFluxSet(floppy_image, floppy_path))
+        | Ok(FloppyImageSource::DiskImage(floppy_image, floppy_path)) => {
+            load_disk_image(emu, drive_select, context, floppy_image, floppy_path);
+        }
+        Err(error) => {
+            log::error!("Failed to classify floppy image: {}", error);
+            emu.gui
+                .toasts()
+                .error(format!("Failed to load floppy image: {}", error))
+                .duration(Some(NORMAL_NOTIFICATION_TIME));
+        }
+    }
+}
+
+fn load_disk_image(
+    emu: &Emulator,
+    drive_select: usize,
+    context: FileSelectionContext,
+    floppy_image: Vec<u8>,
+    floppy_path: std::path::PathBuf,
+) {
     let inner_sender = emu.sender.clone();
     let inner_progress_sender = emu.sender.clone();
-    let inner_path = image_path.map(|p| p.to_path_buf());
     spawn(move || {
         log::debug!("In load_floppy_image worker...");
-        let mut image_buffer = Cursor::new(image_buffer);
+        let mut image_buffer = Cursor::new(floppy_image);
         let loading_callback = Arc::new(Box::new(move |status| match status {
             LoadingStatus::Progress(progress) => {
                 _ = inner_progress_sender.send(FrontendThreadEvent::FloppyImageLoadProgress(
@@ -240,17 +201,55 @@ pub fn load_floppy_image(
             _ => {}
         }));
 
-        match DiskImage::load(&mut image_buffer, inner_path.as_deref(), None, Some(loading_callback)) {
+        match DiskImage::load(&mut image_buffer, Some(&floppy_path), None, Some(loading_callback)) {
             Ok(disk_image) => {
                 _ = inner_sender.send(FrontendThreadEvent::FloppyImageLoadComplete {
                     drive_select,
                     image: Arc::new(disk_image),
                     item: context,
-                    path: inner_path,
+                    path: Some(floppy_path),
+                    source: FloppyImageLoadSource::DiskImage,
                 });
             }
             Err(err) => {
                 _ = inner_sender.send(FrontendThreadEvent::FloppyImageLoadError(err.to_string()));
+            }
+        }
+    });
+}
+
+fn load_zip_archive(
+    emu: &Emulator,
+    drive_select: usize,
+    context: FileSelectionContext,
+    archive: Vec<u8>,
+    archive_path: std::path::PathBuf,
+) {
+    let sender = emu.sender.clone();
+    spawn(move || {
+        log::debug!("Building floppy image from ZIP archive...");
+        let image_result = ImageBuilder::new()
+            .with_resolution(TrackDataResolution::BitStream)
+            .with_standard_format(StandardFormat::PcFloppy360)
+            .with_filesystem_from_archive(&archive, FileSystemType::Fat12, true, false)
+            .with_creator_tag(b"MartyPC")
+            .build();
+
+        match image_result {
+            Ok(disk_image) => {
+                _ = sender.send(FrontendThreadEvent::FloppyImageLoadComplete {
+                    drive_select,
+                    image: Arc::new(disk_image),
+                    item: context,
+                    path: Some(archive_path),
+                    source: FloppyImageLoadSource::ZipArchive,
+                });
+            }
+            Err(error) => {
+                _ = sender.send(FrontendThreadEvent::FloppyImageLoadError(format!(
+                    "Failed to build floppy image from ZIP archive: {}",
+                    error
+                )));
             }
         }
     });

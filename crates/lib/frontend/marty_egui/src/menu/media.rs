@@ -87,30 +87,22 @@ impl GuiState {
                 });
 
                 if ui.button("🗁 Browse for Image...").clicked() {
-                    #[cfg(target_arch = "wasm32")]
-                    {
-                        self.event_queue.send(GuiEvent::RequestLoadFloppyDialog(drive_idx));
-                    }
-                    #[cfg(not(target_arch = "wasm32"))]
-                    {
-                        let fc = FileOpenContext::FloppyDiskImage {
-                            drive_select: drive_idx,
-                            fsc: FileSelectionContext::Uninitialized,
-                        };
+                    let fc = FileOpenContext::FloppyDiskImage {
+                        drive_select: drive_idx,
+                        fsc: FileSelectionContext::Uninitialized,
+                    };
 
-                        let mut filter_vec = Vec::new();
-                        let exts = fluxfox::supported_extensions();
-                        filter_vec.push(FileDialogFilter::new("Floppy Disk Images", exts));
-                        filter_vec.push(FileDialogFilter::new("Zip Files", vec!["zip"]));
-                        filter_vec.push(FileDialogFilter::new("All Files", vec!["*"]));
+                    let mut filter_vec = Vec::new();
+                    let exts = fluxfox::supported_extensions();
+                    filter_vec.push(FileDialogFilter::new("Floppy Disk Images", exts));
+                    filter_vec.push(FileDialogFilter::new("Zip Files", vec!["zip"]));
+                    filter_vec.push(FileDialogFilter::new("All Files", vec!["*"]));
 
-                        self.open_file_dialog(fc, "Select Floppy Disk Image", filter_vec, true);
+                    self.open_file_dialog(fc, "Select Floppy Disk Image", filter_vec, true);
 
-                        self.modal.open(ModalContext::Notice(
-                            "A native File Open dialog is open.\nPlease make a selection or cancel to continue."
-                                .to_string(),
-                        ));
-                    }
+                    self.modal.open(ModalContext::Notice(
+                        "A File Open dialog is open.\nPlease make a selection or cancel to continue.".to_string(),
+                    ));
                     ui.close_menu();
                 };
 

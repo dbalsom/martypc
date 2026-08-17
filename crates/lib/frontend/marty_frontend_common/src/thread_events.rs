@@ -43,6 +43,12 @@ pub enum FileSelectionContext {
     Path(PathBuf),
 }
 
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub enum FloppyImageLoadSource {
+    DiskImage,
+    ZipArchive,
+}
+
 impl FileSelectionContext {
     pub fn from_index(index: usize) -> Self {
         FileSelectionContext::Index(index)
@@ -228,6 +234,7 @@ pub enum FrontendThreadEvent<D> {
         item: FileSelectionContext,
         image: D,
         path: Option<PathBuf>,
+        source: FloppyImageLoadSource,
     },
     FloppyImageSaveError(String),
     FloppyImageSaveComplete(PathBuf),

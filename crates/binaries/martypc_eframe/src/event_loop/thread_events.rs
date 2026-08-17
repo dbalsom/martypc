@@ -39,7 +39,13 @@ use marty_egui::{modal::ModalContext, state::FloppyDriveSelection};
 use marty_frontend_common::thread_events::DirectoryOpenContext;
 use marty_frontend_common::{
     constants::{LONG_NOTIFICATION_TIME, NORMAL_NOTIFICATION_TIME},
-    thread_events::{FileOpenContext, FileSaveContext, FileSelectionContext, FrontendThreadEvent},
+    thread_events::{
+        FileOpenContext,
+        FileSaveContext,
+        FileSelectionContext,
+        FloppyImageLoadSource,
+        FrontendThreadEvent,
+    },
 };
 use std::{path::PathBuf, sync::Arc};
 
@@ -299,6 +305,7 @@ pub fn handle_thread_event(emu: &mut Emulator, ctx: &egui::Context) {
                 item,
                 image,
                 path,
+                source,
             } => {
                 // emu.gui
                 //     .toasts()
@@ -306,11 +313,13 @@ pub fn handle_thread_event(emu: &mut Emulator, ctx: &egui::Context) {
                 //     .duration(Some(NORMAL_NOTIFICATION_TIME));
 
                 if let Some(fdc) = emu.machine.fdc() {
+                    let write_protected =
+                        source == FloppyImageLoadSource::ZipArchive || emu.config.emulator.media.write_protect_default;
                     match fdc.attach_image(
                         drive_select,
                         Arc::<DiskImage>::into_inner(image).unwrap(),
                         path.clone(),
-                        emu.config.emulator.media.write_protect_default,
+                        write_protected,
                     ) {
                         Ok(image_lock) => {
                             let item_idx = if let FileSelectionContext::Index(idx) = item {
@@ -323,21 +332,34 @@ pub fn handle_thread_event(emu: &mut Emulator, ctx: &egui::Context) {
                             log::info!("Floppy image successfully loaded into virtual drive.");
                             emu.gui.floppy_viewer.set_disk(drive_select, image_lock.clone());
                             let image = image_lock.read().unwrap();
+                            let selection = match source {
+                                FloppyImageLoadSource::DiskImage => {
+                                    FloppyDriveSelection::Image(path.clone().unwrap_or_default())
+                                }
+                                FloppyImageLoadSource::ZipArchive => FloppyDriveSelection::ZipArchive(
+                                    path.as_ref()
+                                        .and_then(|path| path.file_name())
+                                        .map(PathBuf::from)
+                                        .unwrap_or_default(),
+                                ),
+                            };
                             emu.gui.set_floppy_selection(
                                 drive_select,
                                 item_idx,
-                                FloppyDriveSelection::Image(path.clone().unwrap_or_default().into()),
+                                selection,
                                 image.source_format(),
                                 image.compatible_formats(true),
-                                Some(emu.config.emulator.media.write_protect_default),
+                                Some(write_protected),
                             );
 
+                            let path = path.unwrap_or(PathBuf::from("None"));
+                            let notification = match source {
+                                FloppyImageLoadSource::DiskImage => format!("Floppy loaded: {}", path.display()),
+                                FloppyImageLoadSource::ZipArchive => format!("Mounted ZIP: {}", path.display()),
+                            };
                             emu.gui
                                 .toasts()
-                                .info(format!(
-                                    "Floppy loaded: {}",
-                                    path.clone().unwrap_or(PathBuf::from("None")).display()
-                                ))
+                                .info(notification)
                                 .duration(Some(NORMAL_NOTIFICATION_TIME));
 
                             emu.gui.modal.close();

@@ -65,10 +65,6 @@ use marty_egui::{
 };
 use marty_videocard_renderer::AspectCorrectionMode;
 
-#[cfg(target_arch = "wasm32")]
-use crate::wasm::file_open;
-#[cfg(target_arch = "wasm32")]
-use crate::wasm::worker::spawn_closure_worker as spawn;
 use marty_display_common::display_manager::{DisplayManager, DtHandle};
 use marty_frontend_common::{
     marty_common::types::ui::MouseCaptureMode,
@@ -553,19 +549,6 @@ pub fn handle_egui_event(
             }
             if reboot {
                 emu.machine.reboot();
-            }
-        }
-        GuiEvent::RequestLoadFloppyDialog(drive_select) => {
-            // User requested a file dialog to load a floppy image into the indicated drive slot.
-            log::debug!("Requesting floppy load dialog for drive: {}", drive_select);
-            #[cfg(target_arch = "wasm32")]
-            {
-                use marty_frontend_common::thread_events::FileOpenContext;
-                let context = FileOpenContext::FloppyDiskImage {
-                    drive_select: *drive_select,
-                    fsc: FileSelectionContext::Path(PathBuf::new()),
-                };
-                file_open::open_file_dialog(context, emu.sender.clone());
             }
         }
         GuiEvent::RequestSaveFloppyDialog(drive_select, format) => {
