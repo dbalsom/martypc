@@ -38,6 +38,14 @@ use marty_frontend_common::{
 #[cfg(feature = "use_rfd")]
 use rfd;
 
+#[cfg(feature = "use_rfd")]
+const FILE_OPEN_DIALOG_MESSAGE: &str = "A file open dialog is open.\nPlease make a selection or cancel to continue.";
+#[cfg(feature = "use_rfd")]
+const FILE_SAVE_DIALOG_MESSAGE: &str = "A file save dialog is open.\nPlease make a selection or cancel to continue.";
+#[cfg(all(feature = "use_rfd", not(target_arch = "wasm32")))]
+const DIRECTORY_OPEN_DIALOG_MESSAGE: &str =
+    "A folder selection dialog is open.\nPlease make a selection or cancel to continue.";
+
 pub struct FileDialogFilter {
     pub desc: String,
     pub extensions: Vec<String>,
@@ -67,6 +75,7 @@ impl GuiState {
             #[cfg(feature = "use_rfd")]
             DialogProvider::Rfd => {
                 let task = rfd::AsyncFileDialog::new().set_title(title.as_ref()).pick_folder();
+                self.modal.open_file_dialog(DIRECTORY_OPEN_DIALOG_MESSAGE);
                 exec_async(self.thread_sender.clone(), async move {
                     if let Some(folder_handle) = task.await {
                         FrontendThreadEvent::DirectoryOpenDialogComplete {
@@ -107,6 +116,7 @@ impl GuiState {
                     dialog = dialog.add_filter(filter.desc, &filter.extensions);
                 }
                 let task = dialog.pick_file();
+                self.modal.open_file_dialog(FILE_OPEN_DIALOG_MESSAGE);
                 exec_async(self.thread_sender.clone(), async move {
                     let mut resolved_context = context;
                     let rfd_handle = task.await;
@@ -170,7 +180,7 @@ impl GuiState {
     }
 
     pub fn save_file_dialog(
-        &self,
+        &mut self,
         context: FileSaveContext,
         title: impl AsRef<str>,
         filters: Vec<FileDialogFilter>,
@@ -199,6 +209,7 @@ impl GuiState {
                     dialog = dialog.add_filter(filter.desc, &filter.extensions);
                 }
                 let task = dialog.save_file();
+                self.modal.open_file_dialog(FILE_SAVE_DIALOG_MESSAGE);
                 exec_async(self.thread_sender.clone(), async move {
                     let Some(file_handle) = task.await
                     else {

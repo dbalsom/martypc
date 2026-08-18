@@ -537,8 +537,7 @@ impl GuiState {
     }
 
     pub fn set_paths(&mut self, default_floppy_path: PathBuf) {
-        self.default_floppy_path = Some(default_floppy_path.clone());
-        self.modal.set_paths(default_floppy_path.clone());
+        self.default_floppy_path = Some(default_floppy_path);
     }
 
     pub fn toasts(&mut self) -> &mut Toasts {

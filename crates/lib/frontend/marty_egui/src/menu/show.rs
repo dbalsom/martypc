@@ -44,11 +44,12 @@ fn display_target_count_for_card(
 
 impl GuiState {
     pub fn show_menu(&mut self, ui: &mut egui::Ui) {
+        let modal_mode = self.active_modal_mode(ui.ctx());
         egui::menu::bar(ui, |ui| {
             ui.menu_button("Emulator", |ui| {
                 ui.set_min_width(120.0);
 
-                if !self.modal.is_open() {
+                if !modal_mode.is_active() {
                     if ui.button("⏱ Performance...").clicked() {
                         *self.window_flag(GuiWindow::PerfViewer) = true;
                         ui.close_menu();
@@ -66,7 +67,7 @@ impl GuiState {
             });
 
             // Only show the Emulator menu if a modal dialog is open.
-            if self.modal.is_open() {
+            if modal_mode.is_active() {
                 return;
             }
 

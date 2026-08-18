@@ -29,10 +29,25 @@
     Main UI drawing code for EGUI.
 */
 
-use crate::state::GuiState;
+use crate::{modal::ModalMode, state::GuiState};
 use egui::Context;
 
 impl GuiState {
+    pub(crate) fn active_modal_mode(&self, ctx: &Context) -> ModalMode {
+        let persistent_mode = self.modal.mode();
+        if persistent_mode.is_active() {
+            persistent_mode
+        }
+        // Drag-and-drop state comes directly from egui each frame. Keeping it out of the
+        // persistent ModalState prevents a missed drag-leave event from leaving the UI stuck.
+        else if Self::drag_drop_active(ctx) {
+            ModalMode::DragDrop
+        }
+        else {
+            ModalMode::None
+        }
+    }
+
     pub fn show_windows(&mut self, ctx: &Context) {
         // Init things that need the context
         self.toasts.show(ctx);
@@ -40,8 +55,12 @@ impl GuiState {
         self.floppy_viewer
             .init(ctx.clone(), self.fluxfox_render_callback.clone());
 
-        // Do file dialogs
-        self.modal.show(ctx, &mut self.event_queue);
+        let modal_mode = self.active_modal_mode(ctx);
+        match modal_mode {
+            ModalMode::None => {}
+            ModalMode::DragDrop => self.show_drag_drop_modal(ctx),
+            ModalMode::FileDialogOpen | ModalMode::Notice | ModalMode::Progress => self.modal.show(ctx),
+        }
 
         egui::Window::new("Warning")
             .open(&mut self.warning_dialog_open)
@@ -69,7 +88,7 @@ impl GuiState {
                 });
             });
 
-        if !self.modal.is_open() {
+        if !modal_mode.blocks_workspace() {
             self.draw_workspace(ctx);
         }
     }

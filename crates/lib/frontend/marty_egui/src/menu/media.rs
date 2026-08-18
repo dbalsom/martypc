@@ -24,7 +24,7 @@
 
     --------------------------------------------------------------------------
 */
-use crate::{file_dialogs::FileDialogFilter, modal::ModalContext, state::GuiState, GuiEvent, GuiWindow};
+use crate::{file_dialogs::FileDialogFilter, state::GuiState, GuiEvent, GuiWindow};
 use fluxfox::ImageFormatParser;
 use marty_frontend_common::thread_events::{FileOpenContext, FileSaveContext, FileSelectionContext};
 
@@ -99,10 +99,6 @@ impl GuiState {
                     filter_vec.push(FileDialogFilter::new("All Files", vec!["*"]));
 
                     self.open_file_dialog(fc, "Select Floppy Disk Image", filter_vec, true);
-
-                    self.modal.open(ModalContext::Notice(
-                        "A File Open dialog is open.\nPlease make a selection or cancel to continue.".to_string(),
-                    ));
                     ui.close_menu();
                 };
 
@@ -188,11 +184,8 @@ impl GuiState {
                 }
 
                 // Add 'Save As' options for compatible formats.
-                for format_tuple in &self.floppy_drives[drive_idx].supported_formats {
-                    let fmt = format_tuple.0;
-                    let fmt_name = fmt.to_string();
-                    let extensions = &format_tuple.1;
-
+                let supported_formats = self.floppy_drives[drive_idx].supported_formats.clone();
+                for (fmt, extensions) in supported_formats {
                     if !extensions.is_empty() {
                         if ui
                             .button(format!("Save As .{}...", extensions[0].to_uppercase()))
@@ -212,14 +205,9 @@ impl GuiState {
 
                                 let mut filter_vec = Vec::new();
                                 let exts = fmt.extensions();
-                                filter_vec.push(FileDialogFilter::new(fmt_name, exts));
+                                filter_vec.push(FileDialogFilter::new(fmt.to_string(), exts));
 
                                 self.save_file_dialog(fc, "Save Floppy Disk Image", filter_vec, None);
-
-                                self.modal.open(ModalContext::Notice(
-                                    "A native File Save dialog is open.\nPlease make a selection or cancel to continue."
-                                        .to_string(),
-                                ));
                                 ui.close_menu();
                             }
                         }
@@ -272,10 +260,6 @@ impl GuiState {
                     ];
 
                     self.open_file_dialog(context, "Select VHD Image", filters, false);
-                    self.modal.open(ModalContext::Notice(
-                        "A native File Open dialog is open.\nPlease make a selection or cancel to continue."
-                            .to_string(),
-                    ));
                     ui.close_menu();
                 }
 

@@ -51,7 +51,7 @@ use marty_core::{
     vhd::VirtualHardDisk,
 };
 #[cfg(not(target_arch = "wasm32"))]
-use marty_egui::{modal::ModalContext, FileDialogFilter};
+use marty_egui::FileDialogFilter;
 use marty_egui::{
     state::FloppyDriveSelection,
     DeviceSelection,
@@ -415,9 +415,6 @@ pub fn handle_egui_event(
 
                 emu.gui
                     .save_file_dialog(context, "Create VHD Image", filters, initial_directory.as_deref());
-                emu.gui.modal.open(ModalContext::Notice(
-                    "A native File Save dialog is open.\nPlease make a selection or cancel to continue.".to_string(),
-                ));
             }
         }
         GuiEvent::BrowseVhdSourceDirectory => {
@@ -427,10 +424,6 @@ pub fn handle_egui_event(
 
                 emu.gui
                     .open_directory_dialog(DirectoryOpenContext::VhdSource, "Select VHD Source Folder");
-                emu.gui.modal.open(ModalContext::Notice(
-                    "A native folder selection dialog is open.\nPlease make a selection or cancel to continue."
-                        .to_string(),
-                ));
             }
         }
         GuiEvent::RescanMediaFolders => {

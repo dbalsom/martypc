@@ -50,6 +50,7 @@ use marty_display_common::{
 
 mod color;
 mod constants;
+mod drag_drop;
 mod image;
 
 mod file_dialogs;

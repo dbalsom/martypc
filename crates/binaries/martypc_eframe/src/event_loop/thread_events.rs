@@ -34,7 +34,7 @@ use crate::event_loop::egui_events::handle_load_vhd;
 use crate::{emulator::Emulator, floppy::load_floppy::load_floppy_image};
 use egui::ViewportCommand;
 use fluxfox::DiskImage;
-use marty_egui::{modal::ModalContext, state::FloppyDriveSelection};
+use marty_egui::state::FloppyDriveSelection;
 #[cfg(not(target_arch = "wasm32"))]
 use marty_frontend_common::thread_events::DirectoryOpenContext;
 use marty_frontend_common::{
@@ -56,14 +56,14 @@ pub fn handle_thread_event(emu: &mut Emulator, ctx: &egui::Context) {
                 if let FileOpenContext::ServiceHostFile { .. } = context {
                     emu.machine.abort_service_host_file_request();
                 }
-                emu.gui.modal.close();
+                emu.gui.modal.close_file_dialog();
             }
             FrontendThreadEvent::FileDialogCancelled => {
-                emu.gui.modal.close();
+                emu.gui.modal.close_file_dialog();
             }
             #[cfg(not(target_arch = "wasm32"))]
             FrontendThreadEvent::DirectoryOpenDialogCancelled(_) => {
-                emu.gui.modal.close();
+                emu.gui.modal.close_file_dialog();
             }
             FrontendThreadEvent::FileOpenError(context, error) => {
                 let error_prefix = if let FileOpenContext::ServiceHostFile { .. } = context {
@@ -78,7 +78,7 @@ pub fn handle_thread_event(emu: &mut Emulator, ctx: &egui::Context) {
                     .toasts()
                     .error(format!("{}: {}", error_prefix, error))
                     .duration(Some(LONG_NOTIFICATION_TIME));
-                emu.gui.modal.close();
+                emu.gui.modal.close_file_dialog();
             }
             FrontendThreadEvent::FileSaveError(error) => {
                 log::error!("File save error: {}", error);
@@ -86,7 +86,7 @@ pub fn handle_thread_event(emu: &mut Emulator, ctx: &egui::Context) {
                     .toasts()
                     .error(format!("File save error: {}", error))
                     .duration(Some(LONG_NOTIFICATION_TIME));
-                emu.gui.modal.close();
+                emu.gui.modal.close_file_dialog();
             }
             #[cfg(not(target_arch = "wasm32"))]
             FrontendThreadEvent::DirectoryOpenError(_, error) => {
@@ -95,13 +95,14 @@ pub fn handle_thread_event(emu: &mut Emulator, ctx: &egui::Context) {
                     .toasts()
                     .error(format!("Directory open error: {}", error))
                     .duration(Some(LONG_NOTIFICATION_TIME));
-                emu.gui.modal.close();
+                emu.gui.modal.close_file_dialog();
             }
             FrontendThreadEvent::FileOpenDialogComplete {
                 context,
                 path,
                 contents,
             } => {
+                emu.gui.modal.close_file_dialog();
                 if let FileOpenContext::ServiceHostFile { fsc } = &context {
                     let filename = match fsc {
                         FileSelectionContext::Path(path) => path
@@ -112,7 +113,6 @@ pub fn handle_thread_event(emu: &mut Emulator, ctx: &egui::Context) {
                         _ => {
                             log::error!("Host file dialog returned without a filename");
                             emu.machine.abort_service_host_file_request();
-                            emu.gui.modal.close();
                             continue;
                         }
                     };
@@ -122,7 +122,6 @@ pub fn handle_thread_event(emu: &mut Emulator, ctx: &egui::Context) {
                         contents.len()
                     );
                     emu.machine.stage_service_host_file(filename, contents);
-                    emu.gui.modal.close();
                     continue;
                 }
 
@@ -160,7 +159,7 @@ pub fn handle_thread_event(emu: &mut Emulator, ctx: &egui::Context) {
             }
             #[cfg(not(target_arch = "wasm32"))]
             FrontendThreadEvent::FileOpenPathDialogComplete { context, path } => {
-                emu.gui.modal.close();
+                emu.gui.modal.close_file_dialog();
                 match context {
                     FileOpenContext::VhdDiskImage { drive_select } => {
                         handle_load_vhd(emu, drive_select, FileSelectionContext::Path(path));
@@ -177,7 +176,7 @@ pub fn handle_thread_event(emu: &mut Emulator, ctx: &egui::Context) {
             }
             #[cfg(not(target_arch = "wasm32"))]
             FrontendThreadEvent::DirectoryOpenDialogComplete { context, path } => {
-                emu.gui.modal.close();
+                emu.gui.modal.close_file_dialog();
                 match context {
                     DirectoryOpenContext::VhdSource => {
                         emu.gui.vhd_creator.set_source_path(path);
@@ -185,6 +184,7 @@ pub fn handle_thread_event(emu: &mut Emulator, ctx: &egui::Context) {
                 }
             }
             FrontendThreadEvent::FileSaveDialogComplete(save_context) => {
+                emu.gui.modal.close_file_dialog();
                 let (drive_select, format, fsc) = match save_context {
                     FileSaveContext::Screenshot { filename, fsc, .. } => {
                         let saved_as = match fsc {
@@ -196,7 +196,6 @@ pub fn handle_thread_event(emu: &mut Emulator, ctx: &egui::Context) {
                             .toasts()
                             .info(format!("Screenshot saved!\n{}", saved_as))
                             .duration(Some(NORMAL_NOTIFICATION_TIME));
-                        emu.gui.modal.close();
                         continue;
                     }
                     FileSaveContext::GuestFile { filename, .. } => {
@@ -205,7 +204,6 @@ pub fn handle_thread_event(emu: &mut Emulator, ctx: &egui::Context) {
                             .toasts()
                             .info(format!("Guest file saved: {}", filename))
                             .duration(Some(NORMAL_NOTIFICATION_TIME));
-                        emu.gui.modal.close();
                         continue;
                     }
                     #[cfg(not(target_arch = "wasm32"))]
@@ -220,7 +218,6 @@ pub fn handle_thread_event(emu: &mut Emulator, ctx: &egui::Context) {
                                 .error("Failed to get VHD output path!".to_string())
                                 .duration(Some(LONG_NOTIFICATION_TIME));
                         }
-                        emu.gui.modal.close();
                         continue;
                     }
                     FileSaveContext::FloppyDiskImage {
@@ -279,7 +276,6 @@ pub fn handle_thread_event(emu: &mut Emulator, ctx: &egui::Context) {
                         }
                     }
                 }
-                emu.gui.modal.close();
             }
             FrontendThreadEvent::FloppyImageLoadError(err) => {
                 log::error!("Failed to load floppy image! Error: {}", err);
@@ -288,17 +284,13 @@ pub fn handle_thread_event(emu: &mut Emulator, ctx: &egui::Context) {
                     .error(format!("Floppy load failed: {}", err))
                     .duration(Some(LONG_NOTIFICATION_TIME));
 
-                emu.gui.modal.close();
+                emu.gui.modal.close_progress();
             }
             FrontendThreadEvent::FloppyImageBeginLongLoad => {
-                emu.gui
-                    .modal
-                    .open(ModalContext::ProgressBar("Loading floppy image...".into(), 0.0));
+                emu.gui.modal.open_progress("Loading floppy image...", 0.0);
             }
             FrontendThreadEvent::FloppyImageLoadProgress(title, progress) => {
-                emu.gui
-                    .modal
-                    .open(ModalContext::ProgressBar(title.into(), progress as f32));
+                emu.gui.modal.open_progress(title, progress as f32);
             }
             FrontendThreadEvent::FloppyImageLoadComplete {
                 drive_select,
@@ -307,6 +299,7 @@ pub fn handle_thread_event(emu: &mut Emulator, ctx: &egui::Context) {
                 path,
                 source,
             } => {
+                emu.gui.modal.close_progress();
                 // emu.gui
                 //     .toasts()
                 //     .info("Got FloppyImageLoadComplete event")
@@ -361,8 +354,6 @@ pub fn handle_thread_event(emu: &mut Emulator, ctx: &egui::Context) {
                                 .toasts()
                                 .info(notification)
                                 .duration(Some(NORMAL_NOTIFICATION_TIME));
-
-                            emu.gui.modal.close();
                         }
                         Err(err) => {
                             log::warn!("Floppy image failed to load: {}", err);
@@ -372,9 +363,10 @@ pub fn handle_thread_event(emu: &mut Emulator, ctx: &egui::Context) {
             }
             FrontendThreadEvent::FloppyImageSaveError(err) => {
                 log::error!("Floppy image save error: {}", err);
+                emu.gui.modal.close_progress();
             }
             FrontendThreadEvent::FloppyImageSaveComplete(path) => {
-                emu.gui.modal.close();
+                emu.gui.modal.close_progress();
                 log::info!("Floppy image saved: {:?}", path);
             }
             FrontendThreadEvent::QuitRequested => {
