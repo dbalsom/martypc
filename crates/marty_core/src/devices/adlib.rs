@@ -39,6 +39,11 @@ use crate::{
     device_traits::sounddevice::{AudioSample, SoundDevice},
 };
 use crossbeam_channel::Sender;
+#[cfg(all(feature = "legacy-opl", target_arch = "wasm32"))]
+compile_error!("legacy-opl uses a native FFI backend and is not supported on WASM; enable opl instead");
+#[cfg(all(feature = "opl", not(feature = "legacy-opl")))]
+use nuked_opl3::{Opl3Device, OplRegisterFile};
+#[cfg(all(feature = "legacy-opl", not(target_arch = "wasm32")))]
 use opl3_rs::{Opl3Device, OplRegisterFile};
 
 pub struct AdLibCard {

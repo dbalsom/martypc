@@ -83,7 +83,7 @@ use marty_common::{
     MartyHashMap,
 };
 
-#[cfg(feature = "opl")]
+#[cfg(any(feature = "opl", feature = "legacy-opl"))]
 use crate::devices::adlib::AdLibCard;
 #[cfg(feature = "ega")]
 use crate::devices::ega::EGACard;
@@ -504,7 +504,7 @@ pub struct BusInterface {
     fantasy_ems: Option<FantasyEmsCard>,
     cart_slot: Option<CartridgeSlot>,
     game_port: Option<GamePort>,
-    #[cfg(feature = "opl")]
+    #[cfg(any(feature = "opl", feature = "legacy-opl"))]
     adlib: Option<AdLibCard>,
     sound_source: Option<DSoundSource>,
     sn76489: Option<Sn76489>,
@@ -593,7 +593,7 @@ impl Default for BusInterface {
             fantasy_ems: None,
             cart_slot: None,
             game_port: None,
-            #[cfg(feature = "opl")]
+            #[cfg(any(feature = "opl", feature = "legacy-opl"))]
             adlib: None,
             sound_source: None,
             sn76489: None,
@@ -1349,7 +1349,7 @@ impl BusInterface {
         // Create sound cards
         #[cfg(feature = "sound")]
         for card in machine_config.sound.iter() {
-            #[cfg(feature = "opl")]
+            #[cfg(any(feature = "opl", feature = "legacy-opl"))]
             {
                 #[allow(clippy::single_match)]
                 match card.sound_type {
@@ -1667,7 +1667,7 @@ impl BusInterface {
         }
 
         // Run the adlib card
-        #[cfg(feature = "opl")]
+        #[cfg(any(feature = "opl", feature = "legacy-opl"))]
         if let Some(adlib) = &mut self.adlib {
             adlib.run(us);
         }

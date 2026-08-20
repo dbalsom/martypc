@@ -89,12 +89,12 @@ features = [
 
 [workspace.dependencies.fluxfox]
 git = "https://github.com/dbalsom/fluxfox.git"
-branch = "marty_consumer_0.34"
+branch = "finish_fat"
 default-features = false
 
 [workspace.dependencies.fluxfox_egui]
 git = "https://github.com/dbalsom/fluxfox.git"
-branch = "marty_consumer_0.34"
+branch = "finish_fat"
 
 [workspace.dependencies.egui]
 version = "0.34.2"

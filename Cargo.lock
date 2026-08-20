@@ -1447,6 +1447,7 @@ name = "display_manager_eframe"
 version = "0.4.2"
 dependencies = [
  "anyhow",
+ "crossbeam-channel",
  "display_backend_eframe_glow",
  "display_backend_eframe_wgpu",
  "egui 0.34.2",
@@ -2057,7 +2058,7 @@ dependencies = [
 [[package]]
 name = "fluxfox"
 version = "0.2.1"
-source = "git+https://github.com/dbalsom/fluxfox.git?branch=marty_consumer_0.34#c8950cdca113f90778c9af67ca5e89bd7616073d"
+source = "git+https://github.com/dbalsom/fluxfox.git?branch=finish_fat#5a1fb83656c3b6f933d9f91198dcca90658bfd26"
 dependencies = [
  "binrw 0.14.1",
  "bit-vec 0.8.0",
@@ -2065,8 +2066,8 @@ dependencies = [
  "bytemuck",
  "dyn-clone",
  "env_logger",
- "fatfs 0.4.0 (git+https://github.com/dbalsom/fluxfox_fat.git?branch=bpb_fix)",
  "flate2",
+ "fluxfox-fat",
  "getrandom 0.2.15",
  "histogram",
  "log",
@@ -2087,9 +2088,18 @@ dependencies = [
 ]
 
 [[package]]
+name = "fluxfox-fat"
+version = "0.4.2"
+source = "git+https://github.com/dbalsom/fluxfox_fat.git?branch=sn_access#e9813d48454676998aec28aad9c1398da0379e49"
+dependencies = [
+ "bitflags 2.11.1",
+ "log",
+]
+
+[[package]]
 name = "fluxfox_egui"
 version = "0.3.3"
-source = "git+https://github.com/dbalsom/fluxfox.git?branch=marty_consumer_0.34#c8950cdca113f90778c9af67ca5e89bd7616073d"
+source = "git+https://github.com/dbalsom/fluxfox.git?branch=finish_fat#5a1fb83656c3b6f933d9f91198dcca90658bfd26"
 dependencies = [
  "egui 0.34.2",
  "egui_extras 0.34.2",
@@ -2111,7 +2121,7 @@ dependencies = [
 [[package]]
 name = "fluxfox_tiny_skia"
 version = "0.2.0"
-source = "git+https://github.com/dbalsom/fluxfox.git?branch=marty_consumer_0.34#c8950cdca113f90778c9af67ca5e89bd7616073d"
+source = "git+https://github.com/dbalsom/fluxfox.git?branch=finish_fat#5a1fb83656c3b6f933d9f91198dcca90658bfd26"
 dependencies = [
  "fluxfox",
  "log",
@@ -3207,6 +3217,7 @@ dependencies = [
  "marty_common",
  "md5",
  "modular-bitfield 0.13.1",
+ "nuked-opl3",
  "opl3-rs",
  "rand 0.8.5",
  "regex",
@@ -3276,6 +3287,7 @@ dependencies = [
  "strum_macros 0.27.1",
  "toml 0.8.19",
  "web-time",
+ "windows-sys 0.61.2",
 ]
 
 [[package]]
@@ -3731,6 +3743,12 @@ dependencies = [
  "memchr",
  "minimal-lexical",
 ]
+
+[[package]]
+name = "nuked-opl3"
+version = "0.1.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "fe763ce652db623a34372b1628588faaee86af83195175acee070d92d1fe27b7"
 
 [[package]]
 name = "num-bigint"
@@ -5384,7 +5402,7 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "32497e9a4c7b38532efcdebeef879707aa9f794296a4f0244f6f69e9bc8574bd"
 dependencies = [
  "fastrand",
- "getrandom 0.3.1",
+ "getrandom 0.4.3",
  "once_cell",
  "rustix 1.1.4",
  "windows-sys 0.61.2",

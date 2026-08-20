@@ -144,7 +144,7 @@ impl BusInterface {
                 }
                 IoDeviceType::Sound =>
                 {
-                    #[cfg(feature = "opl")]
+                    #[cfg(any(feature = "opl", feature = "legacy-opl"))]
                     if let Some(adlib) = &mut self.adlib {
                         byte = Some(adlib.read_u8(port, DeviceRunTimeUnit::Microseconds(delta_us)));
                     }
@@ -353,7 +353,7 @@ impl BusInterface {
                 }
                 IoDeviceType::Sound =>
                 {
-                    #[cfg(feature = "opl")]
+                    #[cfg(any(feature = "opl", feature = "legacy-opl"))]
                     if let Some(adlib) = &mut self.adlib {
                         IoDevice::write_u8(
                             adlib,

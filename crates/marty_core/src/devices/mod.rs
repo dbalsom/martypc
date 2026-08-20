@@ -31,7 +31,7 @@
 */
 
 pub mod a0;
-#[cfg(feature = "opl")]
+#[cfg(any(feature = "opl", feature = "legacy-opl"))]
 pub mod adlib;
 mod ata;
 pub mod cartridge_slots;

@@ -30,7 +30,7 @@
     must implement.
 */
 
-#[cfg(feature = "opl")]
+#[cfg(any(feature = "opl", feature = "legacy-opl"))]
 use crate::devices::adlib::AdLibCard;
 use crate::devices::null_sound::NullSoundDevice;
 use enum_dispatch::enum_dispatch;
@@ -39,7 +39,7 @@ pub type AudioSample = f32;
 
 #[enum_dispatch]
 pub enum SoundDispatch {
-    #[cfg(feature = "opl")]
+    #[cfg(any(feature = "opl", feature = "legacy-opl"))]
     AdLibCard,
     NullSoundDevice,
 }
