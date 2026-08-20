@@ -11,7 +11,7 @@ path = "src/lib.rs"
 crate-type = ["lib"]
 
 [dependencies]
-marty_common = { path = "../../../marty_common" }
+marty_common = { path = "../../marty_common" }
 web-time.workspace = true
 wasm-bindgen.workspace = true
 wasm-bindgen-futures.workspace = true

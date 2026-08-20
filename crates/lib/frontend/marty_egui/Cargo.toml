@@ -13,8 +13,8 @@ crate-type = ["lib"]
 [dependencies]
 marty_egui_common = { path = "../marty_egui_common" }
 marty_frontend_common = { path = "../marty_frontend_common" }
-marty_common = { path = "../../../marty_common" }
-marty_core = { path = "../../../marty_core", default-features = false }
+marty_common = { path = "../../marty_common" }
+marty_core = { path = "../../marty_core", default-features = false }
 
 bytemuck = { workspace=true, features = ["derive"] }
 image = { workspace = true, default-features = false, features = ["png"] }

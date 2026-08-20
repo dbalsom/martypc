@@ -57,15 +57,15 @@ jobs:
           fi
 
       - name: Build martypc_eframe with Trunk
-        working-directory: crates/binaries/martypc_eframe
+        working-directory: crates/bin/martypc_eframe
         run: trunk build --release=true --no-default-features --features=all_video_cards,sound,opl,use_glow --config Trunk.toml
 
       - name: Optimize WASM with wasm-opt
-        working-directory: crates/binaries/martypc_eframe
+        working-directory: crates/bin/martypc_eframe
         run: wasm-opt -Oz -o dist/martypc_eframe_bg.wasm dist/martypc_eframe_bg.wasm
 
       - name: Verify dist directory contents
-        working-directory: crates/binaries/martypc_eframe
+        working-directory: crates/bin/martypc_eframe
         run: |
           echo "Verifying dist directory:"
           ls -R dist

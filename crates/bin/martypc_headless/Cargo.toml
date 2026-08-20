@@ -12,8 +12,8 @@ path = "src/lib.rs"
 crate-type = ["lib"]
 
 [dependencies]
-marty_core = { path = "../../marty_core" }
-marty_common = { path = "../../marty_common" }
+marty_core = { path = "../../lib/marty_core" }
+marty_common = { path = "../../lib/marty_common" }
 marty_frontend_common =  { path = "../../lib/frontend/marty_frontend_common", default-features = false }
 marty_display_common = { path = "../../lib/frontend/marty_display_common", default-features = false }
 marty_config = { path = "../../lib/frontend/marty_config" }

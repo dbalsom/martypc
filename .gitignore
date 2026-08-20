@@ -39,7 +39,7 @@ icon.png
 *.crt
 
 # WASM stuff
-crates/binaries/martypc_eframe/assets/configs
+crates/bin/martypc_eframe/assets/configs
 
 # Allow tests/tools directory
 !/tests/tools
@@ -96,16 +96,12 @@ crates/binaries/martypc_eframe/assets/configs
 /install/media/roms/GLaBIOS/GLABIOS_0.8b0_8XY.ROM
 
 # Experimental rom definitions
-/install/configs/rom_definitions/romdef_seequa.toml
 /install/configs/rom_definitions/romdef_s100.toml
 /install/configs/rom_definitions/romdef_ast.toml
 /install/configs/rom_definitions/romdef_ibm_ps2.toml
 /install/configs/rom_definitions/romdef_ibm_misc.toml
 /install/configs/rom_definitions/romdef_custom.toml
 /install/configs/rom_definitions/romdef_seequa.toml
-
-# Experimental machines
-/install/configs/machines/seequa_chameleon.toml
 
 # Miscellaneous GlaBIOS ROMs
 /install/media/roms/GLaBIOS/parking
