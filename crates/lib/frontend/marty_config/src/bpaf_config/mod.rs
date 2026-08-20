@@ -102,6 +102,8 @@ pub struct CmdLineArgs {
     pub machine_config_name: Option<String>,
     #[bpaf(long)]
     pub machine_config_overlays: Option<String>,
+    #[bpaf(long)]
+    pub scaler_preset: Option<String>,
 
     #[bpaf(long)]
     pub turbo: bool,
@@ -142,4 +144,20 @@ pub struct CmdLineArgs {
 
     #[bpaf(external(mount_arg))]
     pub mounts: Vec<MountSpec>,
+}
+
+#[cfg(test)]
+mod tests {
+    use bpaf::Args;
+
+    use super::*;
+
+    #[test]
+    fn parses_scaler_preset_override() {
+        let args = cli_args()
+            .run_inner(Args::from(&["--scaler-preset", "IBM 8513"]))
+            .unwrap();
+
+        assert_eq!(args.scaler_preset.as_deref(), Some("IBM 8513"));
+    }
 }

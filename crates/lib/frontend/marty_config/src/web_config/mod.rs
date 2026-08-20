@@ -68,6 +68,7 @@ pub struct CmdLineArgs {
     pub controller_layout: Option<ControllerLayout>,
     pub machine_config_name: Option<String>,
     pub machine_config_overlays: Option<String>,
+    pub scaler_preset: Option<String>,
     pub turbo: bool,
     // Ignored on wasm
     pub validator: Option<ValidatorType>,
@@ -105,6 +106,7 @@ pub fn parse_query_params() -> CmdLineArgs {
                     "no_sound" => args.no_sound = true,
                     "machine_config_name" => args.machine_config_name = Some(String::from(value.into_owned())),
                     "machine_config_overlays" => args.machine_config_overlays = Some(String::from(value.into_owned())),
+                    "scaler_preset" => args.scaler_preset = Some(String::from(value.into_owned())),
                     "no_roms" => args.no_roms = true,
                     "turbo" => args.turbo = true,
                     "mount" => {

@@ -389,6 +389,27 @@ impl ConfigFileParams {
             self.machine.config_overlays = Some(config_overlays);
         }
 
+        // Apply a scaler-preset override to the main window.
+        if let Some(scaler_preset) = shell_args.scaler_preset {
+            #[cfg(feature = "use_display")]
+            let scaler_preset_is_valid = self
+                .emulator
+                .scaler_preset
+                .iter()
+                .any(|preset| preset.name == scaler_preset);
+            #[cfg(not(feature = "use_display"))]
+            let scaler_preset_is_valid = true;
+
+            if scaler_preset_is_valid {
+                if let Some(window) = self.emulator.window.first_mut() {
+                    window.scaler_preset = Some(scaler_preset);
+                }
+            }
+            else {
+                log::warn!("Ignoring unknown scaler preset override: {scaler_preset}");
+            }
+        }
+
         // Apply 'fullscreen' parameter to the first window definition
         if let Some(window) = self.emulator.window.first_mut() {
             window.fullscreen |= shell_args.fullscreen;
@@ -652,5 +673,24 @@ mod tests {
             "#,
         );
         assert!(invalid.is_err());
+    }
+
+    #[cfg(feature = "use_display")]
+    #[test]
+    fn scaler_preset_override_must_reference_a_defined_preset() {
+        let mut config: ConfigFileParams = toml::from_str(include_str!("../../../../../install/martypc.toml")).unwrap();
+        let configured_preset = config.emulator.window[0].scaler_preset.clone();
+
+        config.overlay(CmdLineArgs {
+            scaler_preset: Some("Missing preset".to_string()),
+            ..Default::default()
+        });
+        assert_eq!(config.emulator.window[0].scaler_preset, configured_preset);
+
+        config.overlay(CmdLineArgs {
+            scaler_preset: Some("IBM 8513".to_string()),
+            ..Default::default()
+        });
+        assert_eq!(config.emulator.window[0].scaler_preset.as_deref(), Some("IBM 8513"));
     }
 }

@@ -1697,10 +1697,11 @@ impl<'p> DisplayManager<EFrameBackend, GuiRenderContext, ViewportId, ViewportId,
                 // In this case, since we are using eframe, the main (root) viewport is already open.
 
                 // Attempt to resolve the specified scaler preset
-                let scaler_preset = match self.scaler_preset(scaler_preset) {
+                let scaler_preset_name = scaler_preset;
+                let scaler_preset = match self.scaler_preset(scaler_preset_name.clone()) {
                     Some(preset) => preset.clone(),
                     None => {
-                        return Err(anyhow!("Couldn't load scaler preset!"));
+                        return Err(anyhow!("Couldn't load scaler preset '{scaler_preset_name}'"));
                     }
                 };
 

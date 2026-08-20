@@ -542,6 +542,22 @@ aspect_ratio = { h = 4, v = 3 }
 composite = false
 
 [[emulator.scaler_preset]]
+name = "IBM 8513"
+filter = "Linear"
+border_color = 0x323338 # Medium gray.
+crt_effect = true
+crt_barrel_distortion = 0.0
+crt_corner_radius = 0.05
+crt_phosphor_type = "Color"
+crt_scanlines = true
+gamma = 1.0
+[emulator.scaler_preset.renderer]
+display_aperture = "Accurate"
+aspect_correction = true
+aspect_ratio = { h = 4, v = 3 }
+composite = false
+
+[[emulator.scaler_preset]]
 name = "Green CRT"
 filter = "Linear"
 border_color = 0x323338 # Medium gray.
