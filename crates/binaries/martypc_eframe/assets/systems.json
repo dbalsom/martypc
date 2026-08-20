@@ -7,7 +7,8 @@
     "description": "1981 · The original machine that started it all",
     "image": "assets/ibm_5150_icon.png",
     "options": [
-      "video-card"
+      "video-card",
+      "adlib"
     ]
   },
   {
@@ -40,6 +41,8 @@
     "name": "Tandy 1000",
     "description": "1984 · Enhanced color and sound",
     "image": "assets/tandy_1000_icon.png",
-    "options": []
+    "options": [
+      "adlib"
+    ]
   }
 ]
