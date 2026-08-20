@@ -1408,7 +1408,7 @@ dependencies = [
 
 [[package]]
 name = "display_backend_eframe_glow"
-version = "0.4.2"
+version = "0.5.0"
 dependencies = [
  "anyhow",
  "display_backend_trait",
@@ -1420,7 +1420,7 @@ dependencies = [
 
 [[package]]
 name = "display_backend_eframe_wgpu"
-version = "0.4.2"
+version = "0.5.0"
 dependencies = [
  "anyhow",
  "display_backend_trait",
@@ -1433,7 +1433,7 @@ dependencies = [
 
 [[package]]
 name = "display_backend_trait"
-version = "0.4.2"
+version = "0.5.0"
 dependencies = [
  "anyhow",
  "egui 0.34.2",
@@ -1444,7 +1444,7 @@ dependencies = [
 
 [[package]]
 name = "display_manager_eframe"
-version = "0.4.2"
+version = "0.5.0"
 dependencies = [
  "anyhow",
  "crossbeam-channel",
@@ -3164,7 +3164,7 @@ dependencies = [
 
 [[package]]
 name = "marty_common"
-version = "0.4.2"
+version = "0.5.0"
 dependencies = [
  "indexmap 2.14.0",
  "rustc-hash 2.1.2",
@@ -3176,7 +3176,7 @@ dependencies = [
 
 [[package]]
 name = "marty_config"
-version = "0.4.2"
+version = "0.5.0"
 dependencies = [
  "anyhow",
  "bpaf",
@@ -3197,7 +3197,7 @@ dependencies = [
 
 [[package]]
 name = "marty_core"
-version = "0.4.2"
+version = "0.5.0"
 dependencies = [
  "anyhow",
  "arduinox86_client 0.3.0 (git+https://github.com/dbalsom/arduinoX86)",
@@ -3237,7 +3237,7 @@ dependencies = [
 
 [[package]]
 name = "marty_display_common"
-version = "0.4.2"
+version = "0.5.0"
 dependencies = [
  "anyhow",
  "cfg-if",
@@ -3258,7 +3258,7 @@ dependencies = [
 
 [[package]]
 name = "marty_egui"
-version = "0.4.2"
+version = "0.5.0"
 dependencies = [
  "anyhow",
  "bytemuck",
@@ -3292,7 +3292,7 @@ dependencies = [
 
 [[package]]
 name = "marty_egui_common"
-version = "0.4.2"
+version = "0.5.0"
 dependencies = [
  "egui 0.34.2",
  "egui_extras 0.34.2",
@@ -3303,7 +3303,7 @@ dependencies = [
 
 [[package]]
 name = "marty_egui_eframe"
-version = "0.4.2"
+version = "0.5.0"
 dependencies = [
  "egui 0.34.2",
  "egui_extras 0.34.2",
@@ -3316,7 +3316,7 @@ dependencies = [
 
 [[package]]
 name = "marty_frontend_common"
-version = "0.4.2"
+version = "0.5.0"
 dependencies = [
  "anyhow",
  "cfg-if",
@@ -3348,7 +3348,7 @@ dependencies = [
 
 [[package]]
 name = "marty_scaler_glow"
-version = "0.4.2"
+version = "0.5.0"
 dependencies = [
  "bytemuck",
  "eframe",
@@ -3359,7 +3359,7 @@ dependencies = [
 
 [[package]]
 name = "marty_scaler_null"
-version = "0.4.2"
+version = "0.5.0"
 dependencies = [
  "egui 0.34.2",
  "marty_display_common",
@@ -3368,7 +3368,7 @@ dependencies = [
 
 [[package]]
 name = "marty_scaler_wgpu"
-version = "0.4.2"
+version = "0.5.0"
 dependencies = [
  "bytemuck",
  "marty_display_common",
@@ -3400,7 +3400,7 @@ dependencies = [
 
 [[package]]
 name = "marty_videocard_renderer"
-version = "0.4.2"
+version = "0.5.0"
 dependencies = [
  "bytemuck",
  "criterion",
@@ -3418,7 +3418,7 @@ dependencies = [
 
 [[package]]
 name = "marty_web_helpers"
-version = "0.4.2"
+version = "0.5.0"
 dependencies = [
  "crossbeam-channel",
  "log",
@@ -3432,7 +3432,7 @@ dependencies = [
 
 [[package]]
 name = "martypc_eframe"
-version = "0.4.2"
+version = "0.5.0"
 dependencies = [
  "anyhow",
  "async-std",
@@ -3479,7 +3479,7 @@ dependencies = [
 
 [[package]]
 name = "martypc_headless"
-version = "0.4.2"
+version = "0.5.0"
 dependencies = [
  "anyhow",
  "arduinox86_client 0.3.0 (git+https://github.com/dbalsom/arduino808x)",
@@ -3510,7 +3510,7 @@ dependencies = [
 
 [[package]]
 name = "martypc_launcher"
-version = "0.4.2"
+version = "0.5.0"
 dependencies = [
  "eframe",
  "egui 0.34.2",
