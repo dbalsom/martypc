@@ -30,6 +30,15 @@
 
 use martypc_eframe::{app::MartyApp, version_string, MARTY_ICON};
 
+#[cfg(target_arch = "wasm32")]
+fn show_fatal_error_screen(document: &web_sys::Document) {
+    if let Some(error_screen) = document.get_element_by_id("fatal_error_screen") {
+        if let Err(error) = error_screen.remove_attribute("hidden") {
+            log::error!("Failed to show fatal error screen: {error:?}");
+        }
+    }
+}
+
 #[cfg(not(target_arch = "wasm32"))]
 struct MartyWinitApp<'a> {
     inner:  eframe::EframeWinitApplication<'a>,
@@ -188,6 +197,11 @@ fn main() {
     // Redirect `log` messages to `console.log` and friends:
     eframe::WebLogger::init(log::LevelFilter::Debug).ok();
 
+    // Install panic hook
+    std::panic::set_hook(Box::new(|panic_info| {
+        log::error!("WASM panic: {panic_info}");
+    }));
+
     // Closure to start the application after user interaction
     let start_application = || {
         spawn_local(async {
@@ -198,9 +212,9 @@ fn main() {
                 start_screen.set_attribute("style", "display:none;").unwrap();
             }
 
-            // Show the loading spinner
+            // Show the loading overlay.
             if let Some(loading_text) = document.get_element_by_id("loading_text") {
-                loading_text.set_attribute("style", "display:block;").unwrap();
+                loading_text.set_attribute("style", "display:flex;").unwrap();
             }
 
             // Locate and show the canvas
@@ -224,29 +238,24 @@ fn main() {
 
             if app.emu.is_none() {
                 log::error!("Failed to create emulator, exiting.");
-                if let Some(loading_text) = document.get_element_by_id("loading_text") {
-                    loading_text.set_inner_html(
-                        "<p> MartyPC failed to initialize. See the developer console for details (Hit f12). </p>",
-                    );
-                }
-                panic!("Failed to create emulator");
+                show_fatal_error_screen(&document);
+                return;
             }
 
             let start_result = eframe::WebRunner::new()
                 .start(canvas, web_options, Box::new(move |cc| Ok(Box::new(app.init(cc)))))
                 .await;
 
-            // Remove the loading text and spinner
-            if let Some(loading_text) = document.get_element_by_id("loading_text") {
-                match start_result {
-                    Ok(_) => {
+            match start_result {
+                Ok(_) => {
+                    // Remove the loading overlay.
+                    if let Some(loading_text) = document.get_element_by_id("loading_text") {
                         loading_text.remove();
                     }
-                    Err(e) => {
-                        loading_text
-                            .set_inner_html("<p> The app has crashed. See the developer console for details. </p>");
-                        panic!("Failed to start eframe: {e:?}");
-                    }
+                }
+                Err(error) => {
+                    log::error!("Failed to start eframe: {error:?}");
+                    show_fatal_error_screen(&document);
                 }
             }
         });

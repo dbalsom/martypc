@@ -178,9 +178,12 @@ impl MartyApp {
         #[cfg(target_arch = "wasm32")]
         {
             let base_url = get_base_url();
-            let relative_config_url = base_url
+            let mut relative_config_url = base_url
                 .join("/configs/martypc.toml")
                 .expect("Failed to create relative config URL");
+            relative_config_url
+                .query_pairs_mut()
+                .append_pair("v", crate::build_id());
 
             let relative_manifest_url = base_url
                 .join("/configs/file_manifest.toml")
