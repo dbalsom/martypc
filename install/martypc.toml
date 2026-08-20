@@ -17,9 +17,9 @@ config_version = "0.5"
 # MartyPC's internal emulator service interrupt vector. Comment out to disable the service
 # interrupt. The service interrupt is required for the `m*.com` utilities to function such as
 # `mdebug.com`.
-service_interrupt = 0xFC
+service_interrupt = 0xF5
 # If true, emulator services start disabled and must be enabled through service control
-# function AH==00h. Requires updated `m*.com` utilities if you have older utilies than 0.4.2.
+# function AH==00h. Requires updated `m*.com` utilities if you have older utilies than 0.5.
 service_interrupt_gate = true
 
 # `config_name`: The name of the machine configuration to load.
