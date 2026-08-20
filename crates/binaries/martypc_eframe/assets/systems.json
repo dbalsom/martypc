@@ -1,0 +1,45 @@
+[
+  {
+    "id": "ibm5150",
+    "machineConfig": "ibm5150_xtide",
+    "configFamily": "ibm5150",
+    "name": "IBM PC 5150",
+    "description": "1981 · The original machine that started it all",
+    "image": "assets/ibm_5150_icon.png",
+    "options": [
+      "video-card"
+    ]
+  },
+  {
+    "id": "ibm5160",
+    "machineConfig": "ibm5160_xtide",
+    "configFamily": "ibm5160",
+    "name": "IBM PC/XT 5160",
+    "description": "1983 · The PC: Expanded and refined",
+    "image": "assets/ibm_5150_icon.png",
+    "options": [
+      "video-card",
+      "adlib"
+    ]
+  },
+  {
+    "id": "ibm_pcjr",
+    "machineConfig": "ibm_pcjr",
+    "configFamily": "ibm_pcjr",
+    "name": "IBM PCjr",
+    "description": "1984 · The IBM PC's quirky little brother",
+    "image": "assets/ibm_pcjr_icon.png",
+    "options": [
+      "memory-sidecar"
+    ]
+  },
+  {
+    "id": "tandy1000",
+    "machineConfig": "tandy1000",
+    "configFamily": "tandy1000",
+    "name": "Tandy 1000",
+    "description": "1984 · Enhanced color and sound",
+    "image": "assets/tandy_1000_icon.png",
+    "options": []
+  }
+]
