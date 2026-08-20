@@ -334,6 +334,10 @@ pub fn process_update(emu: &mut Emulator, dm: &mut EFrameDisplayManager, tm: &mu
                             let _ = emuc.sender.send(FrontendThreadEvent::QuitRequested);
                             log::warn!("Emulator quit requested after delay {}", delay);
                         }
+                        ServiceEvent::SetEmulationSpeed(fixed_percentage) => {
+                            let speed = f32::from(fixed_percentage) / 1000.0;
+                            emuc.set_emulation_speed(speed, tmu);
+                        }
                         ServiceEvent::GuestFileTransferComplete {
                             filename,
                             data,

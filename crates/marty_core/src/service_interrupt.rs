@@ -47,13 +47,48 @@ pub const MARTYPC_VERSION: u16 = (parse_version_byte(env!("CARGO_PKG_VERSION_MAJ
 pub const SERVICE_FLAG_INTERRUPT_ENABLED: u8 = 0x01;
 pub const SERVICE_FLAG_INTERRUPT_AVAILABLE: u8 = 0x02;
 
-pub const FUNC_SERVICE_CTRL: u8 = 0x00;
-pub const FUNC_DEBUGGER: u8 = 0x01;
-pub const FUNC_PIT_LOGGING: u8 = 0x02;
-pub const FUNC_QUIT: u8 = 0x03;
-pub const FUNC_FILE_TRANSFER_BEGIN: u8 = 0x04;
-pub const FUNC_FILE_TRANSFER_BLOCK: u8 = 0x05;
-pub const FUNC_FILE_TRANSFER_END: u8 = 0x06;
+#[derive(Copy, Clone, Debug, Eq, PartialEq)]
+#[repr(u8)]
+pub enum ServiceFunction {
+    ServiceControl = 0x00,
+    Debugger = 0x01,
+    PitLogging = 0x02,
+    Quit = 0x03,
+    FileTransferBegin = 0x04,
+    FileTransferBlock = 0x05,
+    FileTransferEnd = 0x06,
+    SpeedControl = 0x10,
+}
+
+impl TryFrom<u8> for ServiceFunction {
+    type Error = u8;
+
+    fn try_from(value: u8) -> Result<Self, Self::Error> {
+        match value {
+            0x00 => Ok(Self::ServiceControl),
+            0x01 => Ok(Self::Debugger),
+            0x02 => Ok(Self::PitLogging),
+            0x03 => Ok(Self::Quit),
+            0x04 => Ok(Self::FileTransferBegin),
+            0x05 => Ok(Self::FileTransferBlock),
+            0x06 => Ok(Self::FileTransferEnd),
+            0x10 => Ok(Self::SpeedControl),
+            _ => Err(value),
+        }
+    }
+}
+
+impl From<ServiceFunction> for u8 {
+    fn from(function: ServiceFunction) -> Self {
+        function as u8
+    }
+}
+
+pub const SPEED_CONTROL_QUERY: u8 = 0x00;
+pub const SPEED_CONTROL_SET: u8 = 0x01;
+pub const DEFAULT_SPEED_CONTROL_MIN: u16 = 100;
+pub const DEFAULT_SPEED_CONTROL_CURRENT: u16 = 1000;
+pub const DEFAULT_SPEED_CONTROL_MAX: u16 = 2000;
 
 pub const FILE_TRANSFER_GUEST_TO_HOST: u8 = 0x00;
 pub const FILE_TRANSFER_HOST_TO_GUEST: u8 = 0x01;
@@ -65,27 +100,71 @@ pub const FILE_TRANSFER_FLAG_MASK: u8 = FILE_TRANSFER_DIRECTION_MASK | FILE_TRAN
 pub const FILE_TRANSFER_COMMIT: u8 = 0x00;
 pub const FILE_TRANSFER_ABORT: u8 = 0x01;
 pub const FILE_TRANSFER_STRUCTURE_SIZE: u16 = 10;
-pub const FILE_TRANSFER_STATUS_WAIT: u16 = 0x0000;
-pub const FILE_TRANSFER_STATUS_READY: u16 = 0x0001;
-pub const FILE_TRANSFER_STATUS_ABORTED: u16 = 0x0002;
-pub const FILE_TRANSFER_STATUS_HOST_FILE_NOT_FOUND: u16 = 0x0003;
+#[derive(Copy, Clone, Debug, Eq, PartialEq)]
+#[repr(u16)]
+pub enum FileTransferStatus {
+    Wait = 0x0000,
+    Ready = 0x0001,
+    Aborted = 0x0002,
+    HostFileNotFound = 0x0003,
+}
 
-pub const SERVICE_ERROR_INVALID_FUNCTION: u16 = 0x0001;
-pub const SERVICE_ERROR_FILE_NOT_FOUND: u16 = 0x0002;
-pub const SERVICE_ERROR_TOO_MANY_OPEN_FILES: u16 = 0x0004;
-pub const SERVICE_ERROR_INVALID_HANDLE: u16 = 0x0006;
-pub const SERVICE_ERROR_NOT_ENOUGH_MEMORY: u16 = 0x0008;
-pub const SERVICE_ERROR_INVALID_ACCESS: u16 = 0x000C;
-pub const SERVICE_ERROR_INVALID_DATA: u16 = 0x000D;
-pub const SERVICE_ERROR_NOT_SUPPORTED: u16 = 0x0032;
-pub const SERVICE_ERROR_INVALID_PARAMETER: u16 = 0x0057;
-pub const SERVICE_ERROR_BUSY: u16 = 0x00AA;
+impl From<FileTransferStatus> for u16 {
+    fn from(status: FileTransferStatus) -> Self {
+        status as u16
+    }
+}
+
+#[derive(Copy, Clone, Debug, Eq, PartialEq)]
+#[repr(u16)]
+pub enum ServiceError {
+    InvalidFunction = 0x0001,
+    FileNotFound = 0x0002,
+    TooManyOpenFiles = 0x0004,
+    InvalidHandle = 0x0006,
+    NotEnoughMemory = 0x0008,
+    InvalidAccess = 0x000C,
+    InvalidData = 0x000D,
+    NotSupported = 0x0032,
+    InvalidParameter = 0x0057,
+    Busy = 0x00AA,
+}
+
+impl From<ServiceError> for u16 {
+    fn from(error: ServiceError) -> Self {
+        error as u16
+    }
+}
 
 pub const SERVICE_CTRL_BX: u16 = 0xDEAD;
 pub const SERVICE_CTRL_CX: u16 = 0xBEEF;
-pub const SERVICE_CTRL_DISABLE: u8 = 0x00;
-pub const SERVICE_CTRL_ENABLE: u8 = 0x01;
-pub const SERVICE_CTRL_QUERY: u8 = 0x02;
+
+#[derive(Copy, Clone, Debug, Eq, PartialEq)]
+#[repr(u8)]
+pub enum ServiceControl {
+    Disable = 0x00,
+    Enable = 0x01,
+    Query = 0x02,
+}
+
+impl TryFrom<u8> for ServiceControl {
+    type Error = u8;
+
+    fn try_from(value: u8) -> Result<Self, Self::Error> {
+        match value {
+            0x00 => Ok(Self::Disable),
+            0x01 => Ok(Self::Enable),
+            0x02 => Ok(Self::Query),
+            _ => Err(value),
+        }
+    }
+}
+
+impl From<ServiceControl> for u8 {
+    fn from(control: ServiceControl) -> Self {
+        control as u8
+    }
+}
 
 /// Parse a single cargo version string into a u8 byte
 const fn parse_version_byte(value: &str) -> u8 {
@@ -176,6 +255,9 @@ pub struct ServiceInterruptManager {
     free_file_transfer_handles: Vec<FileTransferHandle>,
     file_transfer_operations: MartyHashMap<FileTransferHandle, FileTransferOperation>,
     host_file_request: HostFileRequestState,
+    speed_control_min: u16,
+    speed_control_current: u16,
+    speed_control_max: u16,
 }
 
 impl Default for ServiceInterruptManager {
@@ -188,6 +270,9 @@ impl Default for ServiceInterruptManager {
             free_file_transfer_handles: Vec::new(),
             file_transfer_operations: MartyHashMap::default(),
             host_file_request: HostFileRequestState::Idle,
+            speed_control_min: DEFAULT_SPEED_CONTROL_MIN,
+            speed_control_current: DEFAULT_SPEED_CONTROL_CURRENT,
+            speed_control_max: DEFAULT_SPEED_CONTROL_MAX,
         }
     }
 }
@@ -215,20 +300,29 @@ impl ServiceInterruptManager {
     }
 
     /// Handle a service interrupt function that does not require CPU-specific execution logic.
-    pub fn handle_interrupt<C: Cpu>(&mut self, function: u8, cpu: &mut C) -> Option<ServiceEvent> {
-        if function == FUNC_SERVICE_CTRL {
+    pub fn handle_interrupt<C: Cpu>(&mut self, function: ServiceFunction, cpu: &mut C) -> Option<ServiceEvent> {
+        if function == ServiceFunction::ServiceControl {
             if !is_service_control(cpu) {
                 return None;
             }
 
-            match cpu.get_register8(Register8::AL) {
-                SERVICE_CTRL_DISABLE => self.enabled = false,
-                SERVICE_CTRL_ENABLE => self.enabled = true,
-                SERVICE_CTRL_QUERY => {}
-                _ => return None,
+            let Ok(control) = ServiceControl::try_from(cpu.get_register8(Register8::AL))
+            else {
+                return None;
+            };
+            match control {
+                ServiceControl::Disable => self.enabled = false,
+                ServiceControl::Enable => self.enabled = true,
+                ServiceControl::Query => {}
             }
 
-            cpu.set_register8(Register8::AL, u8::from(self.enabled));
+            let control = if self.enabled {
+                ServiceControl::Enable
+            }
+            else {
+                ServiceControl::Disable
+            };
+            cpu.set_register8(Register8::AL, control.into());
             clear_carry(cpu);
 
             return Some(ServiceEvent::ServiceInterruptEnabled(self.enabled));
@@ -239,36 +333,71 @@ impl ServiceInterruptManager {
         }
 
         match function {
-            FUNC_PIT_LOGGING => Some(ServiceEvent::TriggerPITLogging),
-            FUNC_QUIT => Some(ServiceEvent::QuitEmulator(cpu.get_register8(Register8::AL))),
-            FUNC_FILE_TRANSFER_BEGIN => self.begin_file_transfer(cpu),
-            FUNC_FILE_TRANSFER_BLOCK => {
+            ServiceFunction::PitLogging => Some(ServiceEvent::TriggerPITLogging),
+            ServiceFunction::Quit => Some(ServiceEvent::QuitEmulator(cpu.get_register8(Register8::AL))),
+            ServiceFunction::SpeedControl => self.handle_speed_control(cpu),
+            ServiceFunction::FileTransferBegin => self.begin_file_transfer(cpu),
+            ServiceFunction::FileTransferBlock => {
                 self.transfer_file_block(cpu);
                 None
             }
-            FUNC_FILE_TRANSFER_END => self.end_file_transfer(cpu),
-            _ => None,
+            ServiceFunction::FileTransferEnd => self.end_file_transfer(cpu),
+            ServiceFunction::ServiceControl | ServiceFunction::Debugger => None,
         }
+    }
+
+    fn handle_speed_control<C: Cpu>(&mut self, cpu: &mut C) -> Option<ServiceEvent> {
+        match cpu.get_register8(Register8::AL) {
+            SPEED_CONTROL_QUERY => {
+                cpu.set_register16(Register16::BX, self.speed_control_min);
+                cpu.set_register16(Register16::CX, self.speed_control_current);
+                cpu.set_register16(Register16::DX, self.speed_control_max);
+                clear_carry(cpu);
+                None
+            }
+            SPEED_CONTROL_SET => {
+                let requested_speed = cpu.get_register16(Register16::CX);
+                let speed = requested_speed.clamp(self.speed_control_min, self.speed_control_max);
+                self.speed_control_current = speed;
+                clear_carry(cpu);
+                Some(ServiceEvent::SetEmulationSpeed(speed))
+            }
+            _ => {
+                set_service_error(cpu, ServiceError::InvalidParameter);
+                None
+            }
+        }
+    }
+
+    pub fn configure_speed_control(&mut self, min: u16, current: u16, max: u16) {
+        let max = max.max(min);
+        self.speed_control_min = min;
+        self.speed_control_max = max;
+        self.speed_control_current = current.clamp(min, max);
+    }
+
+    pub fn set_speed_control_current(&mut self, current: u16) {
+        self.speed_control_current = current.clamp(self.speed_control_min, self.speed_control_max);
     }
 
     /// Initiates a file transfer operation between the guest and host.
     /// Returns a 16-bit handle - multiple transfers can be in progress at once.
     fn begin_file_transfer<C: Cpu>(&mut self, cpu: &mut C) -> Option<ServiceEvent> {
         if cpu.get_register16(Register16::CX) < FILE_TRANSFER_STRUCTURE_SIZE {
-            set_service_error(cpu, SERVICE_ERROR_INVALID_PARAMETER);
+            set_service_error(cpu, ServiceError::InvalidParameter);
             return None;
         }
 
         let flags = cpu.get_register8(Register8::AL);
         if flags & !FILE_TRANSFER_FLAG_MASK != 0 {
-            set_service_error(cpu, SERVICE_ERROR_INVALID_PARAMETER);
+            set_service_error(cpu, ServiceError::InvalidParameter);
             return None;
         }
         let direction = match flags & FILE_TRANSFER_DIRECTION_MASK {
             FILE_TRANSFER_GUEST_TO_HOST => FileTransferDirection::GuestToHost,
             FILE_TRANSFER_HOST_TO_GUEST => FileTransferDirection::HostToGuest,
             _ => {
-                set_service_error(cpu, SERVICE_ERROR_INVALID_ACCESS);
+                set_service_error(cpu, ServiceError::InvalidAccess);
                 return None;
             }
         };
@@ -296,7 +425,7 @@ impl ServiceInterruptManager {
 
         if direction == FileTransferDirection::HostToGuest {
             if !matches!(self.host_file_request, HostFileRequestState::Idle) {
-                set_service_error(cpu, SERVICE_ERROR_BUSY);
+                set_service_error(cpu, ServiceError::Busy);
                 return None;
             }
 
@@ -304,7 +433,7 @@ impl ServiceInterruptManager {
                 cpu,
                 structure_segment,
                 structure_offset.wrapping_add(8),
-                FILE_TRANSFER_STATUS_WAIT,
+                FileTransferStatus::Wait.into(),
             ) {
                 set_service_error(cpu, error);
                 return None;
@@ -325,7 +454,7 @@ impl ServiceInterruptManager {
 
             let Some(handle) = self.create_file_transfer_operation(&requested_filename, 0, direction)
             else {
-                set_service_error(cpu, SERVICE_ERROR_TOO_MANY_OPEN_FILES);
+                set_service_error(cpu, ServiceError::TooManyOpenFiles);
                 return None;
             };
             let operation = self
@@ -367,7 +496,7 @@ impl ServiceInterruptManager {
 
         let Some(handle) = self.create_file_transfer_operation(filename, transfer_size, direction)
         else {
-            set_service_error(cpu, SERVICE_ERROR_TOO_MANY_OPEN_FILES);
+            set_service_error(cpu, ServiceError::TooManyOpenFiles);
             return None;
         };
 
@@ -394,17 +523,17 @@ impl ServiceInterruptManager {
         let handle = cpu.get_register16(Register16::BX);
         let length = usize::from(cpu.get_register16(Register16::CX));
         if length == 0 {
-            set_service_error(cpu, SERVICE_ERROR_INVALID_PARAMETER);
+            set_service_error(cpu, ServiceError::InvalidParameter);
             return;
         }
 
         let Some(operation) = self.file_transfer_operations.get(&handle)
         else {
-            set_service_error(cpu, SERVICE_ERROR_INVALID_HANDLE);
+            set_service_error(cpu, ServiceError::InvalidHandle);
             return;
         };
         if !operation.ready {
-            set_service_error(cpu, SERVICE_ERROR_BUSY);
+            set_service_error(cpu, ServiceError::Busy);
             return;
         }
 
@@ -415,17 +544,17 @@ impl ServiceInterruptManager {
             FileTransferDirection::GuestToHost => {
                 let Some(new_size) = operation.data.len().checked_add(length)
                 else {
-                    set_service_error(cpu, SERVICE_ERROR_NOT_ENOUGH_MEMORY);
+                    set_service_error(cpu, ServiceError::NotEnoughMemory);
                     return;
                 };
                 if new_size as u64 > operation.size {
-                    set_service_error(cpu, SERVICE_ERROR_INVALID_DATA);
+                    set_service_error(cpu, ServiceError::InvalidData);
                     return;
                 }
 
                 let mut block = Vec::new();
                 if block.try_reserve_exact(length).is_err() {
-                    set_service_error(cpu, SERVICE_ERROR_NOT_ENOUGH_MEMORY);
+                    set_service_error(cpu, ServiceError::NotEnoughMemory);
                     return;
                 }
 
@@ -444,7 +573,7 @@ impl ServiceInterruptManager {
                     .get_mut(&handle)
                     .expect("validated file transfer handle disappeared");
                 if operation.data.try_reserve_exact(length).is_err() {
-                    set_service_error(cpu, SERVICE_ERROR_NOT_ENOUGH_MEMORY);
+                    set_service_error(cpu, ServiceError::NotEnoughMemory);
                     return;
                 }
                 operation.data.extend_from_slice(&block);
@@ -504,7 +633,7 @@ impl ServiceInterruptManager {
 
         let Some(operation) = self.file_transfer_operations.get(&handle)
         else {
-            set_service_error(cpu, SERVICE_ERROR_INVALID_HANDLE);
+            set_service_error(cpu, ServiceError::InvalidHandle);
             return None;
         };
 
@@ -512,7 +641,7 @@ impl ServiceInterruptManager {
             FILE_TRANSFER_COMMIT => "commit",
             FILE_TRANSFER_ABORT => "abort",
             _ => {
-                set_service_error(cpu, SERVICE_ERROR_INVALID_PARAMETER);
+                set_service_error(cpu, ServiceError::InvalidParameter);
                 return None;
             }
         };
@@ -544,12 +673,12 @@ impl ServiceInterruptManager {
         }
 
         if !operation.ready {
-            set_service_error(cpu, SERVICE_ERROR_BUSY);
+            set_service_error(cpu, ServiceError::Busy);
             return None;
         }
 
         if operation.transferred as u64 != operation.size {
-            set_service_error(cpu, SERVICE_ERROR_INVALID_DATA);
+            set_service_error(cpu, ServiceError::InvalidData);
             return None;
         }
 
@@ -655,10 +784,10 @@ impl ServiceInterruptManager {
         cpu: &mut C,
         filename: impl Into<String>,
         data: Vec<u8>,
-    ) -> Result<(), u16> {
+    ) -> Result<(), ServiceError> {
         let HostFileRequestState::Pending(request) = std::mem::take(&mut self.host_file_request)
         else {
-            return Err(SERVICE_ERROR_INVALID_HANDLE);
+            return Err(ServiceError::InvalidHandle);
         };
         let filename = filename.into();
 
@@ -667,9 +796,9 @@ impl ServiceInterruptManager {
                 cpu,
                 request.structure_segment,
                 request.structure_offset.wrapping_add(8),
-                FILE_TRANSFER_STATUS_ABORTED,
+                FileTransferStatus::Aborted.into(),
             );
-            return Err(SERVICE_ERROR_INVALID_DATA);
+            return Err(ServiceError::InvalidData);
         }
 
         if let Err(error) = write_guest_filename(cpu, request.filename_segment, request.filename_offset, &filename)
@@ -686,7 +815,7 @@ impl ServiceInterruptManager {
                 cpu,
                 request.structure_segment,
                 request.structure_offset.wrapping_add(8),
-                FILE_TRANSFER_STATUS_ABORTED,
+                FileTransferStatus::Aborted.into(),
             );
             return Err(error);
         }
@@ -694,7 +823,7 @@ impl ServiceInterruptManager {
         let operation = self
             .file_transfer_operations
             .get_mut(&request.handle)
-            .ok_or(SERVICE_ERROR_INVALID_HANDLE)?;
+            .ok_or(ServiceError::InvalidHandle)?;
         operation.filename = filename;
         operation.size = data.len() as u64;
         operation.data = data;
@@ -705,14 +834,14 @@ impl ServiceInterruptManager {
             cpu,
             request.structure_segment,
             request.structure_offset.wrapping_add(8),
-            FILE_TRANSFER_STATUS_READY,
+            FileTransferStatus::Ready.into(),
         ) {
             operation.ready = false;
             let _ = write_guest_u16(
                 cpu,
                 request.structure_segment,
                 request.structure_offset.wrapping_add(8),
-                FILE_TRANSFER_STATUS_ABORTED,
+                FileTransferStatus::Aborted.into(),
             );
             return Err(error);
         }
@@ -727,25 +856,25 @@ impl ServiceInterruptManager {
     }
 
     /// Mark a pending host-file selection as aborted by the user or frontend.
-    pub fn abort_host_file_request<C: Cpu>(&mut self, cpu: &mut C) -> Result<(), u16> {
-        self.fail_host_file_request(cpu, FILE_TRANSFER_STATUS_ABORTED)
+    pub fn abort_host_file_request<C: Cpu>(&mut self, cpu: &mut C) -> Result<(), ServiceError> {
+        self.fail_host_file_request(cpu, FileTransferStatus::Aborted)
     }
 
     /// Mark a pending non-interactive host-file request as missing from the host resource.
-    pub fn host_file_not_found<C: Cpu>(&mut self, cpu: &mut C) -> Result<(), u16> {
-        self.fail_host_file_request(cpu, FILE_TRANSFER_STATUS_HOST_FILE_NOT_FOUND)
+    pub fn host_file_not_found<C: Cpu>(&mut self, cpu: &mut C) -> Result<(), ServiceError> {
+        self.fail_host_file_request(cpu, FileTransferStatus::HostFileNotFound)
     }
 
-    fn fail_host_file_request<C: Cpu>(&mut self, cpu: &mut C, status: u16) -> Result<(), u16> {
+    fn fail_host_file_request<C: Cpu>(&mut self, cpu: &mut C, status: FileTransferStatus) -> Result<(), ServiceError> {
         let HostFileRequestState::Pending(request) = std::mem::take(&mut self.host_file_request)
         else {
-            return Err(SERVICE_ERROR_INVALID_HANDLE);
+            return Err(ServiceError::InvalidHandle);
         };
         write_guest_u16(
             cpu,
             request.structure_segment,
             request.structure_offset.wrapping_add(8),
-            status,
+            status.into(),
         )
     }
 
@@ -761,62 +890,62 @@ impl ServiceInterruptManager {
     }
 }
 
-fn read_guest_u8<C: Cpu>(cpu: &mut C, segment: u16, offset: u16) -> Result<u8, u16> {
+fn read_guest_u8<C: Cpu>(cpu: &mut C, segment: u16, offset: u16) -> Result<u8, ServiceError> {
     let address = crate::cpu_common::calc_linear_address(segment, offset) as usize;
     cpu.bus_mut()
         .read_u8(address, 0)
         .map(|(value, _)| value)
-        .map_err(|_| SERVICE_ERROR_INVALID_DATA)
+        .map_err(|_| ServiceError::InvalidData)
 }
 
-fn read_guest_u16<C: Cpu>(cpu: &mut C, segment: u16, offset: u16) -> Result<u16, u16> {
+fn read_guest_u16<C: Cpu>(cpu: &mut C, segment: u16, offset: u16) -> Result<u16, ServiceError> {
     let low = read_guest_u8(cpu, segment, offset)?;
     let high = read_guest_u8(cpu, segment, offset.wrapping_add(1))?;
     Ok(u16::from(low) | (u16::from(high) << 8))
 }
 
-fn read_guest_u32<C: Cpu>(cpu: &mut C, segment: u16, offset: u16) -> Result<u32, u16> {
+fn read_guest_u32<C: Cpu>(cpu: &mut C, segment: u16, offset: u16) -> Result<u32, ServiceError> {
     let low = read_guest_u16(cpu, segment, offset)?;
     let high = read_guest_u16(cpu, segment, offset.wrapping_add(2))?;
     Ok(u32::from(low) | (u32::from(high) << 16))
 }
 
-fn write_guest_u8<C: Cpu>(cpu: &mut C, segment: u16, offset: u16, value: u8) -> Result<(), u16> {
+fn write_guest_u8<C: Cpu>(cpu: &mut C, segment: u16, offset: u16, value: u8) -> Result<(), ServiceError> {
     let address = crate::cpu_common::calc_linear_address(segment, offset) as usize;
     cpu.bus_mut()
         .write_u8(address, value, 0)
         .map(|_| ())
-        .map_err(|_| SERVICE_ERROR_INVALID_DATA)
+        .map_err(|_| ServiceError::InvalidData)
 }
 
-fn write_guest_u16<C: Cpu>(cpu: &mut C, segment: u16, offset: u16, value: u16) -> Result<(), u16> {
+fn write_guest_u16<C: Cpu>(cpu: &mut C, segment: u16, offset: u16, value: u16) -> Result<(), ServiceError> {
     write_guest_u8(cpu, segment, offset, value as u8)?;
     write_guest_u8(cpu, segment, offset.wrapping_add(1), (value >> 8) as u8)
 }
 
-fn write_guest_u32<C: Cpu>(cpu: &mut C, segment: u16, offset: u16, value: u32) -> Result<(), u16> {
+fn write_guest_u32<C: Cpu>(cpu: &mut C, segment: u16, offset: u16, value: u32) -> Result<(), ServiceError> {
     write_guest_u16(cpu, segment, offset, value as u16)?;
     write_guest_u16(cpu, segment, offset.wrapping_add(2), (value >> 16) as u16)
 }
 
-fn write_guest_filename<C: Cpu>(cpu: &mut C, segment: u16, offset: u16, filename: &str) -> Result<(), u16> {
+fn write_guest_filename<C: Cpu>(cpu: &mut C, segment: u16, offset: u16, filename: &str) -> Result<(), ServiceError> {
     for (index, value) in filename.bytes().chain(std::iter::once(0)).enumerate() {
         write_guest_u8(cpu, segment, offset.wrapping_add(index as u16), value)?;
     }
     Ok(())
 }
 
-fn read_guest_filename<C: Cpu>(cpu: &mut C, segment: u16, offset: u16) -> Result<String, u16> {
+fn read_guest_filename<C: Cpu>(cpu: &mut C, segment: u16, offset: u16) -> Result<String, ServiceError> {
     let mut bytes = Vec::new();
     bytes
         .try_reserve_exact(MAX_TRANSFER_FILENAME_LEN)
-        .map_err(|_| SERVICE_ERROR_NOT_ENOUGH_MEMORY)?;
+        .map_err(|_| ServiceError::NotEnoughMemory)?;
 
     for index in 0..=MAX_TRANSFER_FILENAME_LEN {
         let byte = read_guest_u8(cpu, segment, offset.wrapping_add(index as u16))?;
         if byte == 0 {
             if bytes.is_empty() {
-                return Err(SERVICE_ERROR_INVALID_DATA);
+                return Err(ServiceError::InvalidData);
             }
             return Ok(String::from_utf8_lossy(&bytes).into_owned());
         }
@@ -826,7 +955,7 @@ fn read_guest_filename<C: Cpu>(cpu: &mut C, segment: u16, offset: u16) -> Result
         bytes.push(byte);
     }
 
-    Err(SERVICE_ERROR_INVALID_DATA)
+    Err(ServiceError::InvalidData)
 }
 
 fn clear_carry<C: Cpu>(cpu: &mut C) {
@@ -853,8 +982,8 @@ fn set_crc32_result<C: Cpu>(cpu: &mut C, crc32: u32) {
     cpu.set_register16(Register16::DX, (crc32 >> 16) as u16);
 }
 
-fn set_service_error<C: Cpu>(cpu: &mut C, error: u16) {
-    cpu.set_register16(Register16::AX, error);
+fn set_service_error<C: Cpu>(cpu: &mut C, error: ServiceError) {
+    cpu.set_register16(Register16::AX, error.into());
     cpu.set_flags(cpu.get_flags() | CARRY_FLAG);
 }
 
@@ -866,7 +995,7 @@ pub fn is_martypc_probe<C: Cpu>(interrupt: u8, cpu: &C) -> bool {
 }
 
 pub fn is_service_control<C: Cpu>(cpu: &C) -> bool {
-    cpu.get_register8(Register8::AH) == FUNC_SERVICE_CTRL
+    cpu.get_register8(Register8::AH) == ServiceFunction::ServiceControl.into()
         && cpu.get_register16(Register16::BX) == SERVICE_CTRL_BX
         && cpu.get_register16(Register16::CX) == SERVICE_CTRL_CX
 }
@@ -921,7 +1050,7 @@ mod tests {
         cpu.set_register16(Register16::CX, FILE_TRANSFER_STRUCTURE_SIZE);
         cpu.set_register16(Register16::ES, TEST_STRUCTURE_SEGMENT);
         cpu.set_register16(Register16::DI, TEST_STRUCTURE_OFFSET);
-        manager.handle_interrupt(FUNC_FILE_TRANSFER_BEGIN, cpu);
+        manager.handle_interrupt(ServiceFunction::FileTransferBegin, cpu);
 
         if cpu.get_flags() & CARRY_FLAG == 0 {
             Some(cpu.get_register16(Register16::BX))
@@ -942,7 +1071,7 @@ mod tests {
         cpu.set_register16(Register16::ES, TEST_STRUCTURE_SEGMENT);
         cpu.set_register16(Register16::DI, TEST_BUFFER_OFFSET);
         cpu.set_register16(Register16::CX, bytes.len() as u16);
-        manager.handle_interrupt(FUNC_FILE_TRANSFER_BLOCK, cpu);
+        manager.handle_interrupt(ServiceFunction::FileTransferBlock, cpu);
     }
 
     #[test]
@@ -1008,11 +1137,11 @@ mod tests {
             .create_file_transfer_operation("transfer.bin", 4096, FileTransferDirection::GuestToHost)
             .unwrap();
 
-        cpu.set_register8(Register8::AH, FUNC_SERVICE_CTRL);
-        cpu.set_register8(Register8::AL, SERVICE_CTRL_ENABLE);
+        cpu.set_register8(Register8::AH, ServiceFunction::ServiceControl.into());
+        cpu.set_register8(Register8::AL, ServiceControl::Enable.into());
         cpu.set_register16(Register16::BX, SERVICE_CTRL_BX);
         cpu.set_register16(Register16::CX, SERVICE_CTRL_CX);
-        manager.handle_interrupt(FUNC_SERVICE_CTRL, &mut cpu);
+        manager.handle_interrupt(ServiceFunction::ServiceControl, &mut cpu);
         assert!(manager.enabled());
 
         manager.reset();
@@ -1038,7 +1167,7 @@ mod tests {
 
         cpu.set_register16(Register16::BX, handle);
         cpu.set_register8(Register8::AL, FILE_TRANSFER_COMMIT);
-        let event = manager.handle_interrupt(FUNC_FILE_TRANSFER_END, &mut cpu);
+        let event = manager.handle_interrupt(ServiceFunction::FileTransferEnd, &mut cpu);
 
         assert_eq!(cpu.get_flags() & CARRY_FLAG, 0);
         assert_eq!(
@@ -1077,7 +1206,7 @@ mod tests {
         cpu.set_register8(Register8::AL, FILE_TRANSFER_COMMIT);
 
         assert!(matches!(
-            manager.handle_interrupt(FUNC_FILE_TRANSFER_END, &mut cpu),
+            manager.handle_interrupt(ServiceFunction::FileTransferEnd, &mut cpu),
             Some(ServiceEvent::GuestFileTransferComplete {
                 filename,
                 data,
@@ -1095,16 +1224,18 @@ mod tests {
         transfer_guest_block(&mut manager, &mut cpu, handle, b"abc");
         cpu.set_register16(Register16::BX, handle);
         cpu.set_register8(Register8::AL, FILE_TRANSFER_COMMIT);
-        assert!(manager.handle_interrupt(FUNC_FILE_TRANSFER_END, &mut cpu).is_none());
+        assert!(manager
+            .handle_interrupt(ServiceFunction::FileTransferEnd, &mut cpu)
+            .is_none());
         assert_ne!(cpu.get_flags() & CARRY_FLAG, 0);
-        assert_eq!(cpu.get_register16(Register16::AX), SERVICE_ERROR_INVALID_DATA);
+        assert_eq!(cpu.get_register16(Register16::AX), ServiceError::InvalidData.into());
         assert!(manager.file_transfer_operation(handle).is_some());
 
         transfer_guest_block(&mut manager, &mut cpu, handle, b"d");
         cpu.set_register16(Register16::BX, handle);
         cpu.set_register8(Register8::AL, FILE_TRANSFER_COMMIT);
         assert!(matches!(
-            manager.handle_interrupt(FUNC_FILE_TRANSFER_END, &mut cpu),
+            manager.handle_interrupt(ServiceFunction::FileTransferEnd, &mut cpu),
             Some(ServiceEvent::GuestFileTransferComplete { .. })
         ));
     }
@@ -1140,7 +1271,9 @@ mod tests {
         cpu.set_register16(Register16::BX, handle);
         cpu.set_register8(Register8::AL, FILE_TRANSFER_ABORT);
 
-        assert!(manager.handle_interrupt(FUNC_FILE_TRANSFER_END, &mut cpu).is_none());
+        assert!(manager
+            .handle_interrupt(ServiceFunction::FileTransferEnd, &mut cpu)
+            .is_none());
         assert_eq!(cpu.get_flags() & CARRY_FLAG, 0);
         assert!(manager.file_transfer_operation(handle).is_none());
     }
@@ -1169,19 +1302,19 @@ mod tests {
         );
         assert_eq!(
             read_guest_bytes(&mut cpu, TEST_STRUCTURE_SEGMENT, TEST_STRUCTURE_OFFSET + 8, 2),
-            FILE_TRANSFER_STATUS_READY.to_le_bytes()
+            u16::from(FileTransferStatus::Ready).to_le_bytes()
         );
 
         cpu.set_register16(Register16::BX, handle);
         cpu.set_register16(Register16::ES, TEST_STRUCTURE_SEGMENT);
         cpu.set_register16(Register16::DI, TEST_BUFFER_OFFSET);
         cpu.set_register16(Register16::CX, 5);
-        manager.handle_interrupt(FUNC_FILE_TRANSFER_BLOCK, &mut cpu);
+        manager.handle_interrupt(ServiceFunction::FileTransferBlock, &mut cpu);
         assert_eq!(cpu.get_register16(Register16::AX), 5);
 
         cpu.set_register16(Register16::DI, TEST_BUFFER_OFFSET + 5);
         cpu.set_register16(Register16::CX, 10);
-        manager.handle_interrupt(FUNC_FILE_TRANSFER_BLOCK, &mut cpu);
+        manager.handle_interrupt(ServiceFunction::FileTransferBlock, &mut cpu);
         assert_eq!(cpu.get_register16(Register16::AX), 4);
         assert_eq!(
             read_guest_bytes(&mut cpu, TEST_STRUCTURE_SEGMENT, TEST_BUFFER_OFFSET, 9),
@@ -1190,7 +1323,9 @@ mod tests {
 
         cpu.set_register16(Register16::BX, handle);
         cpu.set_register8(Register8::AL, FILE_TRANSFER_COMMIT);
-        assert!(manager.handle_interrupt(FUNC_FILE_TRANSFER_END, &mut cpu).is_none());
+        assert!(manager
+            .handle_interrupt(ServiceFunction::FileTransferEnd, &mut cpu)
+            .is_none());
         assert_eq!(cpu.get_flags() & CARRY_FLAG, 0);
         assert_eq!(
             u32::from(cpu.get_register16(Register16::DX)) << 16 | u32::from(cpu.get_register16(Register16::CX)),
@@ -1214,7 +1349,7 @@ mod tests {
         cpu.set_register16(Register16::ES, TEST_STRUCTURE_SEGMENT);
         cpu.set_register16(Register16::DI, TEST_STRUCTURE_OFFSET);
         assert!(matches!(
-            manager.handle_interrupt(FUNC_FILE_TRANSFER_BEGIN, &mut cpu),
+            manager.handle_interrupt(ServiceFunction::FileTransferBegin, &mut cpu),
             Some(ServiceEvent::HostFileTransferRequested { filename: None })
         ));
         assert_eq!(cpu.get_flags() & CARRY_FLAG, 0);
@@ -1222,22 +1357,22 @@ mod tests {
         assert_eq!(handle, 0x1000);
         assert_eq!(
             read_guest_bytes(&mut cpu, TEST_STRUCTURE_SEGMENT, TEST_STRUCTURE_OFFSET + 8, 2),
-            FILE_TRANSFER_STATUS_WAIT.to_le_bytes()
+            u16::from(FileTransferStatus::Wait).to_le_bytes()
         );
 
         cpu.set_register16(Register16::BX, handle);
         cpu.set_register16(Register16::CX, 1);
         cpu.set_register16(Register16::ES, TEST_STRUCTURE_SEGMENT);
         cpu.set_register16(Register16::DI, TEST_BUFFER_OFFSET);
-        manager.handle_interrupt(FUNC_FILE_TRANSFER_BLOCK, &mut cpu);
-        assert_eq!(cpu.get_register16(Register16::AX), SERVICE_ERROR_BUSY);
+        manager.handle_interrupt(ServiceFunction::FileTransferBlock, &mut cpu);
+        assert_eq!(cpu.get_register16(Register16::AX), ServiceError::Busy.into());
 
         manager
             .complete_host_file_request(&mut cpu, "PICKED.DAT", b"selected".to_vec())
             .unwrap();
         assert_eq!(
             read_guest_bytes(&mut cpu, TEST_STRUCTURE_SEGMENT, TEST_STRUCTURE_OFFSET + 8, 2),
-            FILE_TRANSFER_STATUS_READY.to_le_bytes()
+            u16::from(FileTransferStatus::Ready).to_le_bytes()
         );
     }
 
@@ -1249,7 +1384,7 @@ mod tests {
         let mut structure = Vec::from(TEST_FILENAME_OFFSET.to_le_bytes());
         structure.extend_from_slice(&TEST_STRUCTURE_SEGMENT.to_le_bytes());
         structure.extend_from_slice(&0u32.to_le_bytes());
-        structure.extend_from_slice(&FILE_TRANSFER_STATUS_WAIT.to_le_bytes());
+        structure.extend_from_slice(&u16::from(FileTransferStatus::Wait).to_le_bytes());
         write_guest_bytes(&mut cpu, TEST_STRUCTURE_SEGMENT, TEST_STRUCTURE_OFFSET, &structure);
         write_guest_bytes(
             &mut cpu,
@@ -1267,7 +1402,7 @@ mod tests {
         cpu.set_register16(Register16::DI, TEST_STRUCTURE_OFFSET);
 
         assert!(matches!(
-            manager.handle_interrupt(FUNC_FILE_TRANSFER_BEGIN, &mut cpu),
+            manager.handle_interrupt(ServiceFunction::FileTransferBegin, &mut cpu),
             Some(ServiceEvent::HostFileTransferRequested {
                 filename: Some(filename)
             }) if filename == "RESOURCE.DAT"
@@ -1284,7 +1419,10 @@ mod tests {
         let mut cpu = crate::cpu_808x::Intel808x::default();
 
         assert!(begin_transfer(&mut manager, &mut cpu, 0x80, "INVALID.DAT", 1).is_none());
-        assert_eq!(cpu.get_register16(Register16::AX), SERVICE_ERROR_INVALID_PARAMETER);
+        assert_eq!(
+            cpu.get_register16(Register16::AX),
+            ServiceError::InvalidParameter.into()
+        );
     }
 
     #[test]
@@ -1296,7 +1434,7 @@ mod tests {
         manager.abort_host_file_request(&mut cpu).unwrap();
         assert_eq!(
             read_guest_bytes(&mut cpu, TEST_STRUCTURE_SEGMENT, TEST_STRUCTURE_OFFSET + 8, 2),
-            FILE_TRANSFER_STATUS_ABORTED.to_le_bytes()
+            u16::from(FileTransferStatus::Aborted).to_le_bytes()
         );
         assert!(manager.file_transfer_operation(handle).is_some());
     }
@@ -1318,7 +1456,7 @@ mod tests {
 
         assert_eq!(
             read_guest_bytes(&mut cpu, TEST_STRUCTURE_SEGMENT, TEST_STRUCTURE_OFFSET + 8, 2),
-            FILE_TRANSFER_STATUS_HOST_FILE_NOT_FOUND.to_le_bytes()
+            u16::from(FileTransferStatus::HostFileNotFound).to_le_bytes()
         );
         assert!(manager.file_transfer_operation(handle).is_some());
     }
@@ -1333,55 +1471,103 @@ mod tests {
 
         assert!(manager.enabled());
         assert!(matches!(
-            manager.handle_interrupt(FUNC_PIT_LOGGING, &mut cpu),
+            manager.handle_interrupt(ServiceFunction::PitLogging, &mut cpu),
             Some(ServiceEvent::TriggerPITLogging)
         ));
 
-        cpu.set_register8(Register8::AH, FUNC_SERVICE_CTRL);
+        cpu.set_register8(Register8::AH, ServiceFunction::ServiceControl.into());
         cpu.set_register16(Register16::BX, SERVICE_CTRL_BX);
         cpu.set_register16(Register16::CX, SERVICE_CTRL_CX);
 
-        cpu.set_register8(Register8::AL, SERVICE_CTRL_QUERY);
+        cpu.set_register8(Register8::AL, ServiceControl::Query.into());
         cpu.set_flags(cpu.get_flags() | CARRY_FLAG);
         assert!(matches!(
-            manager.handle_interrupt(FUNC_SERVICE_CTRL, &mut cpu),
+            manager.handle_interrupt(ServiceFunction::ServiceControl, &mut cpu),
             Some(ServiceEvent::ServiceInterruptEnabled(true))
         ));
-        assert_eq!(cpu.get_register8(Register8::AL), SERVICE_CTRL_ENABLE);
+        assert_eq!(cpu.get_register8(Register8::AL), ServiceControl::Enable.into());
         assert_eq!(cpu.get_flags() & CARRY_FLAG, 0);
 
-        cpu.set_register8(Register8::AL, SERVICE_CTRL_DISABLE);
+        cpu.set_register8(Register8::AL, ServiceControl::Disable.into());
         assert!(is_service_control(&cpu));
         assert!(matches!(
-            manager.handle_interrupt(FUNC_SERVICE_CTRL, &mut cpu),
+            manager.handle_interrupt(ServiceFunction::ServiceControl, &mut cpu),
             Some(ServiceEvent::ServiceInterruptEnabled(false))
         ));
         assert!(!manager.enabled());
-        assert_eq!(cpu.get_register8(Register8::AL), SERVICE_CTRL_DISABLE);
+        assert_eq!(cpu.get_register8(Register8::AL), ServiceControl::Disable.into());
 
-        cpu.set_register8(Register8::AL, SERVICE_CTRL_QUERY);
+        cpu.set_register8(Register8::AL, ServiceControl::Query.into());
         assert!(matches!(
-            manager.handle_interrupt(FUNC_SERVICE_CTRL, &mut cpu),
+            manager.handle_interrupt(ServiceFunction::ServiceControl, &mut cpu),
             Some(ServiceEvent::ServiceInterruptEnabled(false))
         ));
-        assert_eq!(cpu.get_register8(Register8::AL), SERVICE_CTRL_DISABLE);
-        assert!(manager.handle_interrupt(FUNC_PIT_LOGGING, &mut cpu).is_none());
+        assert_eq!(cpu.get_register8(Register8::AL), ServiceControl::Disable.into());
+        assert!(manager
+            .handle_interrupt(ServiceFunction::PitLogging, &mut cpu)
+            .is_none());
 
-        cpu.set_register8(Register8::AL, SERVICE_CTRL_ENABLE);
+        cpu.set_register8(Register8::AL, ServiceControl::Enable.into());
         assert!(matches!(
-            manager.handle_interrupt(FUNC_SERVICE_CTRL, &mut cpu),
+            manager.handle_interrupt(ServiceFunction::ServiceControl, &mut cpu),
             Some(ServiceEvent::ServiceInterruptEnabled(true))
         ));
         assert!(manager.enabled());
-        assert_eq!(cpu.get_register8(Register8::AL), SERVICE_CTRL_ENABLE);
+        assert_eq!(cpu.get_register8(Register8::AL), ServiceControl::Enable.into());
 
         cpu.set_register8(Register8::AL, 7);
         assert!(matches!(
-            manager.handle_interrupt(FUNC_QUIT, &mut cpu),
+            manager.handle_interrupt(ServiceFunction::Quit, &mut cpu),
             Some(ServiceEvent::QuitEmulator(7))
         ));
 
-        assert!(manager.handle_interrupt(0xFF, &mut cpu).is_none());
+        assert_eq!(ServiceFunction::try_from(0xFF), Err(0xFF));
+    }
+
+    #[test]
+    fn speed_control_queries_and_sets_fixed_point_percentage() {
+        let mut manager = ServiceInterruptManager::new(None, true);
+        let mut cpu = crate::cpu_808x::Intel808x::default();
+
+        manager.configure_speed_control(500, 1000, 1500);
+        cpu.set_register8(Register8::AL, SPEED_CONTROL_QUERY);
+        cpu.set_flags(cpu.get_flags() | CARRY_FLAG);
+        assert!(manager
+            .handle_interrupt(ServiceFunction::SpeedControl, &mut cpu)
+            .is_none());
+        assert_eq!(cpu.get_register16(Register16::BX), 500);
+        assert_eq!(cpu.get_register16(Register16::CX), 1000);
+        assert_eq!(cpu.get_register16(Register16::DX), 1500);
+        assert_eq!(cpu.get_flags() & CARRY_FLAG, 0);
+
+        cpu.set_register8(Register8::AL, SPEED_CONTROL_SET);
+        cpu.set_register16(Register16::CX, 2000);
+        cpu.set_flags(cpu.get_flags() | CARRY_FLAG);
+        assert!(matches!(
+            manager.handle_interrupt(ServiceFunction::SpeedControl, &mut cpu),
+            Some(ServiceEvent::SetEmulationSpeed(1500))
+        ));
+        assert_eq!(cpu.get_flags() & CARRY_FLAG, 0);
+
+        cpu.set_register8(Register8::AL, SPEED_CONTROL_QUERY);
+        manager.handle_interrupt(ServiceFunction::SpeedControl, &mut cpu);
+        assert_eq!(cpu.get_register16(Register16::CX), 1500);
+    }
+
+    #[test]
+    fn speed_control_rejects_invalid_subfunction() {
+        let mut manager = ServiceInterruptManager::new(None, true);
+        let mut cpu = crate::cpu_808x::Intel808x::default();
+        cpu.set_register8(Register8::AL, 0xFF);
+
+        assert!(manager
+            .handle_interrupt(ServiceFunction::SpeedControl, &mut cpu)
+            .is_none());
+        assert_ne!(cpu.get_flags() & CARRY_FLAG, 0);
+        assert_eq!(
+            cpu.get_register16(Register16::AX),
+            ServiceError::InvalidParameter.into()
+        );
     }
 
     #[test]
@@ -1390,13 +1576,15 @@ mod tests {
 
         let mut manager = ServiceInterruptManager::new(None, true);
         let mut cpu = Intel808x::default();
-        cpu.set_register8(Register8::AH, FUNC_SERVICE_CTRL);
-        cpu.set_register8(Register8::AL, SERVICE_CTRL_ENABLE);
+        cpu.set_register8(Register8::AH, ServiceFunction::ServiceControl.into());
+        cpu.set_register8(Register8::AL, ServiceControl::Enable.into());
         cpu.set_register16(Register16::BX, SERVICE_CTRL_BX);
         cpu.set_register16(Register16::CX, SERVICE_CTRL_CX ^ 1);
 
         assert!(!is_service_control(&cpu));
-        assert!(manager.handle_interrupt(FUNC_SERVICE_CTRL, &mut cpu).is_none());
+        assert!(manager
+            .handle_interrupt(ServiceFunction::ServiceControl, &mut cpu)
+            .is_none());
         assert!(manager.enabled());
     }
 
@@ -1425,11 +1613,11 @@ mod tests {
         );
         assert_eq!(cpu.get_register16(Register16::SI), MARTYPC_API_VERSION);
 
-        cpu.set_register8(Register8::AH, FUNC_SERVICE_CTRL);
-        cpu.set_register8(Register8::AL, SERVICE_CTRL_DISABLE);
+        cpu.set_register8(Register8::AH, ServiceFunction::ServiceControl.into());
+        cpu.set_register8(Register8::AL, ServiceControl::Disable.into());
         cpu.set_register16(Register16::BX, SERVICE_CTRL_BX);
         cpu.set_register16(Register16::CX, SERVICE_CTRL_CX);
-        manager.handle_interrupt(FUNC_SERVICE_CTRL, &mut cpu);
+        manager.handle_interrupt(ServiceFunction::ServiceControl, &mut cpu);
         manager.handle_probe(&mut cpu);
 
         assert_eq!(cpu.get_register8(Register8::DH), SERVICE_FLAG_INTERRUPT_AVAILABLE);

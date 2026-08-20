@@ -111,12 +111,7 @@ pub fn handle_egui_event(
             },
             GuiVariable::Float(op, val) => match op {
                 GuiFloat::EmulationSpeed => {
-                    log::debug!("Got emulation speed factor: {}", val);
-                    tmu.new_throttle_factor = Some(*val as f64);
-
-                    if let Some(si) = &mut emu.si {
-                        si.set_master_speed(*val);
-                    }
+                    emu.set_emulation_speed(*val, tmu);
                 }
                 GuiFloat::MouseSpeed => {
                     if let Some(mouse) = emu.machine.bus_mut().mouse_mut() {

@@ -82,7 +82,7 @@ use crate::{
     keys::MartyKey,
     machine_config::{get_machine_descriptor, MachineConfiguration, MachineDescriptor},
     machine_types::{MachineType, OnHaltBehavior},
-    service_interrupt::ServiceInterruptManager,
+    service_interrupt::{ServiceFunction, ServiceInterruptManager},
     tracelogger::TraceLogger,
 };
 
@@ -839,22 +839,41 @@ impl Machine {
             .service_interrupt_manager
             .complete_host_file_request(&mut self.cpu, filename, data)
         {
-            log::error!("Failed to complete host file transfer request: {:04X}h", error);
+            log::error!(
+                "Failed to complete host file transfer request: {:04X}h",
+                u16::from(error)
+            );
         }
     }
 
     /// Mark a pending host-to-guest transfer request as aborted.
     pub fn abort_service_host_file_request(&mut self) {
         if let Err(error) = self.service_interrupt_manager.abort_host_file_request(&mut self.cpu) {
-            log::error!("Failed to abort host file transfer request: {:04X}h", error);
+            log::error!(
+                "Failed to abort host file transfer request: {:04X}h",
+                u16::from(error)
+            );
         }
     }
 
     /// Mark a pending non-interactive host-to-guest transfer as not found.
     pub fn service_host_file_not_found(&mut self) {
         if let Err(error) = self.service_interrupt_manager.host_file_not_found(&mut self.cpu) {
-            log::error!("Failed to report missing host transfer file: {:04X}h", error);
+            log::error!(
+                "Failed to report missing host transfer file: {:04X}h",
+                u16::from(error)
+            );
         }
+    }
+
+    /// Configure the fixed-point speed values reported by service function `AH=10h`.
+    pub fn configure_service_speed_control(&mut self, min: u16, current: u16, max: u16) {
+        self.service_interrupt_manager.configure_speed_control(min, current, max);
+    }
+
+    /// Synchronize the current frontend speed reported by service function `AH=10h`.
+    pub fn set_service_speed_control_current(&mut self, current: u16) {
+        self.service_interrupt_manager.set_speed_control_current(current);
     }
 
     pub fn get_cpu_factor(&mut self) -> ClockFactor {
@@ -1554,9 +1573,11 @@ impl Machine {
     fn handle_service_event(&mut self, event: ServiceEvent) {
         match event {
             ServiceEvent::ServiceInterrupt(function) => {
-                let event = self.service_interrupt_manager.handle_interrupt(function, &mut self.cpu);
-                if let Some(event) = event {
-                    self.handle_service_event(event);
+                if let Ok(function) = ServiceFunction::try_from(function) {
+                    let event = self.service_interrupt_manager.handle_interrupt(function, &mut self.cpu);
+                    if let Some(event) = event {
+                        self.handle_service_event(event);
+                    }
                 }
             }
             ServiceEvent::ServiceInterruptProbe => {
@@ -1574,6 +1595,11 @@ impl Machine {
                 // Forward the quit event to the frontend.
                 self.events
                     .push(MachineEvent::Service(ServiceEvent::QuitEmulator(delay)));
+            }
+            ServiceEvent::SetEmulationSpeed(speed) => {
+                log::debug!("SetEmulationSpeed ServiceEvent received: {} tenths of a percent", speed);
+                self.events
+                    .push(MachineEvent::Service(ServiceEvent::SetEmulationSpeed(speed)));
             }
             ServiceEvent::GuestFileTransferComplete {
                 filename,

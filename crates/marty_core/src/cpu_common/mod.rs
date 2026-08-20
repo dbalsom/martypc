@@ -526,6 +526,8 @@ pub enum ServiceEvent {
     TriggerPITLogging,
     /// A request to quit the emulator immediately. Triggered by the `mquit` utility.
     QuitEmulator(u8),
+    /// Set the frontend emulation speed from a fixed-point tenths-of-a-percent value.
+    SetEmulationSpeed(u16),
     /// A guest-to-host file transfer was committed and is ready to be saved by the frontend.
     GuestFileTransferComplete { filename: String, data: Vec<u8>, non_interactive: bool },
     /// A host-to-guest transfer needs the frontend to select or resolve a host file.

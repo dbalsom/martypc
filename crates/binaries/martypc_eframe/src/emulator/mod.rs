@@ -69,7 +69,7 @@ use marty_frontend_common::{
     rom_manager::RomManager,
     sound_file_manager::SoundFileManager,
     thread_events::FrontendThreadEvent,
-    timestep_manager::PerfSnapshot,
+    timestep_manager::{PerfSnapshot, TimestepUpdate},
     types::floppy::FloppyImageSource,
     vhd_manager::VhdManager,
 };
@@ -86,6 +86,14 @@ pub struct EmuFlags {
 pub struct MountInfo {
     pub index: usize,
     pub name:  String,
+}
+
+const SERVICE_SPEED_SCALE: f32 = 1000.0;
+
+fn speed_to_service_value(speed: f32) -> u16 {
+    (speed * SERVICE_SPEED_SCALE)
+        .round()
+        .clamp(0.0, u16::MAX as f32) as u16
 }
 
 /// Define the main Emulator struct for this frontend.
@@ -126,6 +134,35 @@ impl Emulator {
         Ok(())
     }
 
+    /// Apply an emulation speed through the same state used by the GUI control.
+    pub fn set_emulation_speed(&mut self, requested_speed: f32, update: &mut TimestepUpdate) -> f32 {
+        let speed = requested_speed.clamp(
+            self.config.emulator.min_emulation_speed,
+            self.config.emulator.max_emulation_speed,
+        );
+
+        if speed != requested_speed {
+            log::debug!(
+                "Clamped requested emulation speed factor from {} to {}",
+                requested_speed,
+                speed
+            );
+        }
+        else {
+            log::debug!("Setting emulation speed factor to {}", speed);
+        }
+
+        self.machine
+            .set_service_speed_control_current(speed_to_service_value(speed));
+        self.gui.set_option_float(GuiFloat::EmulationSpeed, speed);
+        update.new_throttle_factor = Some(speed as f64);
+        if let Some(sound_interface) = &mut self.si {
+            sound_interface.set_master_speed(speed);
+        }
+
+        speed
+    }
+
     /// Apply settings from configuration to machine, gui, and display manager state.
     /// Should only be called after such are constructed.
     pub fn apply_config(&mut self) -> Result<(), Error> {
@@ -144,6 +181,11 @@ impl Emulator {
         self.flags.debug_keyboard = self.config.emulator.input.debug_keyboard;
 
         let initial_emulator_speed = self.config.emulator.initial_emulator_speed;
+        self.machine.configure_service_speed_control(
+            speed_to_service_value(self.config.emulator.min_emulation_speed),
+            speed_to_service_value(initial_emulator_speed),
+            speed_to_service_value(self.config.emulator.max_emulation_speed),
+        );
         self.gui
             .set_option_float(GuiFloat::EmulationSpeed, initial_emulator_speed);
         if let Some(sound_interface) = &mut self.si {

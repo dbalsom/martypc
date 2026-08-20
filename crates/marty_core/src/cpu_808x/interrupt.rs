@@ -34,7 +34,7 @@ use crate::{
     cpu_808x::*,
     cpu_common::{Segment, ServiceEvent},
     cycles_mc,
-    service_interrupt::{is_martypc_probe, is_service_control, FUNC_DEBUGGER, FUNC_SERVICE_CTRL},
+    service_interrupt::{is_martypc_probe, is_service_control, ServiceFunction},
 };
 
 impl Intel808x {
@@ -49,15 +49,15 @@ impl Intel808x {
         if self.service_interrupt_vector == Some(interrupt) {
             let function = self.a.h();
 
-            if function == FUNC_SERVICE_CTRL {
+            if function == ServiceFunction::ServiceControl.into() {
                 if is_service_control(self) {
                     self.service_events.push_back(ServiceEvent::ServiceInterrupt(function));
                     return;
                 }
             }
             else if self.service_interrupt_enabled {
-                match function {
-                    FUNC_DEBUGGER => {
+                match ServiceFunction::try_from(function) {
+                    Ok(ServiceFunction::Debugger) => {
                         log::debug!(
                             "Received emulator trap interrupt: CS: {:04X} IP: {:04X}",
                             self.b.x(),
@@ -80,7 +80,7 @@ impl Intel808x {
                         self.cycles(4);
                         self.set_breakpoint_flag();
                     }
-                    function => self.service_events.push_back(ServiceEvent::ServiceInterrupt(function)),
+                    _ => self.service_events.push_back(ServiceEvent::ServiceInterrupt(function)),
                 }
                 return;
             }
