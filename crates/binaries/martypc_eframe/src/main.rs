@@ -264,6 +264,9 @@ fn main() {
     // Wait for user interaction
     let document = web_sys::window().expect("No window").document().expect("No document");
     document.set_title(&format!("MartyPC Web Edition {}", version_string()));
+    if let Some(footer_version) = document.get_element_by_id("web_footer_version") {
+        footer_version.set_text_content(Some(concat!("v", env!("CARGO_PKG_VERSION"))));
+    }
 
     let start_logo = document
         .get_element_by_id("start_logo")

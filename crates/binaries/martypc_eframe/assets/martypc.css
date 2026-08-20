@@ -132,6 +132,39 @@ canvas {
     max-width: 480px;
 }
 
+.web-footer {
+    position: fixed;
+    z-index: 2100;
+    right: 0;
+    bottom: 0;
+    left: 0;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    gap: 0.45em;
+    padding: 6px 10px;
+    color: rgba(226, 218, 247, 0.62);
+    font: 11px/1 Helvetica, Arial, sans-serif;
+    letter-spacing: 0.025em;
+    pointer-events: none;
+    text-shadow: 0 1px 3px rgba(0, 0, 0, 0.9);
+    user-select: none;
+    white-space: nowrap;
+}
+
+.web-footer a {
+    color: inherit;
+    pointer-events: auto;
+    text-decoration: none;
+}
+
+.web-footer a:hover,
+.web-footer a:focus-visible {
+    color: #e2daf7;
+    outline: none;
+    text-decoration: underline;
+}
+
 @keyframes marty-loading-bounce {
     0%, 100% {
         transform: translateY(0) scale(1, 1);
@@ -180,7 +213,7 @@ canvas {
 
 .start-overlay::before {
     content: "";
-    position: absolute;
+    position: fixed;
     z-index: 0;
     inset: -512px;
     background-image: url("assets/zooble_bg.png");
@@ -456,7 +489,7 @@ canvas {
     width: 17px;
     height: 17px;
     margin: 0;
-    accent-color: var(--carousel-accent-bright);
+    accent-color: var(--egui-selection);
     cursor: pointer;
 }
 
