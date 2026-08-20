@@ -587,7 +587,10 @@ impl MartyApp {
 impl MartyApp {
     /// Called each time the UI needs repainting, which may be many times per second.
     /// A display manager must be created before this is called.
-    fn update_frame(&mut self, ctx: &Context, _frame: &mut eframe::Frame) {
+    fn update_frame(&mut self, ui: &mut egui::Ui, _frame: &mut eframe::Frame) {
+        let ctx = ui.ctx().clone();
+        let ctx = &ctx;
+
         // Enumerate the host's gamepads if the feature is enabled
         // #[cfg(feature = "use_gilrs")]
         // let mut gilrs = Gilrs::new().unwrap();
@@ -788,6 +791,7 @@ impl MartyApp {
             // menu and non-display windows.
             let render_gui = emu.flags.render_gui;
             let capture_state = self.gui.show(
+                ui,
                 &mut emu.gui,
                 render_gui && !self.hide_menu,
                 render_gui,
@@ -1023,7 +1027,7 @@ impl MartyApp {
 
 impl eframe::App for MartyApp {
     fn ui(&mut self, ui: &mut egui::Ui, frame: &mut eframe::Frame) {
-        self.update_frame(ui.ctx(), frame);
+        self.update_frame(ui, frame);
     }
 
     /// Called by the framework to save state before shutdown.

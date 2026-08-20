@@ -58,7 +58,7 @@ rfd.workspace = true
 # ---------------------------------------------------------------------------------------------------------------------
 rodio = {  workspace = true, optional = true }
 # gilrs is used to provide gamepad support
-gilrs = { workspace = true, default-features = false, optional = true }
+gilrs = { workspace = true, optional = true }
 # wgpu is used if the `use_wgpu` feature is enabled.
 wgpu = { workspace = true, optional = true }
 egui_commonmark = { workspace = true, optional = true }

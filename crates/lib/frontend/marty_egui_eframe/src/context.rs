@@ -112,12 +112,12 @@ impl GuiRenderContext {
 
         // Make header smaller, regardless of theme.
         use egui::{FontFamily::Proportional, FontId, TextStyle::*};
-        let mut style = (*ctx.style()).clone();
+        let mut style = (*ctx.global_style()).clone();
 
         style.text_styles.entry(Heading).and_modify(|text_style| {
             *text_style = FontId::new(14.0, Proportional);
         });
-        ctx.set_style(style);
+        ctx.set_global_style(style);
         ctx.set_visuals(main_theme.visuals());
 
         #[cfg(debug_assertions)]
@@ -146,6 +146,7 @@ impl GuiRenderContext {
 
     pub fn show<Fw, Fm>(
         &mut self,
+        root_ui: &mut egui::Ui,
         state: &mut GuiState,
         show_menu: bool,
         show_windows: bool,
@@ -160,39 +161,43 @@ impl GuiRenderContext {
         let mut capture_state = None;
 
         if show_menu {
-            self.ctx.set_visuals(self.menu_theme.visuals());
-            egui::TopBottomPanel::top("martypc_top_panel").show(&self.ctx, |ui| {
+            let menu_visuals = self.menu_theme.visuals();
+            self.ctx.set_visuals(menu_visuals.clone());
+            root_ui.style_mut().visuals = menu_visuals;
+            egui::Panel::top("martypc_top_panel").show_inside(root_ui, |ui| {
                 state.show_menu(ui);
             });
         }
 
-        self.ctx.set_visuals(self.main_theme.visuals());
+        let main_visuals = self.main_theme.visuals();
+        self.ctx.set_visuals(main_visuals.clone());
+        root_ui.style_mut().visuals = main_visuals.clone();
 
         if show_windows {
             state.show_windows(&self.ctx);
         }
 
-        let old_margin = self.ctx.style().spacing.window_margin;
+        let old_margin = self.ctx.global_style().spacing.window_margin;
         // Disable window margin for display window.
-        self.ctx.style_mut(|style| {
+        self.ctx.global_style_mut(|style| {
             style.spacing.window_margin = egui::Margin::ZERO;
         });
         window_render(&mut self.ctx, state, &mut capture_state);
         // Restore window margin.
-        self.ctx.style_mut(|style| {
+        self.ctx.global_style_mut(|style| {
             style.spacing.window_margin = old_margin;
         });
 
         // Override panel fill if requested.
         let mut panel_frame = egui::Frame::default();
         panel_frame.inner_margin = egui::Margin::ZERO;
-        panel_frame.fill = self.main_theme.visuals().panel_fill;
+        panel_frame.fill = main_visuals.panel_fill;
         if let Some(fill) = main_panel_fill {
             panel_frame.fill = fill;
         }
-        egui::CentralPanel::default().frame(panel_frame).show(&self.ctx, |ui| {
+        egui::CentralPanel::default().frame(panel_frame).show_inside(root_ui, |ui| {
             ui.spacing_mut().item_spacing = [0.0, 0.0].into();
-            let menu_height = self.ctx.screen_rect().size().y - ui.available_size().y;
+            let menu_height = self.ctx.content_rect().size().y - ui.available_size().y;
             main_panel_render(ui, state, menu_height, &mut capture_state);
         });
 
