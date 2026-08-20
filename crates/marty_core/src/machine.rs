@@ -1227,10 +1227,11 @@ impl Machine {
         // Reload BIOS ROM images
         if self.load_bios {
             Machine::install_roms(self.cpu.bus_mut(), &self.rom_manifest);
-            //self.rom_manager.copy_into_memory(self.cpu.bus_mut());
-            // Clear patch installation status
-            //self.rom_manager.reset_patches();
         }
+
+        // Restoring pristine ROM bytes makes every hot patch eligible for installation again.
+        // This is independent of whether the frontend reloads ROM resources from disk.
+        self.rom_manifest.reset_patch_installation();
 
         // Reset all installed devices.
         self.cpu.bus_mut().reset_devices();

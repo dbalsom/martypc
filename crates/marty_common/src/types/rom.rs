@@ -135,4 +135,14 @@ impl MachineRomManifest {
         }
         map
     }
+
+    /// Mark every patch as ready to be installed again.
+    ///
+    /// Restoring the original ROM images invalidates the installation state stored in the
+    /// manifest even when the ROM resources themselves do not need to be reloaded.
+    pub fn reset_patch_installation(&mut self) {
+        for patch in &mut self.patches {
+            patch.installed = false;
+        }
+    }
 }
