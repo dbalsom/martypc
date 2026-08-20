@@ -275,9 +275,11 @@ pub struct GuiState {
     pub(crate) error_dialog_open: bool,
     pub(crate) warning_dialog_open: bool,
 
-    pub(crate) option_flags:  HashMap<GuiBoolean, bool>,
+    pub(crate) option_flags: HashMap<GuiBoolean, bool>,
     pub(crate) option_floats: HashMap<GuiFloat, f32>,
-    pub(crate) option_enums:  GuiEnumMap,
+    pub(crate) option_enums: GuiEnumMap,
+    pub(crate) min_emulation_speed: f32,
+    pub(crate) max_emulation_speed: f32,
 
     pub(crate) machine_state: MachineState,
 
@@ -440,6 +442,8 @@ impl GuiState {
             option_flags,
             option_floats,
             option_enums,
+            min_emulation_speed: 0.1,
+            max_emulation_speed: 2.0,
 
             machine_state: MachineState::Off,
             video_mem: ColorImage::filled([320, 200], egui::Color32::BLACK),
@@ -537,6 +541,30 @@ impl GuiState {
 
     pub fn set_hotkeys(&mut self, bindings: Vec<(HotkeyEvent, Vec<MartyKey>)>) {
         self.hotkeys_window.set_bindings(bindings);
+    }
+
+    pub fn set_emulation_speed_limits(&mut self, min: f32, max: f32) {
+        if min.is_finite() && min > 0.0 && min <= 1.0 {
+            self.min_emulation_speed = min;
+        }
+        else {
+            log::warn!("Ignoring invalid minimum emulation speed {min}; expected a finite value in the range (0, 1]");
+        }
+
+        if max.is_finite() && max >= 1.0 {
+            self.max_emulation_speed = max;
+        }
+        else {
+            log::warn!(
+                "Ignoring invalid maximum emulation speed {max}; expected a finite value greater than or equal to 1"
+            );
+        }
+    }
+
+    pub fn set_option_float(&mut self, option: GuiFloat, value: f32) {
+        if let Some(opt) = self.option_floats.get_mut(&option) {
+            *opt = value;
+        }
     }
 
     pub fn set_paths(&mut self, default_floppy_path: PathBuf) {

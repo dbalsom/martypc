@@ -282,6 +282,7 @@ impl MartyApp {
 
         // Create Timestep Manager
         let mut timestep_manager = TimestepManager::new();
+        timestep_manager.set_throttle_factor(emu.config.emulator.initial_emulator_speed as f64);
         timestep_manager.set_cpu_mhz(emu.machine.get_cpu_mhz());
 
         // Set eframe's NativeOptions for fullscreen if specified by config

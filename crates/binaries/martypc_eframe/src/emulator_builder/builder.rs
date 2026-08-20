@@ -821,6 +821,7 @@ impl EmulatorBuilder {
         let mut gui = GuiState::new(exec_control.clone(), sender.clone(), render_callback);
         gui.set_build_info(env!("CARGO_PKG_VERSION"), crate::build_id());
         gui.set_hotkeys(hotkey_manager.hotkey_bindings());
+        gui.set_emulation_speed_limits(config.emulator.min_emulation_speed, config.emulator.max_emulation_speed);
 
         // Set list of virtual serial ports
         gui.set_serial_ports(machine.bus().enumerate_serial_ports());

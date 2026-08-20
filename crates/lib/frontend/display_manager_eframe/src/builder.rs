@@ -270,21 +270,20 @@ impl<'a> EFrameDisplayManagerBuilder<'a> {
         Ok(targets)
     }
 
-    /// Assign the last target to the last viewport and continue backwards, leaving any targets
-    /// that outnumber secondary viewports in the main viewport at position zero.
+    /// Assign targets to configured viewports in order. Any targets that outnumber the available
+    /// viewports stay in the main viewport.
     fn initial_viewport_positions(target_count: usize, viewport_count: usize) -> Vec<usize> {
         if target_count == 0 || viewport_count == 0 {
             return Vec::new();
         }
 
-        let main_target_count = target_count.saturating_sub(viewport_count.saturating_sub(1));
         (0..target_count)
             .map(|target_idx| {
-                if target_idx < main_target_count {
-                    0
+                if target_idx < viewport_count {
+                    target_idx
                 }
                 else {
-                    viewport_count - (target_count - target_idx)
+                    0
                 }
             })
             .collect()
@@ -570,15 +569,16 @@ mod tests {
     }
 
     #[test]
-    fn generated_targets_fill_extra_viewports_from_the_end() {
+    fn generated_targets_fill_viewports_in_order() {
         assert_eq!(
             EFrameDisplayManagerBuilder::initial_viewport_positions(5, 3),
-            vec![0, 0, 0, 1, 2]
+            vec![0, 1, 2, 0, 0]
         );
         assert_eq!(
             EFrameDisplayManagerBuilder::initial_viewport_positions(2, 4),
-            vec![2, 3]
+            vec![0, 1]
         );
+        assert_eq!(EFrameDisplayManagerBuilder::initial_viewport_positions(1, 2), vec![0]);
         assert_eq!(
             EFrameDisplayManagerBuilder::initial_viewport_positions(3, 1),
             vec![0, 0, 0]

@@ -3,7 +3,7 @@
 #
 [meta]
 file_type = "main_config"
-config_version = "0.4"
+config_version = "0.5"
 
 # ----------------------------------------------------------------------------
 # Machine Options
@@ -214,6 +214,11 @@ ignore_dirs = ["parking"]
 # -------------------------------------------------------------------------------------
 # General emulator options
 # -------------------------------------------------------------------------------------
+
+# Available range and initial multiplier for the emulation speed control.
+min_emulation_speed = 0.1
+max_emulation_speed = 2.0
+initial_emulator_speed = 1.0
 
 # Power on the emulated machine on startup (only applicable in gui mode)
 auto_poweron = true

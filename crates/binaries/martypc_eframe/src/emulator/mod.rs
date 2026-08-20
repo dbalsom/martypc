@@ -60,7 +60,7 @@ use marty_core::{
     vhd::{VhdIO, VirtualHardDisk},
 };
 use marty_display_common::display_scaler::SCALER_MODES;
-use marty_egui::{state::GuiState, GuiBoolean, GuiWindow};
+use marty_egui::{state::GuiState, GuiBoolean, GuiFloat, GuiWindow};
 use marty_frontend_common::{
     asset_manager::AssetManager,
     cartridge_manager::CartridgeManager,
@@ -142,6 +142,13 @@ impl Emulator {
         }
 
         self.flags.debug_keyboard = self.config.emulator.input.debug_keyboard;
+
+        let initial_emulator_speed = self.config.emulator.initial_emulator_speed;
+        self.gui
+            .set_option_float(GuiFloat::EmulationSpeed, initial_emulator_speed);
+        if let Some(sound_interface) = &mut self.si {
+            sound_interface.set_master_speed(initial_emulator_speed);
+        }
 
         // Do PIT phase offset option
         self.machine

@@ -84,6 +84,15 @@ const fn _default_true() -> bool {
 const fn _default_false() -> bool {
     false
 }
+const fn _default_min_emulation_speed() -> f32 {
+    0.1
+}
+const fn _default_max_emulation_speed() -> f32 {
+    2.0
+}
+const fn _default_initial_emulator_speed() -> f32 {
+    1.0
+}
 
 #[cfg_attr(feature = "use_bpaf", derive(Bpaf))]
 #[derive(Copy, Clone, Debug, Deserialize, PartialEq)]
@@ -186,6 +195,12 @@ pub struct Emulator {
     pub cpu_autostart: bool,
     #[serde(default)]
     pub headless: bool,
+    #[serde(default = "_default_min_emulation_speed")]
+    pub min_emulation_speed: f32,
+    #[serde(default = "_default_max_emulation_speed")]
+    pub max_emulation_speed: f32,
+    #[serde(default = "_default_initial_emulator_speed")]
+    pub initial_emulator_speed: f32,
     #[serde(default)]
     pub romscan: bool,
     #[serde(default)]
@@ -225,6 +240,52 @@ pub struct Emulator {
     pub input: EmulatorInput,
     pub serial_bridge: Option<SerialBridge>,
     pub benchmark: Benchmark,
+}
+
+fn normalize_emulation_speed_config(emulator: &mut Emulator) {
+    if !emulator.min_emulation_speed.is_finite()
+        || emulator.min_emulation_speed <= 0.0
+        || emulator.min_emulation_speed > 1.0
+    {
+        log::warn!(
+            "Invalid minimum emulation speed {}; using {}",
+            emulator.min_emulation_speed,
+            _default_min_emulation_speed()
+        );
+        emulator.min_emulation_speed = _default_min_emulation_speed();
+    }
+
+    if !emulator.max_emulation_speed.is_finite() || emulator.max_emulation_speed < 1.0 {
+        log::warn!(
+            "Invalid maximum emulation speed {}; using {}",
+            emulator.max_emulation_speed,
+            _default_max_emulation_speed()
+        );
+        emulator.max_emulation_speed = _default_max_emulation_speed();
+    }
+
+    if !emulator.initial_emulator_speed.is_finite() {
+        log::warn!(
+            "Invalid initial emulator speed {}; using {}",
+            emulator.initial_emulator_speed,
+            _default_initial_emulator_speed()
+        );
+        emulator.initial_emulator_speed = _default_initial_emulator_speed();
+    }
+
+    let clamped_initial = emulator
+        .initial_emulator_speed
+        .clamp(emulator.min_emulation_speed, emulator.max_emulation_speed);
+    if clamped_initial != emulator.initial_emulator_speed {
+        log::warn!(
+            "Initial emulator speed {} is outside the configured range {}..={}; using {}",
+            emulator.initial_emulator_speed,
+            emulator.min_emulation_speed,
+            emulator.max_emulation_speed,
+            clamped_initial
+        );
+        emulator.initial_emulator_speed = clamped_initial;
+    }
 }
 
 #[derive(Debug, Deserialize)]
@@ -379,6 +440,10 @@ pub struct ConfigFileParams {
 }
 
 impl ConfigFileParams {
+    fn normalize(&mut self) {
+        normalize_emulation_speed_config(&mut self.emulator);
+    }
+
     pub fn overlay(&mut self, shell_args: CmdLineArgs) {
         if let Some(config_name) = shell_args.machine_config_name {
             self.machine.config_name = config_name;
@@ -553,6 +618,8 @@ pub fn read_config(toml_string: impl AsRef<str>, shell_args: CmdLineArgs) -> Res
         }
     }
 
+    toml_args.normalize();
+
     Ok(toml_args)
 }
 
@@ -673,6 +740,30 @@ mod tests {
             "#,
         );
         assert!(invalid.is_err());
+    }
+
+    #[test]
+    fn initial_emulator_speed_defaults_to_normal_speed() {
+        let config_without_initial_speed = include_str!("../../../../../install/martypc.toml")
+            .lines()
+            .filter(|line| !line.trim_start().starts_with("initial_emulator_speed"))
+            .collect::<Vec<_>>()
+            .join("\n");
+        let config: ConfigFileParams = toml::from_str(&config_without_initial_speed).unwrap();
+
+        assert_eq!(config.emulator.initial_emulator_speed, 1.0);
+    }
+
+    #[test]
+    fn initial_emulator_speed_is_clamped_to_configured_limits() {
+        let mut config: ConfigFileParams = toml::from_str(include_str!("../../../../../install/martypc.toml")).unwrap();
+        config.emulator.min_emulation_speed = 0.5;
+        config.emulator.max_emulation_speed = 4.0;
+        config.emulator.initial_emulator_speed = 0.25;
+
+        config.normalize();
+
+        assert_eq!(config.emulator.initial_emulator_speed, 0.5);
     }
 
     #[cfg(feature = "use_display")]
