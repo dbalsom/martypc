@@ -427,7 +427,7 @@ function transitionSystemDetails(selectionChanged) {
 }
 
 function selectSystem(index, focusCard = false, rotation = null) {
-    if (state.systems.length === 0) {
+    if (state.systems.length === 0 || state.carouselAnimationFrame !== null) {
         return;
     }
 
@@ -527,17 +527,23 @@ function handleKeyDown(event) {
         return;
     }
 
+    const isCarouselNavigationKey = ["ArrowLeft", "ArrowRight", "Home", "End"].includes(event.key);
+    if (!isCarouselNavigationKey) {
+        return;
+    }
+
+    event.preventDefault();
+    if (event.repeat) {
+        return;
+    }
+
     if (event.key === "ArrowLeft") {
-        event.preventDefault();
         rotateCarousel(-1, true);
     } else if (event.key === "ArrowRight") {
-        event.preventDefault();
         rotateCarousel(1, true);
     } else if (event.key === "Home") {
-        event.preventDefault();
         selectSystem(0, true);
     } else if (event.key === "End") {
-        event.preventDefault();
         selectSystem(state.cards.length - 1, true);
     }
 }
