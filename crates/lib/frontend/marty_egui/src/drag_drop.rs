@@ -29,7 +29,7 @@
     Drag-and-drop destination selection.
 */
 
-use std::path::PathBuf;
+use std::path::{Path, PathBuf};
 
 use egui::{DroppedFile, RichText, Sense, Stroke, StrokeKind};
 use marty_core::machine_types::FloppyDriveType;
@@ -47,8 +47,15 @@ const DROP_TARGET_IMAGE_TOP_MARGIN: f32 = 8.0;
 const DROP_TARGET_LABEL_BOTTOM_MARGIN: f32 = 24.0;
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
-enum DropTarget {
+pub(crate) enum DropTarget {
     FloppyDrive(usize),
+    CartridgeSlot(usize),
+}
+
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+enum DropTargetArtwork {
+    Floppy(FloppyDriveType),
+    PcjrCartridge,
 }
 
 impl GuiState {
@@ -57,7 +64,8 @@ impl GuiState {
     }
 
     pub(crate) fn show_drag_drop_modal(&mut self, ctx: &egui::Context) {
-        let dropped_files = ctx.input(|input| input.raw.dropped_files.clone());
+        let (dropped_files, drag_in_progress) =
+            ctx.input(|input| (input.raw.dropped_files.clone(), !input.raw.hovered_files.is_empty()));
 
         let targets: Vec<_> = self
             .floppy_drives
@@ -76,12 +84,19 @@ impl GuiState {
                 (
                     DropTarget::FloppyDrive(drive_idx),
                     format!("{drive_name}\n{}", drive.drive_type),
-                    drive.drive_type,
+                    DropTargetArtwork::Floppy(drive.drive_type),
                 )
             })
+            .chain(self.carts.iter().map(|cart| {
+                (
+                    DropTarget::CartridgeSlot(cart.idx),
+                    format!("Cartridge Slot {}\nJRC Image", cart.idx),
+                    DropTargetArtwork::PcjrCartridge,
+                )
+            }))
             .collect();
 
-        let column_count = smallest_square_width(targets.len());
+        let column_count = drop_target_column_count(targets.len());
         let pointer_pos = drag_pointer_pos(ctx);
         let mut hovered_target = None;
 
@@ -99,7 +114,7 @@ impl GuiState {
                 .num_columns(column_count)
                 .spacing(egui::vec2(DROP_TARGET_SPACING, DROP_TARGET_SPACING))
                 .show(ui, |ui| {
-                    for (target_idx, (target, label, drive_type)) in targets.iter().enumerate() {
+                    for (target_idx, (target, label, artwork)) in targets.iter().enumerate() {
                         if target_idx > 0 && target_idx % column_count == 0 {
                             ui.end_row();
                         }
@@ -132,7 +147,7 @@ impl GuiState {
                             ),
                             egui::Vec2::splat(DROP_TARGET_IMAGE_SIZE),
                         );
-                        egui::Image::new(floppy_artwork(*drive_type))
+                        egui::Image::new(drop_target_artwork(*artwork))
                             .texture_options(egui::TextureOptions::NEAREST)
                             .paint_at(ui, image_rect);
                         ui.painter().text(
@@ -158,17 +173,25 @@ impl GuiState {
             ui.label(RichText::new("Release the file over a destination.").weak());
         });
 
+        // On web, eframe clears hovered_files as soon as the browser fires the drop event,
+        // then reads the file asynchronously before publishing dropped_files. Retain the
+        // destination selected during dragover so it survives that gap.
+        self.drag_drop_target = retained_drop_target(drag_in_progress, hovered_target, self.drag_drop_target);
+
         if dropped_files.is_empty() {
             return;
         }
+
+        let selected_target = self.drag_drop_target.take();
 
         if dropped_files.len() != 1 {
             self.toasts.error("Drop one file at a time.");
             return;
         }
 
-        let Some(target) = hovered_target
+        let Some(target) = selected_target
         else {
+            self.toasts.error("Drop the file over a destination.");
             return;
         };
 
@@ -176,22 +199,44 @@ impl GuiState {
             DropTarget::FloppyDrive(drive_idx) => {
                 self.load_dropped_floppy(drive_idx, dropped_files.into_iter().next().unwrap());
             }
+            DropTarget::CartridgeSlot(slot_idx) => {
+                self.load_dropped_cartridge(slot_idx, dropped_files.into_iter().next().unwrap());
+            }
         }
     }
 
     fn load_dropped_floppy(&mut self, drive_idx: usize, dropped_file: DroppedFile) {
+        let context = FileOpenContext::FloppyDiskImage {
+            drive_select: drive_idx,
+            fsc: FileSelectionContext::Uninitialized,
+        };
+
+        self.load_dropped_file(context, dropped_file);
+    }
+
+    fn load_dropped_cartridge(&mut self, slot_idx: usize, dropped_file: DroppedFile) {
+        if !dropped_file_is_jrc(&dropped_file) {
+            self.toasts.error("Cartridge images must be JRC files.");
+            return;
+        }
+
+        let context = FileOpenContext::CartridgeImage {
+            slot_select: slot_idx,
+            fsc: FileSelectionContext::Uninitialized,
+        };
+
+        self.load_dropped_file(context, dropped_file);
+    }
+
+    fn load_dropped_file(&mut self, mut context: FileOpenContext, dropped_file: DroppedFile) {
         let source_path = dropped_file.path;
         let selection_path = source_path
             .clone()
             .or_else(|| (!dropped_file.name.is_empty()).then(|| PathBuf::from(dropped_file.name.clone())));
 
-        let context = FileOpenContext::FloppyDiskImage {
-            drive_select: drive_idx,
-            fsc: selection_path
-                .clone()
-                .map(FileSelectionContext::Path)
-                .unwrap_or(FileSelectionContext::Uninitialized),
-        };
+        if let Some(path) = &selection_path {
+            context.set_fsc(FileSelectionContext::Path(path.clone()));
+        }
 
         exec_async(self.thread_sender.clone(), async move {
             if let Some(contents) = dropped_file.bytes {
@@ -222,33 +267,49 @@ impl GuiState {
     }
 }
 
-fn floppy_artwork(drive_type: FloppyDriveType) -> egui::ImageSource<'static> {
-    match drive_type {
-        FloppyDriveType::Floppy360K => {
+fn drop_target_artwork(artwork: DropTargetArtwork) -> egui::ImageSource<'static> {
+    match artwork {
+        DropTargetArtwork::Floppy(FloppyDriveType::Floppy360K) => {
             egui::include_image!("../../../../../assets/5_25_dd_floppy.png")
         }
-        FloppyDriveType::Floppy720K => {
+        DropTargetArtwork::Floppy(FloppyDriveType::Floppy720K) => {
             egui::include_image!("../../../../../assets/3_5_dd_floppy.png")
         }
-        FloppyDriveType::Floppy12M => {
+        DropTargetArtwork::Floppy(FloppyDriveType::Floppy12M) => {
             egui::include_image!("../../../../../assets/5_25_hd_floppy.png")
         }
-        FloppyDriveType::Floppy144M => {
+        DropTargetArtwork::Floppy(FloppyDriveType::Floppy144M) => {
             egui::include_image!("../../../../../assets/3_5_hd_floppy.png")
         }
+        DropTargetArtwork::PcjrCartridge => egui::include_image!("../../../../../assets/pcjr_cart.png"),
     }
 }
 
-fn smallest_square_width(target_count: usize) -> usize {
-    if target_count == 0 {
-        return 1;
-    }
+fn dropped_file_is_jrc(dropped_file: &DroppedFile) -> bool {
+    dropped_file
+        .path
+        .as_deref()
+        .and_then(Path::extension)
+        .or_else(|| Path::new(&dropped_file.name).extension())
+        .and_then(|extension| extension.to_str())
+        .is_some_and(|extension| extension.eq_ignore_ascii_case("jrc"))
+}
 
-    let mut width = 1;
-    while width * width < target_count {
-        width += 1;
+fn drop_target_column_count(target_count: usize) -> usize {
+    target_count.clamp(1, 4)
+}
+
+fn retained_drop_target(
+    drag_in_progress: bool,
+    hovered_target: Option<DropTarget>,
+    retained_target: Option<DropTarget>,
+) -> Option<DropTarget> {
+    if drag_in_progress {
+        hovered_target
     }
-    width
+    else {
+        retained_target.or(hovered_target)
+    }
 }
 
 fn drag_pointer_pos(ctx: &egui::Context) -> Option<egui::Pos2> {
@@ -284,15 +345,53 @@ fn windows_drag_pointer_pos(ctx: &egui::Context) -> Option<egui::Pos2> {
 
 #[cfg(test)]
 mod tests {
-    use super::smallest_square_width;
+    use std::{path::PathBuf, sync::Arc};
+
+    use egui::DroppedFile;
+
+    use super::{drop_target_column_count, dropped_file_is_jrc, retained_drop_target, DropTarget};
 
     #[test]
-    fn drop_target_grid_uses_smallest_fitting_square() {
-        assert_eq!(smallest_square_width(0), 1);
-        assert_eq!(smallest_square_width(1), 1);
-        assert_eq!(smallest_square_width(2), 2);
-        assert_eq!(smallest_square_width(4), 2);
-        assert_eq!(smallest_square_width(5), 3);
-        assert_eq!(smallest_square_width(9), 3);
+    fn drop_target_grid_wraps_after_four_tiles() {
+        assert_eq!(drop_target_column_count(0), 1);
+        assert_eq!(drop_target_column_count(1), 1);
+        assert_eq!(drop_target_column_count(2), 2);
+        assert_eq!(drop_target_column_count(3), 3);
+        assert_eq!(drop_target_column_count(4), 4);
+        assert_eq!(drop_target_column_count(5), 4);
+        assert_eq!(drop_target_column_count(9), 4);
+    }
+
+    #[test]
+    fn drop_target_survives_web_file_read_gap() {
+        let target = DropTarget::FloppyDrive(0);
+
+        let retained = retained_drop_target(true, Some(target), None);
+        assert_eq!(retained, Some(target));
+
+        let retained = retained_drop_target(false, None, retained);
+        assert_eq!(retained, Some(target));
+    }
+
+    #[test]
+    fn cartridge_drop_recognizes_jrc_extension_case_insensitively() {
+        let named_file = DroppedFile {
+            name: "game.jrc".to_string(),
+            ..Default::default()
+        };
+        assert!(dropped_file_is_jrc(&named_file));
+
+        let path_file = DroppedFile {
+            path: Some(PathBuf::from("game.JRC")),
+            bytes: Some(Arc::from(Vec::<u8>::new())),
+            ..Default::default()
+        };
+        assert!(dropped_file_is_jrc(&path_file));
+
+        let wrong_extension = DroppedFile {
+            name: "game.zip".to_string(),
+            ..Default::default()
+        };
+        assert!(!dropped_file_is_jrc(&wrong_extension));
     }
 }

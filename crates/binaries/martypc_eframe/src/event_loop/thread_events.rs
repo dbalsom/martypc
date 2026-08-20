@@ -38,6 +38,7 @@ use marty_egui::state::FloppyDriveSelection;
 #[cfg(not(target_arch = "wasm32"))]
 use marty_frontend_common::thread_events::DirectoryOpenContext;
 use marty_frontend_common::{
+    cartridge_manager::read_jripcart_image,
     constants::{LONG_NOTIFICATION_TIME, NORMAL_NOTIFICATION_TIME},
     thread_events::{
         FileOpenContext,
@@ -150,7 +151,13 @@ pub fn handle_thread_event(emu: &mut Emulator, ctx: &egui::Context) {
 
                         load_floppy_image(emu, drive_select, fsc, contents, floppy_path.as_deref());
                     }
-                    FileOpenContext::CartridgeImage { .. } => {}
+                    FileOpenContext::CartridgeImage { slot_select, fsc } => {
+                        let cartridge_path = match fsc {
+                            FileSelectionContext::Path(path) => Some(path),
+                            _ => path,
+                        };
+                        load_cartridge_image(emu, slot_select, contents, cartridge_path);
+                    }
                     #[cfg(not(target_arch = "wasm32"))]
                     FileOpenContext::VhdDiskImage { .. } => {
                         log::error!("VHD path selection was returned with file contents");
@@ -381,4 +388,52 @@ pub fn handle_thread_event(emu: &mut Emulator, ctx: &egui::Context) {
             }
         }
     }
+}
+
+fn load_cartridge_image(emu: &mut Emulator, slot_idx: usize, contents: Vec<u8>, path: Option<PathBuf>) {
+    let cartridge = match read_jripcart_image(&contents) {
+        Ok(cartridge) => cartridge,
+        Err(error) => {
+            log::error!("Failed to parse cartridge image: {}", error);
+            emu.gui
+                .toasts()
+                .error(format!("Cartridge load failed: {}", error))
+                .duration(Some(LONG_NOTIFICATION_TIME));
+            return;
+        }
+    };
+
+    let Some(cartridge_slot) = emu.machine.cart_slot()
+    else {
+        log::error!("Cartridge load failed: No cartridge slots are present");
+        emu.gui
+            .toasts()
+            .error("Cartridge load failed: No cartridge slots are present".to_string())
+            .duration(Some(LONG_NOTIFICATION_TIME));
+        return;
+    };
+
+    if let Err(error) = cartridge_slot.insert_cart(slot_idx, cartridge) {
+        log::error!("Failed to insert cartridge into slot {}: {}", slot_idx, error);
+        emu.gui
+            .toasts()
+            .error(format!("Cartridge load failed: {}", error))
+            .duration(Some(LONG_NOTIFICATION_TIME));
+        return;
+    }
+
+    let display_path = path.unwrap_or_else(|| PathBuf::from(format!("Cartridge Slot {slot_idx}")));
+    log::info!(
+        "Cartridge image {:?} successfully loaded into slot {}",
+        display_path,
+        slot_idx
+    );
+    emu.gui.set_cart_selection(slot_idx, None, Some(display_path.clone()));
+    emu.gui
+        .toasts()
+        .info(format!("Cartridge inserted: {}", display_path.display()))
+        .duration(Some(NORMAL_NOTIFICATION_TIME));
+
+    // Inserting a cartridge toggles the physical slot switch and reboots the machine.
+    emu.machine.reboot();
 }

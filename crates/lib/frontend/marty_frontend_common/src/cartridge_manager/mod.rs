@@ -127,7 +127,7 @@ impl CartridgeManager {
                 idx,
                 name: item.location.file_name().unwrap().to_os_string(),
                 path: item.location.clone(),
-                size: item.location.metadata().unwrap().len(),
+                size: item.size.unwrap_or(0),
             });
 
             self.image_map

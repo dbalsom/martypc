@@ -43,6 +43,7 @@ use std::{
 use crate::windows::{composite_adjust::CompositeAdjustControl, scaler_adjust::ScalerAdjustControl};
 
 use crate::{
+    drag_drop::DropTarget,
     modal::ModalState,
     widgets::file_tree_menu::FileTreeMenu,
     windows::{
@@ -368,6 +369,7 @@ pub struct GuiState {
 
     //pub(crate) global_zoom: f32,
     pub modal: ModalState,
+    pub(crate) drag_drop_target: Option<DropTarget>,
 
     pub fluxfox_render_callback: Arc<dyn RenderCallback>,
 }
@@ -519,6 +521,7 @@ impl GuiState {
             cart_tree_menu: FileTreeMenu::new(),
             //global_zoom: 1.0,
             modal: ModalState::new(),
+            drag_drop_target: None,
             fluxfox_render_callback: render_callback,
         }
     }

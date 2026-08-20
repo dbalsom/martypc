@@ -34,7 +34,7 @@ regex = "1.10"
 log = "0.4"
 egui_commonmark = { workspace = true, optional = true }
 
-egui = { workspace = true, default-features = false, features = ["serde"] }
+egui = { workspace = true, default-features = false, features = ["serde", "bytemuck"] }
 egui_extras.workspace = true
 egui_plot.workspace = true
 egui-notify.workspace = true
