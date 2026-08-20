@@ -58,7 +58,7 @@ jobs:
 
       - name: Build martypc_eframe with Trunk
         working-directory: crates/binaries/martypc_eframe
-        run: trunk build --release=true --no-default-features --features=all_video_cards,sound,use_glow --config Trunk.toml
+        run: trunk build --release=true --no-default-features --features=all_video_cards,sound,opl,use_glow --config Trunk.toml
 
       - name: Optimize WASM with wasm-opt
         working-directory: crates/binaries/martypc_eframe
