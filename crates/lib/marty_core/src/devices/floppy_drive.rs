@@ -171,10 +171,9 @@ pub struct FloppyDiskDrive {
     pub(crate) disk_image: Option<Arc<RwLock<DiskImage>>>,
 
     operation_status: OperationStatus,
-    /// We keep a list of supported formats for this drive, primarily so we can query the largest
-    /// supported format. This is used for building the appropriate size image when mounting a
-    /// directory.
-    pub(crate) supported_formats: Vec<FloppyImageType>,
+    /// Candidate image formats for autofloppy creation, ordered by capacity. This allows
+    /// autofloppy to select an appropriate image size when mounting a directory.
+    pub(crate) autofloppy_formats: Vec<FloppyImageType>,
 
     ref_write: u64,
 }
@@ -197,7 +196,7 @@ impl Default for FloppyDiskDrive {
 
             operation_status: Default::default(),
 
-            supported_formats: Vec::new(),
+            autofloppy_formats: Vec::new(),
 
             ref_write: 0,
         }
@@ -208,7 +207,7 @@ impl FloppyDiskDrive {
         // Should be safe to unwrap as we are limited by valid drive type enums.
         let drive_geom = DRIVE_CAPABILITIES.get(&drive_type).unwrap().chs;
 
-        let supported_formats = match drive_type {
+        let autofloppy_formats = match drive_type {
             FloppyDriveType::Floppy360K => vec![FloppyImageType::Image360K],
             FloppyDriveType::Floppy720K => vec![FloppyImageType::Image720K],
             FloppyDriveType::Floppy12M => vec![FloppyImageType::Image360K, FloppyImageType::Image12M],
@@ -219,7 +218,7 @@ impl FloppyDiskDrive {
             drive_type,
             drive_n,
             drive_geom,
-            supported_formats,
+            autofloppy_formats,
             ..Default::default()
         }
     }
@@ -245,13 +244,13 @@ impl FloppyDiskDrive {
             drive_geom: self.drive_geom,
             motor_on,
             disk_image: image,
-            supported_formats: self.supported_formats.clone(),
+            autofloppy_formats: self.autofloppy_formats.clone(),
             ..Default::default()
         };
     }
 
     pub fn get_largest_supported_image_format(&self) -> FloppyImageType {
-        self.supported_formats[self.supported_formats.len().saturating_sub(1)]
+        self.autofloppy_formats[self.autofloppy_formats.len().saturating_sub(1)]
     }
 
     pub fn get_type(&self) -> FloppyDriveType {
