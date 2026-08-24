@@ -1170,6 +1170,12 @@ pub fn handle_egui_event(
                     .duration(Some(SHORT_NOTIFICATION_TIME));
             }
         }
+        GuiEvent::KeyPress(key) => {
+            emu.machine.key_press(*key, emu.kb_data.modifiers);
+        }
+        GuiEvent::KeyRelease(key) => {
+            emu.machine.key_release(*key);
+        }
         _ => {
             log::warn!("Unhandled GUI event: {:?}", discriminant(gui_event));
         }

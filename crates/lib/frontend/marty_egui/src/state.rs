@@ -45,6 +45,7 @@ use crate::windows::{composite_adjust::CompositeAdjustControl, scaler_adjust::Sc
 use crate::{
     drag_drop::DropTarget,
     modal::ModalState,
+    panels::osd_keyboard::{OsdKeyboardEvent, OsdKeyboardPanel},
     widgets::file_tree_menu::FileTreeMenu,
     windows::{
         about::AboutDialog,
@@ -82,6 +83,7 @@ use crate::{
     GuiEvent,
     GuiEventQueue,
     GuiFloat,
+    GuiVariable,
     GuiVariableContext,
     GuiWindow,
     MediaTrayState,
@@ -95,6 +97,7 @@ use marty_core::{
     machine::{ExecutionControl, MachineState},
     machine_types::FloppyDriveType,
 };
+use marty_frontend_common::keyboard_manager::OsdKeyboard;
 
 #[cfg(feature = "use_display")]
 use marty_display_common::{
@@ -280,6 +283,7 @@ pub struct GuiState {
     pub(crate) option_enums: GuiEnumMap,
     pub(crate) min_emulation_speed: f32,
     pub(crate) max_emulation_speed: f32,
+    pub(crate) osd_keyboard: OsdKeyboardPanel,
 
     pub(crate) machine_state: MachineState,
 
@@ -404,6 +408,7 @@ impl GuiState {
             (GuiBoolean::TurboButton, false),
             (GuiBoolean::ShowBackBuffer, false),
             (GuiBoolean::ShowRasterPosition, true),
+            (GuiBoolean::OsdKeyboard, false),
             //(GuiBoolean::EnableSnow, true),
         ]
         .into();
@@ -444,6 +449,7 @@ impl GuiState {
             option_enums,
             min_emulation_speed: 0.1,
             max_emulation_speed: 2.0,
+            osd_keyboard: OsdKeyboardPanel::new(),
 
             machine_state: MachineState::Off,
             video_mem: ColorImage::filled([320, 200], egui::Color32::BLACK),
@@ -585,6 +591,70 @@ impl GuiState {
         }
     }
 
+    pub fn set_osd_keyboard(&mut self, keyboard: Option<OsdKeyboard>) {
+        if let Err(err) = self.osd_keyboard.set_keyboard(keyboard) {
+            log::warn!("Failed to prepare OSD keyboard: {err}");
+        }
+    }
+
+    pub fn set_osd_keyboard_enabled(&mut self, enabled: bool) {
+        let was_enabled = self.get_option(GuiBoolean::OsdKeyboard).unwrap_or(false);
+        self.set_option(GuiBoolean::OsdKeyboard, enabled);
+
+        if was_enabled && !enabled {
+            for event in self.osd_keyboard.cancel_pressed_keys() {
+                if let OsdKeyboardEvent::KeyRelease(key) = event {
+                    self.event_queue.send(GuiEvent::KeyRelease(key));
+                }
+            }
+        }
+    }
+
+    pub fn osd_keyboard_available(&self) -> bool {
+        self.osd_keyboard.is_available()
+    }
+
+    pub fn osd_keyboard_enabled(&self) -> bool {
+        self.option_flags
+            .get(&GuiBoolean::OsdKeyboard)
+            .copied()
+            .unwrap_or(false)
+            && self.osd_keyboard_available()
+    }
+
+    pub fn update_osd_keyboard_unhide_gesture(&mut self, ctx: &egui::Context, viewport_rect: egui::Rect) {
+        if self.osd_keyboard_enabled() || !self.osd_keyboard_available() {
+            self.osd_keyboard.cancel_unhide_gesture();
+            return;
+        }
+
+        if self.osd_keyboard.detect_unhide_swipe(ctx, viewport_rect) {
+            self.set_osd_keyboard_enabled(true);
+            self.event_queue.send(GuiEvent::VariableChanged(
+                GuiVariableContext::Global,
+                GuiVariable::Bool(GuiBoolean::OsdKeyboard, true),
+            ));
+        }
+    }
+
+    pub fn show_osd_keyboard_panel(&mut self, root_ui: &mut egui::Ui) {
+        let events = self.osd_keyboard.show(root_ui);
+        for event in events {
+            match event {
+                OsdKeyboardEvent::KeyPress(key) => self.event_queue.send(GuiEvent::KeyPress(key)),
+                OsdKeyboardEvent::KeyRelease(key) => self.event_queue.send(GuiEvent::KeyRelease(key)),
+                OsdKeyboardEvent::ResetKeyboard => self.event_queue.send(GuiEvent::ClearKeyboard),
+                OsdKeyboardEvent::HideKeyboard => {
+                    self.set_osd_keyboard_enabled(false);
+                    self.event_queue.send(GuiEvent::VariableChanged(
+                        GuiVariableContext::Global,
+                        GuiVariable::Bool(GuiBoolean::OsdKeyboard, false),
+                    ));
+                }
+            }
+        }
+    }
+
     pub fn set_option_enum(&mut self, option: GuiEnum, idx: Option<GuiVariableContext>) {
         let ctx = idx.unwrap_or_default();
 
@@ -598,7 +668,7 @@ impl GuiState {
         }
     }
 
-    pub fn get_option(&mut self, option: GuiBoolean) -> Option<bool> {
+    pub fn get_option(&self, option: GuiBoolean) -> Option<bool> {
         self.option_flags.get(&option).copied()
     }
 

@@ -42,7 +42,8 @@
 //! - FloppyManager: Manages the loading and unloading of floppy disk images
 //! - VhdManager: Manages the loading and unloading of VHD disk images
 //! - CartridgeManager: Manages the loading and unloading of ROM cartridges (PCjr specific)
-//! - AssetManager: Discovers and classifies frontend assets such as sound libraries
+//! - AssetManager: Discovers and classifies frontend assets such as sound libraries and OSD keyboards
+//! - KeyboardManager: Loads core keyboard mappings and matching OSD keyboard assets
 //! - SoundFileManager: Loads sound libraries and resolves frontend device events to sound effects
 
 use serde_derive::Deserialize;
@@ -55,6 +56,7 @@ pub mod constants;
 //mod emulator_manager;
 pub mod async_exec;
 pub mod floppy_manager;
+pub mod keyboard_manager;
 pub mod machine_manager;
 pub mod resource_manager;
 pub mod rom_manager;

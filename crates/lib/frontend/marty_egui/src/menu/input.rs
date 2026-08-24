@@ -24,7 +24,7 @@
 
     --------------------------------------------------------------------------
 */
-use crate::{state::GuiState, GuiEnum, GuiEvent, GuiFloat, GuiVariable, GuiVariableContext};
+use crate::{state::GuiState, GuiBoolean, GuiEnum, GuiEvent, GuiFloat, GuiVariable, GuiVariableContext};
 use marty_common::types::{joystick::ControllerLayout, ui::MouseCaptureMode};
 use marty_frontend_common::types::gamepad::JoystickMapping;
 use strum::IntoEnumIterator;
@@ -120,9 +120,27 @@ impl GuiState {
         });
 
         ui.menu_button("Keyboard", |ui| {
+            let keyboard_available = self.osd_keyboard_available();
+            let mut osd_keyboard_enabled = self.get_option(GuiBoolean::OsdKeyboard).unwrap_or(false);
+            if ui
+                .add_enabled(
+                    keyboard_available,
+                    egui::Checkbox::new(&mut osd_keyboard_enabled, "On-screen keyboard"),
+                )
+                .changed()
+            {
+                self.set_osd_keyboard_enabled(osd_keyboard_enabled);
+                self.event_queue.send(GuiEvent::VariableChanged(
+                    GuiVariableContext::Global,
+                    GuiVariable::Bool(GuiBoolean::OsdKeyboard, osd_keyboard_enabled),
+                ));
+                ui.close();
+            }
+
+            ui.separator();
             if ui.button("Reset keyboard").clicked() {
                 self.event_queue.send(GuiEvent::ClearKeyboard);
-                ui.close_menu();
+                ui.close();
             }
         });
 

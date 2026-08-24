@@ -84,13 +84,12 @@ pub const GRAB_MODE: CursorGrab = CursorGrab::Confined;
 #[derive(serde::Deserialize, serde::Serialize)]
 #[serde(default)] // if we add new fields, give them default values when deserializing old state
 pub struct MartyApp {
-    current_size: egui::Vec2,
-    last_size: egui::Vec2,
     size_delay: u32,
     ppp: Option<f32>,
     focused: bool,
     hide_menu: bool,
-    menu_height: f32,
+    #[serde(skip)]
+    last_main_panel_size: Option<[u32; 2]>,
     #[serde(skip)]
     mouse_capture_title_hint: String,
     #[serde(skip)]
@@ -121,13 +120,11 @@ impl Default for MartyApp {
 
         Self {
             hide_menu: false,
-            current_size: egui::Vec2::ZERO,
-            last_size: egui::Vec2::INFINITY,
             // Stupid hack for web
             size_delay: 12,
             ppp: None,
             focused: false,
-            menu_height: 22.0,
+            last_main_panel_size: None,
             mouse_capture_title_hint: String::new(),
             // Example stuff:
             gui: GuiRenderContext::default(),
@@ -628,26 +625,6 @@ impl MartyApp {
         });
 
         if let Some(emu) = &mut self.emu {
-            self.current_size = ctx.content_rect().size(); // Get window size
-
-            if self.size_delay > 0 || (self.current_size != self.last_size) {
-                log::debug!(
-                    "MartyApp::update(): Window resized to: {:?} ppp: {:?}",
-                    self.current_size,
-                    self.ppp
-                );
-                if self.size_delay > 0 {
-                    log::warn!("This is a synthetic resize event for web.");
-                    self.size_delay = self.size_delay.saturating_sub(1);
-                }
-                MartyApp::viewport_resized(
-                    self.dm.as_mut().unwrap(),
-                    self.current_size.x as u32,
-                    self.current_size.y as u32 - self.menu_height as u32,
-                );
-                self.last_size = self.current_size; // Update tracked size
-            }
-
             // Receive hooked Winit events.
             #[cfg(feature = "use_winit")]
             if let Some(receiver) = &self.winit_receiver {
@@ -790,7 +767,7 @@ impl MartyApp {
             // the active video output may itself be an egui surface. render_gui controls only the
             // menu and non-display windows.
             let render_gui = emu.flags.render_gui;
-            let capture_state = self.gui.show(
+            let gui_output = self.gui.show(
                 ui,
                 &mut emu.gui,
                 render_gui && !self.hide_menu,
@@ -896,15 +873,14 @@ impl MartyApp {
                         }
                     }
                 },
-                |ui, _gui, menu_height, _capture_state| {
-                    self.menu_height = menu_height;
+                |ui, _gui, main_panel_rect, _capture_state| {
                     if root_background_displays.is_empty() {
                         return;
                     }
 
                     // Split the background panel into rects by number of displays assigned to it
                     let target_rects = background_target_rects(
-                        ui.available_rect_before_wrap(),
+                        main_panel_rect,
                         root_background_displays.len(),
                         root_background_organization,
                     );
@@ -963,9 +939,22 @@ impl MartyApp {
                 },
             );
 
-            // This is a bit of a hack. At least we could have gui.show() return a structure so we
-            // could return other things other than just the capture state.
-            if let Some(state) = capture_state {
+            let main_panel_size = resize_dimensions(gui_output.main_panel_rect);
+            if self.size_delay > 0 || self.last_main_panel_size != Some(main_panel_size) {
+                log::debug!(
+                    "MartyApp::update(): Main panel resized to: {:?} ppp: {:?}",
+                    main_panel_size,
+                    self.ppp
+                );
+                if self.size_delay > 0 {
+                    log::warn!("This is a synthetic resize event for web.");
+                    self.size_delay = self.size_delay.saturating_sub(1);
+                }
+                MartyApp::viewport_resized(dm, main_panel_size[0], main_panel_size[1]);
+                self.last_main_panel_size = Some(main_panel_size);
+            }
+
+            if let Some(state) = gui_output.capture_state {
                 emu.mouse_data.is_captured = state;
             }
 
@@ -1083,4 +1072,23 @@ fn process_captured_pointer_input(input: &egui::InputState, mouse: &mut MouseSta
     }
 
     input.pointer.button_pressed(egui::PointerButton::Middle)
+}
+
+fn resize_dimensions(rect: egui::Rect) -> [u32; 2] {
+    let size = rect.size();
+    [size.x.round().max(1.0) as u32, size.y.round().max(1.0) as u32]
+}
+
+#[cfg(test)]
+mod tests {
+    use super::resize_dimensions;
+
+    #[test]
+    fn resize_dimensions_rounds_and_clamps_panel_size() {
+        let rect = egui::Rect::from_min_size(egui::Pos2::ZERO, egui::vec2(639.6, 479.4));
+        assert_eq!(resize_dimensions(rect), [640, 479]);
+
+        let empty = egui::Rect::from_min_size(egui::Pos2::ZERO, egui::Vec2::ZERO);
+        assert_eq!(resize_dimensions(empty), [1, 1]);
+    }
 }

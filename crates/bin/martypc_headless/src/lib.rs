@@ -67,6 +67,7 @@ use marty_core::cpu_validator::ValidatorType;
 use marty_frontend_common::{
     cartridge_manager::CartridgeManager,
     floppy_manager::FloppyManager,
+    keyboard_manager::KeyboardManager,
     machine_manager::MachineManager,
     resource_manager::ResourceManager,
     rom_manager::RomManager,
@@ -615,8 +616,6 @@ pub fn run() {
         trace_file_path = Some(trace_file_base.join(trace_file));
     }
 
-    // Calculate the path to the keyboard layout file
-    let mut kb_layout_file_path = None;
     let mut kb_string = "US".to_string();
 
     if let Some(global_kb_string) = &config.machine.input.keyboard_layout {
@@ -628,28 +627,12 @@ pub fn run() {
         }
     }
 
-    // Get the 'keyboard_layout' resource path and append the calculated keyboard layout file name
-    if let Some(mut kb_layout_resource_path) = resource_manager.resource_path("keyboard_layout") {
-        kb_layout_resource_path.push(format!("keyboard_{}.toml", kb_string));
-        kb_layout_file_path = Some(kb_layout_resource_path);
-    }
-
-    // Load the keyboard layout file
-    let mut kb_layout = None;
-    if let Some(path) = kb_layout_file_path {
-        let kb_vec = match resource_manager.read_resource_from_path_blocking(&path) {
-            Ok(v) => v,
-            Err(e) => {
-                log::error!("Failed to read keyboard layout file: {:?}", e);
-                std::process::exit(1);
-            }
-        };
-        let kb_str = String::from_utf8(kb_vec).unwrap_or_else(|e| {
+    let mut keyboard_manager = KeyboardManager::new();
+    let kb_layout = pollster::block_on(keyboard_manager.load_mapping(&mut resource_manager, &kb_string))
+        .unwrap_or_else(|e| {
             log::error!("Failed to read keyboard layout file: {:?}", e);
             std::process::exit(1);
         });
-        kb_layout = Some(kb_str);
-    }
 
     let mut disassembly_file_path = None;
     if let Some(disassembly_file) = config.machine.disassembly_file.as_ref() {

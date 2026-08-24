@@ -38,6 +38,12 @@ use egui_extras::install_image_loaders;
 
 //use web_time::{Duration, Instant};
 
+#[derive(Clone, Copy, Debug)]
+pub struct GuiFrameOutput {
+    pub capture_state:   Option<bool>,
+    pub main_panel_rect: egui::Rect,
+}
+
 /// Manages all state required for rendering egui over `Pixels`.
 #[allow(dead_code)]
 pub struct GuiRenderContext {
@@ -153,10 +159,10 @@ impl GuiRenderContext {
         main_panel_fill: Option<Color32>,
         mut window_render: Fw,
         mut main_panel_render: Fm,
-    ) -> Option<bool>
+    ) -> GuiFrameOutput
     where
         Fw: FnMut(&mut egui::Context, &mut GuiState, &mut Option<bool>),
-        Fm: FnMut(&mut egui::Ui, &mut GuiState, f32, &mut Option<bool>),
+        Fm: FnMut(&mut egui::Ui, &mut GuiState, egui::Rect, &mut Option<bool>),
     {
         let mut capture_state = None;
 
@@ -172,6 +178,11 @@ impl GuiRenderContext {
         let main_visuals = self.main_theme.visuals();
         self.ctx.set_visuals(main_visuals.clone());
         root_ui.style_mut().visuals = main_visuals.clone();
+
+        state.update_osd_keyboard_unhide_gesture(&self.ctx, root_ui.available_rect_before_wrap());
+        if state.osd_keyboard_enabled() {
+            state.show_osd_keyboard_panel(root_ui);
+        }
 
         if show_windows {
             state.show_windows(&self.ctx);
@@ -195,12 +206,19 @@ impl GuiRenderContext {
         if let Some(fill) = main_panel_fill {
             panel_frame.fill = fill;
         }
-        egui::CentralPanel::default().frame(panel_frame).show_inside(root_ui, |ui| {
-            ui.spacing_mut().item_spacing = [0.0, 0.0].into();
-            let menu_height = self.ctx.content_rect().size().y - ui.available_size().y;
-            main_panel_render(ui, state, menu_height, &mut capture_state);
-        });
+        let main_panel_rect = egui::CentralPanel::default()
+            .frame(panel_frame)
+            .show_inside(root_ui, |ui| {
+                ui.spacing_mut().item_spacing = [0.0, 0.0].into();
+                let main_panel_rect = ui.available_rect_before_wrap();
+                main_panel_render(ui, state, main_panel_rect, &mut capture_state);
+                main_panel_rect
+            })
+            .inner;
 
-        capture_state
+        GuiFrameOutput {
+            capture_state,
+            main_panel_rect,
+        }
     }
 }

@@ -95,6 +95,9 @@ pub struct CmdLineArgs {
     #[bpaf(long, switch)]
     pub reverse_mouse_buttons: bool,
 
+    #[bpaf(long, switch)]
+    pub osd_keyboard: bool,
+
     #[bpaf(long)]
     pub controller_layout: Option<ControllerLayout>,
 
@@ -159,5 +162,14 @@ mod tests {
             .unwrap();
 
         assert_eq!(args.scaler_preset.as_deref(), Some("IBM 8513"));
+    }
+
+    #[test]
+    fn parses_osd_keyboard_switch() {
+        let args = cli_args()
+            .run_inner(Args::from(&["--osd-keyboard"]))
+            .unwrap();
+
+        assert!(args.osd_keyboard);
     }
 }

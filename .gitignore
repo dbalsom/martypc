@@ -55,12 +55,13 @@ crates/bin/martypc_eframe/assets/configs
 /install/screenshots/*
 /install/traces/*
 /install/assets/*
-
-# New media paths for 0.2.0
 /install/media/roms/*
 /install/media/floppies/*
 /install/media/hdds/*
 /install/media/cartridges/*
+
+# Allow OSD keyboard assets
+!/install/assets/keyboards
 
 /install/mount/floppy/*
 !/install/mount/floppy/readme.md
@@ -127,5 +128,6 @@ crates/bin/martypc_eframe/assets/configs
 
 /util/build_utils.bat
 /util/**/*.com
+/hitbox_editor
 
 .wrangler

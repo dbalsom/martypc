@@ -59,6 +59,7 @@ mod glyphs;
 mod layouts;
 pub mod menu;
 pub mod modal;
+pub mod panels;
 pub mod state;
 pub mod themes;
 mod token_listview;
@@ -74,7 +75,7 @@ use marty_core::{
     machine::MachineState,
 };
 
-use marty_common::types::ui::MouseCaptureMode;
+use marty_common::types::{keys::MartyKey, ui::MouseCaptureMode};
 use marty_core::cpu_common::Register16;
 #[cfg(feature = "use_display")]
 use marty_display_common::display_manager::{DisplayTargetType, DtHandle, VpHandle};
@@ -147,7 +148,7 @@ pub enum GuiVariable {
     Enum(GuiEnum),
 }
 
-#[derive(PartialEq, Eq, Hash)]
+#[derive(Copy, Clone, Debug, PartialEq, Eq, Hash)]
 pub enum GuiBoolean {
     // Boolean options
     CpuEnableWaitStates,
@@ -156,6 +157,7 @@ pub enum GuiBoolean {
     TurboButton,
     ShowBackBuffer,
     ShowRasterPosition,
+    OsdKeyboard,
 }
 
 #[derive(PartialEq, Eq, Hash)]
@@ -289,6 +291,8 @@ pub enum GuiEvent {
     InsertCartridge(usize, usize),
     RemoveCartridge(usize),
     ClearKeyboard,
+    KeyPress(MartyKey),
+    KeyRelease(MartyKey),
 }
 
 pub enum DeviceSelection {

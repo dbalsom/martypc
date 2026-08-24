@@ -65,6 +65,7 @@ pub struct CmdLineArgs {
     pub title_hacks: bool,
     pub off_rails_detection: bool,
     pub reverse_mouse_buttons: bool,
+    pub osd_keyboard: bool,
     pub controller_layout: Option<ControllerLayout>,
     pub machine_config_name: Option<String>,
     pub machine_config_overlays: Option<String>,
@@ -109,6 +110,7 @@ pub fn parse_query_params() -> CmdLineArgs {
                     "scaler_preset" => args.scaler_preset = Some(String::from(value.into_owned())),
                     "no_roms" => args.no_roms = true,
                     "turbo" => args.turbo = true,
+                    "osd_keyboard" => args.osd_keyboard = true,
                     "mount" => {
                         if let Ok(mount) = MountSpec::from_str(&value) {
                             args.mounts.push(mount);

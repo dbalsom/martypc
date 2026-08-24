@@ -602,6 +602,11 @@ aspect_ratio = { h = 4, v = 3 }
 # We try to detect this, but it can be overridden here.
 reverse_mouse_buttons = false
 
+# Show the on-screen keyboard panel below the emulated display. The keyboard
+# asset layout is selected using the configured two-letter keyboard layout.
+# This can also be enabled with --osd-keyboard or the ?osd_keyboard web query parameter.
+osd_keyboard = false
+
 # Define hotkeys. 
 # Each hotkey definition specifies an event enum and a list of keycodes. See 
 # one of the keyboard mapping files in /config/keyboards for a list of valid 

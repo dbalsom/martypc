@@ -412,6 +412,8 @@ pub struct EmulatorInput {
     #[serde(default)]
     pub debug_keyboard: bool,
     #[serde(default)]
+    pub osd_keyboard: bool,
+    #[serde(default)]
     pub gamepad_auto_connect: bool,
     pub gamepad_dead_zone: Option<f32>,
 }
@@ -501,6 +503,7 @@ impl ConfigFileParams {
         self.emulator.debug_mode |= shell_args.debug_mode;
         //self.emulator.video_frame_debug |= shell_args.video_frame_debug;
         self.emulator.input.debug_keyboard |= shell_args.debug_keyboard;
+        self.emulator.input.osd_keyboard |= shell_args.osd_keyboard;
         self.machine.no_roms |= shell_args.no_roms;
 
         /*
@@ -783,5 +786,18 @@ mod tests {
             ..Default::default()
         });
         assert_eq!(config.emulator.window[0].scaler_preset.as_deref(), Some("IBM 8513"));
+    }
+
+    #[test]
+    fn osd_keyboard_override_enables_the_panel() {
+        let mut config: ConfigFileParams = toml::from_str(include_str!("../../../../../install/martypc.toml")).unwrap();
+        config.emulator.input.osd_keyboard = false;
+
+        config.overlay(CmdLineArgs {
+            osd_keyboard: true,
+            ..Default::default()
+        });
+
+        assert!(config.emulator.input.osd_keyboard);
     }
 }

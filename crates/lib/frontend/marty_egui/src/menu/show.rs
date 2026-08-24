@@ -29,6 +29,9 @@
 
 use crate::{state::GuiState, GuiEvent, GuiWindow};
 
+#[cfg(target_arch = "wasm32")]
+use crate::{GuiBoolean, GuiVariable, GuiVariableContext};
+
 #[cfg(feature = "use_display")]
 use marty_core::device_traits::videocard::VideoCardId;
 
@@ -53,6 +56,29 @@ impl GuiState {
                     if ui.button("⏱ Performance...").clicked() {
                         *self.window_flag(GuiWindow::PerfViewer) = true;
                         ui.close_menu();
+                    }
+
+                    // On wasm we give a quick-shortcut to the OSD keyboard under Emulator,
+                    // but this may be unnecessary since we can swipe up for it...
+                    #[cfg(target_arch = "wasm32")]
+                    {
+                        ui.separator();
+
+                        let mut osd_keyboard_enabled = self.get_option(GuiBoolean::OsdKeyboard).unwrap_or(false);
+                        if ui
+                            .add_enabled(
+                                self.osd_keyboard_available(),
+                                egui::Checkbox::new(&mut osd_keyboard_enabled, "On-screen keyboard"),
+                            )
+                            .changed()
+                        {
+                            self.set_osd_keyboard_enabled(osd_keyboard_enabled);
+                            self.event_queue.send(GuiEvent::VariableChanged(
+                                GuiVariableContext::Global,
+                                GuiVariable::Bool(GuiBoolean::OsdKeyboard, osd_keyboard_enabled),
+                            ));
+                            ui.close();
+                        }
                     }
 
                     #[cfg(not(target_arch = "wasm32"))]

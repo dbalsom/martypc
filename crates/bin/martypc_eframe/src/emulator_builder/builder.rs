@@ -67,6 +67,7 @@ use marty_frontend_common::{
     asset_manager::AssetManager,
     cartridge_manager::CartridgeManager,
     floppy_manager::FloppyManager,
+    keyboard_manager::KeyboardManager,
     machine_manager::MachineManager,
     resource_manager::ResourceManager,
     rom_manager::RomManager,
@@ -687,8 +688,6 @@ impl EmulatorBuilder {
             trace_file_path = Some(trace_file_base.join(trace_file));
         }
 
-        // Calculate the path to the keyboard layout file
-        let mut kb_layout_file_path = None;
         let mut kb_string = "US".to_string();
 
         if let Some(global_kb_string) = &config.machine.input.keyboard_layout {
@@ -700,18 +699,15 @@ impl EmulatorBuilder {
             }
         }
 
-        // Get the 'keyboard_layout' resource path and append the calculated keyboard layout file name
-        if let Some(mut kb_layout_resource_path) = resource_manager.resource_path("keyboard_layout") {
-            kb_layout_resource_path.push(format!("keyboard_{}.toml", kb_string));
-            kb_layout_file_path = Some(kb_layout_resource_path);
-        }
-
-        // Load the keyboard layout file
-        let mut kb_layout = None;
-        if let Some(path) = kb_layout_file_path {
-            let kb_str = resource_manager.read_string_from_path(&path).await?;
-            kb_layout = Some(kb_str);
-        }
+        let mut keyboard_manager = KeyboardManager::new();
+        let kb_layout = keyboard_manager.load_mapping(&mut resource_manager, &kb_string).await?;
+        let osd_keyboard = keyboard_manager
+            .load_layout(&asset_manager, &mut resource_manager, &kb_string)
+            .await
+            .unwrap_or_else(|err| {
+                log::warn!("Failed to load OSD keyboard assets: {err}");
+                None
+            });
 
         // Get the file path to use for the disassembly log
         let mut disassembly_file_path = None;
@@ -822,6 +818,8 @@ impl EmulatorBuilder {
         gui.set_build_info(env!("CARGO_PKG_VERSION"), crate::build_id());
         gui.set_hotkeys(hotkey_manager.hotkey_bindings());
         gui.set_emulation_speed_limits(config.emulator.min_emulation_speed, config.emulator.max_emulation_speed);
+        gui.set_osd_keyboard(osd_keyboard);
+        gui.set_osd_keyboard_enabled(config.emulator.input.osd_keyboard);
 
         // Set list of virtual serial ports
         gui.set_serial_ports(machine.bus().enumerate_serial_ports());
