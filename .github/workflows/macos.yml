@@ -30,7 +30,7 @@ jobs:
           fetch-depth: 0
 
       - name: Cargo build
-        run: cargo build --profile release-lto
+        run: cargo build --locked --profile release-lto
 
       - name: Copy files into install dir
         run: cp LICENSE README.md CHANGELOG.md CREDITS.md target/release-lto/martypc install
@@ -71,7 +71,7 @@ jobs:
           fetch-depth: 0
 
       - name: Cargo build
-        run: cargo build --profile release-lto --features use_winit,use_wgpu,sound,opl
+        run: cargo build --locked --profile release-lto --features use_winit,use_wgpu,sound,opl
 
       - name: Copy files into install dir
         run: cp LICENSE README.md CHANGELOG.md CREDITS.md target/release-lto/martypc install
