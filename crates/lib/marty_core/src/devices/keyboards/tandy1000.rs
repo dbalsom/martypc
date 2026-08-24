@@ -102,7 +102,7 @@ impl MartyKeyboard for Tandy1000Keyboard {
             MartyKey::KeyX => Some(0x2D),
             MartyKey::KeyY => Some(0x15),
             MartyKey::KeyZ => Some(0x2C),
-            MartyKey::Backslash => Some(0x2B),
+            MartyKey::Backslash => Some(0x47), // 7/Backslash key on the numeric keypad
             MartyKey::Space => Some(0x39),
             MartyKey::Backspace => Some(0x0E),
             MartyKey::BracketLeft => Some(0x1A),

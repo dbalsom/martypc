@@ -29,6 +29,7 @@ use std::{path::Path, str::FromStr};
 
 use anyhow::{Context, Error};
 use marty_common::types::keys::MartyKey;
+use marty_core::device_types::keyboard::KeyboardType;
 use serde::Deserialize;
 
 use crate::{asset_manager::AssetManager, resource_manager::ResourceManager};
@@ -133,8 +134,11 @@ impl KeyboardManager {
         &mut self,
         asset_manager: &AssetManager,
         rm: &mut ResourceManager,
+        keyboard_type: KeyboardType,
         layout_name: &str,
     ) -> Result<Option<OsdKeyboard>, Error> {
+        let keyboard_name = osd_keyboard_name(keyboard_type);
+
         for keyboard_asset in asset_manager.osd_keyboards() {
             let definition_data = match rm.read_resource_from_path(&keyboard_asset.path).await {
                 Ok(data) => data,
@@ -170,6 +174,14 @@ impl KeyboardManager {
                 }
             };
 
+            if !definition
+                .osd_keyboard
+                .keyboard_name
+                .eq_ignore_ascii_case(keyboard_name)
+            {
+                continue;
+            }
+
             let Some(layout_reference) = definition
                 .osd_keyboard_layout
                 .iter()
@@ -189,7 +201,11 @@ impl KeyboardManager {
             return Ok(Some(keyboard));
         }
 
-        log::debug!("No OSD keyboard asset provides layout '{}'.", layout_name);
+        log::debug!(
+            "No OSD keyboard asset provides keyboard '{}' with layout '{}'.",
+            keyboard_name,
+            layout_name
+        );
         Ok(None)
     }
 
@@ -288,6 +304,15 @@ impl KeyboardManager {
             },
             keys,
         ))
+    }
+}
+
+fn osd_keyboard_name(keyboard_type: KeyboardType) -> &'static str {
+    match keyboard_type {
+        KeyboardType::ModelF => "modelf",
+        KeyboardType::ModelM => "modelm",
+        KeyboardType::Tandy1000 => "tandy1000",
+        KeyboardType::Pcjr => "pcjr",
     }
 }
 
@@ -452,6 +477,7 @@ destination = [12, 12]
         let keyboard = pollster::block_on(keyboard_manager.load_layout(
             &asset_manager,
             &mut resource_manager,
+            KeyboardType::ModelF,
             "US",
         ))
         .unwrap()
@@ -464,5 +490,14 @@ destination = [12, 12]
         assert!(keyboard.keys.iter().any(|key| key.code == MartyKey::KeyA));
         assert_eq!(keyboard.source_image, b"source image");
         assert_eq!(keyboard.bezel_image, b"bezel image");
+
+        let keyboard = pollster::block_on(keyboard_manager.load_layout(
+            &asset_manager,
+            &mut resource_manager,
+            KeyboardType::Tandy1000,
+            "US",
+        ))
+        .unwrap();
+        assert!(keyboard.is_none());
     }
 }

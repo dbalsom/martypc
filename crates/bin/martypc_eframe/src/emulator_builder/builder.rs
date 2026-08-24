@@ -701,13 +701,19 @@ impl EmulatorBuilder {
 
         let mut keyboard_manager = KeyboardManager::new();
         let kb_layout = keyboard_manager.load_mapping(&mut resource_manager, &kb_string).await?;
-        let osd_keyboard = keyboard_manager
-            .load_layout(&asset_manager, &mut resource_manager, &kb_string)
-            .await
-            .unwrap_or_else(|err| {
-                log::warn!("Failed to load OSD keyboard assets: {err}");
-                None
-            });
+        let osd_keyboard = if let Some(keyboard) = machine_config.keyboard.as_ref() {
+            keyboard_manager
+                .load_layout(&asset_manager, &mut resource_manager, keyboard.kb_type, &kb_string)
+                .await
+                .unwrap_or_else(|err| {
+                    log::warn!("Failed to load OSD keyboard assets: {err}");
+                    None
+                })
+        }
+        else {
+            log::debug!("Machine has no keyboard; OSD keyboard is unavailable.");
+            None
+        };
 
         // Get the file path to use for the disassembly log
         let mut disassembly_file_path = None;
