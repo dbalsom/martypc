@@ -61,6 +61,8 @@ use marty_frontend_common::{
 use marty_core::{
     cpu_common::{CpuSubType, CpuType, TraceMode},
     cpu_validator::ValidatorType,
+    device_types::fdc::ImageInsertionPolicy,
+    machine_preferences::MachinePreferences,
     machine_types::OnHaltBehavior,
 };
 
@@ -371,6 +373,12 @@ pub struct MachineInput {
     pub controller_layout: Option<ControllerLayout>,
 }
 
+#[derive(Debug, Default, Deserialize)]
+pub struct MachineFdc {
+    #[serde(default)]
+    pub disk_image_compatibility: ImageInsertionPolicy,
+}
+
 #[derive(Debug, Deserialize)]
 pub struct Machine {
     pub config_name: String,
@@ -393,12 +401,22 @@ pub struct Machine {
     pub raw_rom: bool,
     #[serde(default)]
     pub turbo: bool,
+    #[serde(default)]
+    pub fdc: MachineFdc,
     pub cpu: Cpu,
     pub pit_phase: Option<u32>,
     pub input: MachineInput,
     pub disassembly_recording: Option<bool>,
     pub disassembly_file: Option<PathBuf>,
     pub terminal_port: Option<u16>,
+}
+
+impl Machine {
+    pub fn to_machine_preferences(&self) -> MachinePreferences {
+        MachinePreferences {
+            image_insertion_policy: self.fdc.disk_image_compatibility,
+        }
+    }
 }
 
 #[derive(Debug, Deserialize)]
@@ -743,6 +761,42 @@ mod tests {
             "#,
         );
         assert!(invalid.is_err());
+    }
+
+    #[test]
+    fn disk_image_compatibility_maps_to_machine_preferences() {
+        let default_policy: MachineConfig = toml::from_str(
+            r#"
+                [machine]
+                config_name = "test"
+
+                [machine.cpu]
+                [machine.input]
+            "#,
+        )
+        .unwrap();
+        assert_eq!(
+            default_policy.machine.to_machine_preferences().image_insertion_policy,
+            ImageInsertionPolicy::Strict
+        );
+
+        let lenient_policy: MachineConfig = toml::from_str(
+            r#"
+                [machine]
+                config_name = "test"
+
+                [machine.fdc]
+                disk_image_compatibility = "Lenient"
+
+                [machine.cpu]
+                [machine.input]
+            "#,
+        )
+        .unwrap();
+        assert_eq!(
+            lenient_policy.machine.to_machine_preferences().image_insertion_policy,
+            ImageInsertionPolicy::Lenient
+        );
     }
 
     #[test]

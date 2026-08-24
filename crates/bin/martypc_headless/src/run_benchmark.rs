@@ -55,10 +55,12 @@ pub fn run_benchmark(
     _fm: FloppyManager,
 ) {
     let machine_config = machine_config_file.to_machine_config();
+    let machine_preferences = config.machine.to_machine_preferences();
 
     let machine_builder = MachineBuilder::new()
         .with_core_config(Box::new(config))
         .with_machine_config(&machine_config)
+        .with_machine_preferences(&machine_preferences)
         .with_roms(rom_manifest)
         .with_trace_mode(config.machine.cpu.trace_mode.unwrap_or_default());
 

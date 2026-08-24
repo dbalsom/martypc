@@ -56,7 +56,7 @@ use super::{
 use crate::{
     bus::{BusInterface, DeviceRunTimeUnit, IoDevice},
     cpu_common::LogicAnalyzer,
-    device_types::fdc::{CoreFloppyImageType, FloppyImageType},
+    device_types::fdc::{CoreFloppyImageType, FloppyImageType, ImageInsertionPolicy},
     devices::{
         dma,
         floppy_drive::{FloppyDiskDrive, FloppyImageState, OperationStatus},
@@ -427,6 +427,7 @@ pub struct FloppyController {
     us_accumulator: f64,
     watchdog_accumulator: f64,
     fdc_type: FdcType,
+    image_insertion_policy: ImageInsertionPolicy,
     pub(super) data_rate: DataRate,
     status_byte: u8,
     mrq: bool,
@@ -567,6 +568,7 @@ impl Default for FloppyController {
             us_accumulator: 0.0,
             watchdog_accumulator: 0.0,
             fdc_type: FdcType::IbmNec,
+            image_insertion_policy: ImageInsertionPolicy::default(),
             data_rate: DataRate::Rate250Kbps,
             status_byte: 0,
             mrq: true,
@@ -677,6 +679,10 @@ impl FloppyController {
 
     pub fn reset(&mut self) {
         self.reset_internal(false);
+    }
+
+    pub fn set_image_insertion_policy(&mut self, policy: ImageInsertionPolicy) {
+        self.image_insertion_policy = policy;
     }
 
     pub fn set_presentable_event_sender(&mut self, controller_id: u8, sender: Sender<PresentableDeviceEvent>) {
@@ -889,7 +895,8 @@ impl FloppyController {
         }
 
         let was_present = self.drives[drive_select].disk_present();
-        let result = self.drives[drive_select].load_image_from(src_vec, path, write_protect);
+        let result =
+            self.drives[drive_select].load_image_from(src_vec, path, write_protect, self.image_insertion_policy);
         if result.is_ok() {
             if was_present {
                 self.emit_presentable_event(drive_select, FloppyDriveEvent::MediaEjected);
@@ -910,7 +917,7 @@ impl FloppyController {
             return Err(anyhow!("Invalid drive selection"));
         }
         let was_present = self.drives[drive_select].disk_present();
-        let result = self.drives[drive_select].attach_image(image, path, write_protect);
+        let result = self.drives[drive_select].attach_image(image, path, write_protect, self.image_insertion_policy);
         if result.is_ok() {
             if was_present {
                 self.emit_presentable_event(drive_select, FloppyDriveEvent::MediaEjected);
@@ -2359,6 +2366,29 @@ mod tests {
 
         assert_eq!(fdc.drive(0).get_type(), FloppyDriveType::Floppy360K);
         assert_eq!(fdc.drive(1).get_type(), FloppyDriveType::Floppy720K);
+    }
+
+    #[test]
+    fn insertion_policy_controls_the_physical_format_check() {
+        let mut fdc = FloppyController::new(
+            FdcType::IbmNec,
+            vec![FloppyDriveConfig {
+                fd_type: FloppyDriveType::Floppy720K,
+                image:   None,
+            }],
+        );
+        let build_360k_image = || {
+            ImageBuilder::new()
+                .with_standard_format(StandardFormat::PcFloppy360)
+                .with_resolution(TrackDataResolution::BitStream)
+                .build()
+                .unwrap()
+        };
+
+        assert!(fdc.attach_image(0, build_360k_image(), None, false).is_err());
+
+        fdc.set_image_insertion_policy(ImageInsertionPolicy::Lenient);
+        assert!(fdc.attach_image(0, build_360k_image(), None, false).is_ok());
     }
 
     #[test]

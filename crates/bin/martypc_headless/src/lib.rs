@@ -604,6 +604,7 @@ pub fn run() {
     let mouse_data = MouseData::new(config.emulator.input.reverse_mouse_buttons);
 
     let machine_config = machine_config_file.to_machine_config();
+    let machine_preferences = config.machine.to_machine_preferences();
 
     let trace_file_base = resource_manager.resource_path("trace").unwrap_or_else(|| {
         eprintln!("Failed to retrieve 'trace' resource path.");
@@ -646,6 +647,7 @@ pub fn run() {
     let machine_builder = MachineBuilder::new()
         .with_core_config(Box::new(&config))
         .with_machine_config(&machine_config)
+        .with_machine_preferences(&machine_preferences)
         .with_roms(rom_manifest)
         .with_trace_mode(config.machine.cpu.trace_mode.unwrap_or_default())
         .with_trace_log(trace_file_path)

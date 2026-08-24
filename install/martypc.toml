@@ -168,6 +168,12 @@ trace_on = false
 trace_mode = "CycleSigrok"
 trace_file = "cycle_trace.log"
 
+[machine.fdc]
+# Disk image compatibility mode.
+#  - Strict: Image must match physical diskette size, cylinder count and data rate to allow insertion.
+#  - Lenient: Image must only match cylinder count and data rate
+disk_image_compatibility = "Strict"
+
 # ----------------------------------------------------------------------------
 # Emulator paths
 #

@@ -33,7 +33,60 @@ use crate::machine_types::FloppyDriveType;
 use fluxfox::prelude::*;
 use lazy_static::lazy_static;
 pub use marty_common::types::floppy::FloppyImageType;
-use std::collections::HashMap;
+use marty_common::MartyHashMap;
+use serde_derive::Deserialize;
+use std::fmt;
+
+/// Policy for handling image insertion with technically mismatched image types.
+/// Strict will enforce physical diskette dimensions. Lenient will allow insertion of 5.25" DD
+/// images into 3.5" drives.
+#[derive(Copy, Clone, Debug, Default, Deserialize, Eq, PartialEq)]
+pub enum ImageInsertionPolicy {
+    #[default]
+    Strict,
+    Lenient,
+}
+
+#[derive(Copy, Clone, Debug, Eq, PartialEq)]
+pub enum FloppyDataRate {
+    Rate125Kbps,
+    Rate250Kbps,
+    Rate300Kbps,
+    Rate500Kbps,
+    Rate1000Kbps,
+    Nonstandard(u32),
+}
+
+impl From<TrackDataRate> for FloppyDataRate {
+    fn from(value: TrackDataRate) -> Self {
+        match value {
+            TrackDataRate::Rate125Kbps(_) => Self::Rate125Kbps,
+            TrackDataRate::Rate250Kbps(_) => Self::Rate250Kbps,
+            TrackDataRate::Rate300Kbps(_) => Self::Rate300Kbps,
+            TrackDataRate::Rate500Kbps(_) => Self::Rate500Kbps,
+            TrackDataRate::Rate1000Kbps(_) => Self::Rate1000Kbps,
+            TrackDataRate::RateNonstandard(rate) => Self::Nonstandard(rate),
+        }
+    }
+}
+
+impl fmt::Display for FloppyDataRate {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        match self {
+            Self::Rate125Kbps => write!(f, "125Kbps"),
+            Self::Rate250Kbps => write!(f, "250Kbps"),
+            Self::Rate300Kbps => write!(f, "300Kbps"),
+            Self::Rate500Kbps => write!(f, "500Kbps"),
+            Self::Rate1000Kbps => write!(f, "1000Kbps"),
+            Self::Nonstandard(rate) => write!(f, "{}Kbps", rate / 1000),
+        }
+    }
+}
+
+pub struct DriveCapabilities {
+    pub chs: DiskChs,
+    pub data_rates: &'static [FloppyDataRate],
+}
 
 pub struct DiskFormat {
     pub chs: DiskChs,
@@ -68,30 +121,38 @@ lazy_static! {
     /// Define the drive capabilities for each floppy drive type.
     /// Drives can seek a bit beyond the end of the traditional media sizes.
     /// TODO: Determine accurate values
-    pub static ref DRIVE_CAPABILITIES: HashMap<FloppyDriveType, DiskFormat> = {
-        let mut map = HashMap::new();
+    pub static ref DRIVE_CAPABILITIES: MartyHashMap<FloppyDriveType, DriveCapabilities> = {
+        let mut map = MartyHashMap::default();
         map.insert(
             FloppyDriveType::Floppy360K,
-            DiskFormat {
+            DriveCapabilities {
                 chs: DiskChs::new(45, 2, 9),
+                data_rates: &[FloppyDataRate::Rate250Kbps],
             },
         );
         map.insert(
             FloppyDriveType::Floppy720K,
-            DiskFormat {
+            DriveCapabilities {
                 chs: DiskChs::new(85, 2, 9),
+                data_rates: &[FloppyDataRate::Rate250Kbps],
             },
         );
         map.insert(
             FloppyDriveType::Floppy12M,
-            DiskFormat {
+            DriveCapabilities {
                 chs: DiskChs::new(85, 2, 15),
+                data_rates: &[
+                    FloppyDataRate::Rate250Kbps,
+                    FloppyDataRate::Rate300Kbps,
+                    FloppyDataRate::Rate500Kbps,
+                ],
             },
         );
         map.insert(
             FloppyDriveType::Floppy144M,
-            DiskFormat {
+            DriveCapabilities {
                 chs: DiskChs::new(85, 2, 18),
+                data_rates: &[FloppyDataRate::Rate250Kbps, FloppyDataRate::Rate500Kbps],
             },
         );
         map
@@ -99,8 +160,8 @@ lazy_static! {
 }
 
 lazy_static! {
-    pub static ref DISK_FORMATS: HashMap<usize, DiskFormat> = {
-        HashMap::from([
+    pub static ref DISK_FORMATS: MartyHashMap<usize, DiskFormat> = {
+        [
             (
                 163_840,
                 DiskFormat {
@@ -143,6 +204,8 @@ lazy_static! {
                     chs: DiskChs::new(80, 2, 18),
                 },
             ),
-        ])
+        ]
+        .into_iter()
+        .collect()
     };
 }

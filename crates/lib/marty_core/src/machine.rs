@@ -81,6 +81,7 @@ use crate::{
     },
     keys::MartyKey,
     machine_config::{get_machine_descriptor, MachineConfiguration, MachineDescriptor},
+    machine_preferences::MachinePreferences,
     machine_types::{MachineType, OnHaltBehavior},
     service_interrupt::{ServiceFunction, ServiceInterruptManager},
     tracelogger::TraceLogger,
@@ -312,6 +313,7 @@ pub struct MachineBuilder<'a> {
     descriptor: Option<MachineDescriptor>,
     core_config: Option<Box<&'a dyn CoreConfig>>,
     machine_config: Option<MachineConfiguration>,
+    machine_preferences: MachinePreferences,
     rom_manifest: Option<MachineRomManifest>,
     trace_mode: TraceMode,
     trace_logger: TraceLogger,
@@ -339,6 +341,11 @@ impl<'a> MachineBuilder<'a> {
         self.mtype = Some(mtype);
         self.descriptor = Some(*get_machine_descriptor(mtype).unwrap());
         self.machine_config = Some(config.clone());
+        self
+    }
+
+    pub fn with_machine_preferences(mut self, preferences: &MachinePreferences) -> Self {
+        self.machine_preferences = *preferences;
         self
     }
 
@@ -413,6 +420,7 @@ impl<'a> MachineBuilder<'a> {
         Machine::new(
             *core_config,
             machine_config,
+            self.machine_preferences,
             machine_type,
             machine_desc,
             self.trace_mode,
@@ -431,6 +439,7 @@ pub struct Machine {
     machine_type: MachineType,
     machine_desc: MachineDescriptor,
     machine_config: MachineConfiguration,
+    preferences: MachinePreferences,
     state: MachineState,
     options: MachineOptions,
     #[cfg(feature = "sound")]
@@ -470,6 +479,7 @@ impl Machine {
     pub fn new(
         core_config: &dyn CoreConfig,
         machine_config: MachineConfiguration,
+        machine_preferences: MachinePreferences,
         machine_type: MachineType,
         machine_desc: MachineDescriptor,
         trace_mode: TraceMode,
@@ -662,6 +672,7 @@ impl Machine {
             machine_type,
             machine_desc,
             machine_config,
+            preferences: machine_preferences,
             options: MachineOptions::default(),
             state: MachineState::On,
             #[cfg(feature = "sound")]
@@ -700,6 +711,7 @@ impl Machine {
             disassembly_listing_file,
         };
 
+        machine.apply_preferences();
         machine.set_cpu_factor(cpu_factor);
         Ok(machine)
     }
@@ -955,6 +967,21 @@ impl Machine {
 
     pub fn config(&self) -> &MachineConfiguration {
         &self.machine_config
+    }
+
+    pub fn preferences(&self) -> &MachinePreferences {
+        &self.preferences
+    }
+
+    pub fn set_preferences(&mut self, preferences: MachinePreferences) {
+        self.preferences = preferences;
+        self.apply_preferences();
+    }
+
+    fn apply_preferences(&mut self) {
+        if let Some(fdc) = self.cpu.bus_mut().fdc_mut().as_mut() {
+            fdc.set_image_insertion_policy(self.preferences.image_insertion_policy);
+        }
     }
 
     /// Set a CPU option. Avoids needing to borrow CPU.

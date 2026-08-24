@@ -364,6 +364,10 @@ pub fn handle_thread_event(emu: &mut Emulator, ctx: &egui::Context) {
                         }
                         Err(err) => {
                             log::warn!("Floppy image failed to load: {}", err);
+                            emu.gui
+                                .toasts()
+                                .error(format!("Floppy image could not be loaded: {}", err))
+                                .duration(Some(LONG_NOTIFICATION_TIME));
                         }
                     }
                 }

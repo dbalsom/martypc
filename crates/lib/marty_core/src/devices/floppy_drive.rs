@@ -29,17 +29,19 @@
     Implements a floppy drive
 */
 
-use crate::{
-    device_types::fdc::{FloppyImageType, DRIVE_CAPABILITIES},
-    machine_types::FloppyDriveType,
-};
-use anyhow::{anyhow, Error};
-use fluxfox::{file_system::FileSystemType, prelude::*, types::ReadSectorResult, DiskSectorMap};
 use std::{
+    fmt,
     io::Cursor,
     path::{Path, PathBuf},
     sync::{Arc, RwLock},
 };
+
+use crate::{
+    device_types::fdc::{FloppyDataRate, FloppyImageType, ImageInsertionPolicy, DRIVE_CAPABILITIES},
+    machine_types::FloppyDriveType,
+};
+use anyhow::{anyhow, Error};
+use fluxfox::{file_system::FileSystemType, prelude::*, types::ReadSectorResult, DiskSectorMap};
 
 #[allow(unused)]
 macro_rules! read_lock {
@@ -154,6 +156,80 @@ impl FloppyImageState {
     }
 }
 
+#[derive(Clone, Debug)]
+pub enum FloppyMediaIncompatibility {
+    GeometryExceedsDrive {
+        media_cylinders: u16,
+        media_heads: u8,
+        drive_cylinders: u16,
+        drive_heads: u8,
+    },
+    UnsupportedDataRate {
+        data_rate:  FloppyDataRate,
+        drive_type: FloppyDriveType,
+    },
+    UnsupportedFormat {
+        format: Option<StandardFormat>,
+        drive_type: FloppyDriveType,
+    },
+}
+
+impl fmt::Display for FloppyMediaIncompatibility {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        match self {
+            Self::GeometryExceedsDrive {
+                media_cylinders,
+                media_heads,
+                drive_cylinders,
+                drive_heads,
+            } if media_cylinders > drive_cylinders && media_heads <= drive_heads => write!(
+                f,
+                "image has {} cylinders; drive supports {}",
+                media_cylinders, drive_cylinders
+            ),
+            Self::GeometryExceedsDrive {
+                media_cylinders,
+                media_heads,
+                drive_cylinders,
+                drive_heads,
+            } if media_cylinders <= drive_cylinders && media_heads > drive_heads => {
+                write!(f, "image has {} heads; drive supports {}", media_heads, drive_heads)
+            }
+            Self::GeometryExceedsDrive {
+                media_cylinders,
+                media_heads,
+                drive_cylinders,
+                drive_heads,
+            } => write!(
+                f,
+                "image geometry {}c/{}h; drive supports {}c/{}h",
+                media_cylinders, media_heads, drive_cylinders, drive_heads
+            ),
+            Self::UnsupportedDataRate { data_rate, drive_type } => {
+                write!(
+                    f,
+                    "disk image data rate {} is not supported by a {} drive",
+                    data_rate, drive_type
+                )
+            }
+            Self::UnsupportedFormat { format, drive_type } => match format {
+                Some(format) => write!(
+                    f,
+                    "disk image format {} is not supported by a {} drive",
+                    format, drive_type
+                ),
+                None => write!(
+                    f,
+                    "disk image does not match a standard format supported by a {} drive",
+                    drive_type
+                ),
+            },
+        }
+    }
+}
+
+impl std::error::Error for FloppyMediaIncompatibility {}
+
 pub struct FloppyDiskDrive {
     drive_type: FloppyDriveType,
     drive_n: usize,
@@ -257,30 +333,66 @@ impl FloppyDiskDrive {
         self.drive_type
     }
 
+    /// Check that the requested [DiskImage] can be inserted into this drive.
+    pub fn validate_image_compatibility(
+        &self,
+        image: &DiskImage,
+        policy: ImageInsertionPolicy,
+    ) -> Result<(), FloppyMediaIncompatibility> {
+        let image_format = image.image_format();
+        let media_cylinders = image_format.geometry.c();
+        let media_heads = image_format.geometry.h();
+
+        // If the image requires more heads or cylinders than the drive supports, fail.
+        if media_cylinders > self.drive_geom.c() || media_heads > self.drive_geom.h() {
+            return Err(FloppyMediaIncompatibility::GeometryExceedsDrive {
+                media_cylinders,
+                media_heads,
+                drive_cylinders: self.drive_geom.c(),
+                drive_heads: self.drive_geom.h(),
+            });
+        }
+
+        let data_rate = FloppyDataRate::from(image_format.data_rate);
+        let drive_capabilities = DRIVE_CAPABILITIES
+            .get(&self.drive_type)
+            .expect("all floppy drive types must define capabilities");
+        if !drive_capabilities.data_rates.contains(&data_rate) {
+            return Err(FloppyMediaIncompatibility::UnsupportedDataRate {
+                data_rate,
+                drive_type: self.drive_type,
+            });
+        }
+
+        // Additionally match physical media type if policy is set to Strict
+        if matches!(policy, ImageInsertionPolicy::Strict) {
+            let format = image.closest_format(false);
+            let format_supported = format
+                .as_ref()
+                .is_some_and(|format| self.drive_type.get_compatible_formats().contains(format));
+
+            if !format_supported {
+                return Err(FloppyMediaIncompatibility::UnsupportedFormat {
+                    format,
+                    drive_type: self.drive_type,
+                });
+            }
+        }
+
+        Ok(())
+    }
+
     /// Load a disk into the specified drive
     pub fn load_image_from(
         &mut self,
         src_vec: Vec<u8>,
         path: Option<&Path>,
         write_protect: bool,
+        policy: ImageInsertionPolicy,
     ) -> Result<Arc<RwLock<DiskImage>>, Error> {
         let mut image_buffer = Cursor::new(src_vec);
         let image = DiskImage::load(&mut image_buffer, path, None, None)?;
-
-        self.media_geom = DiskChs::from((
-            image.image_format().geometry.c(),
-            image.image_format().geometry.h(),
-            0u8,
-        ));
-
-        log::debug!("Loaded floppy image, CHS: {}", self.media_geom,);
-        self.disk_present = true;
-        self.write_protected = write_protect;
-        let image_arc = image.into_arc();
-        let image_clone = image_arc.clone();
-        self.disk_image = Some(image_arc);
-
-        Ok(image_clone)
+        self.attach_image(image, path.map(Path::to_path_buf), write_protect, policy)
     }
 
     pub fn attach_image(
@@ -288,7 +400,10 @@ impl FloppyDiskDrive {
         image: DiskImage,
         _path: Option<PathBuf>,
         write_protect: bool,
+        policy: ImageInsertionPolicy,
     ) -> Result<Arc<RwLock<DiskImage>>, Error> {
+        self.validate_image_compatibility(&image, policy)?;
+
         self.media_geom = DiskChs::from((
             image.image_format().geometry.c(),
             image.image_format().geometry.h(),
@@ -703,6 +818,14 @@ impl FloppyDiskDrive {
 mod tests {
     use super::*;
 
+    fn build_image(format: StandardFormat) -> DiskImage {
+        ImageBuilder::new()
+            .with_standard_format(format)
+            .with_resolution(TrackDataResolution::BitStream)
+            .build()
+            .unwrap()
+    }
+
     #[test]
     fn matched_sector_with_bad_address_crc_is_not_reported_as_not_found() {
         let result = ReadSectorResult {
@@ -713,5 +836,69 @@ mod tests {
         };
 
         assert!(!sector_not_found(&result));
+    }
+
+    #[test]
+    fn strict_policy_rejects_a_different_physical_diskette_format() {
+        let drive = FloppyDiskDrive::new(0, FloppyDriveType::Floppy720K);
+        let image = build_image(StandardFormat::PcFloppy360);
+
+        assert!(matches!(
+            drive.validate_image_compatibility(&image, ImageInsertionPolicy::Strict),
+            Err(FloppyMediaIncompatibility::UnsupportedFormat {
+                format: Some(StandardFormat::PcFloppy360),
+                ..
+            })
+        ));
+    }
+
+    #[test]
+    fn lenient_policy_allows_a_different_physical_diskette_format() {
+        let drive = FloppyDiskDrive::new(0, FloppyDriveType::Floppy720K);
+        let image = build_image(StandardFormat::PcFloppy360);
+
+        assert!(drive
+            .validate_image_compatibility(&image, ImageInsertionPolicy::Lenient)
+            .is_ok());
+    }
+
+    #[test]
+    fn unsupported_data_rate_is_rejected_in_both_policies() {
+        let drive = FloppyDiskDrive::new(0, FloppyDriveType::Floppy720K);
+
+        for policy in [ImageInsertionPolicy::Strict, ImageInsertionPolicy::Lenient] {
+            let image = build_image(StandardFormat::PcFloppy1440);
+            assert!(matches!(
+                drive.validate_image_compatibility(&image, policy),
+                Err(FloppyMediaIncompatibility::UnsupportedDataRate {
+                    data_rate: FloppyDataRate::Rate500Kbps,
+                    ..
+                })
+            ));
+        }
+    }
+
+    #[test]
+    fn excessive_cylinder_count_is_rejected_before_attachment() {
+        let mut drive = FloppyDiskDrive::new(0, FloppyDriveType::Floppy360K);
+        let image = build_image(StandardFormat::PcFloppy720);
+
+        assert!(drive
+            .attach_image(image, None, false, ImageInsertionPolicy::Lenient)
+            .is_err());
+        assert!(!drive.disk_present());
+        assert!(drive.disk_image.is_none());
+    }
+
+    #[test]
+    fn cylinder_incompatibility_has_a_concise_message() {
+        let error = FloppyMediaIncompatibility::GeometryExceedsDrive {
+            media_cylinders: 80,
+            media_heads: 2,
+            drive_cylinders: 40,
+            drive_heads: 2,
+        };
+
+        assert_eq!(error.to_string(), "image has 80 cylinders; drive supports 40");
     }
 }

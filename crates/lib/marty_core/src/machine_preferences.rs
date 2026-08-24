@@ -24,47 +24,15 @@
 
     --------------------------------------------------------------------------
 
-    lib.rs
+    machine_preferences.rs
 
-    Main emulator core
-
+    This module defines user-selectable machine behavior that does not describe
+    the emulated hardware configuration.
 */
-#![allow(dead_code)]
-extern crate core;
 
-pub mod breakpoints;
-pub mod bus;
-pub mod bytebuf;
-pub mod bytequeue;
-pub mod channel;
-pub mod coreconfig;
-pub mod cpu_808x;
-pub mod cpu_common;
-pub mod cpu_validator;
-pub mod cpu_vx0;
-pub mod device_traits;
-pub mod device_types;
-pub mod devices;
-pub mod file_util;
-pub mod interrupt;
-pub mod keys;
-pub mod machine;
-pub mod machine_config;
-pub mod machine_preferences;
-pub mod machine_types;
-pub mod memerror;
-pub mod service_interrupt;
-#[cfg(feature = "sound")]
-pub mod sound;
-pub mod tracelogger;
-pub mod updatable;
-pub mod util;
-pub mod vhd;
-pub mod video_pll;
+use crate::device_types::fdc::ImageInsertionPolicy;
 
-#[cfg(feature = "arduino_validator")]
-#[macro_use]
-pub mod arduino8088_validator;
-
-// Re-exported for use by frontend to populate file browser.
-pub use fluxfox::supported_extensions as supported_floppy_extensions;
+#[derive(Copy, Clone, Debug, Default, Eq, PartialEq)]
+pub struct MachinePreferences {
+    pub image_insertion_policy: ImageInsertionPolicy,
+}

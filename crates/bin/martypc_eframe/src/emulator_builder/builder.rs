@@ -680,6 +680,7 @@ impl EmulatorBuilder {
 
         // Override machine configuration options from main config
         machine_config.controller_layout = config.machine.input.controller_layout;
+        let machine_preferences = config.machine.to_machine_preferences();
 
         let trace_file_base = resource_manager.resource_path("trace").unwrap_or_default();
         let mut trace_file_path = None;
@@ -731,6 +732,7 @@ impl EmulatorBuilder {
         let mut machine_builder = MachineBuilder::new()
             .with_core_config(Box::new(&config))
             .with_machine_config(&machine_config)
+            .with_machine_preferences(&machine_preferences)
             .with_roms(rom_manifest)
             .with_trace_mode(config.machine.cpu.trace_mode.unwrap_or_default())
             .with_trace_log(trace_file_path)
