@@ -1,6 +1,6 @@
 {
-  "name": "MartyPC PWA",
-  "short_name": "martypc-pwa",
+  "name": "MartyPC",
+  "short_name": "MartyPC",
   "icons": [
     {
       "src": "./assets/icon-256.png",
