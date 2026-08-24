@@ -1191,34 +1191,30 @@ impl Machine {
         });
     }
 
-    #[rustfmt::skip]
-    /// Simulate the user pressing control-alt-delete.
-    pub fn emit_ctrl_alt_del(&mut self) {
-        let reboot_keycodes = [
-            MartyKey::ControlLeft,
-            MartyKey::AltLeft,
-            MartyKey::Delete,
-        ];
-
-        // Press ctrl-alt-del
-        for keycode in reboot_keycodes.iter() {
+    /// Simulate pressing and releasing a sequence of keys as a chord.
+    pub fn emit_key_sequence(&mut self, keycodes: &[MartyKey]) {
+        for &keycode in keycodes {
             self.kb_buf.push_back(KeybufferEntry {
-                keycode: *keycode,
+                keycode,
                 pressed: true,
                 modifiers: KeyboardModifiers::default(),
                 translate: false,
             });
         }
 
-        // Release ctrl-alt-del
-        for keycode in reboot_keycodes.iter() {
+        for &keycode in keycodes.iter().rev() {
             self.kb_buf.push_back(KeybufferEntry {
-                keycode: *keycode,
+                keycode,
                 pressed: false,
                 modifiers: KeyboardModifiers::default(),
                 translate: false,
             });
         }
+    }
+
+    /// Simulate pressing control-alt-delete.
+    pub fn emit_ctrl_alt_del(&mut self) {
+        self.emit_key_sequence(&[MartyKey::ControlLeft, MartyKey::AltLeft, MartyKey::Delete]);
     }
 
     pub fn mouse_mut(&mut self) -> &mut Option<Mouse> {

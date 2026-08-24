@@ -25,10 +25,31 @@
     --------------------------------------------------------------------------
 */
 use crate::{state::GuiState, GuiBoolean, GuiEvent, GuiFloat, GuiVariable, GuiVariableContext};
+use marty_common::types::keys::MartyKey;
 use marty_core::machine::{ExecutionOperation, MachineState};
 
 const NORMAL_EMULATION_SPEED: f32 = 1.0;
 const NORMAL_SPEED_SLIDER_POSITION: f32 = 0.5;
+const SEND_KEY_SEQUENCES: &[(&str, &[MartyKey])] = &[
+    (
+        "Ctrl + Alt + Del",
+        &[MartyKey::ControlLeft, MartyKey::AltLeft, MartyKey::Delete],
+    ),
+    (
+        "Ctrl + Break",
+        &[
+            // Break shares the Scroll Lock key on XT-class keyboards.
+            MartyKey::ControlLeft,
+            MartyKey::ScrollLock,
+        ],
+    ),
+    ("Ctrl + Esc", &[MartyKey::ControlLeft, MartyKey::Escape]),
+    (
+        "Ctrl + Alt + Esc",
+        &[MartyKey::ControlLeft, MartyKey::AltLeft, MartyKey::Escape],
+    ),
+    ("Alt + Tab", &[MartyKey::AltLeft, MartyKey::Tab]),
+];
 
 fn slider_position_to_speed(position: f32, min: f32, max: f32) -> f32 {
     let position = position.clamp(0.0, 1.0);
@@ -128,6 +149,17 @@ impl GuiState {
                 self.show_input_menu(ui);
             });
 
+            ui.add_enabled_ui(self.machine_state.is_on(), |ui| {
+                ui.menu_button("Send Keys", |ui| {
+                    for &(label, keycodes) in SEND_KEY_SEQUENCES {
+                        if ui.button(label).clicked() {
+                            self.event_queue.send(GuiEvent::SendKeySequence(keycodes.to_vec()));
+                            ui.close_menu();
+                        }
+                    }
+                });
+            });
+
             ui.separator();
 
             let is_on = self.machine_state.is_on();
@@ -172,13 +204,6 @@ impl GuiState {
             ui.add_enabled_ui(is_on, |ui| {
                 if ui.button("⟲ Reboot").clicked() {
                     self.event_queue.send(GuiEvent::Reboot);
-                    ui.close_menu();
-                }
-            });
-
-            ui.add_enabled_ui(is_on, |ui| {
-                if ui.button("⟲ CTRL-ALT-DEL").clicked() {
-                    self.event_queue.send(GuiEvent::CtrlAltDel);
                     ui.close_menu();
                 }
             });
@@ -233,5 +258,25 @@ mod tests {
     fn percentage_input_maps_to_slider_position() {
         assert_approx_eq(parse_speed_percentage("100%", 0.25, 4.0).unwrap() as f32, 0.5);
         assert_approx_eq(parse_speed_percentage("62.5", 0.25, 4.0).unwrap() as f32, 0.25);
+    }
+
+    #[test]
+    fn send_keys_menu_defines_the_requested_sequences() {
+        assert_eq!(
+            SEND_KEY_SEQUENCES,
+            &[
+                (
+                    "Ctrl + Alt + Del",
+                    &[MartyKey::ControlLeft, MartyKey::AltLeft, MartyKey::Delete][..]
+                ),
+                ("Ctrl + Break", &[MartyKey::ControlLeft, MartyKey::ScrollLock][..]),
+                ("Ctrl + Esc", &[MartyKey::ControlLeft, MartyKey::Escape][..]),
+                (
+                    "Ctrl + Alt + Esc",
+                    &[MartyKey::ControlLeft, MartyKey::AltLeft, MartyKey::Escape][..]
+                ),
+                ("Alt + Tab", &[MartyKey::AltLeft, MartyKey::Tab][..]),
+            ]
+        );
     }
 }

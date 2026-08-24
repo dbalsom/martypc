@@ -1124,9 +1124,8 @@ pub fn handle_egui_event(
             // User requested to toggle fullscreen mode
             let _ = emu.sender.send(FrontendThreadEvent::ToggleFullscreen);
         }
-        GuiEvent::CtrlAltDel => {
-            // User requested to send CTRL + ALT + DEL keyboard combination
-            emu.machine.emit_ctrl_alt_del();
+        GuiEvent::SendKeySequence(keycodes) => {
+            emu.machine.emit_key_sequence(keycodes);
         }
         GuiEvent::CompositeAdjust(dt, params) => {
             // User adjusted the composite video parameters

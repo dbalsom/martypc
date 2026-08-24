@@ -283,7 +283,7 @@ pub enum GuiEvent {
     SetNMI(bool),
     TriggerParity,
     RescanMediaFolders,
-    CtrlAltDel,
+    SendKeySequence(Vec<MartyKey>),
     ZoomChanged(f32),
     ResetIOStats,
     StartRecordingDisassembly,
