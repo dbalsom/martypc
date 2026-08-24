@@ -46,6 +46,9 @@ marty_videocard_renderer = { path = "../marty_videocard_renderer", optional = tr
 serialport = { workspace = true, optional = true }
 rfd = { workspace = true, optional = true }
 
+[build-dependencies]
+chrono.workspace = true
+
 [target.'cfg(target_os = "windows")'.dependencies]
 windows-sys = { version = "0.61", features = ["Win32_Foundation", "Win32_UI_WindowsAndMessaging"] }
 

@@ -736,11 +736,11 @@ cycles = 572400000 # 2 minutes
 # Valid values are:
 #  - DefaultLight : default EGUI Light theme
 #  - Lilac        : light theme variant
-#  - Hal          : light theme variant
-#  - DefaultDark  : default EGUI Dark theme (recommended)
+#  - DefaultDark  : default EGUI Dark theme
+#  - NewPurple    : dark theme variant (recommended)
 #  - Purple       : dark theme variant
 #  - Cobalt       : dark theme variant
-theme = "Purple"
+theme = "NewPurple"
 
 # Theme for the top menu can be defined independently
 menu_theme = "DefaultLight"

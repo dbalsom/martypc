@@ -25,12 +25,7 @@
     --------------------------------------------------------------------------
 */
 
-use std::sync::Arc;
-
-use marty_egui::{
-    state::GuiState,
-    themes::{make_theme, GuiTheme},
-};
+use marty_egui::{state::GuiState, themes::make_theme};
 use marty_frontend_common::{GuiContextOptions, MartyGuiTheme};
 
 use egui::{Color32, Context};
@@ -49,10 +44,14 @@ pub struct GuiFrameOutput {
 pub struct GuiRenderContext {
     /// Cloned egui context, in case we need to access it.
     ctx: Context,
-    /// The theme to use for the main UI.
-    main_theme: Arc<dyn GuiTheme>,
-    /// The theme to use for the menu UI.
-    menu_theme: Arc<dyn GuiTheme>,
+    /// The unthemed style inherited from the egui context.
+    base_style: egui::Style,
+    /// The currently selected main theme.
+    main_theme: MartyGuiTheme,
+    /// The style to use for the main UI.
+    main_style: egui::Style,
+    /// The style to use for the menu UI.
+    menu_style: egui::Style,
     /// The global scale factor for the UI.
     scale_factor: f64,
 }
@@ -60,12 +59,17 @@ pub struct GuiRenderContext {
 impl Default for GuiRenderContext {
     fn default() -> Self {
         let ctx = Context::default();
-        let main_theme = make_theme(MartyGuiTheme::default());
-        let menu_theme = make_theme(MartyGuiTheme::default());
+        let base_style = (*ctx.global_style()).clone();
+        let main_theme = MartyGuiTheme::default();
+        let main_style = Self::resolve_theme(&base_style, main_theme);
+        let menu_style = main_style.clone();
+        ctx.set_global_style(main_style.clone());
         Self {
             ctx,
+            base_style,
             main_theme,
-            menu_theme,
+            main_style,
+            menu_style,
             scale_factor: 1.0,
         }
     }
@@ -113,18 +117,10 @@ impl GuiRenderContext {
         // Resolve themes.
         let gui_theme_enum = gui_options.theme.unwrap_or_default();
         let menu_theme_enum = gui_options.menu_theme.unwrap_or(gui_theme_enum);
-        let main_theme = make_theme(gui_theme_enum);
-        let menu_theme = make_theme(menu_theme_enum);
-
-        // Make header smaller, regardless of theme.
-        use egui::{FontFamily::Proportional, FontId, TextStyle::*};
-        let mut style = (*ctx.global_style()).clone();
-
-        style.text_styles.entry(Heading).and_modify(|text_style| {
-            *text_style = FontId::new(14.0, Proportional);
-        });
-        ctx.set_global_style(style);
-        ctx.set_visuals(main_theme.visuals());
+        let base_style = (*ctx.global_style()).clone();
+        let main_style = Self::resolve_theme(&base_style, gui_theme_enum);
+        let menu_style = Self::resolve_theme(&base_style, menu_theme_enum);
+        ctx.set_global_style(main_style.clone());
 
         #[cfg(debug_assertions)]
         if gui_options.debug_drawing {
@@ -133,8 +129,10 @@ impl GuiRenderContext {
 
         let slf = Self {
             ctx,
-            main_theme,
-            menu_theme,
+            base_style,
+            main_theme: gui_theme_enum,
+            main_style,
+            menu_style,
             scale_factor,
         };
 
@@ -148,6 +146,27 @@ impl GuiRenderContext {
 
     pub fn ctx_mut(&mut self) -> &mut Context {
         &mut self.ctx
+    }
+
+    fn resolve_theme(base_style: &egui::Style, theme: MartyGuiTheme) -> egui::Style {
+        use egui::{FontFamily::Proportional, FontId, TextStyle::*};
+
+        let theme = make_theme(theme);
+        let mut style = base_style.clone();
+        theme.apply_to_style(&mut style);
+
+        // Make headers smaller, regardless of theme.
+        style.text_styles.entry(Heading).and_modify(|text_style| {
+            *text_style = FontId::new(14.0, Proportional);
+        });
+
+        style
+    }
+
+    fn set_main_theme(&mut self, theme: MartyGuiTheme) {
+        self.main_theme = theme;
+        self.main_style = Self::resolve_theme(&self.base_style, theme);
+        self.ctx.set_global_style(self.main_style.clone());
     }
 
     pub fn show<Fw, Fm>(
@@ -167,17 +186,19 @@ impl GuiRenderContext {
         let mut capture_state = None;
 
         if show_menu {
-            let menu_visuals = self.menu_theme.visuals();
-            self.ctx.set_visuals(menu_visuals.clone());
-            root_ui.style_mut().visuals = menu_visuals;
-            egui::Panel::top("martypc_top_panel").show_inside(root_ui, |ui| {
-                state.show_menu(ui);
-            });
+            self.ctx.set_global_style(self.menu_style.clone());
+            *root_ui.style_mut() = self.menu_style.clone();
+            egui::Panel::top("martypc_top_panel").show_inside(root_ui, |ui| state.show_menu(ui));
         }
 
-        let main_visuals = self.main_theme.visuals();
-        self.ctx.set_visuals(main_visuals.clone());
-        root_ui.style_mut().visuals = main_visuals.clone();
+        let current_theme = state.current_theme();
+        if current_theme != self.main_theme {
+            self.set_main_theme(current_theme);
+        }
+
+        self.ctx.set_global_style(self.main_style.clone());
+        *root_ui.style_mut() = self.main_style.clone();
+        let main_visuals = self.main_style.visuals.clone();
 
         state.update_osd_keyboard_unhide_gesture(&self.ctx, root_ui.available_rect_before_wrap());
         if state.osd_keyboard_enabled() {

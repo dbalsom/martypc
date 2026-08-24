@@ -31,17 +31,17 @@
 //! instances.
 
 use crate::{
+    PlatformRenderCallback,
     counter::Counter,
     emulator::{
+        EmuFlags,
+        Emulator,
         joystick_state::JoystickState,
         keyboard_state::KeyboardData,
         mouse_state::MouseState,
-        EmuFlags,
-        Emulator,
     },
     input,
     input::HotkeyManager,
-    PlatformRenderCallback,
 };
 use std::{
     cell::RefCell,
@@ -822,7 +822,12 @@ impl EmulatorBuilder {
         let render_callback = Arc::new(PlatformRenderCallback::default());
 
         // Create a GUI state object
-        let mut gui = GuiState::new(exec_control.clone(), sender.clone(), render_callback);
+        let mut gui = GuiState::new(
+            exec_control.clone(),
+            sender.clone(),
+            render_callback,
+            config.gui.theme.unwrap_or_default(),
+        );
         gui.set_build_info(env!("CARGO_PKG_VERSION"), crate::build_id());
         gui.set_hotkeys(hotkey_manager.hotkey_bindings());
         gui.set_emulation_speed_limits(config.emulator.min_emulation_speed, config.emulator.max_emulation_speed);

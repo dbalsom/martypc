@@ -31,15 +31,21 @@
 */
 
 mod cobalt;
-mod hal;
 mod lilac;
+mod new_purple;
 mod purple;
 
-use crate::themes::{cobalt::CobaltTheme, hal::HalTheme, lilac::LilacTheme, purple::DarkTintedTheme};
-use egui::Visuals;
+use crate::themes::{
+    cobalt::CobaltTheme,
+    lilac::LilacTheme,
+    new_purple::NewPurpleTheme,
+    purple::DarkTintedTheme,
+};
+use egui::{Style, Visuals};
 use marty_frontend_common::MartyGuiTheme;
 use std::sync::Arc;
 
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum ThemeBase {
     Light,
     Dark,
@@ -48,6 +54,10 @@ pub enum ThemeBase {
 pub trait GuiTheme: Send + Sync {
     fn visuals(&self) -> Visuals;
     fn base(&self) -> ThemeBase;
+
+    fn apply_to_style(&self, style: &mut Style) {
+        style.visuals = self.visuals();
+    }
 }
 
 pub fn make_theme(theme: MartyGuiTheme) -> Arc<dyn GuiTheme> {
@@ -55,8 +65,8 @@ pub fn make_theme(theme: MartyGuiTheme) -> Arc<dyn GuiTheme> {
         MartyGuiTheme::DefaultLight => Arc::new(DefaultLightTheme::new()),
         MartyGuiTheme::DefaultDark => Arc::new(DefaultDarkTheme::new()),
         MartyGuiTheme::Lilac => Arc::new(LilacTheme::new()),
-        MartyGuiTheme::Hal => Arc::new(HalTheme::new()),
         MartyGuiTheme::Purple => Arc::new(DarkTintedTheme::purple()),
+        MartyGuiTheme::NewPurple => Arc::new(NewPurpleTheme::new()),
         MartyGuiTheme::Cobalt => Arc::new(CobaltTheme::new()),
     }
 }

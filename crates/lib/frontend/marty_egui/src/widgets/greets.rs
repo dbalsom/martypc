@@ -5,7 +5,6 @@ use egui::*;
 const AMPLITUDE: f32 = 2.0;
 const FREQUENCY: f32 = 3.0;
 const PHASE_SCALE: f32 = 0.01;
-const COLOR: Color32 = Color32::WHITE;
 const NAME_SPACING: f32 = 24.0;
 
 pub struct GreetsWidget {
@@ -29,7 +28,7 @@ impl GreetsWidget {
         }
     }
 
-    pub fn show(&mut self, ui: &mut Ui) -> Response {
+    pub fn show(&mut self, ui: &mut Ui, color: Color32) -> Response {
         let desired_size = Vec2::new(ui.available_width(), 24.0);
         let (rect, response) = ui.allocate_exact_size(desired_size, Sense::hover());
         let painter = ui.painter_at(rect);
@@ -39,14 +38,14 @@ impl GreetsWidget {
         for &name in &self.visible {
             for ch in name.chars() {
                 let text = ch.to_string();
-                let galley = painter.layout_no_wrap(text.clone(), self.font_id.clone(), COLOR);
+                let galley = painter.layout_no_wrap(text.clone(), self.font_id.clone(), color);
                 let char_width = galley.size().x;
 
                 let phase = x * PHASE_SCALE;
                 let y = AMPLITUDE * ((time * FREQUENCY + phase) * std::f32::consts::TAU).sin();
 
                 let pos = rect.left_top() + vec2(x, y);
-                painter.text(pos, Align2::LEFT_TOP, text, self.font_id.clone(), COLOR);
+                painter.text(pos, Align2::LEFT_TOP, text, self.font_id.clone(), color);
 
                 x += char_width;
             }
@@ -62,7 +61,7 @@ impl GreetsWidget {
                 .chars()
                 .map(|ch| {
                     painter
-                        .layout_no_wrap(ch.to_string(), self.font_id.clone(), COLOR)
+                        .layout_no_wrap(ch.to_string(), self.font_id.clone(), color)
                         .size()
                         .x
                 })

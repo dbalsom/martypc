@@ -97,7 +97,7 @@ use marty_core::{
     machine::{ExecutionControl, MachineState},
     machine_types::FloppyDriveType,
 };
-use marty_frontend_common::keyboard_manager::OsdKeyboard;
+use marty_frontend_common::{keyboard_manager::OsdKeyboard, MartyGuiTheme};
 
 #[cfg(feature = "use_display")]
 use marty_display_common::{
@@ -281,6 +281,7 @@ pub struct GuiState {
     pub(crate) option_flags: HashMap<GuiBoolean, bool>,
     pub(crate) option_floats: HashMap<GuiFloat, f32>,
     pub(crate) option_enums: GuiEnumMap,
+    current_theme: MartyGuiTheme,
     pub(crate) min_emulation_speed: f32,
     pub(crate) max_emulation_speed: f32,
     pub(crate) osd_keyboard: OsdKeyboardPanel,
@@ -386,6 +387,7 @@ impl GuiState {
         exec_control: Rc<RefCell<ExecutionControl>>,
         thread_sender: crossbeam_channel::Sender<FrontendThreadEvent<Arc<DiskImage>>>,
         render_callback: Arc<dyn RenderCallback>,
+        current_theme: MartyGuiTheme,
     ) -> Self {
         // Set default values for window open flags
 
@@ -447,6 +449,7 @@ impl GuiState {
             option_flags,
             option_floats,
             option_enums,
+            current_theme,
             min_emulation_speed: 0.1,
             max_emulation_speed: 2.0,
             osd_keyboard: OsdKeyboardPanel::new(),
@@ -583,6 +586,14 @@ impl GuiState {
 
     pub fn get_event(&mut self) -> Option<GuiEvent> {
         self.event_queue.pop()
+    }
+
+    pub fn current_theme(&self) -> MartyGuiTheme {
+        self.current_theme
+    }
+
+    pub fn set_current_theme(&mut self, theme: MartyGuiTheme) {
+        self.current_theme = theme;
     }
 
     pub fn set_option(&mut self, option: GuiBoolean, state: bool) {

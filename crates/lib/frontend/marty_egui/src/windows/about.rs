@@ -33,7 +33,7 @@ use crate::{
     widgets::{about_logo::AboutLogoWidget, greets::GreetsWidget},
     *,
 };
-use egui::FontId;
+use egui::{Color32, FontId};
 
 const GREETS: &[&str] = &[
     "VileR",
@@ -115,7 +115,11 @@ impl AboutDialog {
         ui.vertical(|ui| {
             ui.label(format!("MartyPC Version {} [{}]", self.version, self.build_id));
             ui.label("MartyPC is free software licensed under the MIT License.");
-            ui.label("©2022-2025 Daniel Balsom (GloriousCow)");
+            ui.label(concat!(
+                "©2022-",
+                env!("MARTY_BUILD_YEAR"),
+                " Daniel Balsom (GloriousCow)"
+            ));
 
             ui.horizontal(|ui| {
                 ui.label("Github:");
@@ -133,7 +137,13 @@ impl AboutDialog {
             );
 
             ui.label("Greets to:");
-            self.greets.show(ui);
+            let greets_color = if ui.visuals().dark_mode {
+                Color32::WHITE
+            }
+            else {
+                Color32::BLACK
+            };
+            self.greets.show(ui, greets_color);
 
             ui.label("Dedicated to:");
             ui.label(

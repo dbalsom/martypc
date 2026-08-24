@@ -38,9 +38,31 @@ pub enum MartyGuiTheme {
     #[default]
     DefaultDark,
     Lilac,
-    Hal,
     Purple,
+    NewPurple,
     Cobalt,
+}
+
+impl MartyGuiTheme {
+    pub const ALL: [Self; 6] = [
+        Self::DefaultLight,
+        Self::Lilac,
+        Self::DefaultDark,
+        Self::NewPurple,
+        Self::Purple,
+        Self::Cobalt,
+    ];
+
+    pub const fn label(self) -> &'static str {
+        match self {
+            Self::DefaultLight => "Default Light",
+            Self::DefaultDark => "Default Dark",
+            Self::Lilac => "Lilac",
+            Self::Purple => "Purple",
+            Self::NewPurple => "New Purple",
+            Self::Cobalt => "Cobalt",
+        }
+    }
 }
 
 pub struct GuiContextOptions {

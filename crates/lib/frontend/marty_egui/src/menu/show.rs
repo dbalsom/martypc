@@ -27,7 +27,8 @@
 
 //! Implement the main emulator menu.
 
-use crate::{state::GuiState, GuiEvent, GuiWindow};
+use crate::{GuiEvent, GuiWindow, state::GuiState};
+use marty_frontend_common::MartyGuiTheme;
 
 #[cfg(target_arch = "wasm32")]
 use crate::{GuiBoolean, GuiVariable, GuiVariableContext};
@@ -57,6 +58,16 @@ impl GuiState {
                         *self.window_flag(GuiWindow::PerfViewer) = true;
                         ui.close_menu();
                     }
+
+                    ui.menu_button("Theme", |ui| {
+                        ui.set_min_width(140.0);
+                        for theme in MartyGuiTheme::ALL {
+                            if ui.radio(theme == self.current_theme(), theme.label()).clicked() {
+                                self.set_current_theme(theme);
+                                ui.close();
+                            }
+                        }
+                    });
 
                     // On wasm we give a quick-shortcut to the OSD keyboard under Emulator,
                     // but this may be unnecessary since we can swipe up for it...
