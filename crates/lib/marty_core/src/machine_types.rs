@@ -195,7 +195,7 @@ impl From<FloppyDriveType> for StandardFormat {
             FloppyDriveType::Floppy360K => StandardFormat::PcFloppy360,
             FloppyDriveType::Floppy720K => StandardFormat::PcFloppy720,
             FloppyDriveType::Floppy12M => StandardFormat::PcFloppy1200,
-            FloppyDriveType::Floppy144M => StandardFormat::PcFloppy2880,
+            FloppyDriveType::Floppy144M => StandardFormat::PcFloppy1440,
         }
     }
 }
