@@ -33,18 +33,20 @@ use std::{
     path::{Path, PathBuf},
 };
 
+use crate::resource_manager::ResourceManager;
+
 use anyhow::{Context, Error};
 use serde::Deserialize;
 use zip::ZipArchive;
 
-use crate::resource_manager::ResourceManager;
-
 const ASSET_RESOURCE: &str = "asset";
 const ASSET_MANIFEST_FILENAME: &str = "manifest.toml";
+pub const OSD_KEYBOARD_DEFINITION_FILENAME: &str = "keyboard_def.toml";
 
 #[derive(Copy, Clone, Debug, Deserialize, Eq, Hash, PartialEq)]
 pub enum AssetType {
     SoundLibrary,
+    OsdKeyboard,
 }
 
 #[derive(Clone, Debug, Deserialize, Eq, PartialEq)]
@@ -62,26 +64,35 @@ pub struct SoundLibrary {
 }
 
 #[derive(Clone, Debug, Eq, PartialEq)]
+pub struct OsdKeyboardAsset {
+    pub path: PathBuf,
+}
+
+#[derive(Clone, Debug, Eq, PartialEq)]
 pub enum Asset {
     SoundLibrary(SoundLibrary),
+    OsdKeyboard(OsdKeyboardAsset),
 }
 
 impl Asset {
     pub fn asset_type(&self) -> AssetType {
         match self {
             Self::SoundLibrary(_) => AssetType::SoundLibrary,
+            Self::OsdKeyboard(_) => AssetType::OsdKeyboard,
         }
     }
 
-    pub fn manifest(&self) -> &AssetManifest {
+    pub fn manifest(&self) -> Option<&AssetManifest> {
         match self {
-            Self::SoundLibrary(library) => &library.manifest,
+            Self::SoundLibrary(library) => Some(&library.manifest),
+            Self::OsdKeyboard(_) => None,
         }
     }
 
     pub fn path(&self) -> &Path {
         match self {
             Self::SoundLibrary(library) => &library.path,
+            Self::OsdKeyboard(keyboard) => &keyboard.path,
         }
     }
 }
@@ -104,18 +115,34 @@ impl AssetManager {
             return Ok(0);
         }
 
-        let mut items = rm.enumerate_items(ASSET_RESOURCE, None, true, true, Some(vec![OsString::from("zip")]))?;
+        let mut items = rm.enumerate_items(
+            ASSET_RESOURCE,
+            None,
+            true,
+            true,
+            Some(vec![OsString::from("zip"), OsString::from("toml")]),
+        )?;
+
         items.sort_by(|a, b| a.location.cmp(&b.location));
 
         for item in items {
             match Self::classify_file(rm, &item.location).await {
                 Ok(Some(asset)) => {
-                    log::debug!(
-                        "Discovered {:?} asset '{}' at {}",
-                        asset.asset_type(),
-                        asset.manifest().asset_name,
-                        asset.path().display()
-                    );
+                    if let Some(manifest) = asset.manifest() {
+                        log::debug!(
+                            "Discovered {:?} asset '{}' at {}",
+                            asset.asset_type(),
+                            manifest.asset_name,
+                            asset.path().display()
+                        );
+                    }
+                    else {
+                        log::debug!(
+                            "Discovered {:?} asset at {}",
+                            asset.asset_type(),
+                            asset.path().display()
+                        );
+                    }
                     self.assets.push(asset);
                 }
                 Ok(None) => {
@@ -127,13 +154,21 @@ impl AssetManager {
             }
         }
 
-        self.assets
-            .sort_by(|a, b| a.manifest().asset_name.cmp(&b.manifest().asset_name));
+        self.assets.sort_by(|a, b| a.path().cmp(b.path()));
         Ok(self.assets.len())
     }
 
     pub async fn classify_file(rm: &mut ResourceManager, path: impl AsRef<Path>) -> Result<Option<Asset>, Error> {
         let path = path.as_ref();
+        if path
+            .file_name()
+            .is_some_and(|file_name| file_name == OSD_KEYBOARD_DEFINITION_FILENAME)
+        {
+            return Ok(Some(Asset::OsdKeyboard(OsdKeyboardAsset {
+                path: path.to_path_buf(),
+            })));
+        }
+
         let is_zip = path
             .extension()
             .is_some_and(|extension| extension.to_string_lossy().eq_ignore_ascii_case("zip"));
@@ -172,6 +207,12 @@ impl AssetManager {
                 path: path.to_path_buf(),
                 manifest,
             }),
+            AssetType::OsdKeyboard => {
+                return Err(anyhow::anyhow!(
+                    "OSD keyboard assets must be defined by a {} file",
+                    OSD_KEYBOARD_DEFINITION_FILENAME
+                ));
+            }
         };
 
         Ok(Some(asset))
@@ -186,8 +227,16 @@ impl AssetManager {
     }
 
     pub fn sound_libraries(&self) -> impl Iterator<Item = &SoundLibrary> {
-        self.assets.iter().map(|asset| match asset {
-            Asset::SoundLibrary(library) => library,
+        self.assets.iter().filter_map(|asset| match asset {
+            Asset::SoundLibrary(library) => Some(library),
+            Asset::OsdKeyboard(_) => None,
+        })
+    }
+
+    pub fn osd_keyboards(&self) -> impl Iterator<Item = &OsdKeyboardAsset> {
+        self.assets.iter().filter_map(|asset| match asset {
+            Asset::SoundLibrary(_) => None,
+            Asset::OsdKeyboard(keyboard) => Some(keyboard),
         })
     }
 
@@ -229,7 +278,10 @@ asset_specifier = "TEAC FD-55"
             .unwrap()
             .unwrap();
 
-        let Asset::SoundLibrary(library) = asset;
+        let Asset::SoundLibrary(library) = asset
+        else {
+            panic!("expected a sound library asset");
+        };
         assert_eq!(library.path, PathBuf::from("teac_fd55.zip"));
         assert_eq!(library.manifest.asset_type, AssetType::SoundLibrary);
         assert_eq!(library.manifest.asset_subtype, "FloppyDriveSounds");
@@ -245,5 +297,21 @@ asset_specifier = "TEAC FD-55"
         assert!(AssetManager::classify_zip(Path::new("unrelated.zip"), data)
             .unwrap()
             .is_none());
+    }
+
+    #[test]
+    fn classifies_keyboard_definition_by_filename() {
+        let asset = pollster::block_on(AssetManager::classify_file(
+            &mut ResourceManager::new(PathBuf::new()),
+            Path::new("keyboards/modelf/keyboard_def.toml"),
+        ))
+        .unwrap()
+        .unwrap();
+
+        let Asset::OsdKeyboard(keyboard) = asset
+        else {
+            panic!("expected an OSD keyboard asset");
+        };
+        assert_eq!(keyboard.path, PathBuf::from("keyboards/modelf/keyboard_def.toml"));
     }
 }
