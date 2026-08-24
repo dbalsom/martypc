@@ -30,9 +30,11 @@
 
 */
 
+use std::path::Path;
+
 use super::*;
 use crate::{bus::DeviceRunTimeUnit, devices::pic::Pic};
-use std::{collections::HashMap, path::Path};
+use marty_common::MartyHashMap;
 
 impl VideoCard for EGACard {
     fn sync(&self) -> (bool, bool, bool, bool) {
@@ -234,8 +236,8 @@ impl VideoCard for EGACard {
     #[rustfmt::skip]
     #[allow(dead_code)]
     /// Returns a string representation of all the CRTC Registers.
-    fn videocard_string_state(&self) -> HashMap<String, Vec<(String, VideoCardStateEntry)>> {
-        let mut map = HashMap::new();
+    fn videocard_string_state(&self) -> MartyHashMap<String, Vec<(String, VideoCardStateEntry)>> {
+        let mut map = MartyHashMap::default();
 
         let mut general_vec = Vec::new();
         general_vec.push(("Adapter Type:".to_string(), VideoCardStateEntry::String(format!("{:?}", self.video_type()))));

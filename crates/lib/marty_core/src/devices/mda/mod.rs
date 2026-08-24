@@ -30,11 +30,13 @@
 //! Implementations of the IBM MDA card and the Hercules graphics adapter.
 //! Both use the common Motorola MC6845 CRTC.
 
+use std::{convert::TryInto, path::Path};
+
 use super::mda::attr::*;
 
 use const_format::formatcp;
+use marty_common::MartyHashMap;
 use modular_bitfield::{bitfield, prelude::*};
-use std::{collections::HashMap, convert::TryInto, path::Path};
 
 #[macro_use]
 mod io;

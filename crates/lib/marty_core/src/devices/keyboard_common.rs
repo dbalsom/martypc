@@ -30,11 +30,7 @@
 
 */
 
-use std::{
-    collections::{HashMap, VecDeque},
-    str::FromStr,
-    vec::Vec,
-};
+use std::{collections::VecDeque, str::FromStr, vec::Vec};
 
 use crate::{
     device_types::keyboard::KeyboardType,
@@ -43,6 +39,7 @@ use crate::{
     machine::KeybufferEntry,
 };
 use anyhow::{bail, Result};
+use marty_common::MartyHashMap;
 use serde_derive::Deserialize;
 use strum::IntoEnumIterator;
 use toml;
@@ -131,7 +128,7 @@ pub struct KeycodeMapping {
 pub struct Keyboard {
     debug: bool,
     kb_type: KeyboardType,
-    kb_hash: HashMap<MartyKey, KeyState>,
+    kb_hash: MartyHashMap<MartyKey, KeyState>,
     keys_pressed: Vec<MartyKey>,
     typematic: bool,
     typematic_delay: f64, // Typematic repeat delay from initial keypress (ms)
@@ -148,7 +145,7 @@ impl Default for Keyboard {
         Keyboard {
             debug: true,
             kb_type: KeyboardType::ModelF,
-            kb_hash: HashMap::new(),
+            kb_hash: MartyHashMap::default(),
             keys_pressed: Vec::new(),
             typematic: true,
             typematic_delay: 500.0,

@@ -305,8 +305,8 @@ impl VideoCard for TGACard {
     }
 
     #[rustfmt::skip]
-    fn videocard_string_state(&self) -> HashMap<String, Vec<(String, VideoCardStateEntry)>> {
-        let mut map = HashMap::new();
+    fn videocard_string_state(&self) -> MartyHashMap<String, Vec<(String, VideoCardStateEntry)>> {
+        let mut map = MartyHashMap::default();
 
         let mut general_vec = Vec::new();
 

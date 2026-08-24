@@ -30,8 +30,6 @@
 
 */
 
-use std::collections::HashMap;
-
 use crate::{
     bus::ClockFactor,
     cpu_common::CpuType,
@@ -52,7 +50,7 @@ use crate::{
     },
     tracelogger::TraceLogger,
 };
-use marty_common::types::joystick::ControllerLayout;
+use marty_common::{types::joystick::ControllerLayout, MartyHashMap};
 
 use anyhow::{anyhow, Error};
 use lazy_static::lazy_static;
@@ -309,8 +307,8 @@ pub struct MachineConfiguration {
 lazy_static! {
     /// This hashmap defines ROM feature requirements for the base machine types.
     /// The key is the machine type, and the value is a vector of ROM features.
-    static ref BASE_ROM_FEATURES: HashMap<MachineType, Vec<&'static str>> = {
-        let mut m = HashMap::new();
+    static ref BASE_ROM_FEATURES: MartyHashMap<MachineType, Vec<&'static str>> = {
+        let mut m = MartyHashMap::default();
         m.insert(MachineType::Default, vec![]);
         m.insert(MachineType::Ibm5150v64K, vec!["ibm5150v64k"]);
         m.insert(MachineType::Ibm5150v256K, vec!["ibm5150v256k"]);
@@ -326,8 +324,8 @@ lazy_static! {
 
     /// This hashmap defines optional ROM feature requirements for the base machine types.
     /// Missing optional features will not stop machine creation.
-    static ref OPTIONAL_ROM_FEATURES: HashMap<MachineType, Vec<&'static str>> = {
-        let mut m = HashMap::new();
+    static ref OPTIONAL_ROM_FEATURES: MartyHashMap<MachineType, Vec<&'static str>> = {
+        let mut m = MartyHashMap::default();
         m.insert(MachineType::Default, vec![]);
         m.insert(MachineType::Ibm5150v64K, vec!["ibm_basic"]);
         m.insert(MachineType::Ibm5150v256K, vec!["ibm_basic"]);
@@ -348,8 +346,8 @@ lazy_static! {
     };
 
     /// This hashmap is used to permit certain CPUs to be swapped out in place of others.
-    static ref COMPATIBLE_CPUS: HashMap<CpuType, Vec<CpuType>> = {
-        let mut m = HashMap::new();
+    static ref COMPATIBLE_CPUS: MartyHashMap<CpuType, Vec<CpuType>> = {
+        let mut m = MartyHashMap::default();
         m.insert(CpuType::Intel8088, vec![CpuType::NecV20(Default::default())]);
         m.insert(CpuType::NecV20(Default::default()), vec![CpuType::Intel8088]);
         m
@@ -449,9 +447,9 @@ impl MachineDescriptor {
 lazy_static! {
     /// Eventually we will want to move these machine definitions into a config file
     /// so that people can define custom architectures.
-    pub static ref MACHINE_DESCS: HashMap<MachineType, MachineDescriptor> = {
+    pub static ref MACHINE_DESCS: MartyHashMap<MachineType, MachineDescriptor> = {
 
-        HashMap::from([
+        [
             (
                 MachineType::Ibm5150v64K,
                 MachineDescriptor {
@@ -601,7 +599,9 @@ lazy_static! {
                 },
             ),
 
-        ])
+        ]
+        .into_iter()
+        .collect()
     };
 }
 

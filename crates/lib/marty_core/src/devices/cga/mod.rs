@@ -33,12 +33,15 @@
     by a single tick/pixel or by character/8 pixels.
 
 */
-
 #![allow(dead_code)]
+
+use std::{convert::TryInto, path::Path};
+
 use super::cga::tablegen::*;
+use marty_common::MartyHashMap;
+
 use bytemuck;
 use const_format::formatcp;
-use std::{collections::HashMap, convert::TryInto, path::Path};
 
 #[macro_use]
 mod io;

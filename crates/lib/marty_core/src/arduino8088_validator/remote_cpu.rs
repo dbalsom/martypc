@@ -180,7 +180,7 @@ pub struct RemoteCpu {
     discard_front: bool,
     error: Option<RemoteCpuError>,
     cycle_states: Vec<CycleState>,
-    visited_fetches: HashSet<u32>,
+    visited_fetches: MartyHashSet<u32>,
 
     // Validator stuff
     busop_n: usize,
@@ -255,7 +255,7 @@ impl RemoteCpu {
             discard_front: false,
             error: None,
             cycle_states: Vec::new(),
-            visited_fetches: HashSet::new(),
+            visited_fetches: MartyHashSet::default(),
 
             busop_n: 0,
             fetchop_n: 0,

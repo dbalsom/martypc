@@ -36,7 +36,7 @@
 
 use std::{
     cell::Cell,
-    collections::{BTreeMap, HashMap, VecDeque},
+    collections::{BTreeMap, VecDeque},
     fs::File,
     io::{BufWriter, Write},
     path::PathBuf,
@@ -88,7 +88,7 @@ use crate::{
 };
 
 pub use marty_common::types::rom::{MachineCheckpoint, MachinePatch, MachineRomEntry, MachineRomManifest};
-use marty_common::PresentableDeviceEvent;
+use marty_common::{MartyHashMap, PresentableDeviceEvent};
 
 use fluxfox::DiskImage;
 
@@ -465,8 +465,8 @@ pub struct Machine {
     cpu_cycles: u64,
     cpu_instructions: u64,
     system_ticks: u64,
-    checkpoint_map: HashMap<u32, usize>,
-    patch_map: HashMap<u32, usize>,
+    checkpoint_map: MartyHashMap<u32, usize>,
+    patch_map: MartyHashMap<u32, usize>,
     events: Vec<MachineEvent>,
     reload_pending: bool,
     halt_behavior: OnHaltBehavior,
@@ -661,11 +661,11 @@ impl Machine {
         cpu.emit_header();
         cpu.reset();
 
-        let checkpoint_map = rom_manifest.checkpoint_map();
+        let checkpoint_map = rom_manifest.checkpoint_map().into_iter().collect();
 
-        let mut patch_map = HashMap::new();
+        let mut patch_map = MartyHashMap::default();
         if core_config.get_patch_enabled() {
-            patch_map = rom_manifest.patch_map();
+            patch_map = rom_manifest.patch_map().into_iter().collect();
         }
 
         let mut machine = Machine {

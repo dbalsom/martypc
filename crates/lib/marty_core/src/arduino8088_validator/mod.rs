@@ -24,6 +24,8 @@
 */
 #![allow(dead_code)]
 
+use std::cmp;
+
 mod code_stream;
 mod queue;
 pub mod remote_cpu;
@@ -49,8 +51,8 @@ use crate::{
     cpu_validator::*,
     tracelogger::TraceLogger,
 };
+use marty_common::MartyHashSet;
 use remote_cpu::*;
-use std::{cmp, collections::HashSet};
 
 const VISIT_ONCE: bool = false;
 const NUM_INVALID_FETCHES: usize = 6;
@@ -130,7 +132,7 @@ pub struct InstructionContext {
     cpu_ops: Vec<BusOp>,
     mem_op_n: usize,
 
-    visited_fetches: HashSet<u32>,
+    visited_fetches: MartyHashSet<u32>,
 
     cpu_states: Vec<CycleState>,
 }

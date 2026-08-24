@@ -92,7 +92,7 @@ use crate::{
 
 use marty_common::types::{joystick::ControllerLayout, keys::MartyKey, ui::MouseCaptureMode};
 use marty_core::{
-    device_traits::videocard::{DisplayApertureDesc, VideoCardId, VideoCardState, VideoCardStateEntry},
+    device_traits::videocard::{DisplayApertureDesc, VideoCardId, VideoCardState},
     devices::{pit::PitDisplayState, serial::SerialPortDescriptor},
     machine::{ExecutionControl, MachineState},
     machine_types::FloppyDriveType,
@@ -940,7 +940,7 @@ impl GuiState {
         self.host_serial_ports = ports;
     }
 
-    pub fn update_videocard_state(&mut self, state: HashMap<String, Vec<(String, VideoCardStateEntry)>>) {
+    pub fn update_videocard_state(&mut self, state: VideoCardState) {
         self.videocard_state = state;
     }
 

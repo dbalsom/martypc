@@ -36,8 +36,10 @@
     have been renamed hchar, mchar and lchar to match.
 
 */
-
 #![allow(dead_code)]
+
+use std::{convert::TryInto, path::Path};
+
 use super::{tga::tablegen::*, *};
 use crate::{
     bus::{BusInterface, DeviceRunTimeUnit},
@@ -50,11 +52,11 @@ use crate::{
 };
 use bytemuck;
 use const_format::formatcp;
+use marty_common::MartyHashMap;
 use modular_bitfield::{
     bitfield,
     prelude::{B1, B2, B3, B4},
 };
-use std::{collections::HashMap, convert::TryInto, path::Path};
 
 #[macro_use]
 mod io;

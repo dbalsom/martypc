@@ -60,7 +60,7 @@
       12  Gfx     640x480     VGA     16    a000
 */
 
-use std::{collections::HashMap, path::Path, str::FromStr};
+use std::{path::Path, str::FromStr};
 
 #[cfg(feature = "ega")]
 use crate::devices::ega::EGACard;
@@ -71,6 +71,7 @@ use crate::{
     bus::DeviceRunTimeUnit,
     devices::{cga::CGACard, mda::MDACard, pic::Pic, tga::TGACard},
 };
+use marty_common::MartyHashMap;
 
 use serde::Deserialize;
 use serde_derive::Serialize;
@@ -162,7 +163,7 @@ pub enum VideoCardDispatch {
 }
 
 // This struct provides an identifier for a VideoCard, encapsulating a unique numeric id ('idx')
-// and the card's type. Hashable to store video cards in HashMap
+// and the card's type. Hashable to store video cards in MartyHashMap.
 #[derive(Default, Copy, Clone, Debug, Hash, Eq, PartialEq)]
 pub struct VideoCardId {
     pub idx:   usize,
@@ -216,7 +217,7 @@ pub enum VideoCardStateEntry {
     Color(String, u8, u8, u8),
 }
 
-pub type VideoCardState = HashMap<String, Vec<(String, VideoCardStateEntry)>>;
+pub type VideoCardState = MartyHashMap<String, Vec<(String, VideoCardStateEntry)>>;
 
 /// All valid graphics modes for CGA, EGA and VGA Cards
 #[allow(dead_code)]
@@ -437,7 +438,7 @@ pub trait VideoCard {
     ///
     /// This allows returning multiple categories of related registers.
     /// For the EGA for example, there are CRTC, Sequencer, Attribute and Graphics registers.
-    fn videocard_string_state(&self) -> HashMap<String, Vec<(String, VideoCardStateEntry)>>;
+    fn videocard_string_state(&self) -> MartyHashMap<String, Vec<(String, VideoCardStateEntry)>>;
 
     /// Runs the video card device for the specified period of time
     fn run(&mut self, time: DeviceRunTimeUnit, pic: &mut Option<Box<Pic>>, cpumem: Option<&[u8]>);
