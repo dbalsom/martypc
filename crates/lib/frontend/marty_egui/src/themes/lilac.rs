@@ -205,6 +205,6 @@ impl GuiTheme for LilacTheme {
         self.visuals.clone()
     }
     fn base(&self) -> ThemeBase {
-        ThemeBase::Dark
+        ThemeBase::Light
     }
 }
