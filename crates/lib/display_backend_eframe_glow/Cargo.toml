@@ -10,12 +10,12 @@ path = "src/lib.rs"
 crate-type = ["lib"]
 
 [dependencies]
-marty_display_common = { path = "../../frontend/marty_display_common" }
+marty_display_common = { path = "../marty_display_common" }
 display_backend_trait = { path = "../display_backend_trait" }
 egui.workspace = true
 anyhow.workspace = true
 egui_glow = { workspace = true }
-marty_scaler_glow = { path = "../../frontend/marty_scaler_glow" }
+marty_scaler_glow = { path = "../marty_scaler_glow" }
 
 # Optional Dependencies
 # ---------------------------------------------------------------------------------------------------------------------

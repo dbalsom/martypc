@@ -270,18 +270,18 @@ impl GuiState {
 fn drop_target_artwork(artwork: DropTargetArtwork) -> egui::ImageSource<'static> {
     match artwork {
         DropTargetArtwork::Floppy(FloppyDriveType::Floppy360K) => {
-            egui::include_image!("../../../../../assets/5_25_dd_floppy.png")
+            egui::include_image!("../../../../assets/5_25_dd_floppy.png")
         }
         DropTargetArtwork::Floppy(FloppyDriveType::Floppy720K) => {
-            egui::include_image!("../../../../../assets/3_5_dd_floppy.png")
+            egui::include_image!("../../../../assets/3_5_dd_floppy.png")
         }
         DropTargetArtwork::Floppy(FloppyDriveType::Floppy12M) => {
-            egui::include_image!("../../../../../assets/5_25_hd_floppy.png")
+            egui::include_image!("../../../../assets/5_25_hd_floppy.png")
         }
         DropTargetArtwork::Floppy(FloppyDriveType::Floppy144M) => {
-            egui::include_image!("../../../../../assets/3_5_hd_floppy.png")
+            egui::include_image!("../../../../assets/3_5_hd_floppy.png")
         }
-        DropTargetArtwork::PcjrCartridge => egui::include_image!("../../../../../assets/pcjr_cart.png"),
+        DropTargetArtwork::PcjrCartridge => egui::include_image!("../../../../assets/pcjr_cart.png"),
     }
 }
 

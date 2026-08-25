@@ -11,9 +11,9 @@ path = "src/lib.rs"
 crate-type = ["lib"]
 
 [dependencies]
-marty_common = { path = "../../marty_common" }
+marty_common = { path = "../marty_common" }
 marty_web_helpers = { path = "../marty_web_helpers" }
-marty_core = { path = "../../marty_core", default-features = false }
+marty_core = { path = "../marty_core", default-features = false }
 fluxfox = { workspace = true, default-features = false }
 anyhow.workspace = true
 serde = { workspace = true, features = ["derive"] }
