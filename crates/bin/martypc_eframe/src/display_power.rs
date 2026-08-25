@@ -23,6 +23,10 @@
     DEALINGS IN THE SOFTWARE.
 */
 
+//! Create a power-off animation for the display with the Machine is powered off via the Machine
+//! menu. It's not quite 100% realistic to how a 5153 specifically powers off, but it's recognizable
+//! and it looks kinda cool.
+
 use web_time::{Duration, Instant};
 
 const POWER_OFF_DURATION: Duration = Duration::from_millis(700);
@@ -34,8 +38,7 @@ enum DisplayPowerState {
     Off,
 }
 
-/// Tracks display presentation separately from the machine's electrical state so the final video
-/// frame can remain available while the scaler animates it away.
+/// Tracks display presentation separately from the machine's electrical state.
 #[derive(Clone, Debug)]
 pub struct DisplayPowerEffect {
     state: DisplayPowerState,
