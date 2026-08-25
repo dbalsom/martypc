@@ -44,7 +44,7 @@ use display_manager_eframe::{
 use display_manager_eframe::{BufferDimensions, TextureDimensions};
 use marty_display_common::display_manager::{DisplayManager, DmGuiOptions};
 use marty_egui_eframe::{context::GuiRenderContext, EGUI_MENU_BAR_HEIGHT};
-use marty_frontend_common::timestep_manager::TimestepManager;
+use marty_frontend_common::{deployment::DeploymentState, timestep_manager::TimestepManager};
 use marty_web_helpers::FetchResult;
 
 #[cfg(feature = "use_winit")]
@@ -93,6 +93,8 @@ pub struct MartyApp {
     #[serde(skip)]
     mouse_capture_title_hint: String,
     #[serde(skip)]
+    deployment_state: DeploymentState,
+    #[serde(skip)]
     gui: GuiRenderContext,
     #[serde(skip)]
     emu_loading: bool,
@@ -126,6 +128,7 @@ impl Default for MartyApp {
             focused: false,
             last_main_panel_size: None,
             mouse_capture_title_hint: String::new(),
+            deployment_state: DeploymentState::default(),
             // Example stuff:
             gui: GuiRenderContext::default(),
             emu_loading: false,
@@ -162,6 +165,15 @@ impl MartyApp {
     /// the creation context to async. So we first create the app, then let eframe call `init` with
     /// the partially initialized app - it should have the emulator built by then.
     pub async fn new(native_options: &mut MartyAppNewOptions) -> Self {
+        let deployment_state = DeploymentState::detect();
+        log::info!("Detected deployment state: {deployment_state:?}");
+
+        #[cfg(not(target_arch = "wasm32"))]
+        {
+            let state = deployment_state;
+            native_options.viewport.title = Some(format!("{state} {}", crate::version_string()));
+        }
+
         // Build the emulator.
         let mut emu_builder = EmulatorBuilder::default();
         let emu_result;
@@ -294,6 +306,7 @@ impl MartyApp {
         MartyApp {
             emu: Some(emu),
             tm: timestep_manager,
+            deployment_state,
             ..Default::default()
         }
     }
@@ -707,11 +720,11 @@ impl MartyApp {
                     self.mouse_capture_title_hint.push_str(active_hint);
 
                     let title = if active_hint.is_empty() {
-                        format!("MartyPC {}", crate::version_string())
+                        format!("{} {}", self.deployment_state, crate::version_string())
                     }
                     else {
                         // Do not @ me about this em-dash
-                        format!("MartyPC {} — {active_hint}", crate::version_string())
+                        format!("{} {} — {active_hint}", self.deployment_state, crate::version_string())
                     };
                     ctx.send_viewport_cmd(ViewportCommand::Title(title));
                 }

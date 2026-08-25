@@ -123,9 +123,9 @@ crates/bin/martypc_eframe/assets/configs
 
 #misc
 /tree.txt
-/test-gen/
-/exo_demo/
-
+/test-gen
+/exo_demo
+/local
 /util/build_utils.bat
 /util/**/*.com
 /hitbox_editor

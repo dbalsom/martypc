@@ -52,6 +52,7 @@ pub mod asset_manager;
 pub mod cartridge_manager;
 pub mod color;
 pub mod constants;
+pub mod deployment;
 
 //mod emulator_manager;
 pub mod async_exec;

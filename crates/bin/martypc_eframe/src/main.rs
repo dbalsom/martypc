@@ -28,6 +28,8 @@
 // hide console window on Windows in release, unless devmode feature is enabled
 #![cfg_attr(all(not(debug_assertions), not(feature = "devmode")), windows_subsystem = "windows")]
 
+#[cfg(target_arch = "wasm32")]
+use marty_frontend_common::deployment::DeploymentState;
 use martypc_eframe::{app::MartyApp, version_string, MARTY_ICON};
 
 #[cfg(target_arch = "wasm32")]
@@ -263,7 +265,7 @@ fn main() {
 
     // Wait for user interaction
     let document = web_sys::window().expect("No window").document().expect("No document");
-    document.set_title(&format!("MartyPC Web Edition {}", version_string()));
+    document.set_title(&format!("{} {}", DeploymentState::Web, version_string()));
     if let Some(footer_version) = document.get_element_by_id("web_footer_version") {
         footer_version.set_text_content(Some(concat!("v", env!("CARGO_PKG_VERSION"))));
     }
