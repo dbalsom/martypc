@@ -1,9 +1,8 @@
 ![oo](./doc/img/martypc_logo.png)
 
-MartyPC is a cross-platform emulator of early PCs written in Rust. It supports Windows, Linux and macOS.
-MartyPC emulates several 8088-based systems including the IBM PC, XT, PCJr, and Tandy 1000.
+MartyPC is an emulator of early IBM PCs and compatibles. It supports Windows, Linux and macOS.
 
-# Try the [web version](https://martypc.net) of MartyPC!
+# Try [MartyPC in your web browser!](https://martypc.net)
 
 
 ## User Guide
@@ -13,6 +12,15 @@ MartyPC emulates several 8088-based systems including the IBM PC, XT, PCJr, and 
 ## Downloading MartyPC
 
 Builds are available through periodic [releases](https://github.com/dbalsom/martypc/releases). Newer, automatic builds are available via the [Actions tab](https://github.com/dbalsom/martypc/actions/) under the Artifacts for each workflow run. (You will need to be logged in to GitHub to download Artifacts).
+
+## Building MartyPC
+
+If you're not on Windows, or you want the latest bleeding-edge version, you'll need to build MartyPC from source.
+ 
+ - Last Released Version: *`0.4.1`*
+ - Current Developement Version: *`0.5.0`*
+
+See the [Building MartyPC](https://github.com/dbalsom/martypc/wiki/Building-MartyPC) guide on the [MartyPC Wiki](https://github.com/dbalsom/martypc/wiki) for build instructions.
 
 ## Why another PC emulator?
 
@@ -39,18 +47,14 @@ In May 2023, MartyPC became the first PC emulator capable of emulating every eff
 
 ![8008mph01](./doc/img/area5150_gallery_01.png)
 
-## Online Demos
-
-The WebAssembly build of MartyPC can run both [8088MPH](https://dbalsom.github.io/martypc/web/player.html?title=8088mph) and [Area 5150](https://dbalsom.github.io/martypc/web/player.html?title=area5150) in your web browser!
-
-***Note:*** The above links are very outdated - try the [new online version of MartyPC](https://martypc.net), with includes ready-made diskettes
-with both demos.
-
 ## Features
 
-Currently, MartyPC can emulate an original IBM 5150 PC, 5160 XT, or a generic XT clone machine.
-
-Preliminary support for the IBM PCjr and Tandy 1000 is present as of 0.2.1. These machines may be buggy and unstable.
+Currently, MartyPC can emulate the following systems:
+* The IBM Model 5150 (PC)
+* The IBM Model 5160 (XT)
+* Generic Turbo XT
+* The IBM PCjr
+* The Tandy 1000
 
 ### Device Support
 MartyPC emulates the following devices:
@@ -60,7 +64,7 @@ MartyPC emulates the following devices:
     * **NEC V20** - A preliminary implementation of the NEC V20 CPU. Cycle-based, but not fully cycle-accurate or as performant as the real thing, as timings have not been adjusted from the 8088 that was used as a base. All native-mode V20 instructions are implemented and tested for correctness against hardware.
 
 * ### System Hardware:
-  * **8255 PPI** - Low level keyboard emulation is supported via the PPI and keyboard shift register. Supports the 'turbo bit' found in TurboXT clones.
+  * **8255 PPI** - Low-level keyboard emulation is supported via the PPI and keyboard shift register. Supports the 'turbo bit' found in TurboXT clones.
   * **8259 PIC** - Mostly complete, but still missing advanced features such as priority rotation and nested modes.
   * **8253 PIT** - Highly accurate, supporting PCM audio.
   * **8237 DMAC** - Mostly implemented, but DMA transfers are currently "faked". DRAM refresh DMA is simulated using a scheduling system.
@@ -102,10 +106,15 @@ MartyPC emulates the following devices:
     * **Joystick** - Game port joysticks are emulated via configurable keyboard controls.
     * **Light Pen** - A light pen is emulated for the CGA card and the PCjr. 
 
+### Dual-Head Support
+
+MartyPC supports dual-video card and multi-monitor configurations, so you can run a secondary monitor powered by an MDA or Hercules adapter - even in the same window. Each display viewport can receive independent shader configurations. 
+
+![dualhead](./doc/img/martypc_dualhead_01.png)
+
 ### Configuration Support
 
-MartyPC supports custom machine configurations via base machine configuration profiles plus optional extensions called
-'overlays', analagous to installing extension cards or other upgrades.
+MartyPC supports custom machine configurations via base machine configuration profiles plus optional extensions called 'overlays', analagous to installing extension cards or other upgrades.
 
 ### Debugging Support
 
@@ -116,8 +125,7 @@ and various peripheral states. Code and memory breakpoints are supported. MartyP
 
 ### Shader support
 
-A basic, configurable CRT shader is included with more to come 
-([LibraShader](https://github.com/SnowflakePowered/librashader) support is planned)
+A basic, configurable CRT shader is included with more to come ([LibraShader](https://github.com/SnowflakePowered/librashader) support is planned)
 
 ![shaders01](./doc/img/windowed_shaders_01.png)
 
@@ -127,5 +135,5 @@ For more, check out the [Screenshot Gallery section of the Wiki](https://github.
 
 ## Special Thanks
 
-I have a long list of people to thank (See the About box!) but I would especially like to mention the contributions made by [reenigne](https://www.reenigne.org/blog/). Without his work reverse-engineering the 8088 microcode, this emulator would never have been possible. I would also like to thank Ken Shirriff and [his excellent blog](https://righto.com/), covering much of the silicon logic of the 8086 (and 8088 by extension).
+I have a long list of people to thank (See the About box!), but I would especially like to mention the contributions made by [reenigne](https://www.reenigne.org/blog/). Without his work reverse-engineering the 8088 microcode, this emulator would never have been possible. I would also like to thank Ken Shirriff and [his excellent blog](https://righto.com/), covering much of the silicon logic of the 8086 (and 8088 by extension).
 
