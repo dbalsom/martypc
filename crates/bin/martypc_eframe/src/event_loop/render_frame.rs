@@ -30,7 +30,7 @@
 */
 use crate::emulator::Emulator;
 
-use display_manager_eframe::{DisplayBackend, DisplayManager, EFrameDisplayManager};
+use display_manager_eframe::{DisplayBackend, DisplayManager, DisplayTargetSurface, EFrameDisplayManager};
 use marty_core::{device_traits::videocard::BufferSelect, machine::ExecutionState};
 use marty_egui::GuiBoolean;
 

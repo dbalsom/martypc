@@ -39,49 +39,11 @@
 //! output of the emulation core's video devices. Typically, this involves converting
 //! indexed color data to RGBA.
 
-#[cfg(not(any(feature = "use_wgpu", feature = "use_egui_backend")))]
-compile_error!("Either the 'use_wgpu' or 'use_egui_backend' feature must be enabled.");
-#[cfg(all(feature = "use_wgpu", feature = "use_egui_backend"))]
-compile_error!("Only one of the 'use_wgpu' or 'use_egui_backend' features can be enabled.");
-
 use std::sync::{Arc, RwLock};
 use thiserror::Error;
 
-#[cfg(feature = "use_wgpu")]
-pub type DynDisplayTargetSurface = Arc<
-    RwLock<
-        dyn DisplayTargetSurface<
-            NativeTexture = wgpu::Texture,
-            NativeDevice = wgpu::Device,
-            NativeQueue = wgpu::Queue,
-            NativeTextureFormat = wgpu::TextureFormat,
-        >,
-    >,
->;
-
-#[cfg(feature = "use_glow")]
-pub type DynDisplayTargetSurface = Arc<
-    RwLock<
-        dyn DisplayTargetSurface<
-            NativeTexture = glow::Texture,
-            NativeDevice = glow::Context,
-            NativeQueue = (),
-            NativeTextureFormat = (),
-        >,
-    >,
->;
-
-#[cfg(not(any(feature = "use_wgpu", feature = "use_glow")))]
-pub type DynDisplayTargetSurface = Arc<
-    RwLock<
-        dyn DisplayTargetSurface<
-            NativeTexture = egui::TextureHandle,
-            NativeDevice = (),
-            NativeQueue = (),
-            NativeTextureFormat = (),
-        >,
-    >,
->;
+/// A shareable, mutable handle to a backend-specific display target surface.
+pub type SurfaceHandle<S> = Arc<RwLock<S>>;
 
 #[derive(Error, Debug)]
 pub enum DisplayBackendError {
@@ -207,13 +169,13 @@ pub trait DisplayTargetSurface: ThreadSafe {
 /// trait can be expanded to support that.
 pub trait DisplayBackend<'p, 'win, G> {
     /// The native type for a device instance. Ideally, this should be Clone.
-    /// For wgpu, this is [wgpu::Device].
+    /// For wgpu, this is `wgpu::Device`.
     type NativeDevice;
     /// The native type for the device queue. Ideally, this should be Clone.
-    /// For wgpu, this is [wgpu::Queue].
+    /// For wgpu, this is `wgpu::Queue`.
     type NativeQueue;
     /// The native type for a Texture.
-    /// For wgpu, this is [wgpu::Texture].
+    /// For wgpu, this is `wgpu::Texture`.
     type NativeTexture;
     /// The native type for a TextureFormat.
     type NativeTextureFormat;
@@ -227,6 +189,13 @@ pub trait DisplayBackend<'p, 'win, G> {
     /// The native type for a scaler. For wgpu backends, this defines a shader that is used to
     /// scale and apply effects to the pixel buffer before rendering to a display target surface.
     type NativeScaler;
+    /// The concrete display target surface managed by this backend.
+    type Surface: DisplayTargetSurface<
+        NativeDevice = Self::NativeDevice,
+        NativeQueue = Self::NativeQueue,
+        NativeTexture = Self::NativeTexture,
+        NativeTextureFormat = Self::NativeTextureFormat,
+    >;
 
     /// Return a structure containing information about the backend adapter, or None if no
     /// adapter information is available (web targets, for example).
@@ -246,19 +215,19 @@ pub trait DisplayBackend<'p, 'win, G> {
         &self,
         buffer_size: BufferDimensions,
         surface_size: TextureDimensions,
-    ) -> Result<DynDisplayTargetSurface, Error>;
+    ) -> Result<SurfaceHandle<Self::Surface>, Error>;
 
     /// Resize the cpu pixel buffer and backing texture to the specified dimensions, or return an error.
     fn resize_backing_texture(
         &mut self,
-        surface: &mut DynDisplayTargetSurface,
+        surface: &mut SurfaceHandle<Self::Surface>,
         new_dim: BufferDimensions,
     ) -> Result<(), Error>;
 
     /// Resize the display surface to the specified dimensions, or return an error.
     fn resize_surface_texture(
         &mut self,
-        surface: &mut DynDisplayTargetSurface,
+        surface: &mut SurfaceHandle<Self::Surface>,
         new_dim: TextureDimensions,
     ) -> Result<(), Error>;
 
@@ -270,7 +239,7 @@ pub trait DisplayBackend<'p, 'win, G> {
     /// depending on the backend implementation.
     fn render(
         &mut self,
-        surface: &mut DynDisplayTargetSurface,
+        surface: &mut SurfaceHandle<Self::Surface>,
         scaler: Option<&mut Self::NativeScaler>,
         gui_renderer: Option<&mut G>,
     ) -> Result<(), Error>;

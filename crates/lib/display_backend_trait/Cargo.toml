@@ -12,14 +12,3 @@ crate-type = ["lib"]
 [dependencies]
 thiserror.workspace = true
 anyhow.workspace = true
-
-# Optional dependencies
-egui = { workspace = true, optional = true }
-glow = { workspace = true, optional = true }
-wgpu = { workspace = true, optional = true }
-
-[features]
-default = []
-use_wgpu = ["dep:wgpu"]
-use_glow = ["dep:glow"]
-use_egui_backend = ["dep:egui"]

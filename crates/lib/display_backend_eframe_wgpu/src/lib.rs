@@ -33,17 +33,19 @@ mod gui;
 pub mod surface;
 mod util;
 
+use std::sync::{Arc, RwLock};
+
 pub use display_backend_trait::{
     BufferDimensions,
     DisplayBackend,
     DisplayBackendBuilder,
     DisplayTargetSurface,
-    DynDisplayTargetSurface,
+    SurfaceHandle,
     TextureDimensions,
 };
-pub use surface::EFrameBackendSurface;
 
-use std::sync::{Arc, RwLock};
+pub use surface::EFrameBackendSurface;
+pub type DisplayTargetSurfaceHandle = SurfaceHandle<EFrameBackendSurface>;
 
 use marty_display_common::display_scaler::DisplayScaler;
 
@@ -127,6 +129,7 @@ impl DisplayBackend<'_, '_, ()> for EFrameBackend {
     type NativeBackend = ();
     type NativeBackendAdapterInfo = wgpu::AdapterInfo;
     type NativeScaler = EFrameScalerType;
+    type Surface = EFrameBackendSurface;
 
     fn adapter_info(&self) -> Option<Self::NativeBackendAdapterInfo> {
         Some(self.adapter_info.clone())
@@ -140,7 +143,7 @@ impl DisplayBackend<'_, '_, ()> for EFrameBackend {
         self.queue.clone()
     }
 
-    /// Create a new display target surface as a [DynDisplayTargetSurface].
+    /// Create a new display target surface as a [DisplayTargetSurfaceHandle].
     /// A display target surface comprises:
     /// - A backing virtual pixel buffer (Vec<u8>).
     /// - A wgpu texture corresponding to the pixel buffer.
@@ -153,7 +156,7 @@ impl DisplayBackend<'_, '_, ()> for EFrameBackend {
         &self,
         buffer_size: BufferDimensions,
         surface_size: TextureDimensions,
-    ) -> Result<DynDisplayTargetSurface, Error> {
+    ) -> Result<DisplayTargetSurfaceHandle, Error> {
         let (backing_texture, buf_size) = util::create_texture(
             self.device.clone(),
             TextureDimensions {
@@ -181,7 +184,7 @@ impl DisplayBackend<'_, '_, ()> for EFrameBackend {
 
     fn resize_backing_texture(
         &mut self,
-        surface: &mut DynDisplayTargetSurface,
+        surface: &mut DisplayTargetSurfaceHandle,
         new_dim: BufferDimensions,
     ) -> Result<(), Error> {
         surface.write().unwrap().resize_backing(self.device.clone(), new_dim)?;
@@ -190,7 +193,7 @@ impl DisplayBackend<'_, '_, ()> for EFrameBackend {
 
     fn resize_surface_texture(
         &mut self,
-        surface: &mut DynDisplayTargetSurface,
+        surface: &mut DisplayTargetSurfaceHandle,
         new_dim: TextureDimensions,
     ) -> Result<(), Error> {
         surface
@@ -206,7 +209,7 @@ impl DisplayBackend<'_, '_, ()> for EFrameBackend {
 
     fn render(
         &mut self,
-        _surface: &mut DynDisplayTargetSurface,
+        _surface: &mut DisplayTargetSurfaceHandle,
         _scaler: Option<&mut Self::NativeScaler>,
         _gui: Option<&mut ()>,
     ) -> Result<(), Error> {

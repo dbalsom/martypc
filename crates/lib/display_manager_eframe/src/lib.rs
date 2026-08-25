@@ -45,6 +45,8 @@
 //!
 #[cfg(not(any(feature = "use_wgpu", feature = "use_glow")))]
 compile_error!("You must select either the use_wgpu or use_glow features!");
+#[cfg(all(feature = "use_wgpu", feature = "use_glow"))]
+compile_error!("Only one of the use_wgpu or use_glow features can be enabled.");
 
 pub mod builder;
 
@@ -60,23 +62,13 @@ use std::{
     time::Duration,
 };
 
-#[cfg(not(any(feature = "use_wgpu", feature = "use_glow")))]
-pub use display_backend_eframe::{
-    BufferDimensions,
-    DisplayBackend,
-    DisplayBackendBuilder,
-    DynDisplayTargetSurface,
-    EFrameBackend,
-    EFrameBackendSurface,
-    EFrameScalerType,
-    TextureDimensions,
-};
 #[cfg(feature = "use_glow")]
 pub use display_backend_eframe_glow::{
     BufferDimensions,
     DisplayBackend,
     DisplayBackendBuilder,
-    DynDisplayTargetSurface,
+    DisplayTargetSurface,
+    DisplayTargetSurfaceHandle,
     EFrameBackend,
     EFrameBackendSurface,
     EFrameScalerType,
@@ -88,7 +80,7 @@ pub use display_backend_eframe_wgpu::{
     DisplayBackend,
     DisplayBackendBuilder,
     DisplayTargetSurface,
-    DynDisplayTargetSurface,
+    DisplayTargetSurfaceHandle,
     EFrameBackend,
     EFrameBackendSurface,
     EFrameScalerType,
@@ -364,7 +356,7 @@ pub struct DisplayTargetContext {
     pub(crate) card_id: Option<VideoCardId>,      // The video card device id, if any
     pub(crate) renderer: Option<VideoRenderer>,   // The renderer
     pub(crate) aspect_ratio: AspectRatio,         // Aspect ratio configured for this display
-    pub(crate) surface: Option<DynDisplayTargetSurface>, // The display target surface created by the backend
+    pub(crate) surface: Option<DisplayTargetSurfaceHandle>, // The display target surface created by the backend
     prev_scaler_mode: Option<ScalerMode>,         // The previous scaler mode
     pub(crate) scaler: Option<EFrameScalerType>,  // The scaler pipeline
     pub(crate) scaler_params: Option<ScalerParams>,
@@ -1088,13 +1080,13 @@ impl DefaultResolver for WindowDefinition {
 }
 
 impl DisplayTargetContext {
-    pub fn surface(&self) -> Option<&DynDisplayTargetSurface> {
+    pub fn surface(&self) -> Option<&DisplayTargetSurfaceHandle> {
         self.surface.as_ref()
     }
 
     pub fn destructure_surface<F>(&mut self, f: F)
     where
-        F: FnOnce(&mut DynDisplayTargetSurface, &mut Option<EFrameScalerType>, &mut Option<GuiRenderContext>),
+        F: FnOnce(&mut DisplayTargetSurfaceHandle, &mut Option<EFrameScalerType>, &mut Option<GuiRenderContext>),
     {
         if let Some(surface) = &mut self.surface {
             f(surface, &mut self.scaler, &mut self.gui_ctx);
@@ -1672,7 +1664,7 @@ impl<'p> DisplayManager<EFrameBackend, GuiRenderContext, ViewportId, ViewportId,
     type NativeEncoder = ();
 
     type NativeEventLoop = ();
-    type ImplSurface = DynDisplayTargetSurface;
+    type ImplSurface = DisplayTargetSurfaceHandle;
     type ImplScaler = EFrameScalerType;
     type ImplDisplayTarget = DisplayTargetContext;
 

@@ -29,9 +29,6 @@
     Implements DisplayBackend for the Pixels backend
 */
 
-#[cfg(not(feature = "use_egui_backend"))]
-compile_error!("'use_egui_backend' feature is required!");
-
 mod display_window;
 mod surface;
 
@@ -41,16 +38,19 @@ pub use display_backend_trait::{
     BufferDimensions,
     DisplayBackend,
     DisplayBackendBuilder,
-    DynDisplayTargetSurface,
+    DisplayTargetSurface,
+    SurfaceHandle,
     TextureDimensions,
     //DisplayBackendError
 };
+
 pub use surface::EFrameBackendSurface;
+
+pub type DisplayTargetSurfaceHandle = SurfaceHandle<EFrameBackendSurface>;
 
 use marty_display_common::display_scaler::DisplayScaler;
 
 use anyhow::{anyhow, bail, Error};
-use display_backend_trait::DisplayTargetSurface;
 use egui;
 use egui_glow::{
     glow,
@@ -122,6 +122,7 @@ impl DisplayBackend<'_, '_, ()> for EFrameBackend {
     type NativeBackendAdapterInfo = ();
 
     type NativeScaler = EFrameScalerType;
+    type Surface = EFrameBackendSurface;
 
     fn adapter_info(&self) -> Option<Self::NativeBackendAdapterInfo> {
         None
@@ -139,7 +140,7 @@ impl DisplayBackend<'_, '_, ()> for EFrameBackend {
         &self,
         buffer_dim: BufferDimensions,
         surface_dim: TextureDimensions,
-    ) -> Result<DynDisplayTargetSurface, Error> {
+    ) -> Result<DisplayTargetSurfaceHandle, Error> {
         let pixels = vec![0; buffer_dim.w as usize * buffer_dim.h as usize * 4];
         let gl = &self.gl;
         unsafe {
@@ -190,7 +191,7 @@ impl DisplayBackend<'_, '_, ()> for EFrameBackend {
 
     fn resize_backing_texture(
         &mut self,
-        surface: &mut DynDisplayTargetSurface,
+        surface: &mut DisplayTargetSurfaceHandle,
         new_dim: BufferDimensions,
     ) -> Result<(), Error> {
         surface.write().unwrap().resize_backing(self.gl.clone(), new_dim)?;
@@ -199,7 +200,7 @@ impl DisplayBackend<'_, '_, ()> for EFrameBackend {
 
     fn resize_surface_texture(
         &mut self,
-        surface: &mut DynDisplayTargetSurface,
+        surface: &mut DisplayTargetSurfaceHandle,
         new_dim: TextureDimensions,
     ) -> Result<(), Error> {
         //self.pixels.resize_surface(new.w, new.h)?;
@@ -216,7 +217,7 @@ impl DisplayBackend<'_, '_, ()> for EFrameBackend {
 
     fn render(
         &mut self,
-        surface: &mut DynDisplayTargetSurface,
+        _surface: &mut DisplayTargetSurfaceHandle,
         _scaler: Option<&mut Self::NativeScaler>,
         _gui: Option<&mut ()>,
     ) -> Result<(), Error> {

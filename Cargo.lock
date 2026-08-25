@@ -1438,10 +1438,7 @@ name = "display_backend_trait"
 version = "0.5.0"
 dependencies = [
  "anyhow",
- "egui 0.34.2",
- "glow",
  "thiserror 2.0.18",
- "wgpu",
 ]
 
 [[package]]
