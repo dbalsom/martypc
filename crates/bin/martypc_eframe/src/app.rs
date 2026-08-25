@@ -80,39 +80,24 @@ pub const GRAB_MODE: CursorGrab = CursorGrab::Locked;
 #[cfg(not(any(target_arch = "wasm32", target_os = "macos")))]
 pub const GRAB_MODE: CursorGrab = CursorGrab::Confined;
 
-/// We derive Deserialize/Serialize so we can persist app state on shutdown.
-#[derive(serde::Deserialize, serde::Serialize)]
-#[serde(default)] // if we add new fields, give them default values when deserializing old state
 pub struct MartyApp {
     size_delay: u32,
     ppp: Option<f32>,
     focused: bool,
     hide_menu: bool,
-    #[serde(skip)]
     last_main_panel_size: Option<[u32; 2]>,
-    #[serde(skip)]
     mouse_capture_title_hint: String,
-    #[serde(skip)]
     deployment_state: DeploymentState,
-    #[serde(skip)]
     gui: GuiRenderContext,
-    #[serde(skip)]
     emu_loading: bool,
-    #[serde(skip)]
     emu_receiver: Receiver<FetchResult>,
-    #[serde(skip)]
     emu_sender: Sender<FetchResult>,
     #[cfg(feature = "use_winit")]
-    #[serde(skip)]
     winit_receiver: Option<Receiver<(winit::window::WindowId, winit::event::WindowEvent)>>,
     #[cfg(not(feature = "use_winit"))]
-    #[serde(skip)]
     web_receiver: Option<Receiver<eframe::WebKeyboardEvent>>,
-    #[serde(skip)]
     pub emu: Option<Emulator>,
-    #[serde(skip)]
     dm: Option<EFrameDisplayManager>,
-    #[serde(skip)]
     tm: TimestepManager,
 }
 
@@ -315,12 +300,6 @@ impl MartyApp {
     pub fn init(mut self, cc: &eframe::CreationContext<'_>) -> Self {
         // This is also where you can customize the look and feel of egui using
         // `cc.egui_ctx.set_visuals` and `cc.egui_ctx.set_fonts`.
-
-        // Load previous app state (if any).
-        // Note that you must enable the `persistence` feature for this to work.
-        // if let Some(storage) = cc.storage {
-        //     return eframe::get_value(storage, eframe::APP_KEY).unwrap_or_default();
-        // }
 
         egui_extras::install_image_loaders(&cc.egui_ctx);
 
@@ -1030,11 +1009,6 @@ impl MartyApp {
 impl eframe::App for MartyApp {
     fn ui(&mut self, ui: &mut egui::Ui, frame: &mut eframe::Frame) {
         self.update_frame(ui, frame);
-    }
-
-    /// Called by the framework to save state before shutdown.
-    fn save(&mut self, storage: &mut dyn eframe::Storage) {
-        eframe::set_value(storage, eframe::APP_KEY, self);
     }
 
     fn raw_input_hook(&mut self, ctx: &Context, raw_input: &mut RawInput) {

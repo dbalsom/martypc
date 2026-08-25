@@ -1550,7 +1550,6 @@ dependencies = [
  "glow",
  "glutin",
  "glutin-winit",
- "home",
  "image",
  "js-sys",
  "log",
@@ -1562,8 +1561,6 @@ dependencies = [
  "pollster",
  "profiling",
  "raw-window-handle",
- "ron",
- "serde",
  "static_assertions",
  "wasm-bindgen",
  "wasm-bindgen-futures",
@@ -1605,7 +1602,6 @@ dependencies = [
  "log",
  "nohash-hasher",
  "profiling",
- "ron",
  "serde",
  "smallvec",
  "unicode-segmentation",
@@ -1656,7 +1652,6 @@ dependencies = [
  "objc2-ui-kit 0.3.2",
  "profiling",
  "raw-window-handle",
- "serde",
  "smithay-clipboard",
  "web-time",
  "webbrowser",
@@ -3463,7 +3458,6 @@ dependencies = [
  "marty_web_helpers",
  "rfd",
  "rodio",
- "serde",
  "serialport",
  "strum 0.27.1",
  "thiserror 2.0.18",
@@ -4893,20 +4887,6 @@ dependencies = [
  "dasp_sample",
  "num-rational",
  "thiserror 2.0.18",
-]
-
-[[package]]
-name = "ron"
-version = "0.12.1"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "4147b952f3f819eca0e99527022f7d6a8d05f111aeb0a62960c74eb283bec8fc"
-dependencies = [
- "bitflags 2.11.1",
- "once_cell",
- "serde",
- "serde_derive",
- "typeid",
- "unicode-ident",
 ]
 
 [[package]]

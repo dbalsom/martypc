@@ -22,7 +22,6 @@ wgpu = { workspace = true, optional = true }
 eframe = { workspace = true, default-features = false, features = [
     "accesskit",
     "default_fonts",
-    "persistence",
     "wayland",
 ] }
 env_logger = "0.11"

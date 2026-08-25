@@ -44,6 +44,7 @@ There is a new `monitor_emulation` flag in video card overlay configurations tha
 This release adds a new Fantasy EMS device courtsey of sqpat, author of RealDOOM and expert in all things EMS.  I am very grateful for his contribution.
 
 ## Frontend Bug Fixes / Improvements
+ - Disabled eframe's persistence feature to prevent it from making files in user directories even in portable mode.
  - Revamped and refactored multi-head support for dual video cards, supporting up to 16 monitors
  - New logo type and fancy new plasma effect in the About dialog
  - WASM: Added a new system selector carousel interface.

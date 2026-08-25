@@ -44,7 +44,6 @@ egui = { workspace = true, default-features = false }
 egui_extras = { workspace = true, default-features = false, features = ["file", "image"] }
 web-time = { workspace = true }
 log.workspace = true
-serde = { version = "1.0", features = ["derive"] }
 crossbeam-channel.workspace = true
 anyhow.workspace = true
 strum.workspace = true
@@ -72,7 +71,6 @@ egui-winit = { workspace = true, default-features = true, features = ["accesskit
 eframe = { workspace = true, default-features = false, features = [
     "accesskit",     # Make egui compatible with screen readers. NOTE: adds a lot of dependencies.
     "default_fonts", # Embed the default egui fonts.
-    "persistence",   # Enable restoring app state when restarting the app.
     "wayland",       # Add wayland support for Linux/CI
 ]}
 serialport  = { workspace = true }
@@ -94,7 +92,6 @@ egui-winit = { workspace = true, default-features = false, optional = true }
 # No need for accesskit or wayland on web.
 eframe = { workspace = true, default-features = false, features = [
     "default_fonts", # Embed the default egui fonts.
-    "persistence",   # Enable restoring app state when restarting the app.
 ]}
 
 # Disable bpaf on web - no command line!
