@@ -118,6 +118,7 @@ pub const COMPAQ_SW1_640K: u8 = 0b0000_1100;
 pub const COMPAQ_SW1_512K: u8 = 0b0000_1000;
 pub const COMPAQ_SW1_256K: u8 = 0b0000_0000;
 pub const COMPAQ_SW1_128K: u8 = 0b0000_0100;
+
 // SW6_5: OFF, OFF: MDA card
 // SW6_5: ON, OFF: CGA 40 Cols
 // SW6_5: OFF, ON: CGA 80 Cols
