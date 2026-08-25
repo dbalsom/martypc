@@ -1,0 +1,15 @@
+[package]
+name = "marty_vhd_cli"
+version = "0.1.0"
+edition = "2024"
+license.workspace = true
+rust-version.workspace = true
+
+[[bin]]
+name = "marty_vhd"
+path = "src/main.rs"
+
+[dependencies]
+anyhow.workspace = true
+bpaf.workspace = true
+marty_vhd = { path = "../../lib/marty_vhd" }

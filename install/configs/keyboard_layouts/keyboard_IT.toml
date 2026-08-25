@@ -272,16 +272,7 @@ keycode_mappings = [
 # The Tandy 1000 keyboard has single-byte scancodes, so scancodes defined here 
 # should only have one element
 [keyboard.tandy1000]
-keycode_mappings = [
-    # Map the '<>' key to IntlBackslash. 
-    {keycode="IntlBackslash", modifiers=["any"], key_macro=[], macro_translate=false, scancodes=[0x2B]},      
-    # Map the ù key to Backquote
-    {keycode="Backslash", modifiers=["any"], key_macro=[], macro_translate=false, scancodes=[0x29]},   
-    # Generate a backslash.
-    {keycode="Backquote", modifiers=["any"], key_macro=["+ControlLeft", "+AltLeft", "+IntlBackslash", "-ControlLeft", "-AltLeft", "-IntlBackslash"], macro_translate=false, scancodes=[]},
-    # Generate a pipe character. There is no equivalent on the italian model F.
-    {keycode="Backquote", modifiers=["shift"], key_macro=["+AltLeft", "+Numpad1", "+Numpad2", "+Numpad4", "-AltLeft",  "-Numpad1", "-Numpad2", "-Numpad4"], macro_translate=false, scancodes=[]},      
-]
+keycode_mappings = []
 
 # -----------------------------------------------------------------------------
 # PCjr - the IBM PCjr keyboard (both variations)

@@ -1,0 +1,169 @@
+<!DOCTYPE html>
+<html>
+<meta http-equiv="Content-Type" content="text/html; charset=utf-8"/>
+
+<!-- Disable zooming: -->
+<meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no">
+
+<head>
+    <title>MartyPC Web Edition</title>
+
+    <meta property="og:title" content="MartyPC Web Edition">
+    <meta property="og:description" content="An IBM PC/XT emulator written in Rust - Now compiled for the web!">
+    <meta property="og:url" content="https://martypc.net">
+    <meta property="og:image" content="https://martypc.net/assets/marty_logo_about_twitter.png">
+    <meta property="og:type" content="website">
+    <meta property="og:site_name" content="MartyPC">
+    <meta property="og:image:width" content="755">
+    <meta property="og:image:height" content="270">
+    <meta property="og:locale" content="en_US">
+
+    <meta name="twitter:card" content="summary_large_image">
+    <meta name="twitter:title" content="MartyPC Web Edition">
+    <meta name="twitter:description" content="An IBM PC/XT emulator written in Rust - Now compiled for the web!">
+    <meta name="twitter:image" content="https://martypc.net/assets/marty_logo_about_twitter.png">
+
+    <!-- Install fatal-error handlers before loading the WASM module. -->
+    <script src="assets/fatal_error.js?v=1"></script>
+
+    <!-- use nightly toolchain for atomics, webworker shared memory, etc. -->
+    <meta data-trunk-toolchain="+nightly">
+    <!-- config for our rust wasm binary. go to https://trunkrs.dev/assets/#rust for more customization -->
+    <link data-trunk rel="rust" data-wasm-opt="2"
+          data-wasm-opt-params="--enable-simd --enable-threads --enable-bulk-memory --enable-nontrapping-float-to-int"/>
+    <!-- this is the base url relative to which other urls will be constructed. trunk will insert this from the public-url option -->
+    <base data-trunk-public-url/>
+
+    <link data-trunk rel="icon" href="../../../assets/favicon.ico">
+    <link data-trunk rel="copy-file" href="../../../assets/marty_logo_about_twitter.png"
+          data-target-path="assets"/>
+    <link data-trunk rel="copy-file" href="../../../assets/marty_logo_about.png"
+          data-target-path="assets"/>
+
+    <link data-trunk rel="copy-file" href="assets/martypc_data.dat" data-target-path="assets"/>
+    <link data-trunk rel="copy-file" href="assets/_headers"/>
+    <link data-trunk rel="copy-file" href="assets/worker.js"/>
+    <link data-trunk rel="copy-file" href="assets/carousel.js" data-target-path="assets"/>
+    <link data-trunk rel="copy-file" href="assets/systems.json" data-target-path="assets"/>
+    <link data-trunk rel="copy-file" href="assets/fatal_error.js" data-target-path="assets"/>
+    <link data-trunk rel="copy-file" href="assets/manifest.json"/>
+    <link data-trunk rel="copy-file" href="assets/ibm_5150_icon.png" data-target-path="assets"/>
+    <link data-trunk rel="copy-file" href="assets/ibm_pcjr_icon.png" data-target-path="assets"/>
+    <link data-trunk rel="copy-file" href="assets/tandy_1000_icon.png" data-target-path="assets"/>
+    <link data-trunk rel="copy-file" href="assets/martypc_logo_small.png" data-target-path="assets"/>
+    <link data-trunk rel="copy-file" href="assets/martypc_logo_sad.png" data-target-path="assets"/>
+    <link data-trunk rel="copy-file" href="assets/zooble_bg.png" data-target-path="assets"/>
+    <link data-trunk rel="copy-file" href="assets/icon-1024.png" data-target-path="assets"/>
+    <link data-trunk rel="copy-file" href="assets/icon-256.png" data-target-path="assets"/>
+    <link data-trunk rel="copy-file" href="assets/icon_ios_touch_192.png" data-target-path="assets"/>
+    <link data-trunk rel="copy-file" href="assets/maskable_icon_x512.png" data-target-path="assets"/>
+
+    <link data-trunk rel="copy-file" href="assets/configs/martypc.toml" data-target-path="configs"/>
+    <link data-trunk rel="copy-file" href="assets/configs/file_manifest.toml" data-target-path="configs"/>
+
+    <link rel="manifest" href="manifest.json">
+    <link rel="apple-touch-icon" href="assets/icon_ios_touch_192.png">
+    <meta name="theme-color" media="(prefers-color-scheme: light)" content="white">
+    <meta name="theme-color" media="(prefers-color-scheme: dark)" content="#404040">
+
+    <script src="assets/carousel.js?v=6" defer></script>
+
+    <link data-trunk rel="css" href="assets/martypc.css"/>
+</head>
+
+<body>
+
+<!-- The WASM code will resize the canvas dynamically -->
+<!-- the id is hardcoded in main.rs . so, make sure both match. -->
+<canvas id="the_canvas_id"></canvas>
+
+<!-- Initial screen with "Click to start" -->
+<div class="start-overlay" id="start_screen">
+    <main class="start-launcher" aria-labelledby="system_select_title">
+        <div class="start-logo-wrapper">
+            <img src="assets/marty_logo_about.png" class="start-brand-logo" alt="MartyPC">
+        </div>
+
+        <h1 class="start-title" id="system_select_title">Choose a System</h1>
+
+        <section class="system-carousel" aria-label="System selection">
+            <button class="carousel-chevron previous" id="previous_system" type="button" disabled
+                    aria-label="Select previous system"></button>
+
+            <div class="carousel-stage" id="system_carousel" tabindex="0" aria-label="Available systems"></div>
+
+            <button class="carousel-chevron next" id="next_system" type="button" disabled
+                    aria-label="Select next system"></button>
+        </section>
+
+        <div class="system-details-panel" id="system_details_panel">
+            <div class="system-details" aria-live="polite">
+                <p class="system-name" id="selected_system_name">Loading systems…</p>
+                <p class="system-description" id="selected_system_description"></p>
+            </div>
+
+            <div class="system-options" id="system_options" data-visible="false" aria-hidden="true">
+                <div class="system-option" id="video_card_option" data-visible="false" aria-hidden="true">
+                    <label class="system-options-label" for="video_card_select">Video Card</label>
+                    <select class="system-options-select" id="video_card_select" disabled>
+                        <option value="ibm_mda">MDA</option>
+                        <option value="hercules">Hercules</option>
+                        <option value="ibm_cga" selected>CGA</option>
+                        <option value="ibm_ega">EGA</option>
+                        <option value="ibm_vga">VGA</option>
+                    </select>
+                </div>
+
+                <label class="system-option system-options-checkbox" id="memory_sidecar_option" data-visible="false"
+                       aria-hidden="true">
+                    <input id="memory_sidecar_checkbox" type="checkbox" checked disabled>
+                    <span class="system-options-label">Memory Sidecar</span>
+                </label>
+
+                <label class="system-option system-options-checkbox" id="adlib_option" data-visible="false"
+                       aria-hidden="true">
+                    <input id="adlib_checkbox" type="checkbox" disabled>
+                    <span class="system-options-label">AdLib Card</span>
+                </label>
+            </div>
+        </div>
+
+        <!-- main.rs attaches the WASM startup handler to this element. -->
+        <button class="start-button" id="start_logo" type="button" disabled>Loading systems…</button>
+
+        <p class="carousel-instructions">
+            <span class="arrow-instruction">Use the arrows or keyboard to rotate</span>
+            <span class="swipe-instruction">Swipe or tap the arrows to rotate</span>
+        </p>
+    </main>
+
+    <footer class="web-footer" aria-label="MartyPC build information">
+        <span>©2026 GloriousCow</span>
+        <span aria-hidden="true">·</span>
+        <span id="web_footer_version">v…</span>
+        <span aria-hidden="true">·</span>
+        <a href="https://github.com/dbalsom/martypc" target="_blank" rel="noopener noreferrer">GitHub</a>
+    </footer>
+</div>
+
+<!-- the loading overlay will be removed in main.rs -->
+<div class="loading-overlay" id="loading_text" role="status" aria-live="polite">
+    <div class="loading-content">
+        <img class="loading-marty" src="assets/martypc_logo_small.png" alt="">
+        <p class="loading-label">
+            Loading…
+        </p>
+    </div>
+</div>
+
+<div class="fatal-error-overlay" id="fatal_error_screen" role="alert" aria-live="assertive" hidden>
+    <div class="fatal-error-content">
+        <img class="initialization-error-logo" src="assets/martypc_logo_sad.png" alt="Sad MartyPC computer">
+        <p class="initialization-error-message">
+            MartyPC failed to initialize.<br>See the developer console for details (Hit F12).
+        </p>
+    </div>
+</div>
+
+</body>
+</html>

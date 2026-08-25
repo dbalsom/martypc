@@ -1,0 +1,431 @@
+[bitmap]
+width = 1030
+height = 285
+origin = "top-left"
+base_color = 0x292929
+
+# Coordinates are native bitmap pixels. `source` is [x, y, width, height] and
+# identifies both the key bitmap and its released position. `destination` is only
+# [x, y]; its width and height are inherited from `source`.
+
+# Left function-key bank
+[[key]]
+code = "F1"
+source = [26, 39, 45, 45]
+destination = [29, 41]
+
+[[key]]
+code = "F2"
+source = [73, 39, 46, 45]
+destination = [76, 41]
+
+[[key]]
+code = "F3"
+source = [27, 87, 46, 46]
+destination = [29, 89]
+
+[[key]]
+code = "F4"
+source = [74, 88, 47, 44]
+destination = [77, 90]
+
+[[key]]
+code = "F5"
+source = [29, 134, 46, 46]
+destination = [31, 136]
+
+[[key]]
+code = "F6"
+source = [75, 134, 47, 46]
+destination = [78, 136]
+
+[[key]]
+code = "F7"
+source = [28, 182, 47, 46]
+destination = [30, 184]
+
+[[key]]
+code = "F8"
+source = [75, 182, 46, 46]
+destination = [78, 184]
+
+[[key]]
+code = "F9"
+source = [28, 229, 46, 47]
+destination = [30, 231]
+
+[[key]]
+code = "F10"
+source = [75, 229, 45, 47]
+destination = [78, 231]
+
+# Main keyboard, number row
+[[key]]
+code = "Escape"
+source = [141, 39, 46, 47]
+destination = [143, 41]
+
+[[key]]
+code = "Digit1"
+source = [188, 39, 46, 47]
+destination = [190, 41]
+
+[[key]]
+code = "Digit2"
+source = [235, 39, 44, 47]
+destination = [236, 41]
+
+[[key]]
+code = "Digit3"
+source = [280, 39, 45, 47]
+destination = [281, 41]
+
+[[key]]
+code = "Digit4"
+source = [326, 39, 46, 47]
+destination = [327, 41]
+
+[[key]]
+code = "Digit5"
+source = [372, 39, 46, 47]
+destination = [372, 41]
+
+[[key]]
+code = "Digit6"
+source = [418, 39, 46, 47]
+destination = [418, 41]
+
+[[key]]
+code = "Digit7"
+source = [465, 39, 45, 46]
+destination = [465, 41]
+
+[[key]]
+code = "Digit8"
+source = [510, 39, 44, 46]
+destination = [510, 41]
+
+[[key]]
+code = "Digit9"
+source = [556, 39, 44, 46]
+destination = [555, 41]
+
+[[key]]
+code = "Digit0"
+source = [602, 39, 44, 46]
+destination = [601, 41]
+
+[[key]]
+code = "Minus"
+source = [648, 39, 44, 46]
+destination = [646, 41]
+
+[[key]]
+code = "Equal"
+source = [693, 39, 43, 46]
+destination = [691, 41]
+
+[[key]]
+code = "Backspace"
+source = [739, 38, 81, 46]
+destination = [737, 40]
+
+# Main keyboard, QWERTY row
+[[key]]
+code = "Tab"
+source = [142, 87, 70, 46]
+destination = [144, 89]
+
+[[key]]
+code = "KeyQ"
+source = [213, 87, 44, 47]
+destination = [215, 89]
+
+[[key]]
+code = "KeyW"
+source = [258, 87, 46, 47]
+destination = [259, 89]
+
+[[key]]
+code = "KeyE"
+source = [304, 86, 46, 47]
+destination = [305, 88]
+
+[[key]]
+code = "KeyR"
+source = [349, 86, 46, 47]
+destination = [349, 88]
+
+[[key]]
+code = "KeyT"
+source = [395, 86, 46, 47]
+destination = [395, 88]
+
+[[key]]
+code = "KeyY"
+source = [441, 86, 46, 47]
+destination = [441, 88]
+
+[[key]]
+code = "KeyU"
+source = [487, 86, 44, 47]
+destination = [487, 88]
+
+[[key]]
+code = "KeyI"
+source = [533, 87, 43, 46]
+destination = [532, 89]
+
+[[key]]
+code = "KeyO"
+source = [578, 86, 44, 47]
+destination = [577, 90]
+
+[[key]]
+code = "KeyP"
+source = [624, 86, 44, 47]
+destination = [623, 88]
+
+[[key]]
+code = "BracketLeft"
+source = [669, 87, 43, 46]
+destination = [667, 89]
+
+[[key]]
+code = "BracketRight"
+source = [716, 85, 56, 47]
+destination = [714, 89]
+
+[[key]]
+code = "Enter"
+source = [772, 86, 46, 93]
+destination = [769, 88]
+
+# Main keyboard, home row
+[[key]]
+code = "ControlLeft"
+source = [144, 134, 80, 46]
+destination = [146, 136]
+
+[[key]]
+code = "KeyA"
+source = [225, 134, 46, 46]
+destination = [227, 136]
+
+[[key]]
+code = "KeyS"
+source = [272, 134, 44, 46]
+destination = [273, 136]
+
+[[key]]
+code = "KeyD"
+source = [317, 134, 44, 46]
+destination = [318, 136]
+
+[[key]]
+code = "KeyF"
+source = [363, 134, 44, 46]
+destination = [363, 136]
+
+[[key]]
+code = "KeyG"
+source = [409, 134, 44, 46]
+destination = [409, 136]
+
+[[key]]
+code = "KeyH"
+source = [454, 134, 44, 46]
+destination = [454, 136]
+
+[[key]]
+code = "KeyJ"
+source = [500, 134, 44, 46]
+destination = [500, 138]
+
+[[key]]
+code = "KeyK"
+source = [545, 133, 45, 46]
+destination = [544, 135]
+
+[[key]]
+code = "KeyL"
+source = [591, 133, 44, 46]
+destination = [590, 135]
+
+[[key]]
+code = "Semicolon"
+source = [637, 134, 44, 45]
+destination = [636, 136]
+
+[[key]]
+code = "Quote"
+source = [682, 134, 43, 45]
+destination = [680, 136]
+
+[[key]]
+code = "Backquote"
+source = [727, 134, 43, 45]
+destination = [725, 136]
+
+# Main keyboard, shift row
+[[key]]
+code = "ShiftLeft"
+source = [143, 181, 59, 46]
+destination = [145, 183]
+
+[[key]]
+code = "Backslash"
+source = [202, 178, 46, 47]
+destination = [204, 180]
+
+[[key]]
+code = "KeyZ"
+source = [248, 180, 46, 47]
+destination = [249, 182]
+
+[[key]]
+code = "KeyX"
+source = [294, 180, 46, 47]
+destination = [295, 182]
+
+[[key]]
+code = "KeyC"
+source = [339, 180, 46, 47]
+destination = [339, 182]
+
+[[key]]
+code = "KeyV"
+source = [385, 180, 46, 47]
+destination = [385, 182]
+
+[[key]]
+code = "KeyB"
+source = [431, 180, 46, 47]
+destination = [431, 182]
+
+[[key]]
+code = "KeyN"
+source = [476, 180, 46, 47]
+destination = [476, 182]
+
+[[key]]
+code = "KeyM"
+source = [521, 180, 45, 47]
+destination = [520, 182]
+
+[[key]]
+code = "Comma"
+source = [568, 180, 44, 47]
+destination = [567, 182]
+
+[[key]]
+code = "Period"
+source = [614, 180, 44, 46]
+destination = [613, 182]
+
+[[key]]
+code = "Slash"
+source = [659, 180, 44, 46]
+destination = [657, 182]
+
+[[key]]
+code = "ShiftRight"
+source = [705, 180, 66, 46]
+destination = [703, 182]
+
+[[key]]
+code = "PrintScreen"
+source = [772, 180, 44, 46]
+destination = [770, 182]
+
+# Main keyboard, bottom row
+[[key]]
+code = "AltLeft"
+source = [143, 229, 91, 47]
+destination = [145, 231]
+
+[[key]]
+code = "Space"
+source = [237, 229, 443, 48]
+destination = [237, 231]
+
+[[key]]
+code = "CapsLock"
+source = [682, 228, 91, 47]
+destination = [680, 230]
+
+# Numeric keypad
+[[key]]
+code = "NumLock"
+source = [820, 39, 92, 46]
+destination = [817, 41]
+
+[[key]]
+code = "ScrollLock"
+source = [912, 38, 91, 45]
+destination = [909, 40]
+
+[[key]]
+code = "Numpad7"
+source = [817, 86, 46, 47]
+destination = [815, 88]
+
+[[key]]
+code = "Numpad8"
+source = [864, 86, 45, 47]
+destination = [862, 88]
+
+[[key]]
+code = "Numpad9"
+source = [910, 86, 45, 47]
+destination = [908, 88]
+
+[[key]]
+code = "NumpadSubtract"
+source = [956, 85, 46, 47]
+destination = [953, 87]
+
+[[key]]
+code = "Numpad4"
+source = [820, 131, 46, 47]
+destination = [818, 133]
+
+[[key]]
+code = "Numpad5"
+source = [866, 131, 46, 47]
+destination = [864, 133]
+
+[[key]]
+code = "Numpad6"
+source = [909, 132, 45, 47]
+destination = [907, 134]
+
+[[key]]
+code = "NumpadAdd"
+source = [955, 132, 46, 143]
+destination = [952, 134]
+
+[[key]]
+code = "Numpad1"
+source = [817, 180, 45, 47]
+destination = [815, 182]
+
+[[key]]
+code = "Numpad2"
+source = [862, 180, 46, 47]
+destination = [860, 182]
+
+[[key]]
+code = "Numpad3"
+source = [909, 180, 46, 47]
+destination = [907, 182]
+
+[[key]]
+code = "Numpad0"
+source = [773, 228, 91, 48]
+destination = [771, 230]
+
+[[key]]
+code = "NumpadDecimal"
+source = [864, 228, 91, 48]
+destination = [862, 230]

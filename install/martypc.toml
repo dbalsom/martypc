@@ -3,7 +3,7 @@
 #
 [meta]
 file_type = "main_config"
-config_version = "0.4"
+config_version = "0.5"
 
 # ----------------------------------------------------------------------------
 # Machine Options
@@ -14,6 +14,14 @@ config_version = "0.4"
 # General emulator options are given in [emulator] below.
 # ----------------------------------------------------------------------------
 [machine]
+# MartyPC's internal emulator service interrupt vector. Comment out to disable the service
+# interrupt. The service interrupt is required for the `m*.com` utilities to function such as
+# `mdebug.com`.
+service_interrupt = 0xF5
+# If true, emulator services start disabled and must be enabled through service control
+# function AH==00h. Requires updated `m*.com` utilities if you have older utilies than 0.5.
+service_interrupt_gate = true
+
 # `config_name`: The name of the machine configuration to load.
 # Machine configurations are defined in the various machine configuration
 # definition files in /configs/machines.
@@ -43,7 +51,12 @@ config_name = "ibm5160_xtide"
 # MDA or CGA, for example.
 #
 # - See 'machine_config_overlays.toml' for more examples, or define your own.
+
 #config_overlays = ["ega"]
+
+# Parameterized overlays can target a specific component. This example installs
+# a 360K A: drive and a 720K B: drive:
+#config_overlays = ["floppy_360k:0", "floppy_720k:1"]
 
 # Prefer OEM ROMs over other compatible ROMs, if present.
 prefer_oem = false
@@ -133,11 +146,6 @@ on_halt = "Warn"
 # when enabled. Only enable if debugging.
 instruction_history = false
 
-# Enable MartyPC's internal emulator serivce interrupt at 0xFC. You may need
-# to disable this if conflicts arise. 'mdebug.com' requires this to be set 
-# true.
-service_interrupt = true
-
 # CPU Tracing Options
 # ----------------------------------------------------------------------------
 # CPU tracing may be enabled by specifying trace_mode
@@ -159,6 +167,12 @@ trace_on = false
 #trace_mode = "Instruction"
 trace_mode = "CycleSigrok"
 trace_file = "cycle_trace.log"
+
+[machine.fdc]
+# Disk image compatibility mode.
+#  - Strict: Image must match physical diskette size, cylinder count and data rate to allow insertion.
+#  - Lenient: Image must only match cylinder count and data rate
+disk_image_compatibility = "Strict"
 
 # ----------------------------------------------------------------------------
 # Emulator paths
@@ -183,12 +197,14 @@ trace_file = "cycle_trace.log"
 #          directories relative to the current working directory.
 basedir = "."
 paths = [
+    { resource = "asset", path = "$basedir$/assets", recurse = true, create = true },
     { resource = "machine", path = "$basedir$/configs/machines", recurse = true },
     { resource = "keyboard_layout", path = "$basedir$/configs/keyboard_layouts", recurse = false },
     { resource = "romdef", path = "$basedir$/configs/rom_definitions", recurse = true },
     { resource = "rom", path = "$basedir$/media/roms", recurse = true },
     { resource = "hdd", path = "$basedir$/media/hdds", recurse = true },
     { resource = "autofloppy", path = "$basedir$/mount/floppy", create = true, recurse = false },
+    { resource = "file_transfer", path = "$basedir$/mount/file_transfer", create = true, recurse = false },
     { resource = "floppy", path = "$basedir$/media/floppies", recurse = true, create = true },
     { resource = "cartridge", path = "$basedir$/media/cartridges", recurse = true, create = true },
     { resource = "cassette", path = "$basedir$/media/cassettes", recurse = true, create = true },
@@ -204,6 +220,11 @@ ignore_dirs = ["parking"]
 # -------------------------------------------------------------------------------------
 # General emulator options
 # -------------------------------------------------------------------------------------
+
+# Available range and initial multiplier for the emulation speed control.
+min_emulation_speed = 0.1
+max_emulation_speed = 2.0
+initial_emulator_speed = 1.0
 
 # Power on the emulated machine on startup (only applicable in gui mode)
 auto_poweron = true
@@ -347,6 +368,9 @@ menu_adjust = true
 # aperture is changed.
 resizable = true
 
+# Allow double-clicking a display in this window to capture the mouse.
+can_grab = true
+
 # If this field is present, the window will display the specified card in its
 # client area. If you do not want the window to display a card, comment this
 # out.
@@ -357,6 +381,18 @@ card_id = 0
 # times this number.
 # Setting this value overrides 'size' and 'resizable'.
 #card_scale = 1
+
+# Specify the scaler mode to use for this window when displaying a video card.
+# This has no effect if no card_id is provided.
+#
+# Valid options for Scaler mode are
+# Fixed   - Video and shader output will be displayed at native base resolution
+# Integer - Video and shader output will be scaled to the largest integer
+#           multiple that will fit in the window. This generally produces the
+#           clearest results, but can leave large black borders.
+# Fit     - Video will be scaled proportionally to fit the window.
+# Stretch - Video will be scaled to fit the window.
+scaler_mode = "Integer"
 
 # Specify the scaler preset to use for this window. See the 
 # [[emulator.scaler_preset]] definitions defined below for reference.
@@ -371,8 +407,9 @@ enabled = false
 name = "Secondary Window"
 size = { w = 800, h = 600 }
 resizable = false
-card_id = 0
+can_grab = true
 card_scale = 1
+scaler_mode = "Integer"
 scaler_preset = "Green CRT"
 always_on_top = false
 
@@ -382,10 +419,35 @@ enabled = false
 name = "Tertiary Window"
 size = { w = 640, h = 480 }
 resizable = false
-card_id = 0
+can_grab = true
 card_scale = 1
+scaler_mode = "Integer"
 scaler_preset = "default"
 always_on_top = false
+
+# ----------------------------------------------------------------------------
+# Display Target Allocation
+#
+# Each [[emulator.display_targets.card]] entry corresponds to a video-card
+# slot index and sets how many render targets that card creates.
+# Omitted cards will default to one target.
+# Entries beyond the machine's installed video-card count are ignored.
+# The total number of targets created across all installed cards cannot exceed
+# 16.
+#
+# The only reason to set these to anything but 1 is if you want to have the
+# same video card render to two displays, as sort of splitter cable emulation.
+# Each display can have its own shader parameters associated.
+# ----------------------------------------------------------------------------
+[emulator.display_targets]
+
+# Card slot 0: Main adapater
+[[emulator.display_targets.card]]
+targets = 1
+
+# Card slot 1 (MDA/Hercules)
+[[emulator.display_targets.card]]
+targets = 1
 
 # ----------------------------------------------------------------------------
 # Emulator Scaler Presets
@@ -406,18 +468,6 @@ always_on_top = false
 # Provide a unique name for this preset. Reference this name in window 
 # definitions. A name is required.
 name = "default" # Default preset must exist! Do not rename.
-
-# Specify the scaler mode to use for this window when displaying a video card.
-# The default value is "Integer". This has no effect if no card_id is provided.
-#
-# Valid options for Scaler mode are
-# Fixed   - Video and shader output will be displayed at native base resolution
-# Integer - Video and shader output will be scaled to the largest integer
-#           multiple that will fit in the window. This generally produces the
-#           clearest results, but can leave large black borders.
-# Fit     - Video will be scaled proportionally to fit the window.
-# Stretch - Video will be scaled to fit the window.
-mode = "Integer"
 
 # Valid options for filter are:
 # Linear  - Bilinear filtering. Best results but may introduce blur. 
@@ -503,6 +553,22 @@ aspect_ratio = { h = 4, v = 3 }
 composite = false
 
 [[emulator.scaler_preset]]
+name = "IBM 8513"
+filter = "Linear"
+border_color = 0x323338 # Medium gray.
+crt_effect = true
+crt_barrel_distortion = 0.0
+crt_corner_radius = 0.05
+crt_phosphor_type = "Color"
+crt_scanlines = true
+gamma = 1.0
+[emulator.scaler_preset.renderer]
+display_aperture = "Accurate"
+aspect_correction = true
+aspect_ratio = { h = 4, v = 3 }
+composite = false
+
+[[emulator.scaler_preset]]
 name = "Green CRT"
 filter = "Linear"
 border_color = 0x323338 # Medium gray.
@@ -541,6 +607,11 @@ aspect_ratio = { h = 4, v = 3 }
 # Some platforms reverse the left and right mouse button id #'s. 
 # We try to detect this, but it can be overridden here.
 reverse_mouse_buttons = false
+
+# Show the on-screen keyboard panel below the emulated display. The keyboard
+# asset layout is selected using the configured two-letter keyboard layout.
+# This can also be enabled with --osd-keyboard or the ?osd_keyboard web query parameter.
+osd_keyboard = false
 
 # Define hotkeys. 
 # Each hotkey definition specifies an event enum and a list of keycodes. See 
@@ -665,11 +736,11 @@ cycles = 572400000 # 2 minutes
 # Valid values are:
 #  - DefaultLight : default EGUI Light theme
 #  - Lilac        : light theme variant
-#  - Hal          : light theme variant
-#  - DefaultDark  : default EGUI Dark theme (recommended)
+#  - DefaultDark  : default EGUI Dark theme
+#  - NewPurple    : dark theme variant (recommended)
 #  - Purple       : dark theme variant
 #  - Cobalt       : dark theme variant
-theme = "Purple"
+theme = "NewPurple"
 
 # Theme for the top menu can be defined independently
 menu_theme = "DefaultLight"

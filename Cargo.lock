@@ -318,7 +318,7 @@ name = "arduinox86_client"
 version = "0.3.0"
 source = "git+https://github.com/dbalsom/arduino808x#2ccae6470ef2cc12e247b74e3ad2d226b7f74936"
 dependencies = [
- "binrw 0.15.1",
+ "binrw 0.15.2",
  "log",
  "modular-bitfield 0.11.2",
  "rand 0.9.0",
@@ -333,7 +333,7 @@ name = "arduinox86_client"
 version = "0.3.0"
 source = "git+https://github.com/dbalsom/arduinoX86#2ccae6470ef2cc12e247b74e3ad2d226b7f74936"
 dependencies = [
- "binrw 0.15.1",
+ "binrw 0.15.2",
  "log",
  "modular-bitfield 0.11.2",
  "rand 0.9.0",
@@ -679,12 +679,12 @@ dependencies = [
 
 [[package]]
 name = "binrw"
-version = "0.15.1"
+version = "0.15.2"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "d53195f985e88ab94d1cc87e80049dd2929fd39e4a772c5ae96a7e5c4aad3642"
+checksum = "6ad120d555272286c1017d25165ab8bd74806f13fc85b258484ec7e4ce75458f"
 dependencies = [
  "array-init",
- "binrw_derive 0.15.1",
+ "binrw_derive 0.15.2",
  "bytemuck",
 ]
 
@@ -703,9 +703,9 @@ dependencies = [
 
 [[package]]
 name = "binrw_derive"
-version = "0.15.1"
+version = "0.15.2"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "5910da05ee556b789032c8ff5a61fb99239580aa3fd0bfaa8f4d094b2aee00ad"
+checksum = "6df92e0e9baae4dc82c7bad7715ca40c0a5c71539057bf2ea04a5c29c980410b"
 dependencies = [
  "either",
  "owo-colors 4.3.0",
@@ -969,8 +969,10 @@ checksum = "7e36cc9d416881d2e24f9a963be5fb1cd90966419ac844274161d10488b3e825"
 dependencies = [
  "android-tzdata",
  "iana-time-zone",
+ "js-sys",
  "num-traits",
  "serde",
+ "wasm-bindgen",
  "windows-targets 0.52.6",
 ]
 
@@ -1407,7 +1409,7 @@ dependencies = [
 
 [[package]]
 name = "display_backend_eframe_glow"
-version = "0.4.2"
+version = "0.5.0"
 dependencies = [
  "anyhow",
  "display_backend_trait",
@@ -1419,7 +1421,7 @@ dependencies = [
 
 [[package]]
 name = "display_backend_eframe_wgpu"
-version = "0.4.2"
+version = "0.5.0"
 dependencies = [
  "anyhow",
  "display_backend_trait",
@@ -1432,7 +1434,7 @@ dependencies = [
 
 [[package]]
 name = "display_backend_trait"
-version = "0.4.2"
+version = "0.5.0"
 dependencies = [
  "anyhow",
  "egui 0.34.2",
@@ -1443,9 +1445,10 @@ dependencies = [
 
 [[package]]
 name = "display_manager_eframe"
-version = "0.4.2"
+version = "0.5.0"
 dependencies = [
  "anyhow",
+ "crossbeam-channel",
  "display_backend_eframe_glow",
  "display_backend_eframe_wgpu",
  "egui 0.34.2",
@@ -1536,7 +1539,7 @@ dependencies = [
 [[package]]
 name = "eframe"
 version = "0.34.2"
-source = "git+https://github.com/dbalsom/egui_martypc.git?branch=0.34.2_raw_web_hook#3485fb648eb3c84e7c81122b2fbdb026fb8657c6"
+source = "git+https://github.com/dbalsom/egui_martypc.git?branch=wasm-pointer-lock#92e7d93548e61619a226cf21bbf691ce558ef3d3"
 dependencies = [
  "ahash",
  "bytemuck",
@@ -1990,6 +1993,16 @@ checksum = "37909eebbb50d72f9059c3b6d82c0463f2ff062c9e95845c43a6c9c0355411be"
 [[package]]
 name = "fatfs"
 version = "0.4.0"
+source = "git+https://github.com/dbalsom/fluxfox_fat.git?branch=attributes#8b852390eade777af36d1913310290e2a648b61b"
+dependencies = [
+ "bitflags 2.11.1",
+ "chrono",
+ "log",
+]
+
+[[package]]
+name = "fatfs"
+version = "0.4.0"
 source = "git+https://github.com/dbalsom/fluxfox_fat.git?branch=bpb_fix#e098397c0d83c2a55a851b1d76b6e1ac10c5a6d5"
 dependencies = [
  "bitflags 2.11.1",
@@ -2046,7 +2059,7 @@ dependencies = [
 [[package]]
 name = "fluxfox"
 version = "0.2.1"
-source = "git+https://github.com/dbalsom/fluxfox.git?branch=marty_consumer_0.34#c8950cdca113f90778c9af67ca5e89bd7616073d"
+source = "git+https://github.com/dbalsom/fluxfox.git?branch=finish_fat#5a1fb83656c3b6f933d9f91198dcca90658bfd26"
 dependencies = [
  "binrw 0.14.1",
  "bit-vec 0.8.0",
@@ -2054,8 +2067,8 @@ dependencies = [
  "bytemuck",
  "dyn-clone",
  "env_logger",
- "fatfs",
  "flate2",
+ "fluxfox-fat",
  "getrandom 0.2.15",
  "histogram",
  "log",
@@ -2076,9 +2089,18 @@ dependencies = [
 ]
 
 [[package]]
+name = "fluxfox-fat"
+version = "0.4.2"
+source = "git+https://github.com/dbalsom/fluxfox_fat.git?branch=sn_access#e9813d48454676998aec28aad9c1398da0379e49"
+dependencies = [
+ "bitflags 2.11.1",
+ "log",
+]
+
+[[package]]
 name = "fluxfox_egui"
 version = "0.3.3"
-source = "git+https://github.com/dbalsom/fluxfox.git?branch=marty_consumer_0.34#c8950cdca113f90778c9af67ca5e89bd7616073d"
+source = "git+https://github.com/dbalsom/fluxfox.git?branch=finish_fat#5a1fb83656c3b6f933d9f91198dcca90658bfd26"
 dependencies = [
  "egui 0.34.2",
  "egui_extras 0.34.2",
@@ -2100,7 +2122,7 @@ dependencies = [
 [[package]]
 name = "fluxfox_tiny_skia"
 version = "0.2.0"
-source = "git+https://github.com/dbalsom/fluxfox.git?branch=marty_consumer_0.34#c8950cdca113f90778c9af67ca5e89bd7616073d"
+source = "git+https://github.com/dbalsom/fluxfox.git?branch=finish_fat#5a1fb83656c3b6f933d9f91198dcca90658bfd26"
 dependencies = [
  "fluxfox",
  "log",
@@ -2273,6 +2295,17 @@ dependencies = [
  "wasi 0.13.3+wasi-0.2.2",
  "wasm-bindgen",
  "windows-targets 0.52.6",
+]
+
+[[package]]
+name = "getrandom"
+version = "0.4.3"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "300e883d756b2e4ec94e02791f39b04b522276138852cfc41d9fb7e904106099"
+dependencies = [
+ "cfg-if",
+ "libc",
+ "r-efi",
 ]
 
 [[package]]
@@ -2544,6 +2577,12 @@ checksum = "589533453244b0995c858700322199b2becb13b627df2851f64a2775d024abcf"
 dependencies = [
  "windows-sys 0.59.0",
 ]
+
+[[package]]
+name = "hound"
+version = "3.5.1"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "62adaabb884c94955b19907d60019f4e145d091c75345379e70d1ee696f7854f"
 
 [[package]]
 name = "humantime"
@@ -2990,7 +3029,7 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "fc2f4eb4bc735547cfed7c0a4922cbd04a4655978c09b54f1f7b228750664c34"
 dependencies = [
  "cfg-if",
- "windows-targets 0.48.5",
+ "windows-targets 0.52.6",
 ]
 
 [[package]]
@@ -3126,7 +3165,7 @@ dependencies = [
 
 [[package]]
 name = "marty_common"
-version = "0.4.2"
+version = "0.5.0"
 dependencies = [
  "indexmap 2.14.0",
  "rustc-hash 2.1.2",
@@ -3138,7 +3177,7 @@ dependencies = [
 
 [[package]]
 name = "marty_config"
-version = "0.4.2"
+version = "0.5.0"
 dependencies = [
  "anyhow",
  "bpaf",
@@ -3159,12 +3198,13 @@ dependencies = [
 
 [[package]]
 name = "marty_core"
-version = "0.4.2"
+version = "0.5.0"
 dependencies = [
  "anyhow",
  "arduinox86_client 0.3.0 (git+https://github.com/dbalsom/arduinoX86)",
  "arraydeque",
  "binrw 0.14.1",
+ "bitflags 2.11.1",
  "bytemuck",
  "cfg-if",
  "const_format",
@@ -3178,6 +3218,7 @@ dependencies = [
  "marty_common",
  "md5",
  "modular-bitfield 0.13.1",
+ "nuked-opl3",
  "opl3-rs",
  "rand 0.8.5",
  "regex",
@@ -3197,7 +3238,7 @@ dependencies = [
 
 [[package]]
 name = "marty_display_common"
-version = "0.4.2"
+version = "0.5.0"
 dependencies = [
  "anyhow",
  "cfg-if",
@@ -3218,10 +3259,11 @@ dependencies = [
 
 [[package]]
 name = "marty_egui"
-version = "0.4.2"
+version = "0.5.0"
 dependencies = [
  "anyhow",
  "bytemuck",
+ "chrono",
  "crossbeam-channel",
  "egui 0.34.2",
  "egui-notify",
@@ -3247,11 +3289,12 @@ dependencies = [
  "strum_macros 0.27.1",
  "toml 0.8.19",
  "web-time",
+ "windows-sys 0.61.2",
 ]
 
 [[package]]
 name = "marty_egui_common"
-version = "0.4.2"
+version = "0.5.0"
 dependencies = [
  "egui 0.34.2",
  "egui_extras 0.34.2",
@@ -3262,7 +3305,7 @@ dependencies = [
 
 [[package]]
 name = "marty_egui_eframe"
-version = "0.4.2"
+version = "0.5.0"
 dependencies = [
  "egui 0.34.2",
  "egui_extras 0.34.2",
@@ -3275,15 +3318,16 @@ dependencies = [
 
 [[package]]
 name = "marty_frontend_common"
-version = "0.4.2"
+version = "0.5.0"
 dependencies = [
  "anyhow",
  "cfg-if",
  "crossbeam-channel",
  "egui 0.34.2",
- "fatfs",
+ "fatfs 0.4.0 (git+https://github.com/dbalsom/fluxfox_fat.git?branch=bpb_fix)",
  "fluxfox",
  "gilrs",
+ "hound",
  "log",
  "marty_common",
  "marty_core",
@@ -3306,7 +3350,7 @@ dependencies = [
 
 [[package]]
 name = "marty_scaler_glow"
-version = "0.4.2"
+version = "0.5.0"
 dependencies = [
  "bytemuck",
  "eframe",
@@ -3317,7 +3361,7 @@ dependencies = [
 
 [[package]]
 name = "marty_scaler_null"
-version = "0.4.2"
+version = "0.5.0"
 dependencies = [
  "egui 0.34.2",
  "marty_display_common",
@@ -3326,7 +3370,7 @@ dependencies = [
 
 [[package]]
 name = "marty_scaler_wgpu"
-version = "0.4.2"
+version = "0.5.0"
 dependencies = [
  "bytemuck",
  "marty_display_common",
@@ -3336,8 +3380,29 @@ dependencies = [
 ]
 
 [[package]]
+name = "marty_vhd"
+version = "0.1.0"
+dependencies = [
+ "anyhow",
+ "binrw 0.15.2",
+ "fatfs 0.4.0 (git+https://github.com/dbalsom/fluxfox_fat.git?branch=attributes)",
+ "tempfile",
+ "thiserror 2.0.18",
+ "uuid",
+]
+
+[[package]]
+name = "marty_vhd_cli"
+version = "0.1.0"
+dependencies = [
+ "anyhow",
+ "bpaf",
+ "marty_vhd",
+]
+
+[[package]]
 name = "marty_videocard_renderer"
-version = "0.4.2"
+version = "0.5.0"
 dependencies = [
  "bytemuck",
  "criterion",
@@ -3355,10 +3420,9 @@ dependencies = [
 
 [[package]]
 name = "marty_web_helpers"
-version = "0.4.2"
+version = "0.5.0"
 dependencies = [
  "crossbeam-channel",
- "gloo-timers",
  "log",
  "marty_common",
  "url",
@@ -3370,7 +3434,7 @@ dependencies = [
 
 [[package]]
 name = "martypc_eframe"
-version = "0.4.2"
+version = "0.5.0"
 dependencies = [
  "anyhow",
  "async-std",
@@ -3396,6 +3460,7 @@ dependencies = [
  "marty_egui",
  "marty_egui_eframe",
  "marty_frontend_common",
+ "marty_vhd",
  "marty_videocard_renderer",
  "marty_web_helpers",
  "rfd",
@@ -3416,7 +3481,7 @@ dependencies = [
 
 [[package]]
 name = "martypc_headless"
-version = "0.4.2"
+version = "0.5.0"
 dependencies = [
  "anyhow",
  "arduinox86_client 0.3.0 (git+https://github.com/dbalsom/arduino808x)",
@@ -3447,7 +3512,7 @@ dependencies = [
 
 [[package]]
 name = "martypc_launcher"
-version = "0.4.2"
+version = "0.5.0"
 dependencies = [
  "eframe",
  "egui 0.34.2",
@@ -3680,6 +3745,12 @@ dependencies = [
  "memchr",
  "minimal-lexical",
 ]
+
+[[package]]
+name = "nuked-opl3"
+version = "0.1.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "fe763ce652db623a34372b1628588faaee86af83195175acee070d92d1fe27b7"
 
 [[package]]
 name = "num-bigint"
@@ -4584,6 +4655,12 @@ dependencies = [
 ]
 
 [[package]]
+name = "r-efi"
+version = "6.0.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "f8dcc9c7d52a811697d2151c701e0d08956f92b0e24136cf4cf27b57a6a0d9bf"
+
+[[package]]
 name = "rand"
 version = "0.8.5"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -5322,16 +5399,15 @@ dependencies = [
 
 [[package]]
 name = "tempfile"
-version = "3.15.0"
+version = "3.27.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "9a8a559c81686f576e8cd0290cd2a24a2a9ad80c98b3478856500fcbd7acd704"
+checksum = "32497e9a4c7b38532efcdebeef879707aa9f794296a4f0244f6f69e9bc8574bd"
 dependencies = [
- "cfg-if",
  "fastrand",
- "getrandom 0.2.15",
+ "getrandom 0.4.3",
  "once_cell",
- "rustix 0.38.44",
- "windows-sys 0.59.0",
+ "rustix 1.1.4",
+ "windows-sys 0.61.2",
 ]
 
 [[package]]
@@ -5682,12 +5758,14 @@ checksum = "06abde3611657adf66d383f00b093d7faecc7fa57071cce2578660c9f1010821"
 
 [[package]]
 name = "uuid"
-version = "1.12.1"
+version = "1.24.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "b3758f5e68192bb96cc8f9b7e2c2cfdabb435499a28499a42f8f984092adad4b"
+checksum = "bf3923a6f5c4c6382e0b653c4117f48d631ea17f38ed86e2a828e6f7412f5239"
 dependencies = [
- "getrandom 0.2.15",
- "serde",
+ "getrandom 0.4.3",
+ "js-sys",
+ "serde_core",
+ "wasm-bindgen",
 ]
 
 [[package]]

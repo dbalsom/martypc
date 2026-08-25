@@ -21,7 +21,9 @@ type = "Tandy1000"
 rom_set = "auto"
 speaker = true
 overlays = [
-    "pcxt_2_720k_floppies",
+    "ibm_nec_fdc",
+    "floppy_720k:0",
+    "floppy_720k:1",
     "pc_serial_port"
 ]
 
@@ -76,7 +78,9 @@ type = "Tandy1000"
 rom_set = "auto"
 speaker = true
 overlays = [
-    "pcxt_2_720k_floppies",
+    "ibm_nec_fdc",
+    "floppy_720k:0",
+    "floppy_720k:1",
     "pc_serial_port"
 ]
 
@@ -132,7 +136,9 @@ type = "Tandy1000SL"
 rom_set = "auto"
 speaker = true
 overlays = [
-    "pcxt_2_720k_floppies",
+    "ibm_nec_fdc",
+    "floppy_720k:0",
+    "floppy_720k:1",
     "pc_serial_port"
 ]
 
@@ -183,7 +189,9 @@ type = "Tandy1000HX"
 rom_set = "tandy1000_2_0_0"
 speaker = true
 overlays = [
-    "pcxt_2_720k_floppies",
+    "ibm_nec_fdc",
+    "floppy_720k:0",
+    "floppy_720k:1",
     "pc_serial_port"
 ]
 

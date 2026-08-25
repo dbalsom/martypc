@@ -38,7 +38,9 @@ type = "Ibm5150v64K"
 rom_set = "ibm5150_81_v1" # The '82 BIOS doesn't support <64KB of RAM.
 speaker = true
 overlays = [
-    "pcxt_2_360k_floppies",
+    "ibm_nec_fdc",
+    "floppy_360k:0",
+    "floppy_360k:1",
     "pcxt_2_serial_ports",
     "us_modelf_keyboard",
     "game_port",
@@ -60,7 +62,9 @@ type = "Ibm5150v64K"
 rom_set = "auto"
 speaker = true
 overlays = [
-    "pcxt_2_360k_floppies",
+    "ibm_nec_fdc",
+    "floppy_360k:0",
+    "floppy_360k:1",
     "pcxt_2_serial_ports",
     "us_modelf_keyboard",
     "game_port",
@@ -82,7 +86,9 @@ type = "Ibm5150v64K"
 rom_set = "auto"
 speaker = true
 overlays = [
-    "pcxt_2_360k_floppies",
+    "ibm_nec_fdc",
+    "floppy_360k:0",
+    "floppy_360k:1",
     "pcxt_2_serial_ports",
     "us_modelf_keyboard",
     "game_port",
@@ -119,7 +125,9 @@ type = "Ibm5150v256K"
 rom_set = "auto"
 speaker = true
 overlays = [
-    "pcxt_2_360k_floppies",
+    "ibm_nec_fdc",
+    "floppy_360k:0",
+    "floppy_360k:1",
     "pcxt_2_serial_ports",
     "us_modelf_keyboard",
     "game_port",
@@ -136,12 +144,53 @@ overlays = [
     clock_mode = "Character"
 
 [[machine]]
+name = "ibm5150_xtide"
+type = "Ibm5150v256K"
+rom_set = "auto"
+speaker = true
+overlays = [
+    "ibm_nec_fdc",
+    "floppy_360k:0",
+    "floppy_360k:1",
+    "pcxt_2_serial_ports",
+    "us_modelf_keyboard",
+    "game_port",
+]
+
+    [machine.memory]
+    conventional.size = 0xA0000
+    conventional.wait_states = 0
+
+    # Hard disk controller
+    [machine.hdc]
+    bus_type = "ISA"
+    type = "XtIde"
+
+        # Drives connected to controller. Maximum of 2.
+        # Drive #0 - (Typically C:)
+        [[machine.hdc.drive]]
+        format = "Mfm"
+        vhd = "xebec20MB.vhd"
+
+        # Drive #1 - (Typically D:)
+        #[[machine.hdc.drive]]
+        #vhd = "games.vhd"
+
+    # Video cards
+    [[machine.video]]
+    bus_type = "ISA"
+    type = "MDA"
+    clock_mode = "Character"
+
+[[machine]]
 name = "ibm5150_256k_hdd"
 type = "Ibm5150v256K"
 rom_set = "auto"
 speaker = true
 overlays = [
-    "pcxt_2_360k_floppies",
+    "ibm_nec_fdc",
+    "floppy_360k:0",
+    "floppy_360k:1",
     "pcxt_2_serial_ports",
     "us_modelf_keyboard",
     "game_port",

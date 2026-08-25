@@ -3,7 +3,14 @@
 # See https://stackoverflow.com/questions/72334989/only-1-4th-of-max-memory-available-when-rust-wasm-compiled-with-atomics-flag-we
 rustflags = [
     "-C", "target-feature=+atomics,+bulk-memory,+mutable-globals",
+    # wasm-bindgen workers require imported shared memory and exported TLS metadata.
+    "-C", "link-arg=--shared-memory",
+    "-C", "link-arg=--import-memory",
     "-C", "link-arg=--max-memory=4294967296",
+    "-C", "link-arg=--export=__wasm_init_tls",
+    "-C", "link-arg=--export=__tls_size",
+    "-C", "link-arg=--export=__tls_align",
+    "-C", "link-arg=--export=__tls_base",
     "--cfg", "getrandom_backend=\"wasm_js\""
 ]
 

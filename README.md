@@ -3,7 +3,7 @@
 MartyPC is a cross-platform emulator of early PCs written in Rust. It supports Windows, Linux and macOS.
 MartyPC emulates several 8088-based systems including the IBM PC, XT, PCJr, and Tandy 1000.
 
-# >>> NEW: Try the [web version](https://martypc.net) of MartyPC! <<<
+# Try the [web version](https://martypc.net) of MartyPC!
 
 
 ## User Guide

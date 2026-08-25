@@ -1,0 +1,857 @@
+/*
+    MartyPC
+    https://github.com/dbalsom/martypc
+
+    Copyright 2022-2026 Daniel Balsom
+
+    Permission is hereby granted, free of charge, to any person obtaining a
+    copy of this software and associated documentation files (the “Software”),
+    to deal in the Software without restriction, including without limitation
+    the rights to use, copy, modify, merge, publish, distribute, sublicense,
+    and/or sell copies of the Software, and to permit persons to whom the
+    Software is furnished to do so, subject to the following conditions:
+
+    The above copyright notice and this permission notice shall be included in
+    all copies or substantial portions of the Software.
+
+    THE SOFTWARE IS PROVIDED “AS IS”, WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
+    IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
+    FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
+    AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
+    LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING
+    FROM, OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER
+    DEALINGS IN THE SOFTWARE.
+
+    --------------------------------------------------------------------------
+*/
+
+//! The `marty_config` crate provides functionality for parsing MartyPC's main configuration file,
+//! and overlaying either command line arguments (for native builds) or URL query parameters
+//! (for web builds) on top of the configuration file settings.
+//! We always consider command line arguments or query parameters to take priority over the
+//! configuration file.
+//!
+//! Features:
+//! - `use_bpaf`: Enable BPAF support for command line argument parsing.
+
+#[cfg(feature = "use_bpaf")]
+mod bpaf_config;
+mod coreconfig;
+mod mount;
+#[cfg(target_arch = "wasm32")]
+mod web_config;
+
+use std::{
+    path::{Path, PathBuf},
+    str::FromStr,
+};
+
+#[cfg(feature = "use_display")]
+use marty_display_common::display_scaler::ScalerPreset;
+
+use marty_frontend_common::{
+    resource_manager::PathConfigItem,
+    types::window::{DisplayTargetConfiguration, WindowDefinition},
+    BenchmarkEndCondition,
+    HotkeyConfigEntry,
+    JoyKeyEntry,
+    MartyGuiTheme,
+};
+
+use marty_core::{
+    cpu_common::{CpuSubType, CpuType, TraceMode},
+    cpu_validator::ValidatorType,
+    device_types::fdc::ImageInsertionPolicy,
+    machine_preferences::MachinePreferences,
+    machine_types::OnHaltBehavior,
+};
+
+#[cfg(feature = "use_bpaf")]
+use bpaf::Bpaf;
+#[cfg(feature = "use_bpaf")]
+use bpaf_config::{cli_args, CmdLineArgs};
+
+#[cfg(target_arch = "wasm32")]
+use web_config::{parse_query_params, CmdLineArgs};
+
+use crate::mount::MountableDeviceType;
+use cfg_if::cfg_if;
+use marty_common::types::joystick::ControllerLayout;
+use marty_core::devices::serial::SerialBridgePortConfiguration;
+use serde_derive::Deserialize;
+
+const fn _default_true() -> bool {
+    true
+}
+const fn _default_false() -> bool {
+    false
+}
+const fn _default_min_emulation_speed() -> f32 {
+    0.1
+}
+const fn _default_max_emulation_speed() -> f32 {
+    2.0
+}
+const fn _default_initial_emulator_speed() -> f32 {
+    1.0
+}
+
+#[cfg_attr(feature = "use_bpaf", derive(Bpaf))]
+#[derive(Copy, Clone, Debug, Deserialize, PartialEq)]
+pub enum TestMode {
+    None,
+    Generate,
+    Run,
+    Validate,
+    Process,
+}
+
+impl Default for TestMode {
+    fn default() -> Self {
+        TestMode::None
+    }
+}
+
+impl FromStr for TestMode {
+    type Err = String;
+    fn from_str(s: &str) -> Result<Self, String>
+    where
+        Self: Sized,
+    {
+        match s.to_lowercase().as_str() {
+            "none" => Ok(TestMode::None),
+            "generate" => Ok(TestMode::Generate),
+            "validate" => Ok(TestMode::Validate),
+            "process" => Ok(TestMode::Process),
+            _ => Err("Bad value for testmode".to_string()),
+        }
+    }
+}
+
+#[derive(Debug, Deserialize)]
+pub struct VhdConfigEntry {
+    pub drive:    usize,
+    pub filename: String,
+}
+
+#[derive(Debug, Deserialize)]
+pub struct FloppyConfigEntry {
+    pub drive:    usize,
+    pub filename: String,
+}
+
+#[derive(Debug, Deserialize)]
+pub struct CartConfigEntry {
+    pub slot: usize,
+    pub filename: String,
+}
+
+#[derive(Debug, Deserialize)]
+pub struct Media {
+    pub raw_sector_image_extensions: Option<Vec<String>>,
+    #[serde(default)]
+    pub write_protect_default: bool,
+    pub floppy: Option<Vec<FloppyConfigEntry>>,
+    pub vhd: Option<Vec<VhdConfigEntry>>,
+    pub cart: Option<Vec<CartConfigEntry>>,
+}
+
+#[derive(Debug, Deserialize)]
+pub struct Audio {
+    #[serde(default = "_default_true")]
+    pub enabled: bool,
+    #[serde(default = "_default_true")]
+    pub machine_sounds: bool,
+    #[serde(default = "_default_true")]
+    pub floppy_sounds: bool,
+}
+
+#[derive(Debug, Deserialize)]
+pub struct Debugger {
+    pub checkpoint_notify_level: Option<u32>,
+    #[serde(default)]
+    pub breakpoint_notify: bool,
+}
+
+#[derive(Debug, Deserialize)]
+pub struct Backend {
+    #[serde(default)]
+    pub vsync: bool,
+    #[serde(default)]
+    pub macos_stripe_fix: bool,
+}
+
+#[derive(Debug, Deserialize)]
+pub struct Emulator {
+    pub basedir: PathBuf,
+    pub paths: Vec<PathConfigItem>,
+    pub virtual_fs: Option<PathBuf>,
+    pub ignore_dirs: Option<Vec<String>>,
+    #[serde(default)]
+    pub demo_mode: bool,
+    #[serde(default)]
+    pub benchmark_mode: bool,
+    #[serde(default = "_default_true")]
+    pub auto_poweron: bool,
+    #[serde(default = "_default_true")]
+    pub cpu_autostart: bool,
+    #[serde(default)]
+    pub headless: bool,
+    #[serde(default = "_default_min_emulation_speed")]
+    pub min_emulation_speed: f32,
+    #[serde(default = "_default_max_emulation_speed")]
+    pub max_emulation_speed: f32,
+    #[serde(default = "_default_initial_emulator_speed")]
+    pub initial_emulator_speed: f32,
+    #[serde(default)]
+    pub romscan: bool,
+    #[serde(default)]
+    pub machinescan: bool,
+    #[serde(default)]
+    pub fuzzer: bool,
+    #[serde(default)]
+    pub title_hacks: bool,
+    #[serde(default)]
+    pub debug_mode: bool,
+    #[serde(default = "_default_true")]
+    pub debug_warn: bool,
+    pub media: Media,
+    pub debugger: Debugger,
+    pub audio: Audio,
+    pub run_bin: Option<String>,
+    pub run_bin_seg: Option<u16>,
+    pub run_bin_ofs: Option<u16>,
+    pub vreset_bin_seg: Option<u16>,
+    pub vreset_bin_ofs: Option<u16>,
+
+    pub backend: Backend,
+
+    #[serde(default)]
+    pub video_trace_file: Option<PathBuf>,
+    //pub video_frame_debug: bool,
+    #[serde(default)]
+    pub pit_output_file: Option<PathBuf>,
+    #[serde(default)]
+    pub pit_output_int_trigger: bool,
+
+    pub window: Vec<WindowDefinition>,
+    #[serde(default)]
+    pub display_targets: DisplayTargetConfiguration,
+    #[cfg(feature = "use_display")]
+    pub scaler_preset: Vec<ScalerPreset>,
+    pub input: EmulatorInput,
+    pub serial_bridge: Option<SerialBridge>,
+    pub benchmark: Benchmark,
+}
+
+fn normalize_emulation_speed_config(emulator: &mut Emulator) {
+    if !emulator.min_emulation_speed.is_finite()
+        || emulator.min_emulation_speed <= 0.0
+        || emulator.min_emulation_speed > 1.0
+    {
+        log::warn!(
+            "Invalid minimum emulation speed {}; using {}",
+            emulator.min_emulation_speed,
+            _default_min_emulation_speed()
+        );
+        emulator.min_emulation_speed = _default_min_emulation_speed();
+    }
+
+    if !emulator.max_emulation_speed.is_finite() || emulator.max_emulation_speed < 1.0 {
+        log::warn!(
+            "Invalid maximum emulation speed {}; using {}",
+            emulator.max_emulation_speed,
+            _default_max_emulation_speed()
+        );
+        emulator.max_emulation_speed = _default_max_emulation_speed();
+    }
+
+    if !emulator.initial_emulator_speed.is_finite() {
+        log::warn!(
+            "Invalid initial emulator speed {}; using {}",
+            emulator.initial_emulator_speed,
+            _default_initial_emulator_speed()
+        );
+        emulator.initial_emulator_speed = _default_initial_emulator_speed();
+    }
+
+    let clamped_initial = emulator
+        .initial_emulator_speed
+        .clamp(emulator.min_emulation_speed, emulator.max_emulation_speed);
+    if clamped_initial != emulator.initial_emulator_speed {
+        log::warn!(
+            "Initial emulator speed {} is outside the configured range {}..={}; using {}",
+            emulator.initial_emulator_speed,
+            emulator.min_emulation_speed,
+            emulator.max_emulation_speed,
+            clamped_initial
+        );
+        emulator.initial_emulator_speed = clamped_initial;
+    }
+}
+
+#[derive(Debug, Deserialize)]
+pub struct Gui {
+    #[serde(default)]
+    pub disabled: bool,
+    pub theme: Option<MartyGuiTheme>,
+    pub menu_theme: Option<MartyGuiTheme>,
+    pub zoom: Option<f32>,
+}
+
+#[derive(Debug, Deserialize)]
+pub struct Validator {
+    #[serde(rename = "type")]
+    pub vtype: Option<ValidatorType>,
+    pub trigger_address: Option<u32>,
+    pub trace_file: Option<PathBuf>,
+    pub baud_rate: Option<u32>,
+    pub port: Option<String>,
+}
+
+#[derive(Debug, Deserialize)]
+pub struct Benchmark {
+    pub config_name: String,
+    pub config_overlays: Option<Vec<String>>,
+    #[serde(default)]
+    pub prefer_oem: bool,
+    pub end_condition: BenchmarkEndCondition,
+    pub timeout: Option<u32>,
+    pub cycles: Option<u64>,
+}
+
+#[derive(Debug, Deserialize)]
+pub struct Tests {
+    pub test_cpu_type: Option<CpuType>,
+    pub test_cpu_subtype: Option<CpuSubType>,
+    pub test_mode: Option<TestMode>,
+    pub test_seed: Option<u64>,
+    pub test_start: Option<u32>,
+    pub test_path: Option<PathBuf>,
+    pub test_output_path: Option<PathBuf>,
+    pub test_opcode_prefix: Option<u8>,
+    pub test_opcode_range: Option<Vec<u8>>,
+    pub test_extension_range: Option<Vec<u8>>,
+    pub test_opcode_exclude_list: Option<Vec<u8>>,
+    pub test_gen_opcode_count: Option<u32>,
+    pub test_gen_append: Option<bool>,
+    pub test_gen_stop_on_error: Option<bool>,
+    pub test_gen_version: Option<u32>,
+    #[serde(default)]
+    pub test_gen_prefetch: bool,
+    pub test_gen_ignore_underflow: Option<bool>,
+    pub test_gen_validate_cycles: Option<bool>,
+    pub test_gen_validate_memops: Option<bool>,
+    pub test_gen_validate_registers: Option<bool>,
+    pub test_gen_validate_flags: Option<bool>,
+    pub test_run_summary_file: Option<PathBuf>,
+    pub test_run_version: Option<u32>,
+    pub test_run_limit: Option<usize>,
+    pub test_run_validate_cycles: Option<bool>,
+    pub test_run_validate_memops: Option<bool>,
+    pub test_run_validate_registers: Option<bool>,
+    pub test_run_validate_flags: Option<bool>,
+    pub test_run_validate_undefined_flags: Option<bool>,
+}
+
+#[derive(Debug, Deserialize)]
+pub struct Cpu {
+    pub dram_refresh_simulation: Option<bool>,
+    pub wait_states: Option<bool>,
+    pub off_rails_detection: Option<bool>,
+    pub on_halt: Option<OnHaltBehavior>,
+    pub instruction_history: Option<bool>,
+    #[serde(default)]
+    pub trace_on: bool,
+    pub trace_mode: Option<TraceMode>,
+    pub trace_file: Option<PathBuf>,
+}
+
+#[derive(Debug, Deserialize)]
+pub struct MachineInput {
+    pub keyboard_layout:   Option<String>,
+    pub controller_layout: Option<ControllerLayout>,
+}
+
+#[derive(Debug, Default, Deserialize)]
+pub struct MachineFdc {
+    #[serde(default)]
+    pub disk_image_compatibility: ImageInsertionPolicy,
+}
+
+#[derive(Debug, Deserialize)]
+pub struct Machine {
+    pub config_name: String,
+    pub config_overlays: Option<Vec<String>>,
+    pub service_interrupt: Option<u8>,
+    #[serde(default)]
+    pub service_interrupt_gate: bool,
+    #[serde(default = "_default_true")]
+    pub prefer_oem: bool,
+    //pub model: MachineType,
+    #[serde(default)]
+    pub reload_roms: bool,
+    #[serde(default)]
+    pub patch_roms: bool,
+    #[serde(default)]
+    pub custom_roms: bool,
+    #[serde(default)]
+    pub no_roms: bool,
+    #[serde(default)]
+    pub raw_rom: bool,
+    #[serde(default)]
+    pub turbo: bool,
+    #[serde(default)]
+    pub fdc: MachineFdc,
+    pub cpu: Cpu,
+    pub pit_phase: Option<u32>,
+    pub input: MachineInput,
+    pub disassembly_recording: Option<bool>,
+    pub disassembly_file: Option<PathBuf>,
+    pub terminal_port: Option<u16>,
+}
+
+impl Machine {
+    pub fn to_machine_preferences(&self) -> MachinePreferences {
+        MachinePreferences {
+            image_insertion_policy: self.fdc.disk_image_compatibility,
+        }
+    }
+}
+
+#[derive(Debug, Deserialize)]
+pub struct EmulatorInput {
+    #[serde(default)]
+    pub reverse_mouse_buttons: bool,
+    pub hotkeys: Vec<HotkeyConfigEntry>,
+    pub joystick_keys: Vec<JoyKeyEntry>,
+    #[serde(default)]
+    pub keyboard_joystick: bool,
+    #[serde(default)]
+    pub debug_keyboard: bool,
+    #[serde(default)]
+    pub osd_keyboard: bool,
+    #[serde(default)]
+    pub gamepad_auto_connect: bool,
+    pub gamepad_dead_zone: Option<f32>,
+}
+
+#[derive(Clone, Debug, Deserialize)]
+pub struct SerialBridgeConnection {
+    pub guest_port: usize,
+    pub host_port_name: String,
+}
+
+#[derive(Clone, Debug, Deserialize)]
+pub struct SerialBridge {
+    #[serde(default)]
+    pub connection: Vec<SerialBridgeConnection>,
+    #[serde(default)]
+    pub port: Vec<SerialBridgePortConfiguration>,
+}
+
+#[derive(Debug, Deserialize)]
+pub struct ConfigFileParams {
+    pub emulator: Emulator,
+    pub gui: Gui,
+    pub machine: Machine,
+    pub validator: Validator,
+    pub tests: Tests,
+}
+
+impl ConfigFileParams {
+    fn normalize(&mut self) {
+        normalize_emulation_speed_config(&mut self.emulator);
+    }
+
+    pub fn overlay(&mut self, shell_args: CmdLineArgs) {
+        if let Some(config_name) = shell_args.machine_config_name {
+            self.machine.config_name = config_name;
+        }
+        if let Some(config_overlay_string) = shell_args.machine_config_overlays {
+            // Split comma-separated list of overlays into vector of strings
+            let config_overlays: Vec<String> = config_overlay_string.split(',').map(|s| s.trim().to_string()).collect();
+            self.machine.config_overlays = Some(config_overlays);
+        }
+
+        // Apply a scaler-preset override to the main window.
+        if let Some(scaler_preset) = shell_args.scaler_preset {
+            #[cfg(feature = "use_display")]
+            let scaler_preset_is_valid = self
+                .emulator
+                .scaler_preset
+                .iter()
+                .any(|preset| preset.name == scaler_preset);
+            #[cfg(not(feature = "use_display"))]
+            let scaler_preset_is_valid = true;
+
+            if scaler_preset_is_valid {
+                if let Some(window) = self.emulator.window.first_mut() {
+                    window.scaler_preset = Some(scaler_preset);
+                }
+            }
+            else {
+                log::warn!("Ignoring unknown scaler preset override: {scaler_preset}");
+            }
+        }
+
+        // Apply 'fullscreen' parameter to the first window definition
+        if let Some(window) = self.emulator.window.first_mut() {
+            window.fullscreen |= shell_args.fullscreen;
+        }
+
+        if let Some(validator) = shell_args.validator {
+            self.validator.vtype = Some(validator);
+        }
+
+        if let Some(basedir) = shell_args.base_dir {
+            self.emulator.basedir = basedir;
+        }
+
+        self.machine.prefer_oem |= shell_args.prefer_oem;
+        self.emulator.demo_mode |= shell_args.demo_mode;
+        self.emulator.benchmark_mode |= shell_args.benchmark_mode;
+        self.emulator.headless |= shell_args.headless;
+        self.emulator.fuzzer |= shell_args.fuzzer;
+        self.emulator.auto_poweron |= shell_args.auto_poweron;
+        self.emulator.title_hacks |= shell_args.title_hacks;
+        self.emulator.audio.enabled &= !shell_args.no_sound;
+
+        //self.emulator.scaler_aspect_correction |= shell_args.scaler_aspect_correction;
+        self.emulator.debug_mode |= shell_args.debug_mode;
+        //self.emulator.video_frame_debug |= shell_args.video_frame_debug;
+        self.emulator.input.debug_keyboard |= shell_args.debug_keyboard;
+        self.emulator.input.osd_keyboard |= shell_args.osd_keyboard;
+        self.machine.no_roms |= shell_args.no_roms;
+
+        /*
+        if let Some(video) = shell_args.video_type {
+            self.machine.primary_video = Some(video);
+        }
+         */
+
+        if let Some(run_bin) = shell_args.run_bin {
+            self.emulator.run_bin = Some(run_bin);
+        }
+
+        if let Some(run_bin_seg) = shell_args.run_bin_seg {
+            self.emulator.run_bin_seg = Some(run_bin_seg);
+        }
+
+        if let Some(run_bin_ofs) = shell_args.run_bin_ofs {
+            self.emulator.run_bin_ofs = Some(run_bin_ofs);
+        }
+
+        if let Some(vreset_bin_seg) = shell_args.vreset_bin_seg {
+            self.emulator.vreset_bin_seg = Some(vreset_bin_seg);
+        }
+
+        if let Some(vreset_bin_ofs) = shell_args.vreset_bin_ofs {
+            self.emulator.vreset_bin_ofs = Some(vreset_bin_ofs);
+        }
+
+        // Test stuff
+        if let Some(test_cpu_type) = shell_args.test_cpu_type {
+            self.tests.test_cpu_type = Some(test_cpu_type);
+        }
+        if let Some(test_path) = shell_args.test_path {
+            self.tests.test_path = Some(test_path);
+        }
+
+        self.machine.turbo |= shell_args.turbo;
+
+        if let Some(ref mut off_rails_detection) = self.machine.cpu.off_rails_detection {
+            *off_rails_detection |= shell_args.off_rails_detection;
+        }
+
+        self.emulator.input.reverse_mouse_buttons |= shell_args.reverse_mouse_buttons;
+
+        self.emulator.romscan = shell_args.romscan;
+        self.emulator.machinescan = shell_args.machinescan;
+
+        let mut have_cmd_hdd = false;
+        let mut have_cmd_floppy = false;
+        let mut have_cmd_cart = false;
+        // Handle mount arguments
+
+        for mount in shell_args.mounts.iter() {
+            if mount.path.to_string_lossy().is_empty() {
+                log::warn!("Got empty path in MountSpec!");
+                continue;
+            }
+
+            match mount.device {
+                MountableDeviceType::HardDisk => {
+                    // Ignore any existing vector. Command line arguments override.
+                    if !have_cmd_hdd {
+                        self.emulator.media.vhd = Some(vec![]);
+                        have_cmd_hdd = true;
+                    }
+                    if let Some(vhd) = self.emulator.media.vhd.as_mut() {
+                        vhd.push(VhdConfigEntry {
+                            drive:    mount.index,
+                            filename: mount.path.to_string_lossy().to_string(),
+                        });
+                    }
+                }
+                MountableDeviceType::Floppy => {
+                    // Ignore any existing vector. Command line arguments override.
+                    if !have_cmd_floppy {
+                        self.emulator.media.floppy = Some(vec![]);
+                        have_cmd_floppy = true;
+                    }
+                    if let Some(floppy) = self.emulator.media.floppy.as_mut() {
+                        floppy.push(FloppyConfigEntry {
+                            drive:    mount.index,
+                            filename: mount.path.to_string_lossy().to_string(),
+                        });
+                    }
+                }
+                MountableDeviceType::Cartridge => {
+                    // Ignore any existing vector. Command line arguments override.
+                    if !have_cmd_cart {
+                        self.emulator.media.cart = Some(vec![]);
+                        have_cmd_cart = true;
+                    }
+                    if let Some(cart) = self.emulator.media.cart.as_mut() {
+                        cart.push(CartConfigEntry {
+                            slot: mount.index,
+                            filename: mount.path.to_string_lossy().to_string(),
+                        });
+                    }
+                }
+            }
+        }
+    }
+}
+
+pub fn read_config(toml_string: impl AsRef<str>, shell_args: CmdLineArgs) -> Result<ConfigFileParams, anyhow::Error> {
+    let mut toml_args: ConfigFileParams;
+
+    //log::debug!("toml_config: {:?}", toml_args);
+
+    toml_args = toml::from_str(toml_string.as_ref())?;
+
+    // Command line arguments override config file arguments
+    cfg_if! {
+        if #[cfg(any(feature = "use_bpaf", target_arch = "wasm32"))] {
+            toml_args.overlay(shell_args);
+        }
+    }
+
+    toml_args.normalize();
+
+    Ok(toml_args)
+}
+
+/// Read the TOML configuration from a file path, parse and overlay command line or query parameter
+/// arguments.
+pub fn read_config_file<P>(default_path: P) -> Result<ConfigFileParams, anyhow::Error>
+where
+    P: AsRef<Path>,
+{
+    let shell_args: CmdLineArgs;
+
+    cfg_if! {
+        if #[cfg(all(feature = "use_bpaf", not(target_arch = "wasm32")))] {
+            log::debug!("Reading command line arguments...");
+            shell_args = cli_args().run();
+        } else if #[cfg(target_arch = "wasm32")] {
+            log::debug!("Parsing query parameters...");
+            shell_args = parse_query_params();
+        } else {
+            log::debug!("Argument reading disabled...");
+            shell_args = CmdLineArgs::default();
+        }
+    }
+
+    // Allow configuration file path to be overridden by command line argument 'config_file'
+    let toml_string = if let Some(configfile_path) = shell_args.config_file.as_ref() {
+        std::fs::read_to_string(configfile_path)?
+    }
+    else {
+        std::fs::read_to_string(default_path)?
+    };
+
+    read_config(toml_string, shell_args)
+}
+
+/// Read the TOML configuration from a string, parse and overlay command line or query parameter
+/// arguments.
+pub fn read_config_string(toml_string: impl AsRef<str>) -> Result<ConfigFileParams, anyhow::Error> {
+    let shell_args: CmdLineArgs;
+
+    cfg_if! {
+        if #[cfg(all(feature = "use_bpaf", not(target_arch = "wasm32")))] {
+            log::debug!("Reading command line arguments...");
+            shell_args = cli_args().run();
+        } else if #[cfg(target_arch = "wasm32")] {
+            log::debug!("Parsing query parameters...");
+            shell_args = parse_query_params();
+        } else {
+            log::debug!("Argument reading disabled...");
+            shell_args = CmdLineArgs::default();
+        }
+    }
+
+    read_config(toml_string, shell_args)
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[derive(Deserialize)]
+    struct MachineConfig {
+        machine: Machine,
+    }
+
+    #[test]
+    fn service_interrupt_is_an_optional_machine_level_vector() {
+        let configured: MachineConfig = toml::from_str(
+            r#"
+                [machine]
+                config_name = "test"
+                service_interrupt = 0xFC
+
+                [machine.cpu]
+                [machine.input]
+            "#,
+        )
+        .unwrap();
+        assert_eq!(configured.machine.service_interrupt, Some(0xFC));
+        assert!(!configured.machine.service_interrupt_gate);
+
+        let gated: MachineConfig = toml::from_str(
+            r#"
+                [machine]
+                config_name = "test"
+                service_interrupt = 0xFC
+                service_interrupt_gate = true
+
+                [machine.cpu]
+                [machine.input]
+            "#,
+        )
+        .unwrap();
+        assert_eq!(gated.machine.service_interrupt, Some(0xFC));
+        assert!(gated.machine.service_interrupt_gate);
+
+        let disabled: MachineConfig = toml::from_str(
+            r#"
+                [machine]
+                config_name = "test"
+
+                [machine.cpu]
+                [machine.input]
+            "#,
+        )
+        .unwrap();
+        assert_eq!(disabled.machine.service_interrupt, None);
+        assert!(!disabled.machine.service_interrupt_gate);
+
+        let invalid = toml::from_str::<MachineConfig>(
+            r#"
+                [machine]
+                config_name = "test"
+                service_interrupt = 0x100
+
+                [machine.cpu]
+                [machine.input]
+            "#,
+        );
+        assert!(invalid.is_err());
+    }
+
+    #[test]
+    fn disk_image_compatibility_maps_to_machine_preferences() {
+        let default_policy: MachineConfig = toml::from_str(
+            r#"
+                [machine]
+                config_name = "test"
+
+                [machine.cpu]
+                [machine.input]
+            "#,
+        )
+        .unwrap();
+        assert_eq!(
+            default_policy.machine.to_machine_preferences().image_insertion_policy,
+            ImageInsertionPolicy::Strict
+        );
+
+        let lenient_policy: MachineConfig = toml::from_str(
+            r#"
+                [machine]
+                config_name = "test"
+
+                [machine.fdc]
+                disk_image_compatibility = "Lenient"
+
+                [machine.cpu]
+                [machine.input]
+            "#,
+        )
+        .unwrap();
+        assert_eq!(
+            lenient_policy.machine.to_machine_preferences().image_insertion_policy,
+            ImageInsertionPolicy::Lenient
+        );
+    }
+
+    #[test]
+    fn initial_emulator_speed_defaults_to_normal_speed() {
+        let config_without_initial_speed = include_str!("../../../../install/martypc.toml")
+            .lines()
+            .filter(|line| !line.trim_start().starts_with("initial_emulator_speed"))
+            .collect::<Vec<_>>()
+            .join("\n");
+        let config: ConfigFileParams = toml::from_str(&config_without_initial_speed).unwrap();
+
+        assert_eq!(config.emulator.initial_emulator_speed, 1.0);
+    }
+
+    #[test]
+    fn initial_emulator_speed_is_clamped_to_configured_limits() {
+        let mut config: ConfigFileParams = toml::from_str(include_str!("../../../../install/martypc.toml")).unwrap();
+        config.emulator.min_emulation_speed = 0.5;
+        config.emulator.max_emulation_speed = 4.0;
+        config.emulator.initial_emulator_speed = 0.25;
+
+        config.normalize();
+
+        assert_eq!(config.emulator.initial_emulator_speed, 0.5);
+    }
+
+    #[cfg(feature = "use_display")]
+    #[test]
+    fn scaler_preset_override_must_reference_a_defined_preset() {
+        let mut config: ConfigFileParams = toml::from_str(include_str!("../../../../install/martypc.toml")).unwrap();
+        let configured_preset = config.emulator.window[0].scaler_preset.clone();
+
+        config.overlay(CmdLineArgs {
+            scaler_preset: Some("Missing preset".to_string()),
+            ..Default::default()
+        });
+        assert_eq!(config.emulator.window[0].scaler_preset, configured_preset);
+
+        config.overlay(CmdLineArgs {
+            scaler_preset: Some("IBM 8513".to_string()),
+            ..Default::default()
+        });
+        assert_eq!(config.emulator.window[0].scaler_preset.as_deref(), Some("IBM 8513"));
+    }
+
+    #[test]
+    fn osd_keyboard_override_enables_the_panel() {
+        let mut config: ConfigFileParams = toml::from_str(include_str!("../../../../install/martypc.toml")).unwrap();
+        config.emulator.input.osd_keyboard = false;
+
+        config.overlay(CmdLineArgs {
+            osd_keyboard: true,
+            ..Default::default()
+        });
+
+        assert!(config.emulator.input.osd_keyboard);
+    }
+}

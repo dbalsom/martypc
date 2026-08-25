@@ -1,0 +1,8 @@
+[osd_keyboard]
+keyboard_name = "modelf"
+source_image = "keyboard_modelf.png"
+bezel_image = "keyboard_modelf_bezel.png"
+
+[[osd_keyboard_layout]]
+name = "us"
+config = "modelf_us_layout.toml"
