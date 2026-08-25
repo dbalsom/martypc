@@ -1,7 +1,35 @@
 
-## [0.4.2](https://github.com/dbalsom/martypc/releases/tag/0.4.2) (2026-XX-XX)
+## [0.5.0](https://github.com/dbalsom/martypc/releases/tag/0.4.2) (2026-XX-XX)
 
 ## New Features
+
+### Multi-head Support
+
+MartyPC once again supports multiple display windows and multiple render targets per video adapter. Each configured window can select its own video card, aperture, scaler mode, scaler preset, size, and window behavior.
+
+A single video adapter can also feed multiple render targets, allowing the same output to be visualized with different monitor and shader configurations. Display targets can be reassigned between windows at runtime, with unassigned targets displayed in the main viewport.
+
+### Sampled Machine Sounds
+
+MartyPC can now play sampled physical-machine sound effects, beginning with TEAC FD-55 floppy drive motor effects. Machine sounds appear as a separate source in the sound mixer and can be independently muted or adjusted.
+
+The `machine_sounds` and `floppy_sounds` configuration options control these effects.
+
+### VHD Creation and Management
+
+The VHD Creator can now produce fixed-size, partitioned FAT hard-disk images using geometries supported by the active controller. Images can now be formatted, assigned a volume label, populated from a host directory, and immediately mounted after creation.
+
+Bootable DOS images can be created from directories containing the appropriate DOS system files, with optional custom MBR and boot-sector data.
+
+### On-Screen Keyboard
+
+An on-screen keyboard for the IBM Model F is now available that can be used with the IBM 5150 and IBM 5160 machines.
+
+It can be enabled from the Input or Show menus, with `osd_keyboard` in `martypc.toml`, with `--osd-keyboard` on desktop, or with the `?osd_keyboard` web parameter.
+
+### Drag-and-Drop Media
+
+Dragging a supported media file onto MartyPC now opens a destination-selection modal. Disk images can be directed to a specific floppy drive, and JRC cartridge images can be directed to either IBM PCjr cartridge slot.
 
 ### Monitor Emulation
 
@@ -16,9 +44,19 @@ There is a new `monitor_emulation` flag in video card overlay configurations tha
 This release adds a new Fantasy EMS device courtsey of sqpat, author of RealDOOM and expert in all things EMS.  I am very grateful for his contribution.
 
 ## Frontend Bug Fixes / Improvements
+ - Revamped and refactored multi-head support for dual video cards, supporting up to 16 monitors
+ - New logo type and fancy new plasma effect in the About dialog
+ - WASM: Added a new system selector carousel interface.
+ - WASM: Fixed file-open dialog triggers on Safari.
+ - Added a Hotkeys window with human-readable descriptions of configured key combinations
+ - Fixed the GUI visibility hotkey
+ - Added mouse-release hotkey hint to the title bar and toast notification when the mouse is captured.
+ - Added `--scaler-preset` command-line argument to override configured scaler preset.
+ - Added the ability to take post-shader screenshots 
+ - Improved VHD creator with partitioning, formatting, and file population support.
  - Fixed a bug where alternate ROM dumps were not handled correctly (mostly encountered with EGA ROMs)
  - Fixed the Amber CRT shader being blue
- - Improved/fixed scanline rendering in CRT shader
+ - Improved scanline rendering in CRT shader
  - Added interlacing support to CRT shader
  - Added IBM PCjr keyboard mapping file
  - Fixed bad md5 in PCjr ROM definition for 64K ROM image
@@ -28,17 +66,22 @@ This release adds a new Fantasy EMS device courtsey of sqpat, author of RealDOOM
  - Improved oscilloscope level logic in SN76489 viewer window
 
 ## Core Bug Fixes / Improvements
+ - WASM: Fixed ROM patches not being re-applied on reboot
+ - Refactored video card overlay support with optional slot parameter
+ - Refactored floppy drive overlay support with optional slot parameter
  - Add Fantasy EMS device (thanks sqpat)
  - VGA: Fix Miscellaneous Output Register not being readable
  - V20: Fix bug in BINS instruction
- - Improved Light Pen emulation
  - PCjr: Implemented IBM keyboard including the `Function` key (Mapped to F12)
  - PCjr: Fixed a rendering bug in low-resolution 2bpp mode
  - PCjr: Fixed a keyboard handling bug that prevented movement in Keyboard Adventure
+ - Tandy: Fixed mapping of backslash key
  - Adlib: Run at cycle-accurate resolution to support advanced DAC effects.
+ - Adlib: Migrate to rust-native `nuked-opl3` crate.
  - EGA/VGA: many miscellaneous fixes to CRTC register handling
  - CGA/TGA: Factored out common MC6845 implementation
  - CGA: Improved emulation of sync timings, hsync phase
+ - CGA: Improved light pen emulation
  - MC6845: Added support for interlaced sync and video modes (ISAV)
 
 
