@@ -1321,7 +1321,7 @@ selector = "drive"
     #[cfg(all(feature = "ega", feature = "vga"))]
     #[test]
     fn installed_machine_configurations_resolve_with_parameterized_overlays() {
-        let machine_dir = std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("../../../../install/configs/machines");
+        let machine_dir = std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("../../../install/configs/machines");
         let mut manager = MachineManager::new();
         let mut machine_configs = Vec::new();
         let mut overlay_configs = Vec::new();

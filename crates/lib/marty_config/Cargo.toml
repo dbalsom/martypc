@@ -14,8 +14,8 @@ crate-type = ["lib"]
 # Dependencies
 # ---------------------------------------------------------------------------------------------------------------------
 [dependencies]
-marty_common = { path = "../../marty_common" }
-marty_core = { path = "../../marty_core" }
+marty_common = { path = "../marty_common" }
+marty_core = { path = "../marty_core" }
 marty_frontend_common =  { path = "../marty_frontend_common" }
 marty_display_common = { path = "../marty_display_common", default-features = false, optional = true }
 log.workspace = true

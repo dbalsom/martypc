@@ -1,21 +1,7 @@
 [workspace]
 members = [
-    "crates/lib/marty_core",
-    "crates/lib/marty_common",
-    "crates/lib/frontend/marty_frontend_common",
-    "crates/lib/frontend/marty_display_common",
-    "crates/lib/frontend/marty_videocard_renderer",
-    "crates/lib/frontend/marty_scaler_wgpu",
-    "crates/lib/frontend/marty_scaler_glow",
-    "crates/lib/frontend/marty_egui",
-    "crates/lib/frontend/marty_egui_common",
-    "crates/lib/frontend/marty_config",
-    "crates/lib/frontend/marty_web_helpers",
-    "crates/lib/marty_vhd",
-    "crates/bin/marty_vhd_cli",
-    "crates/bin/martypc_headless",
-    "crates/bin/martypc_eframe",
-    "crates/bin/martypc_launcher"
+    "crates/lib/*",
+    "crates/bin/*"
 ]
 resolver = "2"
 default-members = ["crates/bin/martypc_eframe"]

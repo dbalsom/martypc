@@ -24,14 +24,14 @@ bench = false
 # --------------
 marty_core = { path = "../../lib/marty_core", default-features = false, features = ["sound"] }
 marty_common = { path = "../../lib/marty_common" }
-marty_config = { path = "../../lib/frontend/marty_config", default-features = false, features = ["use_display"]}
-display_manager_eframe = { path = "../../lib/frontend/display_manager_eframe" }
-marty_videocard_renderer = { path = "../../lib/frontend/marty_videocard_renderer" }
-marty_egui = { path = "../../lib/frontend/marty_egui", default-features = false, features = ["use_display", "use_rfd"] }
-marty_egui_eframe = { path = "../../lib/frontend/marty_egui_eframe" }
-marty_frontend_common =  { path = "../../lib/frontend/marty_frontend_common", features = ["use_url", "use_egui"]}
-marty_display_common = { path = "../../lib/frontend/marty_display_common" }
-marty_web_helpers = { path = "../../lib/frontend/marty_web_helpers" }
+marty_config = { path = "../../lib/marty_config", default-features = false, features = ["use_display"]}
+display_manager_eframe = { path = "../../lib/display_manager_eframe" }
+marty_videocard_renderer = { path = "../../lib/marty_videocard_renderer" }
+marty_egui = { path = "../../lib/marty_egui", default-features = false, features = ["use_display", "use_rfd"] }
+marty_egui_eframe = { path = "../../lib/marty_egui_eframe" }
+marty_frontend_common =  { path = "../../lib/marty_frontend_common", features = ["use_url", "use_egui"]}
+marty_display_common = { path = "../../lib/marty_display_common" }
+marty_web_helpers = { path = "../../lib/marty_web_helpers" }
 
 # External crates
 # ----------------
@@ -77,7 +77,7 @@ eframe = { workspace = true, default-features = false, features = [
 ]}
 serialport  = { workspace = true }
 # enable bpaf since we have a command line
-marty_config = { path = "../../lib/frontend/marty_config", features = ["use_bpaf"] }
+marty_config = { path = "../../lib/marty_config", features = ["use_bpaf"] }
 # async runtime
 async-std = { version = "1.10", features = ["attributes"] }
 
@@ -98,7 +98,7 @@ eframe = { workspace = true, default-features = false, features = [
 ]}
 
 # Disable bpaf on web - no command line!
-marty_config = { path = "../../lib/frontend/marty_config", default-features = false }
+marty_config = { path = "../../lib/marty_config", default-features = false }
 
 # Build dependencies
 # ---------------------------------------------------------------------------------------------------------------------

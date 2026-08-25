@@ -801,7 +801,7 @@ mod tests {
 
     #[test]
     fn initial_emulator_speed_defaults_to_normal_speed() {
-        let config_without_initial_speed = include_str!("../../../../../install/martypc.toml")
+        let config_without_initial_speed = include_str!("../../../../install/martypc.toml")
             .lines()
             .filter(|line| !line.trim_start().starts_with("initial_emulator_speed"))
             .collect::<Vec<_>>()
@@ -813,7 +813,7 @@ mod tests {
 
     #[test]
     fn initial_emulator_speed_is_clamped_to_configured_limits() {
-        let mut config: ConfigFileParams = toml::from_str(include_str!("../../../../../install/martypc.toml")).unwrap();
+        let mut config: ConfigFileParams = toml::from_str(include_str!("../../../../install/martypc.toml")).unwrap();
         config.emulator.min_emulation_speed = 0.5;
         config.emulator.max_emulation_speed = 4.0;
         config.emulator.initial_emulator_speed = 0.25;
@@ -826,7 +826,7 @@ mod tests {
     #[cfg(feature = "use_display")]
     #[test]
     fn scaler_preset_override_must_reference_a_defined_preset() {
-        let mut config: ConfigFileParams = toml::from_str(include_str!("../../../../../install/martypc.toml")).unwrap();
+        let mut config: ConfigFileParams = toml::from_str(include_str!("../../../../install/martypc.toml")).unwrap();
         let configured_preset = config.emulator.window[0].scaler_preset.clone();
 
         config.overlay(CmdLineArgs {
@@ -844,7 +844,7 @@ mod tests {
 
     #[test]
     fn osd_keyboard_override_enables_the_panel() {
-        let mut config: ConfigFileParams = toml::from_str(include_str!("../../../../../install/martypc.toml")).unwrap();
+        let mut config: ConfigFileParams = toml::from_str(include_str!("../../../../install/martypc.toml")).unwrap();
         config.emulator.input.osd_keyboard = false;
 
         config.overlay(CmdLineArgs {

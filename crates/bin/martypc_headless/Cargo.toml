@@ -14,9 +14,9 @@ crate-type = ["lib"]
 [dependencies]
 marty_core = { path = "../../lib/marty_core" }
 marty_common = { path = "../../lib/marty_common" }
-marty_frontend_common =  { path = "../../lib/frontend/marty_frontend_common", default-features = false }
-marty_display_common = { path = "../../lib/frontend/marty_display_common", default-features = false }
-marty_config = { path = "../../lib/frontend/marty_config" }
+marty_frontend_common =  { path = "../../lib/marty_frontend_common", default-features = false }
+marty_display_common = { path = "../../lib/marty_display_common", default-features = false }
+marty_config = { path = "../../lib/marty_config" }
 
 colored = "3.0"
 log.workspace = true

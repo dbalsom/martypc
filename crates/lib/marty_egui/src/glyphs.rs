@@ -1,6 +1,6 @@
 use marty_frontend_common::color::cga::CGAColor;
 
-const CGA_FONT: &'static [u8] = include_bytes!("../../../../../assets/cga_8by8.bin");
+const CGA_FONT: &'static [u8] = include_bytes!("../../../../assets/cga_8by8.bin");
 
 pub struct FontInfo {
     pub w: u32,

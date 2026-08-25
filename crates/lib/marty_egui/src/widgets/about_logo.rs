@@ -59,15 +59,15 @@ impl AboutAssetSize {
 
     fn mask_bytes(self) -> &'static [u8] {
         match self {
-            Self::Small => include_bytes!("../../../../../../assets/marty_logo_about_small_mask.png"),
-            Self::Large => include_bytes!("../../../../../../assets/marty_logo_about_mask.png"),
+            Self::Small => include_bytes!("../../../../../assets/marty_logo_about_small_mask.png"),
+            Self::Large => include_bytes!("../../../../../assets/marty_logo_about_mask.png"),
         }
     }
 
     fn logo(self) -> egui::ImageSource<'static> {
         match self {
-            Self::Small => egui::include_image!("../../../../../../assets/marty_logo_about_small.png"),
-            Self::Large => egui::include_image!("../../../../../../assets/marty_logo_about.png"),
+            Self::Small => egui::include_image!("../../../../../assets/marty_logo_about_small.png"),
+            Self::Large => egui::include_image!("../../../../../assets/marty_logo_about.png"),
         }
     }
 }

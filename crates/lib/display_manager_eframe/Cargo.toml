@@ -11,10 +11,10 @@ path = "src/lib.rs"
 crate-type = ["lib"]
 
 [dependencies]
-marty_common = { path = "../../marty_common" }
-marty_core = { path = "../../marty_core", default-features = false }
+marty_common = { path = "../marty_common" }
+marty_core = { path = "../marty_core", default-features = false }
 marty_egui = { path = "../marty_egui" }
-marty_egui_eframe = { path = "../../frontend/marty_egui_eframe" }
+marty_egui_eframe = { path = "../marty_egui_eframe" }
 
 marty_frontend_common = { path = "../marty_frontend_common", features = ["use_egui"] }
 marty_display_common = { path = "../marty_display_common" }
@@ -30,9 +30,9 @@ log.workspace = true
 
 # Optional Dependencies
 # ---------------------------------------------------------------------------------------------------------------------
-#display_backend_eframe = { path = "../../backend/display_backend_eframe", optional = true }
-display_backend_eframe_glow = { path = "../../backend/display_backend_eframe_glow", optional = true }
-display_backend_eframe_wgpu = { path = "../../backend/display_backend_eframe_wgpu", optional = true }
+#display_backend_eframe = { path = "../display_backend_eframe", optional = true }
+display_backend_eframe_glow = { path = "../display_backend_eframe_glow", optional = true }
+display_backend_eframe_wgpu = { path = "../display_backend_eframe_wgpu", optional = true }
 marty_scaler_wgpu = { path = "../marty_scaler_wgpu", optional = true }
 marty_scaler_glow = { path = "../marty_scaler_glow", optional = true }
 marty_scaler_null = { path = "../marty_scaler_null", optional = true }
