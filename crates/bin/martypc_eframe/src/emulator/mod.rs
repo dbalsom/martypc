@@ -63,6 +63,7 @@ use marty_display_common::display_scaler::SCALER_MODES;
 use marty_egui::{state::GuiState, GuiBoolean, GuiFloat, GuiWindow};
 use marty_frontend_common::{
     asset_manager::AssetManager,
+    cassette_manager::CassetteManager,
     cartridge_manager::CartridgeManager,
     floppy_manager::FloppyManager,
     resource_manager::ResourceManager,
@@ -114,6 +115,7 @@ pub struct Emulator {
     pub kb_data: KeyboardData,
     pub stat_counter: Counter,
     pub gui: GuiState,
+    pub cassette_manager: CassetteManager,
     pub floppy_manager: FloppyManager,
     pub vhd_manager: VhdManager,
     pub cart_manager: CartridgeManager,
@@ -683,6 +685,8 @@ impl Emulator {
 
         // Set list of video cards
         //self.gui.set_card_list(card_strs);
+
+        self.gui.set_cassette_interface(self.machine.config().cassette);
 
         // Set list of virtual serial ports
         self.gui.set_serial_ports(self.machine.bus().enumerate_serial_ports());

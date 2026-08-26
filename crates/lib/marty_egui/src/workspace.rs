@@ -226,6 +226,9 @@ impl GuiState {
                 GuiWindow::FloppyViewer => {
                     self.floppy_viewer.draw(ui, &mut self.event_queue);
                 }
+                GuiWindow::CassetteDeck => {
+                    self.cassette_deck.draw(ui);
+                }
                 GuiWindow::SnViewer => {
                     self.sn_viewer.show(ui, &mut self.event_queue);
                 }

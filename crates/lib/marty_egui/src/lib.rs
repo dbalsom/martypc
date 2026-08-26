@@ -132,6 +132,7 @@ pub enum GuiWindow {
     TextModeViewer,
     FdcViewer,
     FloppyViewer,
+    CassetteDeck,
     SnViewer,
 }
 
@@ -239,6 +240,8 @@ pub struct VhdCreateRequest {
 
 #[allow(dead_code)]
 pub enum GuiEvent {
+    LoadQuickCassette(usize),
+    EjectCassette,
     LoadVHD(usize, usize),
     DetachVHD(usize),
     CreateVHD(VhdCreateRequest),
@@ -640,6 +643,16 @@ lazy_static! {
                 title: "Floppy Viewer",
                 menu: "Floppy Viewer",
                 width: 700.0,
+                resizable: false,
+            },
+        ),
+        (
+            GuiWindow::CassetteDeck,
+            WorkspaceWindowDef {
+                id: GuiWindow::CassetteDeck,
+                title: "Cassette Deck",
+                menu: "Cassette Deck",
+                width: 540.0,
                 resizable: false,
             },
         ),

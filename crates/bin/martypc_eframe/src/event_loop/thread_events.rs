@@ -137,6 +137,21 @@ pub fn handle_thread_event(emu: &mut Emulator, ctx: &egui::Context) {
 
                 match context {
                     FileOpenContext::ServiceHostFile { .. } => unreachable!(),
+                    FileOpenContext::CassetteImage { fsc } => {
+                        let cassette_path = match fsc {
+                            FileSelectionContext::Path(path) => path,
+                            _ => match path {
+                                Some(path) => path,
+                                None => {
+                                    log::error!("Cassette WAV dialog returned without a path");
+                                    continue;
+                                }
+                            },
+                        };
+                        let media = emu.cassette_manager.load_data(cassette_path.clone(), contents);
+                        log::info!("Cassette WAV selected: {}", media.name.to_string_lossy());
+                        emu.gui.set_cassette_selection(None, Some(cassette_path));
+                    }
                     FileOpenContext::FloppyDiskImage { drive_select, fsc } => {
                         let mut floppy_path = None;
 

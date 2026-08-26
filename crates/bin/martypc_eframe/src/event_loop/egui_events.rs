@@ -264,6 +264,32 @@ pub fn handle_egui_event(
                 }
             },
         },
+        GuiEvent::LoadQuickCassette(wav_idx) => match emu.cassette_manager.load_resource(*wav_idx, &mut emu.rm) {
+            Ok(media) => {
+                let name = media.name.to_string_lossy().into_owned();
+                let path = media.path.clone();
+                emu.gui.set_cassette_selection(Some(*wav_idx), Some(path));
+                emu.gui
+                    .toasts()
+                    .info(format!("Cassette WAV selected: {name}"))
+                    .duration(Some(NORMAL_NOTIFICATION_TIME));
+            }
+            Err(err) => {
+                log::error!("Failed to load cassette WAV: {err}");
+                emu.gui
+                    .toasts()
+                    .error(format!("Failed to load cassette WAV: {err}"))
+                    .duration(Some(LONG_NOTIFICATION_TIME));
+            }
+        },
+        GuiEvent::EjectCassette => {
+            emu.cassette_manager.eject();
+            emu.gui.set_cassette_selection(None, None);
+            emu.gui
+                .toasts()
+                .info("Cassette WAV ejected")
+                .duration(Some(NORMAL_NOTIFICATION_TIME));
+        }
         GuiEvent::LoadVHD(drive_idx, image_idx) => {
             handle_load_vhd(emu, *drive_idx, FileSelectionContext::Index(*image_idx));
         }
@@ -436,6 +462,11 @@ pub fn handle_egui_event(
             if let Err(e) = emu.cart_manager.scan_resource(&mut emu.rm) {
                 log::error!("Error scanning cartridge directory: {}", e);
             }
+            if emu.machine.config().cassette {
+                if let Err(e) = emu.cassette_manager.scan_resource(&mut emu.rm) {
+                    log::warn!("Error scanning cassette directory: {}", e);
+                }
+            }
             // Update Floppy Disk Image tree
             match emu.floppy_manager.make_tree(&mut emu.rm) {
                 Ok(floppy_tree) => {
@@ -458,6 +489,12 @@ pub fn handle_egui_event(
             // Update Cartridge Image tree
             if let Ok(cart_tree) = emu.cart_manager.make_tree(&mut emu.rm) {
                 emu.gui.set_cart_tree(cart_tree);
+            }
+            // Update Cassette WAV tree.
+            if emu.machine.config().cassette {
+                if let Ok(cassette_tree) = emu.cassette_manager.make_tree(&emu.rm) {
+                    emu.gui.set_cassette_tree(cassette_tree);
+                }
             }
         }
         GuiEvent::InsertCartridge(slot_select, item_idx) => {
