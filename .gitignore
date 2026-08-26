@@ -59,6 +59,7 @@ crates/bin/martypc_eframe/assets/configs
 /install/media/floppies/*
 /install/media/hdds/*
 /install/media/cartridges/*
+/install/media/cassettes/*
 
 # Allow OSD keyboard assets
 !/install/assets/keyboards
