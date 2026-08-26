@@ -1,0 +1,18 @@
+[package]
+name = "marty_vhd"
+version = "0.1.0"
+edition = "2024"
+license.workspace = true
+rust-version.workspace = true
+
+[dependencies]
+anyhow.workspace = true
+binrw = "0.15.2"
+fatfs = { workspace = true, optional = true }
+tempfile = { workspace = true, optional = true }
+thiserror.workspace = true
+uuid = { workspace = true, optional = true }
+
+[features]
+default = ["builder"]
+builder = ["dep:fatfs", "dep:tempfile", "dep:uuid"]

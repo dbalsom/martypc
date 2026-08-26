@@ -35,7 +35,7 @@ jobs:
       - name: Install Trunk
         run: |
           if ! command -v trunk &> /dev/null; then
-            cargo install trunk
+            cargo install --locked trunk
           else
             echo "Trunk is cached and already installed."
           fi
@@ -43,7 +43,7 @@ jobs:
       - name: Install wasm-bindgen-cli
         run: |
           if ! command -v wasm-bindgen &> /dev/null; then
-            cargo install wasm-bindgen-cli
+            cargo install --locked wasm-bindgen-cli
           else
             echo "wasm-bindgen-cli is cached and already installed."
           fi
@@ -51,21 +51,21 @@ jobs:
       - name: Install wasm-opt
         run: |
           if ! command -v wasm-opt &> /dev/null; then
-            cargo install wasm-opt
+            cargo install --locked wasm-opt
           else
             echo "wasm-opt is cached and already installed."
           fi
 
       - name: Build martypc_eframe with Trunk
-        working-directory: crates/binaries/martypc_eframe
-        run: trunk build --release=true --no-default-features --features=all_video_cards,sound,use_glow --config Trunk.toml
+        working-directory: crates/bin/martypc_eframe
+        run: trunk build --locked --release=true --no-default-features --features=all_video_cards,sound,opl,use_glow --config Trunk.toml
 
       - name: Optimize WASM with wasm-opt
-        working-directory: crates/binaries/martypc_eframe
+        working-directory: crates/bin/martypc_eframe
         run: wasm-opt -Oz -o dist/martypc_eframe_bg.wasm dist/martypc_eframe_bg.wasm
 
       - name: Verify dist directory contents
-        working-directory: crates/binaries/martypc_eframe
+        working-directory: crates/bin/martypc_eframe
         run: |
           echo "Verifying dist directory:"
           ls -R dist

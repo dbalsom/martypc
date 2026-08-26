@@ -1,25 +1,13 @@
 [workspace]
 members = [
-    "crates/marty_core",
-    "crates/marty_common",
-    "crates/lib/frontend/marty_frontend_common",
-    "crates/lib/frontend/marty_display_common",
-    "crates/lib/frontend/marty_videocard_renderer",
-    "crates/lib/frontend/marty_scaler_wgpu",
-    "crates/lib/frontend/marty_scaler_glow",
-    "crates/lib/frontend/marty_egui",
-    "crates/lib/frontend/marty_egui_common",
-    "crates/lib/frontend/marty_config",
-    "crates/lib/frontend/marty_web_helpers",
-    "crates/binaries/martypc_headless",
-    "crates/binaries/martypc_eframe",
-    "crates/binaries/martypc_launcher"
+    "crates/lib/*",
+    "crates/bin/*"
 ]
 resolver = "2"
-default-members = ["crates/binaries/martypc_eframe"]
+default-members = ["crates/bin/martypc_eframe"]
 
 [workspace.package]
-version = "0.4.2"
+version = "0.5.0"
 edition = "2021"
 rust-version = "1.92"
 license = "MIT"
@@ -33,6 +21,7 @@ bytemuck = "1.14"
 raw-window-handle = "0.6"
 thiserror = "2.0"
 anyhow = "1.0"
+bpaf = { version = "0.7", features = ["derive"] }
 log = "0.4.20"
 serde = { version = "1.0", features = ["derive"] }
 serde_derive = "1.0"
@@ -43,6 +32,7 @@ rustc-hash = "2.1"
 enum_dispatch = "0.3.13"
 indexmap = "2.14"
 crossbeam-channel = "0.5.15"
+chrono = "0.4"
 zip = { version = "2.3", default-features = false }
 strum = {  version = "0.27", features = ["derive"] }
 strum_macros = "0.27"
@@ -53,8 +43,12 @@ getrandom = "0.3"
 regex = "1.5"
 cfg-if = "1.0"
 binrw = "0.14"
+fatfs = { git = "https://github.com/dbalsom/fluxfox_fat.git", branch = "attributes", default-features = false, features = ["std", "chrono"] }
 rfd = "0.17.2"
-gilrs = { version = "0.11.1" }
+gilrs = { version = "0.11.1", default-features = false }
+hound = "3.5.1"
+tempfile = "3.20"
+uuid = { version = "1.17", features = ["v4"] }
 
 # wasm workspace dependencies
 # ---------------------------------------------------------------------------------------------------------------------
@@ -82,12 +76,12 @@ features = [
 
 [workspace.dependencies.fluxfox]
 git = "https://github.com/dbalsom/fluxfox.git"
-branch = "marty_consumer_0.34"
+branch = "finish_fat"
 default-features = false
 
 [workspace.dependencies.fluxfox_egui]
 git = "https://github.com/dbalsom/fluxfox.git"
-branch = "marty_consumer_0.34"
+branch = "finish_fat"
 
 [workspace.dependencies.egui]
 version = "0.34.2"
@@ -95,7 +89,7 @@ default-features = false
 
 [workspace.dependencies.eframe]
 git = "https://github.com/dbalsom/egui_martypc.git"
-branch = "0.34.2_raw_web_hook"
+branch = "wasm-pointer-lock"
 default-features = false
 
 [workspace.dependencies.egui-winit]

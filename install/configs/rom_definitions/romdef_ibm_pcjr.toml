@@ -56,7 +56,7 @@ checkpoint = [
     [[romset.patch]]
     desc = "Cleanup after"
     # Address of next test after the RAM check - keyboard check
-    trigger = 0xF00640
+    trigger = 0xF0640
     addr = 0xF0B6C
     # Restore the original bytes
     bytes = [0x75, 0x0B]
@@ -85,7 +85,7 @@ rom = [
     [[romset.patch]]
     desc = "Cleanup after"
     # Address of next test after the RAM check - keyboard check
-    trigger = 0xF00640
+    trigger = 0xF0640
     addr = 0xF0B6C
     # Restore the original bytes
     bytes = [0x75, 0x0B]

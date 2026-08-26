@@ -38,7 +38,9 @@ rom_set = "compaq_portable_revf"
 speaker = true
 overlays = [
     "us_modelf_keyboard",
-    "pcxt_2_720k_floppies",
+    "ibm_nec_fdc",
+    "floppy_720k:0",
+    "floppy_720k:1",
 ]
 
     [machine.memory]

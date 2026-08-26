@@ -37,7 +37,9 @@ type = "Ibm5160"
 rom_set = "auto"
 speaker = true
 overlays = [
-    "pcxt_2_720k_floppies",
+    "ibm_nec_fdc",
+    "floppy_720k:0",
+    "floppy_720k:1",
     "pcxt_2_serial_ports",
     "us_modelf_keyboard",
     "microsoft_serial_mouse",
@@ -60,7 +62,9 @@ type = "Ibm5160"
 rom_set = "rudds_diags"
 speaker = true
 overlays = [
-    "pcxt_2_720k_floppies",
+    "ibm_nec_fdc",
+    "floppy_720k:0",
+    "floppy_720k:1",
     "pcxt_2_serial_ports",
     "us_modelf_keyboard",
     "microsoft_serial_mouse",
@@ -83,7 +87,9 @@ type = "Ibm5160"
 rom_set = "auto"
 speaker = true
 overlays = [
-    "pcxt_2_720k_floppies",
+    "ibm_nec_fdc",
+    "floppy_720k:0",
+    "floppy_720k:1",
     "pcxt_2_serial_ports",   
     "us_modelf_keyboard",
     "microsoft_serial_mouse",
@@ -120,7 +126,9 @@ type = "Ibm5160"
 rom_set = "auto"
 speaker = true
 overlays = [
-    "pcxt_2_720k_floppies",
+    "ibm_nec_fdc",
+    "floppy_720k:0",
+    "floppy_720k:1",
     "pcxt_2_serial_ports",   
     "us_modelf_keyboard",
     "microsoft_serial_mouse",

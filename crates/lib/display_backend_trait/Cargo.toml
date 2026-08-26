@@ -1,0 +1,14 @@
+[package]
+name = "display_backend_trait"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+
+[lib]
+name = "display_backend_trait"
+path = "src/lib.rs"
+crate-type = ["lib"]
+
+[dependencies]
+thiserror.workspace = true
+anyhow.workspace = true

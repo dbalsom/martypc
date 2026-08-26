@@ -1,0 +1,7 @@
+DO NOT DELETE!
+
+This file is a portable mode sentinel file.
+
+This file is how MartyPC detects it is running in portable mode.
+
+The contents are not checked. You may use this file as your personal diary.

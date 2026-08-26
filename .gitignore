@@ -7,6 +7,9 @@ Thumbs.db
 # Rust compiler output
 /target
 
+# Python virtual environment
+/.venv/
+
 # Visual Studio Code editor files
 #/.vscode
 /.vscode/settings.json
@@ -32,9 +35,11 @@ marty*.toml
 *.log
 *.exe
 *.dat
-/frontends/martypc_web_player_wgpu/wasm/
 icon.png
 *.crt
+
+# WASM stuff
+crates/bin/martypc_eframe/assets/configs
 
 # Allow tests/tools directory
 !/tests/tools
@@ -49,11 +54,14 @@ icon.png
 /install/dumps/*
 /install/screenshots/*
 /install/traces/*
-# New media paths for 0.2.0
+/install/assets/*
 /install/media/roms/*
 /install/media/floppies/*
 /install/media/hdds/*
 /install/media/cartridges/*
+
+# Allow OSD keyboard assets
+!/install/assets/keyboards
 
 /install/mount/floppy/*
 !/install/mount/floppy/readme.md
@@ -89,16 +97,12 @@ icon.png
 /install/media/roms/GLaBIOS/GLABIOS_0.8b0_8XY.ROM
 
 # Experimental rom definitions
-/install/configs/rom_definitions/romdef_seequa.toml
 /install/configs/rom_definitions/romdef_s100.toml
 /install/configs/rom_definitions/romdef_ast.toml
 /install/configs/rom_definitions/romdef_ibm_ps2.toml
 /install/configs/rom_definitions/romdef_ibm_misc.toml
 /install/configs/rom_definitions/romdef_custom.toml
 /install/configs/rom_definitions/romdef_seequa.toml
-
-# Experimental machines
-/install/configs/machines/seequa_chameleon.toml
 
 # Miscellaneous GlaBIOS ROMs
 /install/media/roms/GLaBIOS/parking
@@ -110,8 +114,8 @@ icon.png
 # Disk dumps
 /install/*.img
 
-# Frontend files
-/frontends/martypc_web_player_wgpu/web/bin
+# File transfer resource
+/install/mount/file_transfer/*
 
 # Assembly stuff
 /asm
@@ -119,8 +123,11 @@ icon.png
 
 #misc
 /tree.txt
-/test-gen/
-/exo_demo/
-/util/mquit/mquit.com
+/test-gen
+/exo_demo
+/local
+/util/build_utils.bat
+/util/**/*.com
+/hitbox_editor
 
-
+.wrangler
