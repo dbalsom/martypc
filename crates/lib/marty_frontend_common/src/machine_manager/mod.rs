@@ -84,6 +84,8 @@ pub struct MachineConfigFileEntry {
     ems: Option<EmsMemoryConfig>,
     #[serde(default)]
     speaker: bool,
+    #[serde(default)]
+    cassette: bool,
     ppi_turbo: Option<bool>, // This bool is an option so that it is tri-state - missing means no turbo feature, true means ppi high = turbo, false means ppi low = turbo.
     fdc: Option<FloppyControllerConfig>,
     hdc: Option<HardDriveControllerConfig>,
@@ -977,6 +979,7 @@ impl MachineConfigFileEntry {
     pub fn to_machine_config(&self) -> MachineConfiguration {
         MachineConfiguration {
             speaker: self.speaker,
+            cassette: self.cassette,
             ppi_turbo: self.ppi_turbo,
             machine_type: self.machine_type,
             cpu: self.cpu.clone(),
@@ -1021,6 +1024,7 @@ conventional.wait_states = 0
 name = "pcjr"
 type = "IbmPCJr"
 rom_set = "auto"
+cassette = true
 overlays = []
 
 [machine.memory]
@@ -1316,6 +1320,19 @@ selector = "drive"
             .to_string();
 
         assert!(error.contains("supports drive indices 0 through 0"));
+    }
+
+    #[test]
+    fn cassette_defaults_to_disabled_and_propagates_when_enabled() {
+        let manager = test_manager();
+
+        let xt = manager.configs.get("xt").unwrap();
+        assert!(!xt.cassette);
+        assert!(!xt.to_machine_config().cassette);
+
+        let pcjr = manager.configs.get("pcjr").unwrap();
+        assert!(pcjr.cassette);
+        assert!(pcjr.to_machine_config().cassette);
     }
 
     #[cfg(all(feature = "ega", feature = "vga"))]

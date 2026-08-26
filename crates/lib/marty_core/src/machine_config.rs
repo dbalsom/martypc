@@ -285,6 +285,7 @@ pub struct ConventionalExpansionConfig {
 #[derive(Clone, Debug, Default)]
 pub struct MachineConfiguration {
     pub speaker: bool,
+    pub cassette: bool,
     pub ppi_turbo: Option<bool>,
     pub machine_type: MachineType,
     pub cpu: Option<CpuConfig>,

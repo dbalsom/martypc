@@ -37,6 +37,7 @@ name = "ibm5150_16k"
 type = "Ibm5150v64K"
 rom_set = "ibm5150_81_v1" # The '82 BIOS doesn't support <64KB of RAM.
 speaker = true
+cassette = true
 overlays = [
     "ibm_nec_fdc",
     "floppy_360k:0",
@@ -61,6 +62,7 @@ name = "ibm5150_64k"
 type = "Ibm5150v64K"
 rom_set = "auto"
 speaker = true
+cassette = true
 overlays = [
     "ibm_nec_fdc",
     "floppy_360k:0",
@@ -85,6 +87,7 @@ name = "ibm5150_64k_hdd"
 type = "Ibm5150v64K"
 rom_set = "auto"
 speaker = true
+cassette = true
 overlays = [
     "ibm_nec_fdc",
     "floppy_360k:0",
@@ -124,6 +127,7 @@ name = "ibm5150_256k"
 type = "Ibm5150v256K"
 rom_set = "auto"
 speaker = true
+cassette = true
 overlays = [
     "ibm_nec_fdc",
     "floppy_360k:0",
@@ -148,6 +152,7 @@ name = "ibm5150_xtide"
 type = "Ibm5150v256K"
 rom_set = "auto"
 speaker = true
+cassette = true
 overlays = [
     "ibm_nec_fdc",
     "floppy_360k:0",
@@ -187,6 +192,7 @@ name = "ibm5150_256k_hdd"
 type = "Ibm5150v256K"
 rom_set = "auto"
 speaker = true
+cassette = true
 overlays = [
     "ibm_nec_fdc",
     "floppy_360k:0",

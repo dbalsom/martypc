@@ -36,6 +36,7 @@ name = "ibm_pcjr"
 type = "IbmPCJr"
 rom_set = "ibm_pcjr"
 speaker = true
+cassette = true
 overlays = [
     "microsoft_serial_mouse",
     "floppy_360k:0",
