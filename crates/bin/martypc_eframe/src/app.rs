@@ -42,6 +42,7 @@ use display_manager_eframe::{
 };
 #[cfg(feature = "use_wgpu")]
 use display_manager_eframe::{BufferDimensions, TextureDimensions};
+use marty_common::VideoDimensions;
 use marty_display_common::display_manager::{DisplayManager, DmGuiOptions};
 use marty_egui_eframe::{context::GuiRenderContext, EGUI_MENU_BAR_HEIGHT};
 use marty_frontend_common::{deployment::DeploymentState, timestep_manager::TimestepManager};
@@ -79,6 +80,24 @@ use url::Url;
 pub const GRAB_MODE: CursorGrab = CursorGrab::Locked;
 #[cfg(not(any(target_arch = "wasm32", target_os = "macos")))]
 pub const GRAB_MODE: CursorGrab = CursorGrab::Confined;
+
+fn apply_initial_viewport_size(
+    viewport: &mut egui::ViewportBuilder,
+    size: Option<VideoDimensions>,
+    fullscreen: bool,
+) {
+    viewport.fullscreen = Some(fullscreen);
+
+    if fullscreen {
+        viewport.inner_size = None;
+    }
+    else if let Some(size) = size.filter(VideoDimensions::has_some_size) {
+        viewport.inner_size = Some(egui::vec2(size.w as f32, size.h as f32));
+        // A configured initial size must not be clamped by the front-end's
+        // fallback minimum size.
+        viewport.min_inner_size = None;
+    }
+}
 
 pub struct MartyApp {
     size_delay: u32,
@@ -279,13 +298,11 @@ impl MartyApp {
         timestep_manager.set_throttle_factor(emu.config.emulator.initial_emulator_speed as f64);
         timestep_manager.set_cpu_mhz(emu.machine.get_cpu_mhz());
 
-        // Set eframe's NativeOptions for fullscreen if specified by config
+        // Apply the main window's initial viewport configuration before eframe
+        // creates the native window.
         #[cfg(not(target_arch = "wasm32"))]
-        if let Some(window) = emu.config.emulator.window.get_mut(0) {
-            if window.fullscreen {
-                native_options.viewport.inner_size = None;
-                native_options.viewport.fullscreen = Some(true);
-            }
+        if let Some(window) = emu.config.emulator.window.first() {
+            apply_initial_viewport_size(&mut native_options.viewport, window.size, window.fullscreen);
         }
 
         MartyApp {
@@ -1068,7 +1085,8 @@ fn resize_dimensions(rect: egui::Rect) -> [u32; 2] {
 
 #[cfg(test)]
 mod tests {
-    use super::resize_dimensions;
+    use super::{apply_initial_viewport_size, resize_dimensions};
+    use marty_common::VideoDimensions;
 
     #[test]
     fn resize_dimensions_rounds_and_clamps_panel_size() {
@@ -1077,5 +1095,36 @@ mod tests {
 
         let empty = egui::Rect::from_min_size(egui::Pos2::ZERO, egui::Vec2::ZERO);
         assert_eq!(resize_dimensions(empty), [1, 1]);
+    }
+
+    #[test]
+    fn configured_initial_size_replaces_frontend_fallback() {
+        let mut viewport = egui::ViewportBuilder::default()
+            .with_inner_size([800.0, 600.0])
+            .with_min_inner_size([800.0, 600.0]);
+
+        apply_initial_viewport_size(
+            &mut viewport,
+            Some(VideoDimensions { w: 1920, h: 1080 }),
+            false,
+        );
+
+        assert_eq!(viewport.inner_size, Some(egui::vec2(1920.0, 1080.0)));
+        assert_eq!(viewport.min_inner_size, None);
+        assert_eq!(viewport.fullscreen, Some(false));
+    }
+
+    #[test]
+    fn fullscreen_omits_an_initial_inner_size() {
+        let mut viewport = egui::ViewportBuilder::default().with_inner_size([800.0, 600.0]);
+
+        apply_initial_viewport_size(
+            &mut viewport,
+            Some(VideoDimensions { w: 1920, h: 1080 }),
+            true,
+        );
+
+        assert_eq!(viewport.inner_size, None);
+        assert_eq!(viewport.fullscreen, Some(true));
     }
 }
