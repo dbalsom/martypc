@@ -571,13 +571,19 @@ impl EmulatorBuilder {
             .create_manifest_async(rom_sets_resolved.clone(), &mut resource_manager)
             .await?;
 
+        writeln!(stdout, "Created ROM manifest using the following files:")?;
+        for rom in &rom_manifest.roms {
+            writeln!(stdout, "  {}", rom.path.display())?;
+        }
+
         log::debug!("Created manifest!");
         for (i, rom) in rom_manifest.roms.iter().enumerate() {
             log::debug!(
-                "  ROM #{}: md5: {} name: {} length: {} repeat: {}",
+                "  ROM #{}: md5: {} name: {} path: {} length: {} repeat: {}",
                 i,
                 rom.md5,
                 rom.name,
+                rom.path.display(),
                 rom.data.len(),
                 rom.repeat
             );
