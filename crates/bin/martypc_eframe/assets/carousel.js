@@ -38,6 +38,7 @@ let elements = null;
 const state = {
     systems: [],
     cards: [],
+    wasmReady: false,
     selectedIndex: 0,
     optionSelections: new Map(),
     carouselPosition: 0,
@@ -596,6 +597,15 @@ function handleStartButtonClick() {
     elements.startButton.setAttribute("aria-busy", "true");
 }
 
+function updateStartButtonAvailability() {
+    elements.startButton.disabled = state.systems.length === 0 || !state.wasmReady;
+}
+
+function handleWasmReady() {
+    state.wasmReady = true;
+    updateStartButtonAvailability();
+}
+
 function bindEventListeners() {
     elements.previousSystemButton.addEventListener("click", () => rotateCarousel(-1));
     elements.nextSystemButton.addEventListener("click", () => rotateCarousel(1));
@@ -616,6 +626,8 @@ function bindEventListeners() {
 async function initializeCarousel() {
     elements = collectElements();
     configureTouchUi();
+    state.wasmReady = elements.startButton.dataset.wasmReady === "true";
+    document.addEventListener("marty-wasm-ready", handleWasmReady, {once: true});
 
     const launchConfiguration = readLaunchConfiguration();
     state.systems = await loadSystems();
@@ -642,7 +654,7 @@ async function initializeCarousel() {
     const hasMultipleSystems = state.systems.length > 1;
     elements.previousSystemButton.disabled = !hasMultipleSystems;
     elements.nextSystemButton.disabled = !hasMultipleSystems;
-    elements.startButton.disabled = false;
+    updateStartButtonAvailability();
 }
 
 initializeCarousel().catch((error) => {

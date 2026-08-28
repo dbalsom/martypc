@@ -146,51 +146,6 @@ async fn main() -> eframe::Result {
     Ok(())
 }
 
-// #[cfg(not(target_arch = "wasm32"))]
-// #[cfg(any(feature = "glow", feature = "wgpu"))]
-// #[allow(clippy::needless_pass_by_value)]
-// pub fn run_custom(
-//     app_name: &str,
-//     mut native_options: NativeOptions,
-//     app_creator: AppCreator<'_>,
-// ) -> eframe::Result {
-//     #[cfg(not(feature = "__screenshot"))]
-//     assert!(
-//         std::env::var("EFRAME_SCREENSHOT_TO").is_err(),
-//         "EFRAME_SCREENSHOT_TO found without compiling with the '__screenshot' feature"
-//     );
-//
-//     if native_options.viewport.title.is_none() {
-//         native_options.viewport.title = Some(app_name.to_owned());
-//     }
-//
-//     let renderer = native_options.renderer;
-//
-//     #[cfg(all(feature = "glow", feature = "wgpu"))]
-//     {
-//         match renderer {
-//             Renderer::Glow => "glow",
-//             Renderer::Wgpu => "wgpu",
-//         };
-//         log::info!("Both the glow and wgpu renderers are available. Using {renderer}.");
-//     }
-//
-//     use eframe::native::run;
-//     match renderer {
-//         #[cfg(feature = "glow")]
-//         Renderer::Glow => {
-//             log::debug!("Using the glow renderer");
-//             native::run::run_glow(app_name, native_options, app_creator)
-//         }
-//
-//         #[cfg(feature = "wgpu")]
-//         Renderer::Wgpu => {
-//             log::debug!("Using the wgpu renderer");
-//             native::run::run_wgpu(app_name, native_options, app_creator)
-//         }
-//     }
-// }
-
 #[cfg(target_arch = "wasm32")]
 fn main() {
     use eframe::wasm_bindgen::JsCast as _;
@@ -266,9 +221,6 @@ fn main() {
     // Wait for user interaction
     let document = web_sys::window().expect("No window").document().expect("No document");
     document.set_title(&format!("{} {}", DeploymentState::Web, version_string()));
-    if let Some(footer_version) = document.get_element_by_id("web_footer_version") {
-        footer_version.set_text_content(Some(concat!("v", env!("CARGO_PKG_VERSION"))));
-    }
 
     let start_logo = document
         .get_element_by_id("start_logo")
@@ -282,4 +234,18 @@ fn main() {
         .add_event_listener_with_callback("click", closure.as_ref().unchecked_ref())
         .expect("Failed to add event listener");
     closure.forget(); // Prevent the closure from being dropped
+
+    // The carousel and WASM initialize independently. Only advertise WASM readiness after the
+    // launch handler exists so an early click doesn't hang
+    start_logo
+        .set_attribute("data-wasm-ready", "true")
+        .expect("Failed to mark start_logo as WASM-ready");
+    let ready_event = web_sys::Event::new("marty-wasm-ready").expect("Failed to create WASM-ready event");
+    document
+        .dispatch_event(&ready_event)
+        .expect("Failed to dispatch WASM-ready event");
+
+    if let Some(footer_version) = document.get_element_by_id("web_footer_version") {
+        footer_version.set_text_content(Some(concat!("v", env!("CARGO_PKG_VERSION"))));
+    }
 }
