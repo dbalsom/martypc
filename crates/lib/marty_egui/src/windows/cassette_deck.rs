@@ -406,7 +406,7 @@ impl CassetteDeck {
                     self.monitor_enabled,
                 )));
             }
-            ui.checkbox(&mut self.draw_cassette_png, "Draw cassette PNG");
+            //ui.checkbox(&mut self.draw_cassette_png, "Draw cassette PNG");
         });
     }
 }
