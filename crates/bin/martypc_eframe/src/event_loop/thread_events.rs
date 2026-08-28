@@ -48,7 +48,33 @@ use marty_frontend_common::{
         FrontendThreadEvent,
     },
 };
-use std::{path::PathBuf, sync::Arc};
+use std::{
+    path::{Path, PathBuf},
+    sync::Arc,
+};
+
+fn file_opened_message(context: &FileOpenContext, path: Option<&Path>, contents_len: usize) -> String {
+    let selected_path = path.or_else(|| {
+        let fsc = match context {
+            FileOpenContext::ServiceHostFile { fsc }
+            | FileOpenContext::CassetteImage { fsc }
+            | FileOpenContext::FloppyDiskImage { fsc, .. }
+            | FileOpenContext::CartridgeImage { fsc, .. } => Some(fsc),
+            #[cfg(not(target_arch = "wasm32"))]
+            FileOpenContext::VhdDiskImage { .. } => None,
+        }?;
+
+        match fsc {
+            FileSelectionContext::Path(path) => Some(path.as_path()),
+            _ => None,
+        }
+    });
+
+    match selected_path {
+        Some(path) => format!("File opened: {} ({contents_len}) bytes", path.display()),
+        None => format!("File opened ({contents_len} bytes)"),
+    }
+}
 
 pub fn handle_thread_event(emu: &mut Emulator, ctx: &egui::Context) {
     while let Ok(event) = emu.receiver.try_recv() {
@@ -128,11 +154,7 @@ pub fn handle_thread_event(emu: &mut Emulator, ctx: &egui::Context) {
 
                 emu.gui
                     .toasts()
-                    .info(format!(
-                        "File opened: {:?} ({}) bytes",
-                        path.clone().unwrap_or(PathBuf::from("None")),
-                        contents.len()
-                    ))
+                    .info(file_opened_message(&context, path.as_deref(), contents.len()))
                     .duration(Some(NORMAL_NOTIFICATION_TIME));
 
                 match context {

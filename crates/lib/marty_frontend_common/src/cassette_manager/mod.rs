@@ -28,7 +28,7 @@ use std::{ffi::OsString, io::Cursor, path::PathBuf};
 use marty_common::types::cassette::CassetteTapeType;
 use marty_core::devices::cassette_deck::CASSETTE_SAMPLE_RATE;
 
-use crate::resource_manager::{PathTreeNode, ResourceItem, ResourceManager};
+use crate::resource_manager::{PathTreeNode, ResourceFsType, ResourceItem, ResourceItemType, ResourceManager};
 
 use anyhow::{anyhow, Context, Error};
 use hound::{SampleFormat, WavReader};
@@ -61,13 +61,20 @@ impl CassetteManager {
         rm.items_to_tree(CASSETTE_RESOURCE, &self.files)
     }
 
+    pub fn get_cassette_path(&self, idx: usize) -> Option<PathBuf> {
+        self.files.get(idx).map(|file| file.location.clone())
+    }
+
+    pub fn cassette_is_in_overlay(&self, idx: usize) -> Option<bool> {
+        self.files
+            .get(idx)
+            .map(|file| matches!(file.rtype, ResourceItemType::File(ResourceFsType::Overlay(_))))
+    }
+
     pub fn load_resource(&self, idx: usize, rm: &mut ResourceManager) -> Result<CassetteMedia, Error> {
         let path = self
-            .files
-            .get(idx)
-            .ok_or_else(|| anyhow!("Cassette WAV index {idx} was not found"))?
-            .location
-            .clone();
+            .get_cassette_path(idx)
+            .ok_or_else(|| anyhow!("Cassette WAV index {idx} was not found"))?;
         let data = rm.read_resource_from_path_blocking(&path)?;
         self.load_data(path, data)
     }

@@ -32,9 +32,13 @@
 use std::time::Duration;
 use std::{mem::discriminant, path::PathBuf};
 
+#[cfg(target_arch = "wasm32")]
+use crate::wasm::file_open::open_file;
 use crate::{emulator::Emulator, floppy::load_floppy::handle_load_floppy, sound::SoundInterfaceBackend};
 use display_manager_eframe::EFrameDisplayManager;
 
+#[cfg(target_arch = "wasm32")]
+use marty_frontend_common::thread_events::FileOpenContext;
 #[cfg(not(target_arch = "wasm32"))]
 use marty_frontend_common::thread_events::FileSaveContext;
 use marty_frontend_common::{
@@ -266,30 +270,57 @@ pub fn handle_egui_event(
                 }
             },
         },
-        GuiEvent::LoadQuickCassette(wav_idx) => match emu.cassette_manager.load_resource(*wav_idx, &mut emu.rm) {
-            Ok(media) => {
-                let name = media.name.to_string_lossy().into_owned();
-                let path = media.path.clone();
-                if let Some(cassette_deck) = emu.machine.bus_mut().cassette_deck_mut().as_mut() {
-                    cassette_deck.insert_image(&media.samples, media.tape_type);
-                    emu.gui.set_cassette_selection(Some(*wav_idx), Some(path));
+        GuiEvent::LoadQuickCassette(wav_idx) => {
+            #[cfg(target_arch = "wasm32")]
+            if matches!(emu.cassette_manager.cassette_is_in_overlay(*wav_idx), Some(false)) {
+                let Some(path) = emu.cassette_manager.get_cassette_path(*wav_idx)
+                else {
+                    log::error!("Failed to resolve cassette WAV index {wav_idx} to a path");
                     emu.gui
                         .toasts()
-                        .info(format!("Cassette inserted: {name}"))
-                        .duration(Some(NORMAL_NOTIFICATION_TIME));
+                        .error(format!("Cassette WAV index {wav_idx} was not found"))
+                        .duration(Some(LONG_NOTIFICATION_TIME));
+                    return;
+                };
+
+                let context = FileOpenContext::CassetteImage {
+                    fsc: FileSelectionContext::Path(path),
+                };
+                if let Err(err) = open_file(context, emu.sender.clone()) {
+                    log::error!("Failed to fetch cassette WAV: {err}");
+                    emu.gui
+                        .toasts()
+                        .error(format!("Failed to fetch cassette WAV: {err}"))
+                        .duration(Some(LONG_NOTIFICATION_TIME));
                 }
-                else {
-                    log::error!("Cannot load cassette: no cassette interface installed");
+                return;
+            }
+
+            match emu.cassette_manager.load_resource(*wav_idx, &mut emu.rm) {
+                Ok(media) => {
+                    let name = media.name.to_string_lossy().into_owned();
+                    let path = media.path.clone();
+                    if let Some(cassette_deck) = emu.machine.bus_mut().cassette_deck_mut().as_mut() {
+                        cassette_deck.insert_image(&media.samples, media.tape_type);
+                        emu.gui.set_cassette_selection(Some(*wav_idx), Some(path));
+                        emu.gui
+                            .toasts()
+                            .info(format!("Cassette inserted: {name}"))
+                            .duration(Some(NORMAL_NOTIFICATION_TIME));
+                    }
+                    else {
+                        log::error!("Cannot load cassette: no cassette interface installed");
+                    }
+                }
+                Err(err) => {
+                    log::error!("Failed to load cassette WAV: {err}");
+                    emu.gui
+                        .toasts()
+                        .error(format!("Failed to load cassette WAV: {err}"))
+                        .duration(Some(LONG_NOTIFICATION_TIME));
                 }
             }
-            Err(err) => {
-                log::error!("Failed to load cassette WAV: {err}");
-                emu.gui
-                    .toasts()
-                    .error(format!("Failed to load cassette WAV: {err}"))
-                    .duration(Some(LONG_NOTIFICATION_TIME));
-            }
-        },
+        }
         GuiEvent::EjectCassette => {
             if let Some(cassette_deck) = emu.machine.bus_mut().cassette_deck_mut().as_mut() {
                 cassette_deck.eject_image();
