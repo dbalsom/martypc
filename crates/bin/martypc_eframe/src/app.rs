@@ -46,7 +46,6 @@ use marty_common::VideoDimensions;
 use marty_display_common::display_manager::{DisplayManager, DmGuiOptions};
 use marty_egui_eframe::{context::GuiRenderContext, EGUI_MENU_BAR_HEIGHT};
 use marty_frontend_common::{deployment::DeploymentState, timestep_manager::TimestepManager};
-use marty_web_helpers::FetchResult;
 
 #[cfg(feature = "use_winit")]
 use crate::event_loop::winit_events::handle_window_event;
@@ -57,7 +56,7 @@ use eframe::egui_wgpu;
 #[cfg(not(feature = "use_winit"))]
 use crate::event_loop::web_keyboard::handle_web_key_event;
 
-use crossbeam_channel::{Receiver, Sender};
+use crossbeam_channel::Receiver;
 
 use crate::emulator_builder::builder::EmuBuilderError;
 #[cfg(target_arch = "wasm32")]
@@ -108,9 +107,6 @@ pub struct MartyApp {
     mouse_capture_title_hint: String,
     deployment_state: DeploymentState,
     gui: GuiRenderContext,
-    emu_loading: bool,
-    emu_receiver: Receiver<FetchResult>,
-    emu_sender: Sender<FetchResult>,
     #[cfg(feature = "use_winit")]
     winit_receiver: Option<Receiver<(winit::window::WindowId, winit::event::WindowEvent)>>,
     #[cfg(not(feature = "use_winit"))]
@@ -122,8 +118,6 @@ pub struct MartyApp {
 
 impl Default for MartyApp {
     fn default() -> Self {
-        let (sender, receiver) = crossbeam_channel::bounded(1);
-
         Self {
             hide_menu: false,
             // Stupid hack for web
@@ -135,9 +129,6 @@ impl Default for MartyApp {
             deployment_state: DeploymentState::default(),
             // Example stuff:
             gui: GuiRenderContext::default(),
-            emu_loading: false,
-            emu_receiver: receiver,
-            emu_sender: sender,
             #[cfg(feature = "use_winit")]
             winit_receiver: None,
             #[cfg(not(feature = "use_winit"))]
