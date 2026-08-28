@@ -88,9 +88,15 @@ pub fn handle_egui_event(
     #[allow(unreachable_patterns)]
     match gui_event {
         GuiEvent::Exit => {
-            // User chose exit option from menu. Shut down.
-            // TODO: Add a timeout from last VHD write for safety?
-            let _ = emu.sender.send(FrontendThreadEvent::QuitRequested);
+            #[cfg(target_arch = "wasm32")]
+            crate::wasm::util::return_to_launcher();
+
+            #[cfg(not(target_arch = "wasm32"))]
+            {
+                // User chose exit option from menu. Shut down.
+                // TODO: Add a timeout from last VHD write for safety?
+                let _ = emu.sender.send(FrontendThreadEvent::QuitRequested);
+            }
         }
         GuiEvent::SetNMI(state) => {
             // User wants to crash the computer. Sure, why not.

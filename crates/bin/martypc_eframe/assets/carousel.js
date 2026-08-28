@@ -4,6 +4,11 @@ const SystemOption = Object.freeze({
     ADLIB: "adlib",
 });
 
+const HistoryView = Object.freeze({
+    LAUNCHER: "launcher",
+    EMULATOR: "emulator",
+});
+
 const SUPPORTED_SYSTEM_OPTIONS = new Set(Object.values(SystemOption));
 const PRIMARY_VIDEO_OVERLAYS = new Set(["ibm_mda", "hercules", "ibm_cga", "ibm_ega", "ibm_vga"]);
 const VIDEO_SCALER_PRESETS = new Map([
@@ -39,6 +44,7 @@ const state = {
     systems: [],
     cards: [],
     wasmReady: false,
+    emulatorLaunchStarted: false,
     selectedIndex: 0,
     optionSelections: new Map(),
     carouselPosition: 0,
@@ -291,7 +297,7 @@ function syncLaunchUrl() {
         url.searchParams.delete("scaler_preset");
     }
 
-    window.history.replaceState(null, "", url.toString());
+    window.history.replaceState({martyView: HistoryView.LAUNCHER}, "", url.toString());
 }
 
 function setOptionVisibility(container, control, visible) {
@@ -592,10 +598,38 @@ function handlePointerCancellation(event) {
 }
 
 function handleStartButtonClick() {
+    if (state.emulatorLaunchStarted) {
+        return;
+    }
+
+    state.emulatorLaunchStarted = true;
+    // Establish the Back destination before asynchronous emulator initialization begins.
+    window.history.pushState({martyView: HistoryView.EMULATOR}, "", window.location.href);
     elements.startButton.disabled = true;
     elements.startButton.textContent = "Loading…";
     elements.startButton.setAttribute("aria-busy", "true");
 }
+
+function reloadLauncher() {
+    // Reloading tears down the entire WASM instance and restores the launcher's original DOM.
+    window.location.reload();
+}
+
+function returnToLauncher() {
+    if (window.history.state?.martyView === HistoryView.EMULATOR) {
+        window.history.back();
+    } else {
+        reloadLauncher();
+    }
+}
+
+function handleHistoryNavigation(event) {
+    if (state.emulatorLaunchStarted && event.state?.martyView === HistoryView.LAUNCHER) {
+        reloadLauncher();
+    }
+}
+
+window.martyReturnToLauncher = returnToLauncher;
 
 function updateStartButtonAvailability() {
     elements.startButton.disabled = state.systems.length === 0 || !state.wasmReady;
@@ -619,6 +653,7 @@ function bindEventListeners() {
     elements.carousel.addEventListener("lostpointercapture", handlePointerCancellation);
     elements.systemDetailsPanel.addEventListener("transitionend", handleSystemDetailsTransitionEnd);
     elements.startButton.addEventListener("click", handleStartButtonClick);
+    window.addEventListener("popstate", handleHistoryNavigation);
     document.addEventListener("keydown", handleKeyDown);
     reducedMotionQuery.addEventListener("change", handleReducedMotionChange);
 }
@@ -626,6 +661,7 @@ function bindEventListeners() {
 async function initializeCarousel() {
     elements = collectElements();
     configureTouchUi();
+    window.history.replaceState({martyView: HistoryView.LAUNCHER}, "", window.location.href);
     state.wasmReady = elements.startButton.dataset.wasmReady === "true";
     document.addEventListener("marty-wasm-ready", handleWasmReady, {once: true});
 

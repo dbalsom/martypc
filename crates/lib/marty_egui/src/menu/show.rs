@@ -92,8 +92,13 @@ impl GuiState {
                         }
                     }
 
-                    #[cfg(not(target_arch = "wasm32"))]
                     ui.separator();
+                }
+
+                #[cfg(target_arch = "wasm32")]
+                if ui.button("↩ Return to Launcher").clicked() {
+                    self.event_queue.send(GuiEvent::Exit);
+                    ui.close();
                 }
 
                 #[cfg(not(target_arch = "wasm32"))]
