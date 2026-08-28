@@ -172,10 +172,15 @@ pub fn handle_thread_event(emu: &mut Emulator, ctx: &egui::Context) {
                         };
                         match emu.cassette_manager.load_data(cassette_path.clone(), contents) {
                             Ok(media) => {
+                                let name = media.name.to_string_lossy().into_owned();
                                 if let Some(cassette_deck) = emu.machine.bus_mut().cassette_deck_mut().as_mut() {
                                     cassette_deck.insert_image(&media.samples, media.tape_type);
-                                    log::debug!("Cassette inserted: {}", media.name.to_string_lossy());
+                                    log::debug!("Cassette inserted: {name}");
                                     emu.gui.set_cassette_selection(None, Some(cassette_path));
+                                    emu.gui
+                                        .toasts()
+                                        .info(format!("Cassette inserted: {name}"))
+                                        .duration(Some(NORMAL_NOTIFICATION_TIME));
                                 }
                                 else {
                                     log::error!("Cannot load cassette: no cassette interface installed");
