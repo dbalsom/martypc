@@ -60,6 +60,10 @@ impl PerfCounter {
         self.accum += 1;
     }
     #[inline]
+    pub fn add(&mut self, count: u32) {
+        self.accum += count;
+    }
+    #[inline]
     pub fn mark_interval(&mut self) {
         self.last = self.total; // Save last frame's count
         self.total = self.accum; // Save this frame's count
@@ -110,23 +114,22 @@ impl HertzEvent {
         self.rate
     }
     #[inline]
-    pub fn tick(&mut self, elapsed: Duration) -> bool {
+    pub fn tick(&mut self, elapsed: Duration) -> u32 {
         self.accum += elapsed;
-        if self.accum >= self.target {
-            self.accum -= self.target;
-            true
-        }
-        else {
-            false
-        }
+
+        let ticks_due = (self.accum.as_nanos() / self.target.as_nanos()).min(u32::MAX as u128) as u32;
+        self.accum -= self.target * ticks_due;
+
+        ticks_due
     }
 }
 
 #[derive(Copy, Clone, Default)]
 pub struct PerfStats {
-    pub wm_ups: PerfCounter,  // Number of updates per second from the window manager
-    pub wm_fps: PerfCounter,  // Number of frames per second calculated from wm updates
-    pub emu_ups: PerfCounter, // Number of updates per second performed by emulator core
+    pub wm_ups: PerfCounter,         // Number of updates per second from the window manager
+    pub wm_fps: PerfCounter,         // Number of frames per second calculated from wm updates
+    pub emu_ups: PerfCounter,        // Number of updates per second performed by emulator core
+    pub skipped_frames: PerfCounter, // Number of emulated render intervals coalesced per second
     pub cpu_cycles: CycleFrameCounter,
     pub cpu_instructions: CycleFrameCounter,
     pub sys_ticks: CycleFrameCounter,
@@ -143,6 +146,7 @@ pub struct PerfSnapshot {
     pub wm_ups: u32,
     pub wm_fps: u32,
     pub emu_ups: u32,
+    pub skipped_frames: u32,
     pub cpu_cycles: u32,
     pub cpu_instructions: u32,
     pub sys_ticks: u32,
@@ -160,6 +164,7 @@ impl PerfStats {
             wm_ups: self.wm_ups.total,
             wm_fps: self.wm_fps.total,
             emu_ups: self.emu_ups.total,
+            skipped_frames: self.skipped_frames.total,
             cpu_cycles: self.cpu_cycles.cycles_per() as u32,
             cpu_instructions: self.cpu_instructions.cycles_per() as u32,
             sys_ticks: self.sys_ticks.cycles_per() as u32,
@@ -297,21 +302,27 @@ impl TimestepManager {
         self.perf_stats.wm_ups.tick();
 
         // Handle seconds
-        if self.second_rate.tick(elapsed) {
+        if self.second_rate.tick(elapsed) > 0 {
             self.handle_second(emu, second_callback);
         }
 
         // Handle emu updates
-        if self.emu_update_rate.tick(elapsed) {
+        let emu_updates_due = self.emu_update_rate.tick(elapsed);
+        if emu_updates_due > 0 {
             self.last_frame_instant = Instant::now();
             let emu_start = Instant::now();
-            emu_update_callback(emu, self.cpu_cycle_update_target);
-            self.perf_stats.emu_ups.tick();
+            for _ in 0..emu_updates_due {
+                emu_update_callback(emu, self.cpu_cycle_update_target);
+                self.perf_stats.emu_ups.tick();
+            }
             self.perf_stats.emu_frame_time = emu_start.elapsed();
         }
 
-        // Handle emu frame render
-        if self.emu_render_rate.tick(elapsed) {
+        // Handle emu frame render. Multiple elapsed render intervals are deliberately coalesced
+        // into a single render of the newest completed video-card front buffer.
+        let emu_renders_due = self.emu_render_rate.tick(elapsed);
+        if emu_renders_due > 0 {
+            self.perf_stats.skipped_frames.add(emu_renders_due - 1);
             let snapshot = self.perf_stats.snapshot(self.cpu_cycle_update_target);
 
             // TODO: We can't give the callback mutable access to the timestep manager,
@@ -360,6 +371,7 @@ impl TimestepManager {
         self.perf_stats.wm_ups.mark_interval();
         self.perf_stats.wm_fps.mark_interval();
         self.perf_stats.emu_ups.mark_interval();
+        self.perf_stats.skipped_frames.mark_interval();
         //self.perf_stats.emu_fps.mark_interval();
 
         // If the CPU Mhz has changed, update the cycle target
@@ -409,5 +421,38 @@ impl TimestepManager {
 
     pub fn get_perf_stats(&self) -> (&PerfStats, Vec<FrameEntry>) {
         (&self.perf_stats, self.frame_history.as_vec())
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::{Duration, HertzEvent, PerfCounter};
+
+    #[test]
+    fn seventy_hz_event_reports_all_ticks_on_sixty_hz_host() {
+        let mut event = HertzEvent::new(70.0);
+        let host_frame = Duration::from_secs_f64(1.0 / 60.0);
+        let mut total_ticks = 0;
+        let mut skipped_frames = PerfCounter::default();
+
+        for _ in 0..60 {
+            let ticks_due = event.tick(host_frame);
+            assert!((1..=2).contains(&ticks_due));
+            total_ticks += ticks_due;
+            skipped_frames.add(ticks_due.saturating_sub(1));
+        }
+        skipped_frames.mark_interval();
+
+        assert_eq!(total_ticks, 70);
+        assert_eq!(skipped_frames.total, 10);
+    }
+
+    #[test]
+    fn tick_consumes_every_reported_interval() {
+        let mut event = HertzEvent::new(70.0);
+        let three_frames = Duration::from_secs_f64(3.0 / 70.0);
+
+        assert_eq!(event.tick(three_frames), 3);
+        assert_eq!(event.tick(Duration::ZERO), 0);
     }
 }
