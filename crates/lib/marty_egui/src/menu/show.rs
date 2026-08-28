@@ -27,7 +27,7 @@
 
 //! Implement the main emulator menu.
 
-use crate::{GuiEvent, GuiWindow, state::GuiState};
+use crate::{state::GuiState, GuiEvent, GuiWindow};
 use marty_frontend_common::MartyGuiTheme;
 
 #[cfg(target_arch = "wasm32")]
@@ -49,17 +49,17 @@ fn display_target_count_for_card(
 impl GuiState {
     pub fn show_menu(&mut self, ui: &mut egui::Ui) {
         let modal_mode = self.active_modal_mode(ui.ctx());
-        egui::menu::bar(ui, |ui| {
+        egui::MenuBar::new().ui(ui, |ui| {
             ui.menu_button("Emulator", |ui| {
                 ui.set_min_width(120.0);
 
                 if !modal_mode.is_active() {
                     if ui.button("⏱ Performance...").clicked() {
                         *self.window_flag(GuiWindow::PerfViewer) = true;
-                        ui.close_menu();
+                        ui.close();
                     }
 
-                    ui.menu_button("Theme", |ui| {
+                    ui.menu_button("🎨 Theme", |ui| {
                         ui.set_min_width(140.0);
                         for theme in MartyGuiTheme::ALL {
                             if ui.radio(theme == self.current_theme(), theme.label()).clicked() {
@@ -99,7 +99,7 @@ impl GuiState {
                 #[cfg(not(target_arch = "wasm32"))]
                 if ui.button("⎆ Quit").clicked() {
                     self.event_queue.send(GuiEvent::Exit);
-                    ui.close_menu();
+                    ui.close();
                 }
             });
 
