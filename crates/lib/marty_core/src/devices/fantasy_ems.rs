@@ -1064,8 +1064,9 @@ impl FantasyEmsCard {
         };
 
         for (i, page) in self.pages.iter().enumerate() {
-            if (i >= (self.current_mapping_context_offset as usize) && 
-                i < ((self.current_mapping_context_offset + FANTASY_PAGE_COUNT) as usize)){ // todo yuck
+            if i >= (self.current_mapping_context_offset as usize)
+                && i < ((self.current_mapping_context_offset + FANTASY_PAGE_COUNT) as usize)
+            {
                 state.page_register_state.push((
                     (i as u8) - self.current_mapping_context_offset ,
                     PAGE_SEGMENT_LOOKUP[i - (self.current_mapping_context_offset as usize)],
@@ -1144,13 +1145,13 @@ impl IoDevice for FantasyEmsCard {
         //self.rw_op(ticks, 0, port as u32, RwSlotType::Io);
 
 
-        if (port == FANTASY_PAGE_SELECT_REGISTER) {
+        if port == FANTASY_PAGE_SELECT_REGISTER {
             self.current_page_index
-        } else if (port == FANTASY_PAGE_SET_REGISTER_LO) {
+        } else if port == FANTASY_PAGE_SET_REGISTER_LO {
             (self.pages[(self.current_page_index + self.current_mapping_context_offset) as usize].page_addr >> FANTASY_PAGE_SHIFT) as u8
-        } else if (port == FANTASY_PAGE_SET_REGISTER_HI) {
+        } else if port == FANTASY_PAGE_SET_REGISTER_HI {
             (self.pages[(self.current_page_index + self.current_mapping_context_offset) as usize].page_addr >> (FANTASY_PAGE_SHIFT + 8)) as u8
-        } else if (port == FANTASY_CONTEXT_REGISTER) {
+        } else if port == FANTASY_CONTEXT_REGISTER {
             self.context_register
         } else {
             NO_IO_BYTE
@@ -1166,25 +1167,25 @@ impl IoDevice for FantasyEmsCard {
         _delta: DeviceRunTimeUnit,
         _analyzer: Option<&mut LogicAnalyzer>,
     ) {
-        if (port == FANTASY_PAGE_SELECT_REGISTER) {
-            if ((data & FANTASY_PAGE_SET_MASK) >= FANTASY_WRITABLE_PAGE_COUNT){
+        if port == FANTASY_PAGE_SELECT_REGISTER {
+            if (data & FANTASY_PAGE_SET_MASK) >= FANTASY_WRITABLE_PAGE_COUNT {
                 log::warn!("Out of range page select register write! {}", data);
                 self.current_page_index = 0;
             } else {
                 self.current_page_index = data & FANTASY_PAGE_SET_MASK;
             }
 
-            if ((data & FANTASY_AUTOINCREMENT_PAGE_FLAG) == FANTASY_AUTOINCREMENT_PAGE_FLAG){
+            if (data & FANTASY_AUTOINCREMENT_PAGE_FLAG) == FANTASY_AUTOINCREMENT_PAGE_FLAG {
                 self.page_index_auto_increment_on = true;
             } else {
                 self.page_index_auto_increment_on = false;
             }
-        } else if (port == FANTASY_PAGE_SET_REGISTER_LO) {
+        } else if port == FANTASY_PAGE_SET_REGISTER_LO {
             self.current_page_set_register_lo_value = data;
 
-        } else if (port == FANTASY_PAGE_SET_REGISTER_HI) {
+        } else if port == FANTASY_PAGE_SET_REGISTER_HI {
             let combined_data:u16 = ((data as u16) << 8) + (self.current_page_set_register_lo_value as u16);
-            if (combined_data == 0xFFFF){
+            if combined_data == 0xFFFF {
                 //log::warn!("Page {} Unset!", self.current_page_index);
                 self.page_reg_unmap(self.current_page_index);
             } else {
@@ -1193,15 +1194,15 @@ impl IoDevice for FantasyEmsCard {
                 self.page_reg_write(self.current_page_index, combined_data & FANTASY_EMS_MAX_LOGICAL_PAGE_MASK);
             }
 
-            if (self.page_index_auto_increment_on){
+            if self.page_index_auto_increment_on {
                 self.current_page_index += 1;
-                if (self.current_page_index >= FANTASY_WRITABLE_PAGE_COUNT){
+                if self.current_page_index >= FANTASY_WRITABLE_PAGE_COUNT {
                     self.current_page_index = 0;
                 } else {
                     self.current_page_index = data & FANTASY_PAGE_SET_MASK;
                 }
 
-                if ((data & FANTASY_AUTOINCREMENT_PAGE_FLAG) == FANTASY_AUTOINCREMENT_PAGE_FLAG){
+                if (data & FANTASY_AUTOINCREMENT_PAGE_FLAG) == FANTASY_AUTOINCREMENT_PAGE_FLAG {
                     self.page_index_auto_increment_on = true;
                 } else {
                     self.page_index_auto_increment_on = false;
@@ -1209,7 +1210,7 @@ impl IoDevice for FantasyEmsCard {
             }
 
         }
-        else if (port == FANTASY_CONTEXT_REGISTER) {
+        else if port == FANTASY_CONTEXT_REGISTER {
             // bits 2-7 currently unused
             self.context_register = data & 3;
             self.current_mapping_context = data & 3;
