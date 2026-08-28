@@ -32,7 +32,7 @@
 use std::time::Duration;
 use std::{mem::discriminant, path::PathBuf};
 
-use crate::{emulator::Emulator, floppy::load_floppy::handle_load_floppy};
+use crate::{emulator::Emulator, floppy::load_floppy::handle_load_floppy, sound::SoundInterfaceBackend};
 use display_manager_eframe::EFrameDisplayManager;
 
 #[cfg(not(target_arch = "wasm32"))]
@@ -47,6 +47,7 @@ use marty_core::{
     cpu_common,
     cpu_common::{Cpu, CpuOption, Register16},
     device_traits::videocard::ClockingMode,
+    devices::cassette_deck::CASSETTE_MONITOR_SOURCE_NAME,
     machine::{MachineOption, MachineState},
     vhd::VirtualHardDisk,
 };
@@ -54,6 +55,7 @@ use marty_core::{
 use marty_egui::FileDialogFilter;
 use marty_egui::{
     state::FloppyDriveSelection,
+    CassetteDeckEvent,
     DeviceSelection,
     GuiBoolean,
     GuiEnum,
@@ -268,11 +270,17 @@ pub fn handle_egui_event(
             Ok(media) => {
                 let name = media.name.to_string_lossy().into_owned();
                 let path = media.path.clone();
-                emu.gui.set_cassette_selection(Some(*wav_idx), Some(path));
-                emu.gui
-                    .toasts()
-                    .info(format!("Cassette WAV selected: {name}"))
-                    .duration(Some(NORMAL_NOTIFICATION_TIME));
+                if let Some(cassette_deck) = emu.machine.bus_mut().cassette_deck_mut().as_mut() {
+                    cassette_deck.insert_image(&media.samples, media.tape_type);
+                    emu.gui.set_cassette_selection(Some(*wav_idx), Some(path));
+                    emu.gui
+                        .toasts()
+                        .info(format!("Cassette inserted: {name}"))
+                        .duration(Some(NORMAL_NOTIFICATION_TIME));
+                }
+                else {
+                    log::error!("Cannot load cassette: no cassette interface installed");
+                }
             }
             Err(err) => {
                 log::error!("Failed to load cassette WAV: {err}");
@@ -283,12 +291,46 @@ pub fn handle_egui_event(
             }
         },
         GuiEvent::EjectCassette => {
-            emu.cassette_manager.eject();
+            if let Some(cassette_deck) = emu.machine.bus_mut().cassette_deck_mut().as_mut() {
+                cassette_deck.eject_image();
+            }
             emu.gui.set_cassette_selection(None, None);
             emu.gui
                 .toasts()
                 .info("Cassette WAV ejected")
                 .duration(Some(NORMAL_NOTIFICATION_TIME));
+        }
+        GuiEvent::CassetteDeck(event) => {
+            log::debug!("Received CassetteDeckEvent: {:?}", event);
+
+            let Some(cassette_deck) = emu.machine.bus_mut().cassette_deck_mut().as_mut()
+            else {
+                log::warn!("Ignoring transport command: no cassette interface installed");
+                return;
+            };
+
+            match event {
+                CassetteDeckEvent::Record => cassette_deck.record(),
+                CassetteDeckEvent::Play => cassette_deck.play(),
+                CassetteDeckEvent::Rewind => cassette_deck.rewind(),
+                CassetteDeckEvent::FastForward => cassette_deck.fast_forward(),
+                CassetteDeckEvent::Stop => cassette_deck.stop(),
+                CassetteDeckEvent::Pause => cassette_deck.pause(),
+                CassetteDeckEvent::CassetteSeek(sample_position) => {
+                    cassette_deck.seek(*sample_position);
+                }
+                CassetteDeckEvent::SetMonitorState(enabled) => {
+                    // Monitor toggles cassette sound source mute
+                    if let Some(sound_interface) = emu.si.as_mut() {
+                        if let Some((source_index, _)) = sound_interface.source_by_name(CASSETTE_MONITOR_SOURCE_NAME) {
+                            sound_interface.set_volume(source_index, None, Some(!enabled));
+                        }
+                        else {
+                            log::warn!("Cassette monitor sound source was not found");
+                        }
+                    }
+                }
+            }
         }
         GuiEvent::LoadVHD(drive_idx, image_idx) => {
             handle_load_vhd(emu, *drive_idx, FileSelectionContext::Index(*image_idx));

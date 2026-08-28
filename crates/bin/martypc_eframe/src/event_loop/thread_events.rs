@@ -148,9 +148,25 @@ pub fn handle_thread_event(emu: &mut Emulator, ctx: &egui::Context) {
                                 }
                             },
                         };
-                        let media = emu.cassette_manager.load_data(cassette_path.clone(), contents);
-                        log::info!("Cassette WAV selected: {}", media.name.to_string_lossy());
-                        emu.gui.set_cassette_selection(None, Some(cassette_path));
+                        match emu.cassette_manager.load_data(cassette_path.clone(), contents) {
+                            Ok(media) => {
+                                if let Some(cassette_deck) = emu.machine.bus_mut().cassette_deck_mut().as_mut() {
+                                    cassette_deck.insert_image(&media.samples, media.tape_type);
+                                    log::debug!("Cassette inserted: {}", media.name.to_string_lossy());
+                                    emu.gui.set_cassette_selection(None, Some(cassette_path));
+                                }
+                                else {
+                                    log::error!("Cannot load cassette: no cassette interface installed");
+                                }
+                            }
+                            Err(err) => {
+                                log::error!("Failed to decode cassette WAV: {err}");
+                                emu.gui
+                                    .toasts()
+                                    .error(format!("Failed to decode cassette WAV: {err}"))
+                                    .duration(Some(LONG_NOTIFICATION_TIME));
+                            }
+                        }
                     }
                     FileOpenContext::FloppyDiskImage { drive_select, fsc } => {
                         let mut floppy_path = None;

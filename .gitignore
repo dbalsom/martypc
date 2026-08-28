@@ -122,7 +122,11 @@ crates/bin/martypc_eframe/assets/configs
 /asm
 /install/program/*
 
+# Asset sources
+/assets/*.psd
+
 #misc
+
 /tree.txt
 /test-gen
 /exo_demo

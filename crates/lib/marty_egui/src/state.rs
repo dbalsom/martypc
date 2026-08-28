@@ -875,6 +875,11 @@ impl GuiState {
 
     pub fn set_cassette_selection(&mut self, idx: Option<usize>, path: Option<PathBuf>) {
         self.cassette_tree_menu.set_selected(0, idx);
+        let cassette_name = path
+            .as_ref()
+            .and_then(|path| path.file_stem().or_else(|| path.file_name()))
+            .map(|name| name.to_string_lossy().into_owned());
+        self.cassette_deck.set_cassette_name(cassette_name);
         self.cassette_path = path;
     }
 

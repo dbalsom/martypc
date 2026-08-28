@@ -48,47 +48,7 @@ impl GuiState {
             }
 
             if self.cassette_interface {
-                ui.menu_button("🖭 Cassette Deck", |ui| {
-                    ui.horizontal(|ui| {
-                        if ui.button("Open Deck Control...").clicked() {
-                            self.set_window_open(GuiWindow::CassetteDeck, true);
-                            ui.close();
-                        }
-                    });
-                    ui.separator();
-
-                    ui.horizontal(|ui| {
-                        ui.menu_button("Quick Access WAV", |ui| {
-                            self.cassette_tree_menu.draw(ui, 0, true, &mut |wav_idx| {
-                                self.event_queue.send(GuiEvent::LoadQuickCassette(wav_idx));
-                            });
-                        });
-                    });
-
-                    ui.horizontal(|ui| {
-                        if ui.button("Browse for WAV...").clicked() {
-                            let context = FileOpenContext::CassetteImage {
-                                fsc: FileSelectionContext::Uninitialized,
-                            };
-                            let filters = vec![FileDialogFilter::new("WAV Audio", vec!["wav"])];
-
-                            self.open_file_dialog(context, "Select Cassette WAV", filters, true);
-                            ui.close();
-                        }
-                    });
-
-                    ui.horizontal(|ui| {
-                        if let Some(filename) = self.cassette_filename() {
-                            if ui.button(format!("⏏ Eject WAV {filename}")).clicked() {
-                                self.event_queue.send(GuiEvent::EjectCassette);
-                                ui.close();
-                            }
-                        }
-                        else {
-                            ui.add_enabled(false, egui::Button::new("Eject WAV: <No WAV>"));
-                        }
-                    });
-                });
+                self.draw_cassette_menu(ui);
             }
 
             for i in 0..self.hdds.len() {
@@ -342,6 +302,44 @@ impl GuiState {
                         self.event_queue.send(GuiEvent::RemoveCartridge(cart_idx));
                     }
                 });
+            });
+        });
+    }
+
+    pub fn draw_cassette_menu(&mut self, ui: &mut egui::Ui) {
+        ui.menu_button("🖭 Cassette Deck", |ui| {
+            if ui.button("Open Deck Control...").clicked() {
+                self.set_window_open(GuiWindow::CassetteDeck, true);
+                ui.close();
+            }
+            ui.separator();
+
+            ui.menu_button("🗁 Quick Access WAV", |ui| {
+                self.cassette_tree_menu.draw(ui, 0, true, &mut |wav_idx| {
+                    self.event_queue.send(GuiEvent::LoadQuickCassette(wav_idx));
+                });
+            });
+
+            if ui.button("🗁 Browse for WAV...").clicked() {
+                let context = FileOpenContext::CassetteImage {
+                    fsc: FileSelectionContext::Uninitialized,
+                };
+                let filters = vec![FileDialogFilter::new("WAV Audio", vec!["wav"])];
+
+                self.open_file_dialog(context, "Select Cassette WAV", filters, true);
+                ui.close();
+            }
+
+            ui.horizontal(|ui| {
+                if let Some(filename) = self.cassette_filename() {
+                    if ui.button(format!("⏏ Eject WAV {filename}")).clicked() {
+                        self.event_queue.send(GuiEvent::EjectCassette);
+                        ui.close();
+                    }
+                }
+                else {
+                    ui.add_enabled(false, egui::Button::new("Eject WAV: <No WAV>"));
+                }
             });
         });
     }

@@ -80,6 +80,13 @@ pub trait SoundInterfaceBackend: Default {
     fn set_volume(&mut self, source_index: usize, volume: Option<f32>, muted: Option<bool>);
     fn config(&self) -> SoundOutputConfig;
     fn info(&self) -> Vec<SoundSourceInfo>;
+    /// Find a sound source by name, returning its index and current state.
+    fn source_by_name(&self, name: &str) -> Option<(usize, SoundSourceInfo)> {
+        self.info()
+            .into_iter()
+            .enumerate()
+            .find(|(_, source)| source.name == name)
+    }
     fn play_sound(&mut self, samples: &[f32], sample_rate: u32, stereo: bool) -> Result<(), Error>;
     fn device_reset(&mut self);
     fn set_looping_sounds_paused(&mut self, paused: bool);

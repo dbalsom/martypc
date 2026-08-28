@@ -31,6 +31,7 @@
 */
 
 pub mod cartridge;
+pub mod cassette;
 pub mod floppy;
 pub mod history_buffer;
 pub mod joystick;

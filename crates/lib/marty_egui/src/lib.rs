@@ -238,10 +238,23 @@ pub struct VhdCreateRequest {
     pub mount_drive: Option<usize>,
 }
 
+#[derive(Copy, Clone, Debug, Eq, PartialEq)]
+pub enum CassetteDeckEvent {
+    Record,
+    Play,
+    Rewind,
+    FastForward,
+    Stop,
+    Pause,
+    CassetteSeek(usize),
+    SetMonitorState(bool),
+}
+
 #[allow(dead_code)]
 pub enum GuiEvent {
     LoadQuickCassette(usize),
     EjectCassette,
+    CassetteDeck(CassetteDeckEvent),
     LoadVHD(usize, usize),
     DetachVHD(usize),
     CreateVHD(VhdCreateRequest),

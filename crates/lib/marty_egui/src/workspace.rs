@@ -60,7 +60,7 @@ impl GuiState {
             if ui.button(format!("{}...", win_def.menu)).clicked() {
                 self.window_state.entry(win_enum).and_modify(|e| e.open = true);
                 if close {
-                    ui.close_menu();
+                    ui.close();
                 }
                 clicked = true;
             }
@@ -84,7 +84,7 @@ impl GuiState {
             self.window_state.entry(win_enum).and_modify(|e| e.open = true);
             on_click(self);
             if close {
-                ui.close_menu();
+                ui.close();
             }
         }
     }
@@ -97,7 +97,7 @@ impl GuiState {
         if ui.button(format!("{}...", win_def.menu)).clicked() {
             self.window_state.entry(win_enum).and_modify(|e| e.open = !e.open);
             if close {
-                ui.close_menu();
+                ui.close();
             }
         }
     }
@@ -227,7 +227,7 @@ impl GuiState {
                     self.floppy_viewer.draw(ui, &mut self.event_queue);
                 }
                 GuiWindow::CassetteDeck => {
-                    self.cassette_deck.draw(ui);
+                    self.cassette_deck.draw(ui, &mut self.event_queue);
                 }
                 GuiWindow::SnViewer => {
                     self.sn_viewer.show(ui, &mut self.event_queue);

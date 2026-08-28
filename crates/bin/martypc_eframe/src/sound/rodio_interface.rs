@@ -432,7 +432,7 @@ impl RodioSoundInterface {
         let stream = self.stream.as_ref().ok_or(anyhow!("No audio stream open."))?;
         let player = Player::connect_new(stream.mixer());
         let volume = DEFAULT_VOLUME;
-        player.set_volume(volume);
+        player.set_volume(if source.initially_muted { 0.0 } else { volume });
 
         let channels = u16::try_from(source.channels)?;
         let channels_nz = NonZero::new(channels).ok_or(anyhow!("Sound source has zero channels."))?;
@@ -450,7 +450,7 @@ impl RodioSoundInterface {
             buffer_ct: 0,
             first_buffer: None,
             player,
-            muted: false,
+            muted: source.initially_muted,
             volume,
             last_block_received: Instant::now(),
             controller: Default::default(),
@@ -652,6 +652,7 @@ impl super::SoundInterfaceBackend for RodioSoundInterface {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::sound::SoundInterfaceBackend;
 
     fn effect(base_name: &str, samples: Vec<f32>) -> SoundEffect {
         SoundEffect {
@@ -771,6 +772,13 @@ mod tests {
         assert_eq!(machine_sounds.volume, 0.7);
         assert!(machine_sounds.muted);
         assert_eq!(interface.presentable_event_output.as_ref().unwrap().volume(), 0.0);
+        assert_eq!(
+            interface
+                .source_by_name(super::super::MACHINE_SOUNDS_NAME)
+                .map(|(source_index, _)| source_index),
+            Some(machine_sounds_index)
+        );
+        assert!(interface.source_by_name("Missing Source").is_none());
 
         interface.set_volume(machine_sounds_index, None, Some(false));
         assert_eq!(interface.presentable_event_output.as_ref().unwrap().volume(), 0.7);

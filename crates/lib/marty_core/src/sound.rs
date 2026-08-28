@@ -64,6 +64,7 @@ pub struct SoundSourceDescriptor {
     pub sample_rate: u32,
     pub channels: usize,
     pub receiver: Receiver<AudioSample>,
+    pub initially_muted: bool,
 }
 
 impl SoundSourceDescriptor {
@@ -78,6 +79,14 @@ impl SoundSourceDescriptor {
             sample_rate,
             channels,
             receiver,
+            initially_muted: false,
         }
+    }
+
+    /// Support initially-muted sound sources (Cassette monitor, preference
+    /// from last session, etc)
+    pub fn with_initial_mute(mut self, muted: bool) -> Self {
+        self.initially_muted = muted;
+        self
     }
 }

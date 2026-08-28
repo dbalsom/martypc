@@ -28,7 +28,11 @@
 
     Update the egui menu and widget state.
 */
-use crate::{emulator::Emulator, event_loop::egui_events::handle_egui_event};
+use crate::{
+    emulator::Emulator,
+    event_loop::egui_events::handle_egui_event,
+    sound::SoundInterfaceBackend,
+};
 
 use display_manager_eframe::{DisplayManager, EFrameDisplayManager};
 use marty_common::syntax_token::{SyntaxToken, SyntaxTokenStream};
@@ -37,6 +41,7 @@ use marty_core::{
     cpu_808x::Cpu,
     cpu_common,
     cpu_common::{CpuAddress, CpuOption, TraceMode},
+    devices::cassette_deck::CASSETTE_MONITOR_SOURCE_NAME,
     machine,
     util,
 };
@@ -327,6 +332,19 @@ pub fn update_egui(emu: &mut Emulator, dm: &mut EFrameDisplayManager, tm: &Times
 
         if let (Some(_image_lock), viz_writes) = emu.machine.floppy_image(di) {
             emu.gui.floppy_viewer.update_visualization(di, viz_writes);
+        }
+    }
+
+    // -- Update Cassette Deck window
+    if emu.gui.is_window_open(GuiWindow::CassetteDeck) {
+        if let Some(cassette_deck) = emu.machine.bus().cassette_deck().as_ref() {
+            emu.gui.cassette_deck.set_state(cassette_deck.state());
+        }
+        if let Some(sound_interface) = emu.si.as_ref() {
+            if let Some((_, source)) = sound_interface.source_by_name(CASSETTE_MONITOR_SOURCE_NAME)
+            {
+                emu.gui.cassette_deck.set_monitor_enabled(!source.muted);
+            }
         }
     }
 
