@@ -155,7 +155,7 @@ speaker = true
 cassette = true
 overlays = [
     "ibm_nec_fdc",
-    "floppy_360k:0",
+    "floppy_720k:0",
     "floppy_360k:1",
     "pcxt_2_serial_ports",
     "us_modelf_keyboard",
