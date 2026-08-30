@@ -196,6 +196,43 @@ marty_print_version:
     pop     ax
     ret
 
+; Print the service API version detected by marty_probe as:
+;   API version: <major>.<minor>
+;
+; Call marty_probe successfully before using this routine.
+; Clobbers: Status flags. Preserves all registers and restores DS.
+marty_print_api_version:
+    push    ax
+    push    dx
+    push    ds
+
+    push    cs
+    pop     ds
+
+    mov     dx, marty_api_version_prefix
+    mov     ah, 09h
+    int     21h
+
+    mov     ax, [cs:marty_api_version]
+    mov     al, ah
+    call    print_decimal_byte
+
+    mov     dl, '.'
+    mov     ah, 02h
+    int     21h
+
+    mov     al, [cs:marty_api_version]
+    call    print_decimal_byte
+
+    mov     dx, marty_api_version_suffix
+    mov     ah, 09h
+    int     21h
+
+    pop     ds
+    pop     dx
+    pop     ax
+    ret
+
 ; MartyPC service interrupt dispatcher
 ; -----------------------------------------------------------------------------
 ; Call marty_probe before using this routine. The caller should set AH to the
@@ -358,5 +395,7 @@ marty_version:      dw 0
 marty_api_version:  dw 0
 marty_detected_prefix: db 'MartyPC v', '$'
 marty_detected_suffix: db ' detected', 0Dh, 0Ah, '$'
+marty_api_version_prefix: db 'API version: ', '$'
+marty_api_version_suffix: db 0Dh, 0Ah, '$'
 
 %endif
