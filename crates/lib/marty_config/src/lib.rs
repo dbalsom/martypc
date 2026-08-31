@@ -423,6 +423,8 @@ impl Machine {
 pub struct EmulatorInput {
     #[serde(default)]
     pub reverse_mouse_buttons: bool,
+    #[serde(default = "_default_true")]
+    pub middle_click_capture_shortcut: bool,
     pub hotkeys: Vec<HotkeyConfigEntry>,
     pub joystick_keys: Vec<JoyKeyEntry>,
     #[serde(default)]
@@ -853,5 +855,25 @@ mod tests {
         });
 
         assert!(config.emulator.input.osd_keyboard);
+    }
+
+    #[test]
+    fn middle_click_capture_shortcut_defaults_to_enabled() {
+        let config_without_shortcut = include_str!("../../../../install/martypc.toml")
+            .lines()
+            .filter(|line| !line.trim_start().starts_with("middle_click_capture_shortcut"))
+            .collect::<Vec<_>>()
+            .join("\n");
+        let config: ConfigFileParams = toml::from_str(&config_without_shortcut).unwrap();
+
+        assert!(config.emulator.input.middle_click_capture_shortcut);
+    }
+
+    #[test]
+    fn middle_click_capture_shortcut_can_be_disabled() {
+        let shortcut_disabled = include_str!("../../../../install/martypc.toml")
+            .replace("middle_click_capture_shortcut = true", "middle_click_capture_shortcut = false");
+        let config: ConfigFileParams = toml::from_str(&shortcut_disabled).unwrap();
+        assert!(!config.emulator.input.middle_click_capture_shortcut);
     }
 }

@@ -646,25 +646,13 @@ impl MartyApp {
                 }
             }
 
-            // Receive hooked web_sys::KeyboardEvent events.
-            #[cfg(not(feature = "use_winit"))]
-            if let Some(receiver) = &self.web_receiver {
-                for event in receiver.try_iter() {
-                    log::trace!("Received web_sys event: {:?}", event);
+            let middle_click_capture_shortcut = emu.config.emulator.input.middle_click_capture_shortcut;
 
-                    handle_web_key_event(
-                        emu,
-                        self.dm.as_mut().unwrap(),
-                        event,
-                        ctx.memory(|mem| mem.focused()).is_some(),
-                    );
-                }
-            }
-
-            let dm = self.dm.as_mut().unwrap();
-
+            // Reconcile browser pointer lock before processing new web input. A hotkey may request
+            // a pointer-lock change that eframe cannot apply until after this update returns.
             #[cfg(target_arch = "wasm32")]
             {
+                let dm = self.dm.as_mut().unwrap();
                 let browser_captured = crate::wasm::util::canvas_has_pointer_lock();
                 if browser_captured != emu.mouse_data.is_captured {
                     emu.mouse_data.is_captured = browser_captured;
@@ -679,8 +667,11 @@ impl MartyApp {
                         }
                     }
 
-                    let message = if browser_captured {
+                    let message = if browser_captured && middle_click_capture_shortcut {
                         "Mouse captured! Middle-click to release."
+                    }
+                    else if browser_captured {
+                        "Mouse captured!"
                     }
                     else {
                         "Mouse released!"
@@ -688,6 +679,24 @@ impl MartyApp {
                     emu.gui.toasts().info(message).duration(Some(NORMAL_NOTIFICATION_TIME));
                 }
             }
+
+            // Receive hooked web_sys::KeyboardEvent events.
+            #[cfg(not(feature = "use_winit"))]
+            if let Some(receiver) = &self.web_receiver {
+                for event in receiver.try_iter() {
+                    log::trace!("Received web_sys event: {:?}", event);
+
+                    handle_web_key_event(
+                        emu,
+                        self.dm.as_mut().unwrap(),
+                        ctx.clone(),
+                        event,
+                        ctx.memory(|mem| mem.focused()).is_some(),
+                    );
+                }
+            }
+
+            let dm = self.dm.as_mut().unwrap();
 
             #[cfg(not(target_arch = "wasm32"))]
             let mouse_capture_hint = emu
@@ -719,7 +728,9 @@ impl MartyApp {
                 match dtc.try_read() {
                     Ok(dtc_ref) => {
                         if dtc_ref.grabbed() {
-                            if process_captured_pointer_input(i, &mut emu.mouse_data) {
+                            if process_captured_pointer_input(i, &mut emu.mouse_data)
+                                && middle_click_capture_shortcut
+                            {
                                 log::warn!("Got middle click while grabbed!");
                                 ungrab = true;
                             }
@@ -843,21 +854,23 @@ impl MartyApp {
                                     // });
                                 }
 
-                                if root_can_grab && response.double_clicked() {
-                                    log::warn!("Double-clicked main display!");
-                                    if !dtc_ref.grabbed() {
-                                        ctx.send_viewport_cmd(ViewportCommand::CursorGrab(GRAB_MODE));
-                                        ctx.send_viewport_cmd(ViewportCommand::CursorVisible(false));
+                                if root_can_grab
+                                    && middle_click_capture_shortcut
+                                    && !emu.mouse_data.is_captured
+                                    && response.middle_clicked()
+                                {
+                                    log::warn!("Middle-clicked main display!");
+                                    ctx.send_viewport_cmd(ViewportCommand::CursorGrab(GRAB_MODE));
+                                    ctx.send_viewport_cmd(ViewportCommand::CursorVisible(false));
 
-                                        #[cfg(not(target_arch = "wasm32"))]
-                                        {
-                                            *_capture_state = Some(true);
-                                            dtc_ref.set_grabbed(true, emu.mouse_data.capture_mode);
+                                    #[cfg(not(target_arch = "wasm32"))]
+                                    {
+                                        *_capture_state = Some(true);
+                                        dtc_ref.set_grabbed(true, emu.mouse_data.capture_mode);
 
-                                            gui.toasts()
-                                                .info(mouse_capture_message.clone())
-                                                .duration(Some(NORMAL_NOTIFICATION_TIME));
-                                        }
+                                        gui.toasts()
+                                            .info(mouse_capture_message.clone())
+                                            .duration(Some(NORMAL_NOTIFICATION_TIME));
                                     }
                                 }
                                 else if ungrab && dtc_ref.grabbed() {
@@ -924,8 +937,12 @@ impl MartyApp {
                             ui.painter().add(callback);
                         }
 
-                        if root_can_grab && response.double_clicked() && !dtc_ref.grabbed() {
-                            log::warn!("Double-clicked display {:?}!", root_display);
+                        if root_can_grab
+                            && middle_click_capture_shortcut
+                            && !emu.mouse_data.is_captured
+                            && response.middle_clicked()
+                        {
+                            log::warn!("Middle-clicked display {:?}!", root_display);
                             ctx.send_viewport_cmd(ViewportCommand::CursorGrab(GRAB_MODE));
                             ctx.send_viewport_cmd(ViewportCommand::CursorVisible(false));
 
@@ -997,7 +1014,7 @@ impl MartyApp {
                     if _target.grabbed() {
                         _ui.ctx().set_cursor_icon(egui::CursorIcon::None);
                         let ungrab = _ui.input(|input| process_captured_pointer_input(input, &mut emu.mouse_data));
-                        if ungrab {
+                        if ungrab && middle_click_capture_shortcut {
                             log::warn!("Got middle click while display {:?} is grabbed!", _display);
                             _ui.ctx()
                                 .send_viewport_cmd(ViewportCommand::CursorGrab(CursorGrab::None));
@@ -1011,8 +1028,12 @@ impl MartyApp {
                                 .duration(Some(NORMAL_NOTIFICATION_TIME));
                         }
                     }
-                    else if _can_grab && !emu.mouse_data.is_captured && _response.double_clicked() {
-                        log::warn!("Double-clicked display {:?} in viewport {:?}!", _display, _viewport_id);
+                    else if _can_grab
+                        && middle_click_capture_shortcut
+                        && !emu.mouse_data.is_captured
+                        && _response.middle_clicked()
+                    {
+                        log::warn!("Middle-clicked display {:?} in viewport {:?}!", _display, _viewport_id);
                         _ui.ctx().send_viewport_cmd(ViewportCommand::CursorGrab(GRAB_MODE));
                         _ui.ctx().send_viewport_cmd(ViewportCommand::CursorVisible(false));
                         _target.set_grabbed(true, emu.mouse_data.capture_mode);
