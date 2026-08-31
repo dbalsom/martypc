@@ -288,6 +288,16 @@ pub fn update_egui(emu: &mut Emulator, dm: &mut EFrameDisplayManager, tm: &Times
         emu.gui.serial_viewer.update_state(&serial_state);
     }
 
+    // -- Update Virtual Mouse viewer window
+    if emu.gui.is_window_open(GuiWindow::VirtualMouseViewer) {
+        emu.gui.virtual_mouse_viewer.update_state(
+            emu.machine
+                .mouse_mut()
+                .as_ref()
+                .and_then(|mouse| mouse.virtual_debug_state()),
+        );
+    }
+
     // -- Update PIC viewer window
     if emu.gui.is_window_open(GuiWindow::PicViewer) {
         let pic_state = emu.machine.pic_state();

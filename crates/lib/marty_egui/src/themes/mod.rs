@@ -35,15 +35,12 @@ mod lilac;
 mod new_purple;
 mod purple;
 
-use crate::themes::{
-    cobalt::CobaltTheme,
-    lilac::LilacTheme,
-    new_purple::NewPurpleTheme,
-    purple::DarkTintedTheme,
-};
-use egui::{Style, Visuals};
-use marty_frontend_common::MartyGuiTheme;
 use std::sync::Arc;
+
+use crate::themes::{cobalt::CobaltTheme, lilac::LilacTheme, new_purple::NewPurpleTheme, purple::DarkTintedTheme};
+use marty_frontend_common::MartyGuiTheme;
+
+use egui::{Style, Visuals};
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum ThemeBase {

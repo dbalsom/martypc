@@ -481,6 +481,11 @@ pub trait VideoCard {
     /// text mode, an empty vector should be returned.
     fn get_text_mode_strings(&self) -> Vec<String>;
 
+    /// Return whether this video adapter supports a light pen.
+    fn has_lightpen(&self) -> bool {
+        false
+    }
+
     /// Set the position of an attached light pen.
     fn set_light_pen_pos(&mut self, _x: u32, _y: u32) {
         // Default implementation does nothing

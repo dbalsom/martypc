@@ -38,11 +38,19 @@ use crate::{
     file_transfer::{load_non_interactive_file, NonInteractiveFileLoadError},
     screenshot,
 };
-use web_time::Instant;
 
 use crate::{emulator::Emulator, event_loop::render_frame::render_frame, input::GamepadEvent};
 use display_manager_eframe::{DisplayManager, EFrameDisplayManager};
-use marty_core::{bus::DeviceEvent, cpu_common::ServiceEvent, devices::game_port::GamePort, machine::MachineEvent};
+use marty_core::{
+    bus::DeviceEvent,
+    cpu_common::ServiceEvent,
+    devices::{
+        game_port::GamePort,
+        mouse::{Mouse, MouseInput, VirtualMouseInputMode},
+    },
+    machine::MachineEvent,
+};
+use marty_egui::GuiBoolean;
 use marty_frontend_common::{
     constants::{LONG_NOTIFICATION_TIME, NORMAL_NOTIFICATION_TIME, SHORT_NOTIFICATION_TIME},
     marty_common::types::ui::MouseCaptureMode,
@@ -55,42 +63,58 @@ use marty_frontend_common::{
     Emulator,
 };*/
 
-pub fn update_mouse_buttons(emu: &mut Emulator) {
-    let l_button_state = if emu.mouse_data.l_button_was_released {
-        false
-    }
-    else {
-        emu.mouse_data.l_button_was_pressed
-    };
-
-    let r_button_state = if emu.mouse_data.r_button_was_released {
-        false
-    }
-    else {
-        emu.mouse_data.r_button_was_pressed
-    };
-
-    emu.mouse_data.l_button_is_pressed = l_button_state;
-    emu.mouse_data.r_button_is_pressed = r_button_state;
-}
+use web_time::Instant;
 
 pub fn process_update(emu: &mut Emulator, dm: &mut EFrameDisplayManager, tm: &mut TimestepManager) {
+    let mouse_enabled = emu.gui.get_option(GuiBoolean::MouseEnabled).unwrap_or(true);
+    let light_pen_enabled = emu.gui.get_option(GuiBoolean::LightPenEnabled).unwrap_or(false);
+
+    if let Some(mouse) = emu.machine.mouse_mut() {
+        let input_mode = if emu.mouse_data.capture_mode == MouseCaptureMode::Mouse && emu.mouse_data.is_captured {
+            VirtualMouseInputMode::Relative
+        }
+        else {
+            VirtualMouseInputMode::Absolute
+        };
+        mouse.set_virtual_input_mode(input_mode);
+    }
+
+    // Hand mouse input to the core before the machine runs to reduce latency
+    if emu.mouse_data.have_update {
+        let mut consumed = false;
+        if mouse_enabled {
+            if let Some(mouse) = emu.machine.mouse_mut() {
+                let absolute_position = emu.mouse_data.pending_absolute_position;
+                let submit_absolute = matches!(mouse, Mouse::Virtual(_)) && absolute_position.is_some();
+                let submit_relative = emu.mouse_data.capture_mode == MouseCaptureMode::Mouse
+                    && emu.mouse_data.is_captured
+                    && absolute_position.is_none();
+
+                if submit_absolute || submit_relative {
+                    mouse.submit_input(MouseInput {
+                        delta_x: emu.mouse_data.frame_delta_x as f64,
+                        delta_y: emu.mouse_data.frame_delta_y as f64,
+                        absolute_x: absolute_position.map(|position| position.0 as f64),
+                        absolute_y: absolute_position.map(|position| position.1 as f64),
+                        left_button: emu.mouse_data.l_button_is_pressed,
+                        right_button: emu.mouse_data.r_button_is_pressed,
+                        left_pressed_since: emu.mouse_data.l_button_was_pressed,
+                        right_pressed_since: emu.mouse_data.r_button_was_pressed,
+                    });
+                    consumed = true;
+                }
+            }
+        }
+
+        if consumed || emu.mouse_data.capture_mode == MouseCaptureMode::Mouse {
+            emu.mouse_data.reset();
+        }
+    }
+
     tm.wm_update(
         emu,
         dm,
         |emuc| {
-            // log::debug!(
-            //     "Second update: Running at {} Mhz, {} cycles, {} instructions, {} ticks, {} frames",
-            //     emuc.machine.get_cpu_mhz(),
-            //     emuc.machine.cpu_cycles(),
-            //     emuc.machine.cpu_instructions(),
-            //     emuc.machine.system_ticks(),
-            //     emuc.machine
-            //         .primary_videocard()
-            //         .map(|vc| vc.get_frame_count())
-            //         .unwrap_or(0)
-            // );
-
             // Per second freq
             MachinePerfStats {
                 cpu_mhz: emuc.machine.get_cpu_mhz(),
@@ -109,38 +133,24 @@ pub fn process_update(emu: &mut Emulator, dm: &mut EFrameDisplayManager, tm: &mu
             emuc.perf = perf;
 
             match emuc.mouse_data.capture_mode {
-                MouseCaptureMode::Mouse => {
-                    update_mouse_buttons(emuc);
-                    if let Some(mouse) = emuc.machine.mouse_mut() {
-                        // If we're in mouse capture mode, only update if we have a mouse update.
-                        if emuc.mouse_data.is_captured && emuc.mouse_data.have_update {
-                            mouse.update(
-                                emuc.mouse_data.l_button_is_pressed,
-                                emuc.mouse_data.r_button_is_pressed,
+                MouseCaptureMode::Mouse => {}
+                MouseCaptureMode::LightPen => {
+                    if light_pen_enabled && emuc.mouse_data.is_captured {
+                        dmc.with_primary_renderer_mut(|renderer| {
+                            renderer.update_cursor(
                                 emuc.mouse_data.frame_delta_x,
                                 emuc.mouse_data.frame_delta_y,
-                            );
-                        }
+                                true, // Light pen should always latch if reset, independent of button
+                            )
+                        });
                     }
-                }
-                MouseCaptureMode::LightPen => {
-                    // In light pen mode, we want to update the mouse state every frame, even if we don't have an update,
-                    // so that the renderer can update the light pen position and latching.
-                    update_mouse_buttons(emuc);
-
-                    // Update renderer here
-                    dmc.with_primary_renderer_mut(|renderer| {
-                        renderer.update_cursor(
-                            emuc.mouse_data.frame_delta_x,
-                            emuc.mouse_data.frame_delta_y,
-                            true, // Light pen should always latch if reset, independent of button
-                        )
-                    });
                 }
             }
 
-            // Reset mouse for next frame
-            emuc.mouse_data.reset();
+            // Light-pen deltas remain frontend-owned until the renderer consumes them.
+            if emuc.mouse_data.capture_mode == MouseCaptureMode::LightPen {
+                emuc.mouse_data.reset();
+            }
 
             // Do gamepad events
             #[cfg(feature = "use_gilrs")]

@@ -36,8 +36,8 @@ use web_time::{Duration, Instant};
 
 const SECOND: Duration = Duration::from_secs(1);
 
-const UPS_CAP: u64 = 1000; // Maximum number of window manager updates per second
-const UPS_MIN_DURATION: Duration = Duration::from_millis(1000 / UPS_CAP as u64); // Minimum duration between window manager updates
+//const UPS_CAP: u64 = 1000; // Maximum number of window manager updates per second
+//const UPS_MIN_DURATION: Duration = Duration::from_millis(1000 / UPS_CAP as u64); // Minimum duration between window manager updates
 const DEFAULT_EMU_FPS_TARGET: f32 = 60.0; // Default rendering FPS for the emulator
 const FRAME_HISTORY_LEN: usize = 60; // Number of frames of history to keep
 
@@ -212,7 +212,6 @@ pub struct TimestepManager {
     frame_history: HistoryBuffer<FrameEntry>,
     perf_stats: PerfStats,
     total_running_time: Duration,
-    frame_due: bool,
 }
 
 impl Default for TimestepManager {
@@ -237,8 +236,6 @@ impl Default for TimestepManager {
             frame_history: HistoryBuffer::new(FRAME_HISTORY_LEN),
             total_running_time: Duration::from_secs(0),
             perf_stats: PerfStats::default(),
-
-            frame_due: false,
         }
     }
 }

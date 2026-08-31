@@ -79,7 +79,7 @@ use marty_common::types::{keys::MartyKey, ui::MouseCaptureMode};
 use marty_core::cpu_common::Register16;
 #[cfg(feature = "use_display")]
 use marty_display_common::display_manager::{DisplayTargetType, DtHandle, VpHandle};
-use marty_frontend_common::types::gamepad::{GamepadId, JoystickMapping};
+use marty_frontend_common::types::gamepad::JoystickMapping;
 #[cfg(feature = "use_display")]
 use marty_videocard_renderer::CompositeParams;
 use serde::{Deserialize, Serialize};
@@ -134,6 +134,7 @@ pub enum GuiWindow {
     FloppyViewer,
     CassetteDeck,
     SnViewer,
+    VirtualMouseViewer,
 }
 
 #[derive(Copy, Clone, Debug)]
@@ -158,6 +159,9 @@ pub enum GuiBoolean {
     TurboButton,
     ShowBackBuffer,
     ShowRasterPosition,
+    ShowAbsoluteMousePosition,
+    MouseEnabled,
+    LightPenEnabled,
     OsdKeyboard,
 }
 
@@ -203,27 +207,6 @@ pub enum GuiEnum {
     AudioVolume(f32),
     MouseCaptureMode(MouseCaptureMode),
     GamepadMapping((Option<JoystickMapping>, Option<JoystickMapping>)),
-}
-
-fn create_default_variant(ge: GuiEnum) -> GuiEnum {
-    match ge {
-        #[cfg(feature = "use_display")]
-        GuiEnum::DisplayType(_) => GuiEnum::DisplayType(Default::default()),
-        #[cfg(feature = "use_display")]
-        GuiEnum::DisplayViewport(_) => GuiEnum::DisplayViewport(Default::default()),
-        GuiEnum::DisplayAspectCorrect(_) => GuiEnum::DisplayAspectCorrect(Default::default()),
-        GuiEnum::DisplayAperture(_) => GuiEnum::DisplayAperture(Default::default()),
-        #[cfg(feature = "use_display")]
-        GuiEnum::DisplayScalerMode(_) => GuiEnum::DisplayAperture(Default::default()),
-        GuiEnum::DisplayScalerPreset(_) => GuiEnum::DisplayScalerPreset(String::new()),
-        GuiEnum::DisplayComposite(_) => GuiEnum::DisplayComposite(Default::default()),
-        GuiEnum::WindowBezel(_) => GuiEnum::WindowBezel(Default::default()),
-        GuiEnum::SerialPortBridge(_) => GuiEnum::SerialPortBridge(Default::default()),
-        GuiEnum::AudioMuted(_) => GuiEnum::AudioMuted(false),
-        GuiEnum::AudioVolume(_) => GuiEnum::AudioVolume(0.5),
-        GuiEnum::MouseCaptureMode(_) => GuiEnum::MouseCaptureMode(Default::default()),
-        GuiEnum::GamepadMapping((_, _)) => GuiEnum::GamepadMapping((None, None)),
-    }
 }
 
 type GuiEnumMap = HashMap<(GuiVariableContext, Discriminant<GuiEnum>), GuiEnum>;
@@ -566,6 +549,16 @@ lazy_static! {
                 title: "Serial Port Viewer",
                 menu: "Serial Ports",
                 width: 400.0,
+                resizable: false,
+            },
+        ),
+        (
+            GuiWindow::VirtualMouseViewer,
+            WorkspaceWindowDef {
+                id: GuiWindow::VirtualMouseViewer,
+                title: "Virtual Mouse",
+                menu: "Virtual Mouse",
+                width: 420.0,
                 resizable: false,
             },
         ),

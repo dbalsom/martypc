@@ -51,7 +51,7 @@ use marty_core::{
     cpu_common,
     cpu_common::{Cpu, CpuOption, Register16},
     device_traits::videocard::ClockingMode,
-    devices::cassette_deck::CASSETTE_MONITOR_SOURCE_NAME,
+    devices::{cassette_deck::CASSETTE_MONITOR_SOURCE_NAME, mouse::MouseInput},
     machine::{MachineOption, MachineState},
     vhd::VirtualHardDisk,
 };
@@ -118,6 +118,11 @@ pub fn handle_egui_event(
                 }
                 (GuiBoolean::TurboButton, state) => {
                     emu.machine.set_turbo_mode(state);
+                }
+                (GuiBoolean::MouseEnabled, false) => {
+                    if let Some(mouse) = emu.machine.mouse_mut() {
+                        mouse.submit_input(MouseInput::default());
+                    }
                 }
                 _ => {}
             },

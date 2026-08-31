@@ -126,6 +126,16 @@ impl DisplayScaler<(), (), Texture> for MartyScaler {
         }
     }
 
+    fn surface_to_texture(&self, surface_x: f32, surface_y: f32) -> Option<(f32, f32)> {
+        if self.target_size.width == 0 || self.target_size.height == 0 {
+            return None;
+        }
+
+        let texture_x = surface_x / self.target_size.width as f32;
+        let texture_y = surface_y / self.target_size.height as f32;
+        ((0.0..=1.0).contains(&texture_x) && (0.0..=1.0).contains(&texture_y)).then_some((texture_x, texture_y))
+    }
+
     fn set_margins(&mut self, _l: u32, _r: u32, _t: u32, _b: u32) {}
 
     fn set_bilinear(&mut self, bilinear: bool) {

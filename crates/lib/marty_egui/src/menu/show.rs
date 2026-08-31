@@ -27,16 +27,19 @@
 
 //! Implement the main emulator menu.
 
-use crate::{state::GuiState, GuiEvent, GuiWindow};
-use marty_frontend_common::MartyGuiTheme;
+use crate::{state::GuiState, GuiEnum, GuiEvent, GuiVariable, GuiVariableContext, GuiWindow};
 
 #[cfg(target_arch = "wasm32")]
-use crate::{GuiBoolean, GuiVariable, GuiVariableContext};
+use crate::GuiBoolean;
+
+use marty_common::types::ui::MouseCaptureMode;
+use marty_frontend_common::MartyGuiTheme;
 
 #[cfg(feature = "use_display")]
 use marty_core::device_traits::videocard::VideoCardId;
 
 use egui::RichText;
+use strum::IntoEnumIterator;
 
 #[cfg(feature = "use_display")]
 fn display_target_count_for_card(
@@ -58,6 +61,23 @@ impl GuiState {
                         *self.window_flag(GuiWindow::PerfViewer) = true;
                         ui.close();
                     }
+
+                    ui.menu_button("🖱 Mouse Capture Mode", |ui| {
+                        for mode in MouseCaptureMode::iter() {
+                            let mode_mut = self
+                                .get_option_enum_mut(GuiEnum::MouseCaptureMode(MouseCaptureMode::default()), None)
+                                .unwrap();
+                            if let GuiEnum::MouseCaptureMode(mode_inner) = mode_mut {
+                                if ui.radio(*mode_inner == mode, mode.to_string()).clicked() {
+                                    *mode_inner = mode;
+                                    self.event_queue.send(GuiEvent::VariableChanged(
+                                        GuiVariableContext::Global,
+                                        GuiVariable::Enum(GuiEnum::MouseCaptureMode(mode)),
+                                    ));
+                                }
+                            }
+                        }
+                    });
 
                     ui.menu_button("🎨 Theme", |ui| {
                         ui.set_min_width(140.0);

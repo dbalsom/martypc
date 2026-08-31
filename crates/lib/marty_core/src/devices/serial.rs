@@ -243,11 +243,21 @@ impl IoDevice for SerialPortController {
     }
 }
 
-#[derive(Debug)]
+#[derive(Copy, Clone, Debug)]
 pub enum StopBits {
     One,
     OneAndAHalf,
     Two,
+}
+
+impl StopBits {
+    fn bit_count(self) -> f64 {
+        match self {
+            StopBits::One => 1.0,
+            StopBits::OneAndAHalf => 1.5,
+            StopBits::Two => 2.0,
+        }
+    }
 }
 
 #[derive(Debug)]
@@ -406,6 +416,14 @@ impl SerialPort {
         ((SERIAL_CLOCK * 1_000_000.0) / divisor as f64 / 16.0) as u16
     }
 
+    fn baud_rate(&self) -> f64 {
+        (SERIAL_CLOCK * 1_000_000.0) / self.divisor as f64 / 16.0
+    }
+
+    fn frame_bit_count(&self) -> f64 {
+        1.0 + self.word_length as f64 + u8::from(self.parity_enable) as f64 + self.stop_bits.bit_count()
+    }
+
     /// Sets the value of us_per_byte, the microsecond delay between sending a byte out of the
     /// Send or receive queue based on the current baud rate.
     /// This function should be called whenever the divisor has changed.
@@ -414,8 +432,7 @@ impl SerialPort {
             // Minimum divisor of 12 (9600 baud)
             self.divisor = 12;
         }
-        let bytes_per_second = SerialPort::divisor_to_baud(self.divisor) / self.word_length as u16;
-        self.us_per_byte = 1.0 / bytes_per_second as f64 * 1_000_000.0;
+        self.us_per_byte = self.frame_bit_count() / self.baud_rate() * 1_000_000.0;
     }
 
     fn line_control_read(&self) -> u8 {
@@ -443,6 +460,7 @@ impl SerialPort {
 
         self.parity_enable = byte & PARITY_ENABLE_BIT != 0;
         self.divisor_latch_access = byte & DIVISOR_LATCH_ACCESS_BIT != 0;
+        self.set_timing();
 
         log::trace!(
             "{}: Write to Line Control Register: {:02X} Word Length: {} Parity: {} Stop Bits: {:?}",
@@ -1057,7 +1075,29 @@ impl SerialPortController {
 
     /// Queue a byte for delivery to the specified serial port's RX buffer
     pub fn queue_byte(&mut self, port: usize, byte: u8) {
-        self.port[port].rx_queue.push_back(byte);
+        self.queue_rx_bytes(port, &[byte]);
+    }
+
+    /// Queue bytes for delivery to a serial port's RX buffer.
+    ///
+    /// When a new transmission begins on an idle receive line, discard any idle timer phase so the first byte takes a
+    /// complete framed-character time to arrive.
+    pub fn queue_rx_bytes(&mut self, port: usize, bytes: &[u8]) {
+        let serial_port = &mut self.port[port];
+        if serial_port.rx_queue.is_empty() {
+            serial_port.rx_timer = 0.0;
+        }
+        serial_port.rx_queue.extend(bytes.iter().copied());
+    }
+
+    /// Atomically queue a packet if no earlier external data is still being serialized on the receive line.
+    pub fn try_queue_rx_bytes(&mut self, port: usize, bytes: &[u8]) -> bool {
+        if !self.port[port].rx_queue.is_empty() {
+            return false;
+        }
+
+        self.queue_rx_bytes(port, bytes);
+        true
     }
 
     /// Bridge the specified serial port
@@ -1196,6 +1236,9 @@ impl SerialPortController {
                                 Ok(ct) => {
                                     if ct > 0 {
                                         log::trace!("Read {} bytes from serial port", ct);
+                                        if port.rx_queue.is_empty() {
+                                            port.rx_timer = 0.0;
+                                        }
                                     }
                                     for i in 0..ct {
                                         // TODO: Must be a more efficient way to copy the vec to vecdeque?
@@ -1216,5 +1259,83 @@ impl SerialPortController {
                 }
             }
         }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::{SerialPort, SerialPortController};
+    use crate::devices::pic::Pic;
+
+    fn assert_approx_eq(actual: f64, expected: f64) {
+        assert!((actual - expected).abs() < 0.001, "expected {expected}, got {actual}");
+    }
+
+    #[test]
+    fn timing_includes_start_data_and_stop_bits() {
+        let mut port = SerialPort::default();
+        port.divisor = 96;
+        port.line_control_write(0b0000_0010); // 1200 baud, 7N1
+
+        assert_approx_eq(port.frame_bit_count(), 9.0);
+        assert_approx_eq(port.us_per_byte, 7_500.0);
+    }
+
+    #[test]
+    fn timing_includes_parity_and_fractional_stop_bits() {
+        let mut port = SerialPort::default();
+        port.divisor = 96;
+
+        port.line_control_write(0b0000_1111); // 8 data, parity, 2 stop bits
+        assert_approx_eq(port.frame_bit_count(), 12.0);
+        assert_approx_eq(port.us_per_byte, 10_000.0);
+
+        port.line_control_write(0b0000_0100); // 5 data, no parity, 1.5 stop bits
+        assert_approx_eq(port.frame_bit_count(), 7.5);
+        assert_approx_eq(port.us_per_byte, 6_250.0);
+    }
+
+    #[test]
+    fn line_control_changes_recalculate_timing() {
+        let mut port = SerialPort::default();
+        port.divisor = 96;
+        port.line_control_write(0b0000_0011); // 8N1
+        assert_approx_eq(port.us_per_byte, 8_333.333_333);
+
+        port.line_control_write(0b0000_0010); // 7N1
+        assert_approx_eq(port.us_per_byte, 7_500.0);
+    }
+
+    #[test]
+    fn receive_packet_queueing_is_atomic_and_starts_a_new_character_timer() {
+        let mut serial = SerialPortController::new(true);
+        serial.port[0].rx_timer = 500.0;
+
+        assert!(serial.try_queue_rx_bytes(0, &[1, 2, 3]));
+        assert_eq!(serial.port[0].rx_queue.len(), 3);
+        assert_eq!(serial.port[0].rx_timer, 0.0);
+
+        serial.port[0].rx_timer = 250.0;
+        assert!(!serial.try_queue_rx_bytes(0, &[4, 5, 6]));
+        assert_eq!(
+            serial.port[0].rx_queue.iter().copied().collect::<Vec<_>>(),
+            vec![1, 2, 3]
+        );
+        assert_eq!(serial.port[0].rx_timer, 250.0);
+    }
+
+    #[test]
+    fn three_byte_1200_baud_7n1_packet_takes_twenty_two_point_five_milliseconds() {
+        let mut serial = SerialPortController::new(true);
+        let mut pic = Pic::new();
+        serial.port[0].divisor = 96;
+        serial.port[0].line_control_write(0b0000_0010);
+        serial.queue_rx_bytes(0, &[1, 2, 3]);
+
+        serial.run(&mut pic, 22_499.0);
+        assert_eq!(serial.port[0].rx_queue.len(), 1);
+
+        serial.run(&mut pic, 2.0);
+        assert!(serial.port[0].rx_queue.is_empty());
     }
 }

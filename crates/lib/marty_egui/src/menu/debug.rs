@@ -66,7 +66,7 @@ impl GuiState {
                             GuiVariableContext::Global,
                             GuiVariable::Bool(GuiBoolean::CpuInstructionHistory, new_opt),
                         ));
-                        ui.close_menu();
+                        ui.close();
                     }
                     if ui
                         .checkbox(
@@ -81,22 +81,22 @@ impl GuiState {
                             GuiVariableContext::Global,
                             GuiVariable::Bool(GuiBoolean::CpuTraceLoggingEnabled, new_opt),
                         ));
-                        ui.close_menu();
+                        ui.close();
                     }
                     #[cfg(feature = "devtools")]
                     if ui.button("Delays...").clicked() {
                         *self.window_flag(GuiWindow::DelayAdjust) = true;
-                        ui.close_menu();
+                        ui.close();
                     }
 
                     if ui.button("Trigger NMI").clicked() {
                         self.event_queue.send(GuiEvent::SetNMI(true));
-                        ui.close_menu();
+                        ui.close();
                     }
 
                     if ui.button("Clear NMI").clicked() {
                         self.event_queue.send(GuiEvent::SetNMI(false));
-                        ui.close_menu();
+                        ui.close();
                     }
                 });
 
@@ -112,11 +112,11 @@ impl GuiState {
                     ui.menu_button("Disassembly Listing", |ui| {
                         if ui.button("⏺ Start Recording").clicked() {
                             self.event_queue.send(GuiEvent::StartRecordingDisassembly);
-                            ui.close_menu();
+                            ui.close();
                         }
                         if ui.button("⏹ Stop Recording and Save").clicked() {
                             self.event_queue.send(GuiEvent::StopRecordingDisassembly);
-                            ui.close_menu();
+                            ui.close();
                         }
                     });
                 }
@@ -132,27 +132,27 @@ impl GuiState {
                 ui.menu_button("Dump Memory", |ui| {
                     if ui.button("Video Memory").clicked() {
                         self.event_queue.send(GuiEvent::DumpVRAM);
-                        ui.close_menu();
+                        ui.close();
                     }
                     if ui.button("Code Segment (CS)").clicked() {
                         self.event_queue.send(GuiEvent::DumpSegment(Register16::CS));
-                        ui.close_menu();
+                        ui.close();
                     }
                     if ui.button("Data Segment (DS)").clicked() {
                         self.event_queue.send(GuiEvent::DumpSegment(Register16::DS));
-                        ui.close_menu();
+                        ui.close();
                     }
                     if ui.button("Extra Segment (ES)").clicked() {
                         self.event_queue.send(GuiEvent::DumpSegment(Register16::ES));
-                        ui.close_menu();
+                        ui.close();
                     }
                     if ui.button("Stack Segment (SS)").clicked() {
                         self.event_queue.send(GuiEvent::DumpSegment(Register16::SS));
-                        ui.close_menu();
+                        ui.close();
                     }
                     if ui.button("All Memory").clicked() {
                         self.event_queue.send(GuiEvent::DumpAllMem);
-                        ui.close_menu();
+                        ui.close();
                     }
                 });
             });
@@ -161,7 +161,7 @@ impl GuiState {
                 #[cfg(feature = "devtools")]
                 if ui.button("Device control...").clicked() {
                     *self.window_flag(GuiWindow::DeviceControl) = true;
-                    ui.close_menu();
+                    ui.close();
                 }
                 self.workspace_window_open_button(ui, GuiWindow::IoStatsViewer, true, true);
                 self.workspace_window_open_button(ui, GuiWindow::PicViewer, true, true);
@@ -169,6 +169,7 @@ impl GuiState {
                 self.workspace_window_open_button(ui, GuiWindow::PpiViewer, true, true);
                 self.workspace_window_open_button(ui, GuiWindow::DmaViewer, true, true);
                 self.workspace_window_open_button(ui, GuiWindow::SerialViewer, true, true);
+                self.workspace_window_open_button(ui, GuiWindow::VirtualMouseViewer, true, true);
                 self.workspace_window_open_button(ui, GuiWindow::FdcViewer, true, true);
                 self.workspace_window_open_button(ui, GuiWindow::VideoCardViewer, true, true);
                 if self.has_sn76489() {
@@ -188,7 +189,7 @@ impl GuiState {
                         GuiVariableContext::Global,
                         GuiVariable::Bool(GuiBoolean::ShowBackBuffer, new_opt),
                     ));
-                    ui.close_menu();
+                    ui.close();
                 }
                  */
             });
@@ -220,9 +221,24 @@ impl GuiState {
                 ));
             }
 
+            if ui
+                .checkbox(
+                    &mut self.get_option_mut(GuiBoolean::ShowAbsoluteMousePosition),
+                    "Show Absolute Mouse Pos",
+                )
+                .clicked()
+            {
+                let new_opt = self.get_option(GuiBoolean::ShowAbsoluteMousePosition).unwrap();
+
+                self.event_queue.send(GuiEvent::VariableChanged(
+                    GuiVariableContext::Global,
+                    GuiVariable::Bool(GuiBoolean::ShowAbsoluteMousePosition, new_opt),
+                ));
+            }
+
             if ui.button("Flush Trace Logs").clicked() {
                 self.event_queue.send(GuiEvent::FlushLogs);
-                ui.close_menu();
+                ui.close();
             }
         });
     }

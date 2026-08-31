@@ -58,6 +58,7 @@ pub enum ServiceFunction {
     FileTransferBlock = 0x05,
     FileTransferEnd = 0x06,
     SpeedControl = 0x10,
+    MouseState = 0x11,
 }
 
 impl TryFrom<u8> for ServiceFunction {
@@ -73,6 +74,7 @@ impl TryFrom<u8> for ServiceFunction {
             0x05 => Ok(Self::FileTransferBlock),
             0x06 => Ok(Self::FileTransferEnd),
             0x10 => Ok(Self::SpeedControl),
+            0x11 => Ok(Self::MouseState),
             _ => Err(value),
         }
     }
@@ -89,6 +91,11 @@ pub const SPEED_CONTROL_SET: u8 = 0x01;
 pub const DEFAULT_SPEED_CONTROL_MIN: u16 = 100;
 pub const DEFAULT_SPEED_CONTROL_CURRENT: u16 = 1000;
 pub const DEFAULT_SPEED_CONTROL_MAX: u16 = 2000;
+pub const MOUSE_STATE_QUERY: u8 = 0x00;
+pub const MOUSE_IRQ_QUERY: u8 = 0x01;
+pub const MOUSE_CONSUMER_RANGE_REPORT: u8 = 0x02;
+pub const MOUSE_CONSUMER_STATUS_REPORT: u8 = 0x03;
+pub const MOUSE_STATE_FLAG_CAPTURED: u16 = 0x0001;
 
 pub const FILE_TRANSFER_GUEST_TO_HOST: u8 = 0x00;
 pub const FILE_TRANSFER_HOST_TO_GUEST: u8 = 0x01;
@@ -336,6 +343,7 @@ impl ServiceInterruptManager {
             ServiceFunction::PitLogging => Some(ServiceEvent::TriggerPITLogging),
             ServiceFunction::Quit => Some(ServiceEvent::QuitEmulator(cpu.get_register8(Register8::AL))),
             ServiceFunction::SpeedControl => self.handle_speed_control(cpu),
+            ServiceFunction::MouseState => self.handle_mouse_state(cpu),
             ServiceFunction::FileTransferBegin => self.begin_file_transfer(cpu),
             ServiceFunction::FileTransferBlock => {
                 self.transfer_file_block(cpu);
@@ -378,6 +386,85 @@ impl ServiceInterruptManager {
 
     pub fn set_speed_control_current(&mut self, current: u16) {
         self.speed_control_current = current.clamp(self.speed_control_min, self.speed_control_max);
+    }
+
+    /// Complete a virtual mouse state request after the machine has sampled the device.
+    pub fn complete_mouse_state<C: Cpu>(
+        &self,
+        cpu: &mut C,
+        state: Option<(u16, u16, u16, u16, i16, i16, u16)>,
+    ) {
+        let Some((x, y, buttons, change_counter, relative_x, relative_y, flags)) = state
+        else {
+            set_service_error(cpu, ServiceError::NotSupported);
+            return;
+        };
+
+        cpu.set_register16(Register16::AX, x);
+        cpu.set_register16(Register16::BX, y);
+        cpu.set_register16(Register16::CX, buttons);
+        cpu.set_register16(Register16::DX, change_counter);
+        cpu.set_register16(Register16::SI, relative_x as u16);
+        cpu.set_register16(Register16::DI, relative_y as u16);
+        cpu.set_register16(Register16::BP, flags);
+        clear_carry(cpu);
+    }
+
+    /// Complete a virtual mouse IRQ query after the machine has inspected the device.
+    pub fn complete_mouse_irq<C: Cpu>(&self, cpu: &mut C, irq: Option<u8>) {
+        let Some(irq) = irq
+        else {
+            set_service_error(cpu, ServiceError::NotSupported);
+            return;
+        };
+
+        cpu.set_register16(Register16::DX, u16::from(irq));
+        clear_carry(cpu);
+    }
+
+    /// Complete a virtual mouse consumer-range report after the machine has inspected the device.
+    pub fn complete_mouse_consumer_range<C: Cpu>(&self, cpu: &mut C, supported: bool) {
+        if supported {
+            clear_carry(cpu);
+        }
+        else {
+            set_service_error(cpu, ServiceError::NotSupported);
+        }
+    }
+
+    /// Complete a virtual mouse consumer-status report after the machine has inspected the device.
+    pub fn complete_mouse_consumer_status<C: Cpu>(&self, cpu: &mut C, supported: bool) {
+        if supported {
+            clear_carry(cpu);
+        }
+        else {
+            set_service_error(cpu, ServiceError::NotSupported);
+        }
+    }
+
+    fn handle_mouse_state<C: Cpu>(&self, cpu: &mut C) -> Option<ServiceEvent> {
+        match cpu.get_register8(Register8::AL) {
+            MOUSE_STATE_QUERY => Some(ServiceEvent::GetVirtualMouseState),
+            MOUSE_IRQ_QUERY => Some(ServiceEvent::GetVirtualMouseIrq),
+            MOUSE_CONSUMER_RANGE_REPORT => Some(ServiceEvent::SetVirtualMouseConsumerRange {
+                min_x: cpu.get_register16(Register16::BX),
+                max_x: cpu.get_register16(Register16::CX),
+                min_y: cpu.get_register16(Register16::DX),
+                max_y: cpu.get_register16(Register16::SI),
+            }),
+            MOUSE_CONSUMER_STATUS_REPORT => match cpu.get_register16(Register16::BX) {
+                0 => Some(ServiceEvent::SetVirtualMouseConsumerStatus { loaded: false }),
+                1 => Some(ServiceEvent::SetVirtualMouseConsumerStatus { loaded: true }),
+                _ => {
+                    set_service_error(cpu, ServiceError::InvalidParameter);
+                    None
+                }
+            },
+            _ => {
+                set_service_error(cpu, ServiceError::InvalidParameter);
+                None
+            }
+        }
     }
 
     /// Initiates a file transfer operation between the guest and host.
@@ -1568,6 +1655,113 @@ mod tests {
             cpu.get_register16(Register16::AX),
             ServiceError::InvalidParameter.into()
         );
+    }
+
+    #[test]
+    fn mouse_state_service_requests_and_completes_a_machine_snapshot() {
+        let mut manager = ServiceInterruptManager::new(None, true);
+        let mut cpu = crate::cpu_808x::Intel808x::default();
+
+        assert_eq!(ServiceFunction::try_from(0x11), Ok(ServiceFunction::MouseState));
+        cpu.set_register8(Register8::AL, MOUSE_STATE_QUERY);
+        assert!(matches!(
+            manager.handle_interrupt(ServiceFunction::MouseState, &mut cpu),
+            Some(ServiceEvent::GetVirtualMouseState)
+        ));
+
+        cpu.set_flags(cpu.get_flags() | CARRY_FLAG);
+        manager.complete_mouse_state(
+            &mut cpu,
+            Some((0x1234, 0x5678, 0x0003, 0x9ABC, -12, 34, MOUSE_STATE_FLAG_CAPTURED)),
+        );
+
+        assert_eq!(cpu.get_flags() & CARRY_FLAG, 0);
+        assert_eq!(cpu.get_register16(Register16::AX), 0x1234);
+        assert_eq!(cpu.get_register16(Register16::BX), 0x5678);
+        assert_eq!(cpu.get_register16(Register16::CX), 0x0003);
+        assert_eq!(cpu.get_register16(Register16::DX), 0x9ABC);
+        assert_eq!(cpu.get_register16(Register16::SI), (-12i16) as u16);
+        assert_eq!(cpu.get_register16(Register16::DI), 34);
+        assert_eq!(cpu.get_register16(Register16::BP), MOUSE_STATE_FLAG_CAPTURED);
+
+        cpu.set_register8(Register8::AL, MOUSE_IRQ_QUERY);
+        assert!(matches!(
+            manager.handle_interrupt(ServiceFunction::MouseState, &mut cpu),
+            Some(ServiceEvent::GetVirtualMouseIrq)
+        ));
+        manager.complete_mouse_irq(&mut cpu, Some(5));
+        assert_eq!(cpu.get_flags() & CARRY_FLAG, 0);
+        assert_eq!(cpu.get_register16(Register16::DX), 5);
+
+        cpu.set_register8(Register8::AL, MOUSE_CONSUMER_RANGE_REPORT);
+        cpu.set_register16(Register16::BX, 10);
+        cpu.set_register16(Register16::CX, 639);
+        cpu.set_register16(Register16::DX, 20);
+        cpu.set_register16(Register16::SI, 199);
+        assert!(matches!(
+            manager.handle_interrupt(ServiceFunction::MouseState, &mut cpu),
+            Some(ServiceEvent::SetVirtualMouseConsumerRange {
+                min_x: 10,
+                max_x: 639,
+                min_y: 20,
+                max_y: 199,
+            })
+        ));
+        manager.complete_mouse_consumer_range(&mut cpu, true);
+        assert_eq!(cpu.get_flags() & CARRY_FLAG, 0);
+
+        cpu.set_register8(Register8::AL, MOUSE_CONSUMER_STATUS_REPORT);
+        cpu.set_register16(Register16::BX, 1);
+        assert!(matches!(
+            manager.handle_interrupt(ServiceFunction::MouseState, &mut cpu),
+            Some(ServiceEvent::SetVirtualMouseConsumerStatus { loaded: true })
+        ));
+        manager.complete_mouse_consumer_status(&mut cpu, true);
+        assert_eq!(cpu.get_flags() & CARRY_FLAG, 0);
+
+        cpu.set_register8(Register8::AL, MOUSE_CONSUMER_STATUS_REPORT);
+        cpu.set_register16(Register16::BX, 2);
+        assert!(manager
+            .handle_interrupt(ServiceFunction::MouseState, &mut cpu)
+            .is_none());
+        assert_ne!(cpu.get_flags() & CARRY_FLAG, 0);
+        assert_eq!(
+            cpu.get_register16(Register16::AX),
+            ServiceError::InvalidParameter.into()
+        );
+
+        cpu.set_register8(Register8::AL, 0xFF);
+        assert!(manager
+            .handle_interrupt(ServiceFunction::MouseState, &mut cpu)
+            .is_none());
+        assert_ne!(cpu.get_flags() & CARRY_FLAG, 0);
+        assert_eq!(
+            cpu.get_register16(Register16::AX),
+            ServiceError::InvalidParameter.into()
+        );
+    }
+
+    #[test]
+    fn mouse_state_service_reports_an_unconfigured_device() {
+        let manager = ServiceInterruptManager::new(None, true);
+        let mut cpu = crate::cpu_808x::Intel808x::default();
+
+        manager.complete_mouse_state(&mut cpu, None);
+
+        assert_ne!(cpu.get_flags() & CARRY_FLAG, 0);
+        assert_eq!(cpu.get_register16(Register16::AX), ServiceError::NotSupported.into());
+
+        manager.complete_mouse_irq(&mut cpu, None);
+        assert_ne!(cpu.get_flags() & CARRY_FLAG, 0);
+        assert_eq!(cpu.get_register16(Register16::AX), ServiceError::NotSupported.into());
+
+        manager.complete_mouse_consumer_range(&mut cpu, false);
+        assert_ne!(cpu.get_flags() & CARRY_FLAG, 0);
+        assert_eq!(cpu.get_register16(Register16::AX), ServiceError::NotSupported.into());
+
+        manager.complete_mouse_consumer_status(&mut cpu, false);
+        assert_ne!(cpu.get_flags() & CARRY_FLAG, 0);
+        assert_eq!(cpu.get_register16(Register16::AX), ServiceError::NotSupported.into());
     }
 
     #[test]

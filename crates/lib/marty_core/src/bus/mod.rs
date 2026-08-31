@@ -1285,17 +1285,33 @@ impl BusInterface {
             }
         }
 
+        if machine_config.serial_mouse.is_some() && machine_config.virtual_mouse.is_some() {
+            return Err(anyhow::anyhow!(
+                "Machine configuration cannot install both a serial mouse and a virtual mouse"
+            ));
+        }
+
         // Create a Serial mouse if specified
         if let Some(serial_mouse_config) = &machine_config.serial_mouse {
             // Only create mouse if we have as serial card to plug it into!
             if self.serial.is_some() {
                 match serial_mouse_config.mouse_type {
                     SerialMouseType::Microsoft => {
-                        let mouse = Mouse::new(serial_mouse_config.port as usize, None, None);
+                        let mouse = Mouse::new_serial(serial_mouse_config.port as usize, None);
                         self.mouse = Some(mouse);
                     }
                 }
             }
+        }
+
+        // Create the MartyPC virtual absolute-coordinate mouse if specified.
+        if let Some(virtual_mouse_config) = &machine_config.virtual_mouse {
+            if virtual_mouse_config.irq > 7 {
+                return Err(anyhow::anyhow!("Virtual mouse IRQ must be on the primary PIC (0-7)"));
+            }
+
+            let mouse = Mouse::new_virtual(virtual_mouse_config.irq, None);
+            self.mouse = Some(mouse);
         }
 
         // Create an EMS board if specified
@@ -1698,13 +1714,24 @@ impl BusInterface {
         // Replace the DMA controller.
         self.dma1 = Some(dma1);
 
-        // Run the serial port and mouse.
+        // Let the configured pointing device present new input before advancing the UART.
+        // This allows the first serial character to begin during the current device timestep
+        if let Some(mouse) = &mut self.mouse {
+            match mouse {
+                Mouse::Serial(mouse) => {
+                    if let Some(serial) = &mut self.serial {
+                        mouse.run(serial, us);
+                    }
+                }
+                Mouse::Virtual(mouse) => {
+                    mouse.run(self.pic1.as_mut().unwrap());
+                }
+            }
+        }
+
+        // Run the serial ports after the mouse has had an opportunity to queue a packet.
         if let Some(serial) = &mut self.serial {
             serial.run(self.pic1.as_mut().unwrap(), us);
-
-            if let Some(mouse) = &mut self.mouse {
-                mouse.run(serial, us);
-            }
         }
 
         // Run the parallel port
@@ -1855,6 +1882,11 @@ impl BusInterface {
         // Reset Serial controller
         if let Some(serial) = self.serial.as_mut() {
             serial.reset();
+        }
+
+        // Guest-resident virtual mouse state does not survive a machine reset.
+        if let Some(mouse) = self.mouse.as_mut() {
+            mouse.reset_virtual_consumer();
         }
 
         // Reset fdc

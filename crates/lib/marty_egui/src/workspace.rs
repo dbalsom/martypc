@@ -193,6 +193,9 @@ impl GuiState {
                 GuiWindow::SerialViewer => {
                     self.serial_viewer.draw(ui, &mut self.event_queue);
                 }
+                GuiWindow::VirtualMouseViewer => {
+                    self.virtual_mouse_viewer.draw(ui, &mut self.event_queue);
+                }
                 GuiWindow::PicViewer => {
                     self.pic_viewer.draw(ui, &mut self.event_queue);
                 }

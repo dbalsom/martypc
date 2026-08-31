@@ -176,6 +176,11 @@ pub struct SerialMouseConfig {
 }
 
 #[derive(Clone, Debug, Deserialize)]
+pub struct VirtualMouseConfig {
+    pub irq: u8,
+}
+
+#[derive(Clone, Debug, Deserialize)]
 pub struct GamePortConfig {
     pub io_base: u16,
     pub controller_layout: Option<ControllerLayout>,
@@ -293,6 +298,7 @@ pub struct MachineConfiguration {
     pub ems: Option<EmsMemoryConfig>,
     pub keyboard: Option<KeyboardConfig>,
     pub serial_mouse: Option<SerialMouseConfig>,
+    pub virtual_mouse: Option<VirtualMouseConfig>,
     pub video: Vec<VideoCardConfig>,
     pub sound: Vec<SoundDeviceConfig>,
     pub serial: Vec<SerialControllerConfig>,

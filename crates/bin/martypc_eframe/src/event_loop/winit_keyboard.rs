@@ -216,6 +216,19 @@ pub fn process_hotkeys(
                             emu.mouse_data.is_captured = true;
                             ctx.send_viewport_cmd_to(viewport_id, ViewportCommand::CursorGrab(GRAB_MODE));
                             ctx.send_viewport_cmd_to(viewport_id, ViewportCommand::CursorVisible(false));
+
+                            let capture_hint = emu
+                                .hkm
+                                .hotkey_string(HotkeyEvent::CaptureMouse)
+                                .map(|hotkey| format!("Press {hotkey} to release mouse"))
+                                .unwrap_or_default();
+                            let message = if capture_hint.is_empty() {
+                                "Mouse captured!".to_string()
+                            }
+                            else {
+                                format!("Mouse captured!\n{capture_hint}")
+                            };
+                            emu.gui.toasts().info(message).duration(Some(NORMAL_NOTIFICATION_TIME));
                         }
                         else {
                             // Mouse cursor is grabbed, un-grab it.
@@ -223,6 +236,10 @@ pub fn process_hotkeys(
                             emu.mouse_data.is_captured = false;
                             ctx.send_viewport_cmd_to(viewport_id, ViewportCommand::CursorGrab(CursorGrab::None));
                             ctx.send_viewport_cmd_to(viewport_id, ViewportCommand::CursorVisible(true));
+                            emu.gui
+                                .toasts()
+                                .info("Mouse released!")
+                                .duration(Some(NORMAL_NOTIFICATION_TIME));
                         }
                     }
                     Err(_e) => {

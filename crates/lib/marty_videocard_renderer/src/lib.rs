@@ -246,8 +246,10 @@ pub struct VideoRenderer {
 
     sampled_luma: f32,
     osd_cursor: bool,
+    osd_cursor_visible: bool,
     osd_cursor_pos: (u32, u32),
     osd_cursor_latch: Option<(u32, u32)>,
+    absolute_mouse_cursor_pos: Option<(u32, u32)>,
 }
 
 impl VideoRenderer {
@@ -299,8 +301,10 @@ impl VideoRenderer {
 
             sampled_luma: 0.0,
             osd_cursor: false,
+            osd_cursor_visible: false,
             osd_cursor_pos: (100, 100),
             osd_cursor_latch: None,
+            absolute_mouse_cursor_pos: None,
         }
     }
 
@@ -388,6 +392,13 @@ impl VideoRenderer {
 
     pub fn set_cursor_state(&mut self, state: bool) {
         self.osd_cursor = state;
+        if !state {
+            self.osd_cursor_latch = None;
+        }
+    }
+
+    pub fn set_cursor_visibility(&mut self, visible: bool) {
+        self.osd_cursor_visible = visible;
     }
 
     pub fn cursor_state(&self) -> bool {
@@ -414,6 +425,44 @@ impl VideoRenderer {
 
     pub fn cursor_pos(&self) -> (u32, u32) {
         self.osd_cursor_pos
+    }
+
+    /// Set the debug cursor from a mouse position normalized to the Cropped aperture. The cursor
+    /// is translated into the aperture currently being rendered, but its logical extents always
+    /// remain anchored to the visible Cropped aperture.
+    pub fn set_absolute_mouse_cursor(&mut self, extents: &DisplayExtents, position: Option<(f32, f32)>) {
+        self.absolute_mouse_cursor_pos =
+            position.and_then(|position| self.cropped_position_to_rendered(extents, position));
+    }
+
+    /// Position the light-pen cursor from coordinates normalized to the Cropped aperture.
+    pub fn set_absolute_light_pen_cursor(&mut self, extents: &DisplayExtents, position: (f32, f32), latch: bool) {
+        if let Some(position) = self.cropped_position_to_rendered(extents, position) {
+            self.osd_cursor_pos = position;
+            if latch {
+                self.osd_cursor_latch = Some(position);
+            }
+        }
+    }
+
+    fn cropped_position_to_rendered(&self, extents: &DisplayExtents, position: (f32, f32)) -> Option<(u32, u32)> {
+        let rendered_aperture = extents.apertures.get(self.params.aperture as usize)?;
+        let cropped_aperture = extents.apertures.get(DisplayApertureType::Cropped as usize)?;
+        if rendered_aperture.w == 0 || rendered_aperture.h == 0 || cropped_aperture.w == 0 || cropped_aperture.h == 0 {
+            return None;
+        }
+
+        let line_scale = if extents.double_scan { 2.0 } else { 1.0 };
+        let raster_x = cropped_aperture.x as f32 + position.0.clamp(0.0, 1.0) * cropped_aperture.w as f32;
+        let raster_y = (cropped_aperture.y as f32 + position.1.clamp(0.0, 1.0) * cropped_aperture.h as f32)
+            * line_scale;
+        let rendered_x = rendered_aperture.x as f32;
+        let rendered_y = rendered_aperture.y as f32 * line_scale;
+
+        Some((
+            (raster_x - rendered_x).clamp(0.0, self.params.render.w as f32).round() as u32,
+            (raster_y - rendered_y).clamp(0.0, self.params.render.h as f32).round() as u32,
+        ))
     }
 
     pub fn cursor_pos_absolute(&self, extents: &DisplayExtents) -> (u32, u32) {
@@ -689,5 +738,85 @@ impl VideoRenderer {
                 println!("Error writing screenshot: {}: {}", path.display(), e)
             }
         }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use marty_core::device_traits::videocard::DisplayAperture;
+
+    fn test_extents(double_scan: bool) -> DisplayExtents {
+        DisplayExtents {
+            apertures: vec![
+                DisplayAperture {
+                    x: 96,
+                    y: 32,
+                    w: 640,
+                    h: 480,
+                    debug: false,
+                },
+                DisplayAperture {
+                    x: 80,
+                    y: 24,
+                    w: 672,
+                    h: 496,
+                    debug: false,
+                },
+                DisplayAperture {
+                    x: 0,
+                    y: 0,
+                    w: 800,
+                    h: 524,
+                    debug: false,
+                },
+            ],
+            field_w: 800,
+            field_h: 524,
+            row_stride: 800,
+            double_scan,
+            mode_byte: 0,
+        }
+    }
+
+    #[test]
+    fn absolute_mouse_cursor_is_anchored_to_cropped_aperture() {
+        let extents = test_extents(false);
+        let mut renderer = VideoRenderer::new(VideoType::CGA);
+        renderer.set_aperture(DisplayApertureType::Full);
+        renderer.resize((800, 524).into());
+
+        renderer.set_absolute_mouse_cursor(&extents, Some((0.0, 0.0)));
+        assert_eq!(renderer.absolute_mouse_cursor_pos, Some((96, 32)));
+
+        renderer.set_absolute_mouse_cursor(&extents, Some((1.0, 1.0)));
+        assert_eq!(renderer.absolute_mouse_cursor_pos, Some((736, 512)));
+    }
+
+    #[test]
+    fn absolute_mouse_cursor_accounts_for_rendered_aperture_and_line_doubling() {
+        let extents = test_extents(true);
+        let mut renderer = VideoRenderer::new(VideoType::CGA);
+        renderer.set_aperture(DisplayApertureType::Accurate);
+        renderer.resize((672, 992).into());
+
+        renderer.set_absolute_mouse_cursor(&extents, Some((0.5, 0.5)));
+        assert_eq!(renderer.absolute_mouse_cursor_pos, Some((336, 496)));
+
+        renderer.set_absolute_mouse_cursor(&extents, None);
+        assert_eq!(renderer.absolute_mouse_cursor_pos, None);
+    }
+
+    #[test]
+    fn absolute_light_pen_cursor_uses_the_mouse_coordinate_transform() {
+        let extents = test_extents(true);
+        let mut renderer = VideoRenderer::new(VideoType::CGA);
+        renderer.set_aperture(DisplayApertureType::Accurate);
+        renderer.resize((672, 992).into());
+
+        renderer.set_absolute_light_pen_cursor(&extents, (0.5, 0.5), true);
+
+        assert_eq!(renderer.osd_cursor_pos, (336, 496));
+        assert_eq!(renderer.osd_cursor_latch, Some((336, 496)));
     }
 }

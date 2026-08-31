@@ -64,3 +64,4 @@ pub mod sn_viewer;
 pub mod text_mode_viewer;
 pub mod vhd_creator;
 pub mod videocard_viewer;
+pub mod virtual_mouse_viewer;

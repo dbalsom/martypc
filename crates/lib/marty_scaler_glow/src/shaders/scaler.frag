@@ -30,6 +30,7 @@ float brightness(vec4 color) {
 }
 
 vec2 apply_crt_curvature(vec2 uv) {
+    // Software mirror: marty_display_common::display_scaler::apply_crt_curvature
     float curvature_x = u_h_curvature * 0.1;
     float curvature_y = u_v_curvature * 0.1;
 

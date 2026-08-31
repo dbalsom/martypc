@@ -137,21 +137,9 @@ impl VideoRenderer {
             ),
         }
 
-        // Draw OSD cursor (light pen, etc)
-        if self.osd_cursor {
-            // Sample luma before drawing cursor.
-            if self.params.luma_sampling {
-                self.sampled_luma = VideoRenderer::sample_luma(
-                    first_pass_buf,
-                    self.params.render.w,
-                    self.params.render.w,
-                    self.params.render.h,
-                    self.osd_cursor_pos.0,
-                    self.osd_cursor_pos.1,
-                );
-            }
-
-            VideoRenderer::draw_cursor(
+        // Sample light-pen luma whether or not its cursor is visible.
+        if self.osd_cursor && self.params.luma_sampling {
+            self.sampled_luma = VideoRenderer::sample_luma(
                 first_pass_buf,
                 self.params.render.w,
                 self.params.render.w,
@@ -161,10 +149,26 @@ impl VideoRenderer {
             );
         }
 
+        // Draw either the visible light-pen cursor, or else the absolute mouse debug cursor.
+        if let Some(cursor_pos) = self
+            .osd_cursor_visible
+            .then_some(self.osd_cursor_pos)
+            .or(self.absolute_mouse_cursor_pos)
+        {
+            VideoRenderer::draw_cursor(
+                first_pass_buf,
+                self.params.render.w,
+                self.params.render.w,
+                self.params.render.h,
+                cursor_pos.0,
+                cursor_pos.1,
+            );
+        }
+
         // Draw raster beam position if provided
         if let Some(beam) = beam_pos {
             let beam_x = beam.0 - extents.apertures[self.params.aperture as usize].x;
-            let mut beam_y = beam.1 - &extents.apertures[self.params.aperture as usize].y;
+            let mut beam_y = beam.1 - extents.apertures[self.params.aperture as usize].y;
             if self.params.line_double {
                 beam_y *= 2
             };
@@ -709,7 +713,7 @@ impl VideoRenderer {
         }
 
         if extents.double_scan {
-            h = h / 2;
+            h /= 2;
         }
 
         if h as usize * extents.row_stride > dbuf.len() {
@@ -831,7 +835,7 @@ impl VideoRenderer {
         }
 
         if extents.double_scan {
-            h = h / 2;
+            h /= 2;
         }
 
         if h as usize * extents.row_stride > dbuf.len() {
@@ -885,7 +889,7 @@ impl VideoRenderer {
         }
 
         if extents.double_scan {
-            h = h / 2;
+            h /= 2;
         }
 
         if h as usize * extents.row_stride > dbuf.len() {

@@ -33,12 +33,32 @@ use crate::emulator::Emulator;
 use display_manager_eframe::{DisplayBackend, DisplayManager, DisplayTargetSurface, EFrameDisplayManager};
 use marty_core::{device_traits::videocard::BufferSelect, machine::ExecutionState};
 use marty_egui::GuiBoolean;
+use marty_frontend_common::marty_common::types::ui::MouseCaptureMode;
 
 pub fn render_frame(emu: &mut Emulator, dm: &mut EFrameDisplayManager) {
     let rendering_active = !emu.display_power.frame_frozen();
     dm.set_power_off_progress(emu.display_power.progress());
 
     let mut scaler_parity_updates = Vec::new();
+    let absolute_mouse_cursor = emu
+        .gui
+        .get_option(GuiBoolean::ShowAbsoluteMousePosition)
+        .unwrap_or(false)
+        .then_some(emu.mouse_data.absolute_position)
+        .flatten();
+
+    let light_pen_enabled = emu.gui.get_option(GuiBoolean::LightPenEnabled).unwrap_or(false);
+    let absolute_light_pen_cursor = (light_pen_enabled && !emu.mouse_data.is_captured)
+        .then_some(emu.mouse_data.absolute_position)
+        .flatten();
+
+    let light_pen_active = light_pen_enabled
+        && if emu.mouse_data.is_captured {
+            emu.mouse_data.capture_mode == MouseCaptureMode::LightPen
+        }
+        else {
+            absolute_light_pen_cursor.is_some()
+        };
 
     // First, run each renderer to resolve all videocard views.
     // Every renderer will have an associated card and backend.
@@ -70,6 +90,13 @@ pub fn render_frame(emu: &mut Emulator, dm: &mut EFrameDisplayManager) {
                 let extents = videocard.display_extents();
                 scaler_parity_updates.push((vid, videocard.interlaced_frame_parity()));
 
+                renderer.set_absolute_mouse_cursor(&extents, absolute_mouse_cursor);
+                renderer.set_cursor_state(light_pen_active);
+                renderer.set_cursor_visibility(light_pen_active && emu.mouse_data.is_captured);
+                if let Some(position) = absolute_light_pen_cursor {
+                    renderer.set_absolute_light_pen_cursor(&extents, position, true);
+                }
+
                 // Update mode byte.
                 if renderer.get_mode_byte() != extents.mode_byte {
                     // Mode byte has changed, recalculate composite parameters
@@ -99,6 +126,10 @@ pub fn render_frame(emu: &mut Emulator, dm: &mut EFrameDisplayManager) {
                     }
                     videocard.set_light_pen_state(emu.mouse_data.l_button_is_pressed);
                 }
+                else {
+                    videocard.set_light_pen_state(false);
+                }
+
                 // Tell the card whether to draw debug colors.
                 videocard.set_debug_draw_state(renderer.is_debug());
             }

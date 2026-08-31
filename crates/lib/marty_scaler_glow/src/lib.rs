@@ -29,13 +29,20 @@ use std::sync::Arc;
 // Reexport trait items
 pub use marty_frontend_common::color::MartyColor;
 
-use marty_display_common::display_scaler::{DisplayScaler, ScalerFilter, ScalerGeometry, ScalerMode, ScalerOption};
+use marty_display_common::display_scaler::{
+    apply_crt_curvature,
+    DisplayScaler,
+    ScalerFilter,
+    ScalerGeometry,
+    ScalerMode,
+    ScalerOption,
+};
 
 use eframe::{
     glow,
     glow::{Context, HasContext, Program, Texture, UniformLocation, VertexArray},
 };
-use ultraviolet::Mat4;
+use ultraviolet::{Mat4, Vec4};
 
 /// A logical texture size for a window surface.
 #[derive(Debug)]
@@ -47,6 +54,45 @@ pub struct SurfaceSize {
 #[derive(Copy, Clone, Debug)]
 struct ScalingMatrix {
     transform: Mat4,
+    inverse_transform: Mat4,
+}
+
+impl ScalingMatrix {
+    fn from_transform(transform: Mat4) -> Self {
+        Self {
+            inverse_transform: transform.inversed(),
+            transform,
+        }
+    }
+
+    fn surface_to_texture(&self, surface_x: f32, surface_y: f32, surface_w: f32, surface_h: f32) -> Option<(f32, f32)> {
+        if surface_w <= 0.0 || surface_h <= 0.0 {
+            return None;
+        }
+
+        let surface_ndc = Vec4::new(
+            surface_x * 2.0 / surface_w - 1.0,
+            1.0 - surface_y * 2.0 / surface_h,
+            0.0,
+            1.0,
+        );
+        let source_ndc = self.inverse_transform * surface_ndc;
+        if source_ndc.w == 0.0 {
+            return None;
+        }
+
+        let source_x = source_ndc.x / source_ndc.w;
+        let source_y = source_ndc.y / source_ndc.w;
+        let texture_x = source_x * 0.5 + 0.5;
+        let texture_y = 0.5 - source_y * 0.5;
+
+        const EDGE_EPSILON: f32 = 0.000_01;
+        (texture_x >= -EDGE_EPSILON
+            && texture_x <= 1.0 + EDGE_EPSILON
+            && texture_y >= -EDGE_EPSILON
+            && texture_y <= 1.0 + EDGE_EPSILON)
+            .then_some((texture_x.clamp(0.0, 1.0), texture_y.clamp(0.0, 1.0)))
+    }
 }
 
 fn fit_scale(texture_width: f32, target_height: f32, screen_width: f32, screen_height: f32, margin_y: f32) -> f32 {
@@ -433,6 +479,16 @@ impl DisplayScaler<Context, (), Texture> for MartyScaler {
         }
     }
 
+    fn surface_to_texture(&self, surface_x: f32, surface_y: f32) -> Option<(f32, f32)> {
+        let uv = self.scaling_matrix.surface_to_texture(
+            surface_x,
+            surface_y,
+            self.screen_size.0 as f32,
+            self.screen_size.1 as f32,
+        )?;
+        apply_crt_curvature(uv, self.h_curvature, self.v_curvature)
+    }
+
     fn set_margins(&mut self, _l: u32, _r: u32, _t: u32, _b: u32) {}
 
     fn set_bilinear(&mut self, bilinear: bool) {
@@ -577,10 +633,7 @@ impl ScalingMatrix {
         };
         */
 
-        Self {
-            transform: Mat4::from(transform),
-            //clip_rect,
-        }
+        Self::from_transform(Mat4::from(transform))
     }
 
     fn integer_matrix(
@@ -635,10 +688,7 @@ impl ScalingMatrix {
             (x, y, scaled_width as u32, scaled_height as u32)
         };
 
-        Self {
-            transform: Mat4::from(transform),
-            //clip_rect,
-        }
+        Self::from_transform(Mat4::from(transform))
     }
 
     /// Create a transformation matrix that stretches the texture across the entire surface,
@@ -665,9 +715,7 @@ impl ScalingMatrix {
             0.0,   ty,  0.0,  1.0,
         ];
 
-        Self {
-            transform: Mat4::from(transform),
-        }
+        Self::from_transform(Mat4::from(transform))
     }
 
     /// Create a transformation matrix that fits the texture by scaling it proportionally to the
@@ -678,9 +726,7 @@ impl ScalingMatrix {
         let (screen_width, screen_height) = screen_size;
 
         if texture_width <= 0.0 || target_height <= 0.0 || screen_width <= 0.0 || screen_height <= 0.0 {
-            return Self {
-                transform: Mat4::identity(),
-            };
+            return Self::from_transform(Mat4::identity());
         }
 
         let margin_ndc = margin_y / (screen_height / 2.0);
@@ -719,9 +765,7 @@ impl ScalingMatrix {
             (x, y, scaled_width as u32, scaled_height as u32)
         };
 
-        Self {
-            transform: Mat4::from(transform),
-        }
+        Self::from_transform(Mat4::from(transform))
     }
 
     fn as_slice_f32(&self) -> &[f32] {
@@ -731,11 +775,45 @@ impl ScalingMatrix {
 
 #[cfg(test)]
 mod tests {
-    use super::fit_scale;
+    use super::{fit_scale, ScalerMode, ScalingMatrix};
+
+    fn assert_point_close(actual: (f32, f32), expected: (f32, f32)) {
+        assert!(
+            (actual.0 - expected.0).abs() < 0.000_01,
+            "x: {actual:?} != {expected:?}"
+        );
+        assert!(
+            (actual.1 - expected.1).abs() < 0.000_01,
+            "y: {actual:?} != {expected:?}"
+        );
+    }
 
     #[test]
     fn fit_scale_can_scale_up_and_down() {
         assert_eq!(fit_scale(640.0, 400.0, 320.0, 200.0, 0.0), 0.5);
         assert_eq!(fit_scale(640.0, 400.0, 1280.0, 800.0, 0.0), 2.0);
+    }
+
+    #[test]
+    fn inverse_scaler_transform_maps_surface_to_texture() {
+        let stretch = ScalingMatrix::new(ScalerMode::Stretch, (640.0, 400.0), (640.0, 400.0), (800.0, 600.0), 0.0);
+        assert_point_close(stretch.surface_to_texture(0.0, 0.0, 800.0, 600.0).unwrap(), (0.0, 0.0));
+        assert_point_close(
+            stretch.surface_to_texture(400.0, 300.0, 800.0, 600.0).unwrap(),
+            (0.5, 0.5),
+        );
+        assert_point_close(
+            stretch.surface_to_texture(800.0, 600.0, 800.0, 600.0).unwrap(),
+            (1.0, 1.0),
+        );
+    }
+
+    #[test]
+    fn inverse_scaler_transform_rejects_letterbox_bars() {
+        let fit = ScalingMatrix::new(ScalerMode::Fit, (640.0, 400.0), (640.0, 400.0), (800.0, 800.0), 0.0);
+        assert!(fit.surface_to_texture(400.0, 149.0, 800.0, 800.0).is_none());
+        assert_point_close(fit.surface_to_texture(400.0, 150.0, 800.0, 800.0).unwrap(), (0.5, 0.0));
+        assert_point_close(fit.surface_to_texture(400.0, 650.0, 800.0, 800.0).unwrap(), (0.5, 1.0));
+        assert!(fit.surface_to_texture(400.0, 651.0, 800.0, 800.0).is_none());
     }
 }

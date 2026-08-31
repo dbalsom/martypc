@@ -366,9 +366,11 @@ impl Emulator {
 
         // Get the card list from the machine, including cards with no display targets.
         let mut vid_list = self.machine.bus().enumerate_videocards();
+        let mut lightpen_available = false;
 
         for vid in vid_list.iter() {
             if let Some(card) = self.machine.bus().video(vid) {
+                lightpen_available |= card.has_lightpen();
                 let extents = card.get_display_extents();
 
                 //assert_eq!(extents.double_scan, true);
@@ -393,6 +395,7 @@ impl Emulator {
 
         // Set list of video cards
         self.gui.set_card_list(card_strs);
+        self.gui.set_lightpen_available(lightpen_available);
 
         // Set floppy drives.
         let drive_ct = self.machine.bus().floppy_drive_ct();

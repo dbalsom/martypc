@@ -76,6 +76,7 @@ use crate::{
         sn_viewer::SnViewerControl,
         text_mode_viewer::TextModeViewer,
         vhd_creator::VhdCreator,
+        virtual_mouse_viewer::VirtualMouseViewerControl,
     },
     DialogProvider,
     GuiBoolean,
@@ -300,6 +301,7 @@ pub struct GuiState {
     #[cfg(feature = "use_display")]
     pub(crate) scaler_modes: Vec<ScalerMode>,
     pub(crate) scaler_presets: Vec<String>,
+    pub(crate) lightpen_available: bool,
 
     // Media Images
     pub(crate) floppy_drives: Vec<GuiFloppyDriveInfo>,
@@ -345,6 +347,7 @@ pub struct GuiState {
     pub serial_viewer: SerialViewerControl,
     pub pic_viewer:    PicViewerControl,
     pub ppi_viewer:    PpiViewerControl,
+    pub virtual_mouse_viewer: VirtualMouseViewerControl,
 
     pub videocard_state: VideoCardState,
     pub video_cards: Vec<VideoCardId>,
@@ -415,13 +418,16 @@ impl GuiState {
             (GuiBoolean::TurboButton, false),
             (GuiBoolean::ShowBackBuffer, false),
             (GuiBoolean::ShowRasterPosition, true),
+            (GuiBoolean::ShowAbsoluteMousePosition, false),
+            (GuiBoolean::MouseEnabled, true),
+            (GuiBoolean::LightPenEnabled, false),
             (GuiBoolean::OsdKeyboard, false),
             //(GuiBoolean::EnableSnow, true),
         ]
         .into();
 
         let option_floats: HashMap<GuiFloat, f32> =
-            [(GuiFloat::EmulationSpeed, 1.0f32), (GuiFloat::MouseSpeed, 0.5f32)].into();
+            [(GuiFloat::EmulationSpeed, 1.0f32), (GuiFloat::MouseSpeed, 1.0f32)].into();
 
         let mut option_enums = HashMap::new();
 
@@ -470,6 +476,7 @@ impl GuiState {
             #[cfg(feature = "use_display")]
             scaler_modes: Vec::new(),
             scaler_presets: Vec::new(),
+            lightpen_available: false,
 
             floppy_drives: Vec::new(),
             hdds: Vec::new(),
@@ -509,6 +516,7 @@ impl GuiState {
             serial_viewer: SerialViewerControl::new(),
             pic_viewer: PicViewerControl::new(),
             ppi_viewer: PpiViewerControl::new(),
+            virtual_mouse_viewer: VirtualMouseViewerControl::new(),
 
             videocard_state: Default::default(),
             video_cards: Vec::new(),
@@ -977,6 +985,12 @@ impl GuiState {
     #[inline]
     pub fn set_gameport(&mut self, state: bool, _layout: ControllerLayout) {
         self.gameport = state;
+    }
+
+    /// Specify whether any installed video adapter supports a light pen.
+    #[inline]
+    pub fn set_lightpen_available(&mut self, state: bool) {
+        self.lightpen_available = state;
     }
 
     pub fn set_serial_ports(&mut self, ports: Vec<SerialPortDescriptor>) {

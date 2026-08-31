@@ -597,7 +597,6 @@ pub struct TGACard {
     status_reads: u64,
 
     crtc: Crtc6845,
-    crtc_ticks_since_vsync: u32,
     in_crtc_hsync: bool,
     in_crtc_vsync: bool,
     in_last_vblank_line: bool,
@@ -774,7 +773,6 @@ impl Default for TGACard {
             status_reads: 0,
 
             crtc: Crtc6845::new(TraceLogger::None),
-            crtc_ticks_since_vsync: 0,
 
             in_crtc_hsync: false,
             in_crtc_vsync: false,
@@ -1085,6 +1083,11 @@ impl TGACard {
     #[inline]
     fn calc_phase_offset(&mut self) -> u32 {
         ((!self.cycles + 1) & 0x0F) as u32
+    }
+
+    #[inline]
+    fn current_raster_tick(&self) -> u32 {
+        self.rba as u32 / 8 / self.clock_divisor as u32
     }
 
     fn set_lp_latch(&mut self) {
@@ -2291,9 +2294,8 @@ impl TGACard {
 
         self.tick_monitor(self.char_clock, hsync, vsync);
 
-        self.crtc_ticks_since_vsync = self.crtc_ticks_since_vsync.wrapping_add(1);
         if let Some(trigger_tick) = self.lightpen_trigger_tick {
-            if self.crtc_ticks_since_vsync == trigger_tick {
+            if self.current_raster_tick() == trigger_tick {
                 // Trigger lightpen
                 self.latch_lightpen();
                 self.lightpen_trigger_tick = None;
@@ -2373,7 +2375,6 @@ impl TGACard {
     }
 
     pub fn do_vsync(&mut self) {
-        self.crtc_ticks_since_vsync = 0;
         self.cycles_per_vsync = self.cur_screen_cycles;
         self.cur_screen_cycles = 0;
         self.last_vsync_cycles = self.cycles;
