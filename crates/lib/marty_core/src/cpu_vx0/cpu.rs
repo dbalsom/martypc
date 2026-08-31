@@ -118,6 +118,7 @@ impl Cpu for NecVx0 {
         self.set_register16(Register16::DS, 0);
 
         self.flags = CPU_FLAGS_RESERVED_ON;
+        self.mode_flag_write_enabled = false;
         // Reset into native mode.
         // Set the mode flag to native (set)
         self.flags |= CPU_FLAG_MODE;

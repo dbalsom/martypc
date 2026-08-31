@@ -506,6 +506,7 @@ pub struct NecVx0 {
     //ip:    u16,
     flags: u16,
     emulation_mode: bool,
+    mode_flag_write_enabled: bool,
 
     address_bus: u32,
     address_latch: u32,

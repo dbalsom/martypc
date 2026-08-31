@@ -642,12 +642,7 @@ impl NecVx0 {
                                         self.calln_8080(irq);
                                     }
                                     Mnemonic::I8080(mnem) if matches!(mnem, Mnemonic8080::RETEM) => {
-                                        self.ret(true);
-                                        self.pop_flags();
-                                        // TODO: Does RETEM itself control leaving emulation mode or is it simply the 
-                                        //       status of the MD bit? If the latter, we should probably move enter/exit
-                                        //       emulation mode to pop_flags().
-                                        self.exit_emulation_mode();
+                                        self.retem_routine();
                                         jump = true;
                                     }
                                     _ => {

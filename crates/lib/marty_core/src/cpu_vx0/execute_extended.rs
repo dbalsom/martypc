@@ -428,10 +428,7 @@ impl NecVx0 {
                 // Save next address if we step over this INT.
                 self.step_over_target = Some(CpuAddress::Segmented(self.cs, self.ip()));
                 self.cycle_i(MC_JUMP);
-                // It's important to do the interrupt before the mode change, so that the mode 
-                // flag is preserved.
-                self.sw_interrupt(irq);
-                self.enter_emulation_mode();
+                self.brkem_routine(irq);
                 jump = true;
             }
             _ => {

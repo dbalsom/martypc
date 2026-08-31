@@ -228,10 +228,25 @@ impl NecVx0 {
 
         let trap_was_set = self.get_flag(Flag::Trap);
         let int_was_set = self.get_flag(Flag::Interrupt);
+        let mode_was_set = self.get_flag(Flag::Mode);
 
         // Ensure state of reserved flag bits
         self.flags = result & FLAGS_POP_MASK;
         self.flags |= CPU_FLAGS_RESERVED_ON;
+
+        // RESET and RETEM inhibit writes to the mode flag. BRKEM enables them so that
+        // POPF or IRET can restore the mode saved while executing in 8080 emulation mode.
+        if !self.mode_flag_write_enabled {
+            self.set_flag_state(Flag::Mode, mode_was_set);
+        }
+
+        // Keep the active decoder and reported CPU architecture synchronized with the
+        // effective mode flag. Dedicated mode-changing instructions update these directly.
+        match (self.get_flag(Flag::Mode), self.in_emulation_mode()) {
+            (false, false) => self.enter_emulation_mode(),
+            (true, true) => self.exit_emulation_mode(),
+            _ => {}
+        }
 
         // Was interrupt flag just set? Set interrupt inhibit.
         let int_is_set = self.get_flag(Flag::Interrupt);
@@ -262,7 +277,62 @@ impl NecVx0 {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::{
+        cpu_common::{CpuArch, CpuType, TraceMode},
+        tracelogger::TraceLogger,
+    };
+
+    fn test_cpu() -> NecVx0 {
+        NecVx0::new(CpuType::NecV20(CpuArch::I86), TraceMode::None, TraceLogger::None)
+    }
+
+    fn write_stack_word(cpu: &mut NecVx0, value: u16) {
+        let address = NecVx0::calc_linear_address(cpu.ss, cpu.sp) as usize;
+        cpu.bus.write_u16(address, value, 0).unwrap();
+    }
 
     #[test]
-    fn test_push_pop_psw_8080() {}
+    fn reset_disables_mode_flag_writes() {
+        let mut cpu = test_cpu();
+        cpu.mode_flag_write_enabled = true;
+        cpu.enter_emulation_mode();
+
+        cpu.reset();
+
+        assert!(!cpu.mode_flag_write_enabled);
+        assert!(cpu.get_flag(Flag::Mode));
+        assert!(!cpu.in_emulation_mode());
+        assert_eq!(cpu.cpu_type, CpuType::NecV20(CpuArch::I86));
+    }
+
+    #[test]
+    fn pop_flags_preserves_mode_when_writes_are_disabled() {
+        let mut cpu = test_cpu();
+        cpu.ss = 0;
+        cpu.sp = 0x1000;
+        write_stack_word(&mut cpu, CPU_FLAGS_RESERVED_ON | CPU_FLAG_CARRY);
+
+        cpu.pop_flags();
+
+        assert!(cpu.get_flag(Flag::Mode));
+        assert!(cpu.get_flag(Flag::Carry));
+        assert!(!cpu.in_emulation_mode());
+        assert_eq!(cpu.cpu_type, CpuType::NecV20(CpuArch::I86));
+    }
+
+    #[test]
+    fn pop_flags_restores_mode_when_writes_are_enabled() {
+        let mut cpu = test_cpu();
+        cpu.ss = 0;
+        cpu.sp = 0x1000;
+        cpu.mode_flag_write_enabled = true;
+        write_stack_word(&mut cpu, CPU_FLAGS_RESERVED_ON | CPU_FLAG_CARRY);
+
+        cpu.pop_flags();
+
+        assert!(!cpu.get_flag(Flag::Mode));
+        assert!(cpu.get_flag(Flag::Carry));
+        assert!(cpu.in_emulation_mode());
+        assert_eq!(cpu.cpu_type, CpuType::NecV20(CpuArch::I8080));
+    }
 }
