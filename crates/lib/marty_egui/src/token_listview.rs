@@ -263,7 +263,7 @@ impl TokenListView {
 
         // Draw background rect
         ui.painter()
-            .rect_filled(ui.max_rect(), egui::Rounding::default(), egui::Color32::BLACK);
+            .rect_filled(ui.max_rect(), egui::CornerRadius::default(), egui::Color32::BLACK);
 
         let mut scroll_area = ScrollArea::vertical().auto_shrink([false; 2]);
 
@@ -358,7 +358,7 @@ impl TokenListView {
                                         min: egui::pos2(x - self.l_margin, y),
                                         max: egui::pos2(x + 1000.0, y + row_height),
                                     },
-                                    egui::Rounding::ZERO,
+                                    egui::CornerRadius::ZERO,
                                     color,
                                 );
                                 drawn = true;
@@ -495,7 +495,7 @@ impl TokenListView {
                                         min: egui::pos2(token_x, y),
                                         max: egui::pos2(token_x + label_rect.max.x + 1.0, y + label_rect.max.y),
                                     },
-                                    egui::Rounding::ZERO,
+                                    egui::CornerRadius::ZERO,
                                     Color32::TRANSPARENT,
                                     egui::Stroke::new(1.0, Color32::WHITE),
                                     egui::StrokeKind::Inside,
@@ -531,7 +531,7 @@ impl TokenListView {
                             if (j - 16) == column_select {
                                 ui.painter().rect(
                                     text_rect.expand(2.0),
-                                    egui::Rounding::ZERO,
+                                    egui::CornerRadius::ZERO,
                                     Color32::TRANSPARENT,
                                     egui::Stroke::new(1.0, COLOR32_CYAN),
                                     egui::StrokeKind::Inside,

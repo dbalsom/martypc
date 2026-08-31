@@ -234,10 +234,9 @@ impl GuiState {
                 }
                 GuiWindow::SnViewer => {
                     self.sn_viewer.show(ui, &mut self.event_queue);
-                }
-                _ => {
-                    log::warn!("Window {:?} not implemented", win_enum);
-                }
+                } // _ => {
+                  //     log::warn!("Window {:?} not implemented", win_enum);
+                  // }
             });
 
             match inner_response_opt {

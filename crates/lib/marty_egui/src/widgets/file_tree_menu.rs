@@ -86,7 +86,7 @@ impl FileTreeMenu {
                     if ui.button(button_text).clicked() {
                         log::debug!("clicked on file {}, idx: {}", child.name(), child.idx());
                         clicked_fn(child.idx());
-                        ui.close_menu();
+                        ui.close();
                     }
                 });
             }

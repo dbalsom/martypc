@@ -194,7 +194,7 @@ impl GuiState {
                 if ui.button("Scaler Adjustments...").clicked() {
                     *self.window_flag(GuiWindow::ScalerAdjust) = true;
                     self.scaler_adjust.select_card(display.into());
-                    ui.close_menu();
+                    ui.close();
                 }
             }
         }
@@ -231,7 +231,7 @@ impl GuiState {
                 //let new_opt = self.get_option_enum_mut()
                 state_changed = true;
                 new_state = *state;
-                ui.close_menu();
+                ui.close();
             }
         }
         if state_changed {
@@ -258,7 +258,7 @@ impl GuiState {
                 if ui.checkbox(state, "Composite Monitor").clicked() {
                     state_changed = true;
                     new_state = *state;
-                    ui.close_menu();
+                    ui.close();
                 }
             }
             if state_changed {
@@ -280,14 +280,14 @@ impl GuiState {
                     new_opt,
                 )));
 
-                ui.close_menu();
+                ui.close();
             }
              */
 
             if ui.button("Composite Adjustments...").clicked() {
                 *self.window_flag(GuiWindow::CompositeAdjust) = true;
                 self.composite_adjust.select_card(display);
-                ui.close_menu();
+                ui.close();
             }
         }
 
@@ -296,19 +296,19 @@ impl GuiState {
         #[cfg(not(target_arch = "wasm32"))]
         if ui.button("🖵 Toggle Fullscreen").clicked() {
             self.event_queue.send(GuiEvent::ToggleFullscreen(display.into()));
-            ui.close_menu();
+            ui.close();
         };
 
         ui.separator();
 
         if ui.button("🖼 Save Screenshot (Native Output)...").clicked() {
             self.event_queue.send(GuiEvent::TakeScreenshot(display.into()));
-            ui.close_menu();
+            ui.close();
         };
 
         if ui.button("🖼 Take Screenshot (Shader output)...").clicked() {
             self.event_queue.send(GuiEvent::TakeShaderScreenshot(display.into()));
-            ui.close_menu();
+            ui.close();
         };
     }
 }

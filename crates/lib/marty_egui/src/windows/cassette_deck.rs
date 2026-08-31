@@ -87,7 +87,7 @@ const TRANSPORT_EVENTS: [CassetteDeckEvent; 6] = [
 ];
 
 // Colors for cassette painter
-const CASSETTE_BACKGROUND_COLOR: egui::Color32 = egui::Color32::BLACK;
+//const CASSETTE_BACKGROUND_COLOR: egui::Color32 = egui::Color32::BLACK;
 const CASSETTE_TAPE_COLOR: egui::Color32 = egui::Color32::from_rgb(92, 51, 23);
 const CASSETTE_SPOOL_SHADOW_COLOR: egui::Color32 = egui::Color32::from_black_alpha(64);
 const CASSETTE_SPINDLE_COLOR: egui::Color32 = egui::Color32::from_rgb(0xbd, 0xbd, 0xbd);
