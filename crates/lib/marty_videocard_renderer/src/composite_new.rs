@@ -3,15 +3,15 @@
     https://github.com/dbalsom/martypc
 
     ---------------------------------------------------------------------------
-
-    This code implements Andrew Jenner (reenigne's) sampled chroma multiplexer
-    algorithm. This is now the algorithm used by DosBox, 86Box and MartyPC for
-    composite color simulation.
-
-    The code in this file specficially maintains the original UNLICENSE
-    license terms.
-
 */
+
+//! # New Composite
+//! This code implements Andrew Jenner (reenigne's) sampled chroma multiplexer
+//! algorithm. This is now the algorithm used by DosBox, 86Box and MartyPC for
+//! composite color simulation.
+
+//! The code in this file specifically maintains the original UNLICENSE
+//! license terms.
 
 use super::CompositeParams;
 
@@ -37,7 +37,7 @@ const CHROMA_MULTIPLEXER: [u8; 256] = [
 
 const INTENSITY: [f64; 4] = [77.175381, 88.654656, 166.564623, 174.228438];
 
-const TAU: f64 = 6.28318531;
+const TAU: f64 = std::f64::consts::TAU; //6.28318531;
 
 const SCALER_MAXWIDTH: usize = 2048;
 
@@ -80,6 +80,12 @@ pub struct ReCompositeBuffers {
     btemp: [i32; SCALER_MAXWIDTH + 2],
 }
 
+impl Default for ReCompositeBuffers {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
 impl ReCompositeBuffers {
     pub fn new() -> Self {
         Self {
@@ -117,6 +123,12 @@ pub struct ReCompositeContext {
 
     cgamode: u8,
     new_cga: bool,
+}
+
+impl Default for ReCompositeContext {
+    fn default() -> Self {
+        Self::new()
+    }
 }
 
 impl ReCompositeContext {
@@ -161,12 +173,6 @@ impl ReCompositeContext {
         let mut c: f64;
         let mut i: f64;
         let mut v: f64;
-        let q: f64;
-        let a: f64;
-        let s: f64;
-        let r: f64;
-        let iq_adjust_i: f64;
-        let iq_adjust_q: f64;
         let i0: f64;
         let i3: f64;
 
@@ -233,19 +239,19 @@ impl ReCompositeContext {
                 let b = INTENSITY[(left & 1) | ((right << 1) & 2)];
                 v = new_cga!(c, i, r, g, b);
             }
-            self.composite_table[x as usize] = (v * self.mode_contrast + self.mode_brightness) as i32;
+            self.composite_table[x] = (v * self.mode_contrast + self.mode_brightness) as i32;
         }
 
         i = (self.composite_table[6 * 68] - self.composite_table[6 * 68 + 2]) as f64;
-        q = (self.composite_table[6 * 68 + 1] - self.composite_table[6 * 68 + 3]) as f64;
+        let q = (self.composite_table[6 * 68 + 1] - self.composite_table[6 * 68 + 3]) as f64;
 
-        a = TAU * (33.0 + 90.0 + self.hue_offset + self.mode_hue) / 360.0;
+        let a = TAU * (33.0 + 90.0 + self.hue_offset + self.mode_hue) / 360.0;
         c = a.cos();
-        s = a.sin();
-        r = 256.0 * self.mode_saturation / (i * i + q * q).sqrt();
+        let s = a.sin();
+        let r = 256.0 * self.mode_saturation / (i * i + q * q).sqrt();
 
-        iq_adjust_i = -(i * c + q * s) * r;
-        iq_adjust_q = (q * c - i * s) * r;
+        let iq_adjust_i = -(i * c + q * s) * r;
+        let iq_adjust_q = (q * c - i * s) * r;
 
         self.video_ri = (RI * iq_adjust_i + RQ * iq_adjust_q) as i32;
         self.video_rq = (-RI * iq_adjust_q + RQ * iq_adjust_i) as i32;
@@ -278,7 +284,7 @@ impl ReCompositeContext {
         in_line: &[u8],
         out_line: &mut [u32],
     ) {
-        let blocks = (w / 4) as usize;
+        let blocks = w / 4;
 
         let mut o_index = 0;
         let mut rgbi_index = 0;
@@ -289,22 +295,20 @@ impl ReCompositeContext {
             o_index += 1;
         }
 
-        buffers.temp[o_index] = self.composite_table
-            [(((border as u32) << 6) | (((in_line[rgbi_index] & 0x0f) as u32) << 2) | 3) as usize]
-            as i32;
+        buffers.temp[o_index] =
+            self.composite_table[(((border as u32) << 6) | (((in_line[rgbi_index] & 0x0f) as u32) << 2) | 3) as usize];
         o_index += 1;
 
         for x in 0..w - 1 {
-            buffers.temp[o_index] = self.composite_table[(((in_line[rgbi_index] as usize & 0x0f) << 6)
+            buffers.temp[o_index] = self.composite_table[((in_line[rgbi_index] as usize & 0x0f) << 6)
                 | ((in_line[rgbi_index + 1] as usize & 0x0f) << 2)
-                | (x & 3)) as usize] as i32;
+                | (x & 3)];
             o_index += 1;
             rgbi_index += 1;
         }
 
-        buffers.temp[o_index] = self.composite_table
-            [(((in_line[rgbi_index] as u32 & 0x0f) << 6) | ((border as u32) << 2) | 3) as usize]
-            as i32;
+        buffers.temp[o_index] =
+            self.composite_table[(((in_line[rgbi_index] as u32 & 0x0f) << 6) | ((border as u32) << 2) | 3) as usize];
         o_index += 1;
 
         for x in 0..5 {
@@ -317,6 +321,7 @@ impl ReCompositeContext {
 
             let mut i_index = 5;
             let mut srgb_index = 0;
+            #[allow(clippy::explicit_counter_loop)]
             for _ in 0..blocks * 4 {
                 let c = (buffers.temp[i_index] + buffers.temp[i_index]) << 3;
                 let d = (buffers.temp[i_index - 1] + buffers.temp[i_index + 1]) << 3;
@@ -441,5 +446,5 @@ impl ReCompositeContext {
 
 #[inline]
 fn byte_clamp(v: i32) -> u8 {
-    return (v >> 13).clamp(0, 255) as u8;
+    (v >> 13).clamp(0, 255) as u8
 }

@@ -23,22 +23,21 @@
     DEALINGS IN THE SOFTWARE.
 
     ---------------------------------------------------------------------------
-
-    marty_videocard_renderer::composite.rs
-
-    This module contains the composite conversion routine. It takes a vector
-    of CGA color index values (0-15) and converts to a pseudo-composite signal
-    based on the composite generation circuit of an original IBM "old style"
-    CGA card.
-
-    This module includes a basic conversion routine for NTSC artifact color
-    from a the composite output of the composite conversion routine. It is not
-    a full NTSC simulation.
-
-    See https://github.com/dbalsom/cga_artifact_color for more details on the
-    implementation.
-
 */
+
+//! # Composite Module
+
+//! This module contains the composite conversion routine. It takes a vector
+//! of CGA color index values (0-15) and converts to a pseudo-composite signal
+//! based on the composite generation circuit of an original IBM "old style"
+//! CGA card.
+
+//! This module includes a basic conversion routine for NTSC artifact color
+//! from a the composite output of the composite conversion routine. It is not
+//! a full NTSC simulation.
+
+//! See https://github.com/dbalsom/cga_artifact_color for more details on the
+//! implementation.
 
 //use cgmath::{Matrix3, Vector3};
 use glam::{Mat3, Mat3A, Vec3A};
