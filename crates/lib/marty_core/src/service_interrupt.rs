@@ -95,6 +95,8 @@ pub const MOUSE_STATE_QUERY: u8 = 0x00;
 pub const MOUSE_IRQ_QUERY: u8 = 0x01;
 pub const MOUSE_CONSUMER_RANGE_REPORT: u8 = 0x02;
 pub const MOUSE_CONSUMER_STATUS_REPORT: u8 = 0x03;
+pub const MOUSE_DISPLAY_APERTURE_QUERY: u8 = 0x04;
+pub const MOUSE_HOST_CURSOR_VISIBILITY: u8 = 0x05;
 pub const MOUSE_STATE_FLAG_CAPTURED: u16 = 0x0001;
 
 pub const FILE_TRANSFER_GUEST_TO_HOST: u8 = 0x00;
@@ -422,6 +424,19 @@ impl ServiceInterruptManager {
         clear_carry(cpu);
     }
 
+    /// Complete a display-aperture query after the machine has inspected its primary video card.
+    pub fn complete_display_aperture_size<C: Cpu>(&self, cpu: &mut C, size: Option<(u16, u16)>) {
+        let Some((width, height)) = size
+        else {
+            set_service_error(cpu, ServiceError::NotSupported);
+            return;
+        };
+
+        cpu.set_register16(Register16::BX, width);
+        cpu.set_register16(Register16::CX, height);
+        clear_carry(cpu);
+    }
+
     /// Complete a virtual mouse consumer-range report after the machine has inspected the device.
     pub fn complete_mouse_consumer_range<C: Cpu>(&self, cpu: &mut C, supported: bool) {
         if supported {
@@ -446,6 +461,7 @@ impl ServiceInterruptManager {
         match cpu.get_register8(Register8::AL) {
             MOUSE_STATE_QUERY => Some(ServiceEvent::GetVirtualMouseState),
             MOUSE_IRQ_QUERY => Some(ServiceEvent::GetVirtualMouseIrq),
+            MOUSE_DISPLAY_APERTURE_QUERY => Some(ServiceEvent::GetDisplayApertureSize),
             MOUSE_CONSUMER_RANGE_REPORT => Some(ServiceEvent::SetVirtualMouseConsumerRange {
                 min_x: cpu.get_register16(Register16::BX),
                 max_x: cpu.get_register16(Register16::CX),
@@ -455,6 +471,20 @@ impl ServiceInterruptManager {
             MOUSE_CONSUMER_STATUS_REPORT => match cpu.get_register16(Register16::BX) {
                 0 => Some(ServiceEvent::SetVirtualMouseConsumerStatus { loaded: false }),
                 1 => Some(ServiceEvent::SetVirtualMouseConsumerStatus { loaded: true }),
+                _ => {
+                    set_service_error(cpu, ServiceError::InvalidParameter);
+                    None
+                }
+            },
+            MOUSE_HOST_CURSOR_VISIBILITY => match cpu.get_register16(Register16::BX) {
+                0 => {
+                    clear_carry(cpu);
+                    Some(ServiceEvent::SetHostCursorVisibility { visible: false })
+                }
+                1 => {
+                    clear_carry(cpu);
+                    Some(ServiceEvent::SetHostCursorVisibility { visible: true })
+                }
                 _ => {
                     set_service_error(cpu, ServiceError::InvalidParameter);
                     None
@@ -1693,6 +1723,16 @@ mod tests {
         assert_eq!(cpu.get_flags() & CARRY_FLAG, 0);
         assert_eq!(cpu.get_register16(Register16::DX), 5);
 
+        cpu.set_register8(Register8::AL, MOUSE_DISPLAY_APERTURE_QUERY);
+        assert!(matches!(
+            manager.handle_interrupt(ServiceFunction::MouseState, &mut cpu),
+            Some(ServiceEvent::GetDisplayApertureSize)
+        ));
+        manager.complete_display_aperture_size(&mut cpu, Some((640, 480)));
+        assert_eq!(cpu.get_flags() & CARRY_FLAG, 0);
+        assert_eq!(cpu.get_register16(Register16::BX), 640);
+        assert_eq!(cpu.get_register16(Register16::CX), 480);
+
         cpu.set_register8(Register8::AL, MOUSE_CONSUMER_RANGE_REPORT);
         cpu.set_register16(Register16::BX, 10);
         cpu.set_register16(Register16::CX, 639);
@@ -1718,6 +1758,33 @@ mod tests {
         ));
         manager.complete_mouse_consumer_status(&mut cpu, true);
         assert_eq!(cpu.get_flags() & CARRY_FLAG, 0);
+
+        cpu.set_register8(Register8::AL, MOUSE_HOST_CURSOR_VISIBILITY);
+        cpu.set_register16(Register16::BX, 0);
+        assert!(matches!(
+            manager.handle_interrupt(ServiceFunction::MouseState, &mut cpu),
+            Some(ServiceEvent::SetHostCursorVisibility { visible: false })
+        ));
+        assert_eq!(cpu.get_flags() & CARRY_FLAG, 0);
+
+        cpu.set_register8(Register8::AL, MOUSE_HOST_CURSOR_VISIBILITY);
+        cpu.set_register16(Register16::BX, 1);
+        assert!(matches!(
+            manager.handle_interrupt(ServiceFunction::MouseState, &mut cpu),
+            Some(ServiceEvent::SetHostCursorVisibility { visible: true })
+        ));
+        assert_eq!(cpu.get_flags() & CARRY_FLAG, 0);
+
+        cpu.set_register8(Register8::AL, MOUSE_HOST_CURSOR_VISIBILITY);
+        cpu.set_register16(Register16::BX, 2);
+        assert!(manager
+            .handle_interrupt(ServiceFunction::MouseState, &mut cpu)
+            .is_none());
+        assert_ne!(cpu.get_flags() & CARRY_FLAG, 0);
+        assert_eq!(
+            cpu.get_register16(Register16::AX),
+            ServiceError::InvalidParameter.into()
+        );
 
         cpu.set_register8(Register8::AL, MOUSE_CONSUMER_STATUS_REPORT);
         cpu.set_register16(Register16::BX, 2);
@@ -1752,6 +1819,10 @@ mod tests {
         assert_eq!(cpu.get_register16(Register16::AX), ServiceError::NotSupported.into());
 
         manager.complete_mouse_irq(&mut cpu, None);
+        assert_ne!(cpu.get_flags() & CARRY_FLAG, 0);
+        assert_eq!(cpu.get_register16(Register16::AX), ServiceError::NotSupported.into());
+
+        manager.complete_display_aperture_size(&mut cpu, None);
         assert_ne!(cpu.get_flags() & CARRY_FLAG, 0);
         assert_eq!(cpu.get_register16(Register16::AX), ServiceError::NotSupported.into());
 

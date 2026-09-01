@@ -64,7 +64,14 @@ use crate::{
         StepResult,
         TraceMode,
     },
-    device_traits::videocard::{VideoCard, VideoCardId, VideoCardInterface, VideoCardState, VideoOption},
+    device_traits::videocard::{
+        DisplayApertureType,
+        VideoCard,
+        VideoCardId,
+        VideoCardInterface,
+        VideoCardState,
+        VideoOption,
+    },
     devices::{
         cartridge_slots::CartridgeSlot,
         dma::DMAControllerStringState,
@@ -1656,6 +1663,19 @@ impl Machine {
                 let irq = self.cpu.bus_mut().mouse_mut().as_ref().and_then(Mouse::virtual_irq);
                 self.service_interrupt_manager.complete_mouse_irq(&mut self.cpu, irq);
             }
+            ServiceEvent::GetDisplayApertureSize => {
+                let size = self.cpu.bus_mut().primary_video_mut().and_then(|card| {
+                    let aperture = card
+                        .display_extents()
+                        .apertures
+                        .get(DisplayApertureType::Cropped as usize)?;
+                    let width = u16::try_from(aperture.w).ok()?;
+                    let height = u16::try_from(aperture.h).ok()?;
+                    (width != 0 && height != 0).then_some((width, height))
+                });
+                self.service_interrupt_manager
+                    .complete_display_aperture_size(&mut self.cpu, size);
+            }
             ServiceEvent::SetVirtualMouseConsumerRange {
                 min_x,
                 max_x,
@@ -1682,6 +1702,10 @@ impl Machine {
                     .is_some_and(|mouse| mouse.set_virtual_consumer_status(loaded));
                 self.service_interrupt_manager
                     .complete_mouse_consumer_status(&mut self.cpu, supported);
+            }
+            ServiceEvent::SetHostCursorVisibility { visible } => {
+                self.events
+                    .push(MachineEvent::Service(ServiceEvent::SetHostCursorVisibility { visible }));
             }
             ServiceEvent::GuestFileTransferComplete {
                 filename,

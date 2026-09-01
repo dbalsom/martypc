@@ -804,6 +804,9 @@ impl MartyApp {
                                     if let Some(position) = display_pointer_position(ui, &response)
                                         .and_then(|position| dtc_ref.viewport_to_display(rect, position))
                                     {
+                                        if virtual_mouse && !emu.mouse_data.guest_cursor_visible {
+                                            ui.ctx().set_cursor_icon(egui::CursorIcon::None);
+                                        }
                                         ui.input(|input| {
                                             pending_virtual_input.set(Some(VirtualPointerInput::new(input, position)));
                                         });
@@ -919,6 +922,9 @@ impl MartyApp {
                             if let Some(position) = display_pointer_position(ui, &response)
                                 .and_then(|position| dtc_ref.viewport_to_display(rect, position))
                             {
+                                if virtual_mouse && !emu.mouse_data.guest_cursor_visible {
+                                    ui.ctx().set_cursor_icon(egui::CursorIcon::None);
+                                }
                                 ui.input(|input| {
                                     pending_virtual_input.set(Some(VirtualPointerInput::new(input, position)));
                                 });
@@ -1005,6 +1011,9 @@ impl MartyApp {
                     if let Some(position) = display_pointer_position(_ui, _response)
                         .and_then(|position| _target.viewport_to_display(_response.rect, position))
                     {
+                        if virtual_mouse && !emu.mouse_data.guest_cursor_visible {
+                            _ui.ctx().set_cursor_icon(egui::CursorIcon::None);
+                        }
                         _ui.input(|input| process_virtual_pointer_input(input, position, &mut emu.mouse_data));
                     }
                 }
@@ -1136,7 +1145,9 @@ fn process_captured_pointer_input(input: &egui::InputState, mouse: &mut MouseSta
         mouse.have_update = true;
     }
 
-    input.pointer.button_pressed(egui::PointerButton::Middle)
+    // Match the release edge used by `Response::middle_clicked()` when entering capture so one
+    // physical click cannot release capture on press and immediately re-enter it on release.
+    input.pointer.button_released(egui::PointerButton::Middle)
 }
 
 fn process_virtual_pointer_input(input: &egui::InputState, position: (f32, f32), mouse: &mut MouseState) {

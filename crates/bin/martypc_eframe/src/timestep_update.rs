@@ -298,6 +298,7 @@ pub fn process_update(emu: &mut Emulator, dm: &mut EFrameDisplayManager, tm: &mu
                     }
                     MachineEvent::Reset => {
                         machine_was_reset = true;
+                        emuc.mouse_data.guest_cursor_visible = true;
 
                         // Send notification
                         emuc.gui
@@ -347,6 +348,9 @@ pub fn process_update(emu: &mut Emulator, dm: &mut EFrameDisplayManager, tm: &mu
                         ServiceEvent::SetEmulationSpeed(fixed_percentage) => {
                             let speed = f32::from(fixed_percentage) / 1000.0;
                             emuc.set_emulation_speed(speed, tmu);
+                        }
+                        ServiceEvent::SetHostCursorVisibility { visible } => {
+                            emuc.mouse_data.guest_cursor_visible = visible;
                         }
                         ServiceEvent::GuestFileTransferComplete {
                             filename,
@@ -429,23 +433,20 @@ pub fn process_update(emu: &mut Emulator, dm: &mut EFrameDisplayManager, tm: &mu
             // Do per-frame updates (Serial port emulation)
             let events = emuc.machine.frame_update();
             for event in events {
-                match event {
-                    DeviceEvent::TurboToggled(state) => {
-                        // Send notification
-                        if state {
-                            emuc.gui
-                                .toasts()
-                                .info("Turbo mode enabled!".to_string())
-                                .duration(Some(SHORT_NOTIFICATION_TIME));
-                        }
-                        else {
-                            emuc.gui
-                                .toasts()
-                                .info("Turbo mode disabled!".to_string())
-                                .duration(Some(SHORT_NOTIFICATION_TIME));
-                        }
+                if let DeviceEvent::TurboToggled(state) = event {
+                    // Send notification
+                    if state {
+                        emuc.gui
+                            .toasts()
+                            .info("Turbo mode enabled!".to_string())
+                            .duration(Some(SHORT_NOTIFICATION_TIME));
                     }
-                    _ => {}
+                    else {
+                        emuc.gui
+                            .toasts()
+                            .info("Turbo mode disabled!".to_string())
+                            .duration(Some(SHORT_NOTIFICATION_TIME));
+                    }
                 }
             }
 

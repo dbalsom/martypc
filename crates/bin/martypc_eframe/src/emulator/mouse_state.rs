@@ -9,6 +9,8 @@ pub struct MouseState {
     pub r_button_id: u32,
     pub is_captured: bool,
     pub capture_mode: MouseCaptureMode,
+    /// Visibility requested by the guest mouse driver for the host cursor over a display.
+    pub guest_cursor_visible: bool,
     pub have_update: bool,
     pub l_button_was_pressed: bool,
     pub l_button_was_released: bool,
@@ -30,6 +32,7 @@ impl MouseState {
             r_button_id: get_mouse_buttons(reverse_buttons).1,
             is_captured: false,
             capture_mode: MouseCaptureMode::Mouse,
+            guest_cursor_visible: true,
             have_update: false,
             l_button_was_pressed: false,
             l_button_was_released: false,
