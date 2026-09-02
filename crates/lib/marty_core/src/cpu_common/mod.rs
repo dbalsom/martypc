@@ -258,6 +258,7 @@ pub enum Segment {
 #[derive(Default, Debug, Clone)]
 pub struct CpuStringState {
     pub cpu_type: CpuType,
+    pub halted: bool,
     pub ah: String,
     pub al: String,
     pub ax: String,
@@ -301,6 +302,7 @@ pub struct CpuStringState {
 
 #[derive(Default, Debug, Clone)]
 pub struct CpuDebugState {
+    pub halted: bool,
     pub ax: u16,
     pub bx: u16,
     pub cx: u16,

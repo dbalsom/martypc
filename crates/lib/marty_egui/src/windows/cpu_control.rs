@@ -219,7 +219,7 @@ impl CpuControl {
             .striped(false)
             .min_col_width(60.0)
             .show(ui, |ui| {
-                ui.label("Run state: ");
+                ui.label("Execution State: ");
                 ui.label(&state_str);
                 ui.end_row();
 

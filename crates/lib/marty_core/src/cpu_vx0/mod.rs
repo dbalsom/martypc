@@ -1355,6 +1355,7 @@ impl NecVx0 {
     pub fn get_string_state(&self) -> CpuStringState {
         CpuStringState {
             cpu_type: self.cpu_type,
+            halted: self.halted,
             ah: format!("{:02x}", self.a.h()),
             al: format!("{:02x}", self.a.l()),
             ax: format!("{:04x}", self.a.x()),
