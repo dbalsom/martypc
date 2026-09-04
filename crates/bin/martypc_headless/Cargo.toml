@@ -29,7 +29,7 @@ rgb = "0.8.33"
 serde = { workspace = true, features = ["derive"] }
 serde_derive = "1.0"
 serde_json = "1.0"
-serialport.workspace = true
+serialport = { workspace = true, optional = true }
 anyhow.workspace = true
 indexmap.workspace = true
 crossbeam-channel.workspace = true
@@ -46,7 +46,8 @@ criterion = "0.5.1"
 
 [features]
 default = ["use_serialport"]
-use_serialport = ["marty_core/serialport"]
+use_serial_bridge = ["marty_core/serial_bridge"]
+use_serialport = ["use_serial_bridge", "dep:serialport", "marty_core/serial"]
 devtools = []
 cpu_validator = ["cpu_tests", "marty_core/cpu_validator"]
 cpu_tests = ["marty_core/cpu_collect_cycle_states"]

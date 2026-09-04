@@ -73,7 +73,7 @@ eframe = { workspace = true, default-features = false, features = [
     "default_fonts", # Embed the default egui fonts.
     "wayland",       # Add wayland support for Linux/CI
 ]}
-serialport  = { workspace = true }
+serialport  = { workspace = true, optional = true }
 # enable bpaf since we have a command line
 marty_config = { path = "../../lib/marty_config", features = ["use_bpaf"] }
 # async runtime
@@ -126,7 +126,8 @@ use_wgpu = [
 # Use the glow backend
 use_glow = ["eframe/glow", "display_manager_eframe/use_glow", "marty_egui/scaler_ui", "marty_egui/scaler_params"]
 # Use serialport
-use_serialport = ["marty_core/serial", "marty_egui/use_serialport", "marty_egui_eframe/use_serialport"]
+use_serial_bridge = ["marty_core/serial_bridge", "marty_egui/use_serial_bridge"]
+use_serialport = ["use_serial_bridge", "dep:serialport", "marty_core/serial", "marty_egui/use_serialport", "marty_egui_eframe/use_serialport"]
 # Use gilrs for gamepads
 use_gilrs = ["gilrs", "marty_frontend_common/use_gilrs"]
 gilrs_default = ["gilrs/default"]

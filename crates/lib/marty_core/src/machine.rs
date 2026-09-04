@@ -94,6 +94,9 @@ use crate::{
     tracelogger::TraceLogger,
 };
 
+#[cfg(feature = "serial_bridge")]
+use crate::devices::serial_bridge::SerialPortBridgeConfiguration;
+
 pub use marty_common::types::rom::{MachineCheckpoint, MachinePatch, MachineRomEntry, MachineRomManifest};
 use marty_common::{MartyHashMap, PresentableDeviceEvent};
 
@@ -1229,24 +1232,40 @@ impl Machine {
         self.cpu.bus_mut().mouse_mut()
     }
 
-    #[cfg(feature = "serial")]
-    pub fn bridge_serial_port(
-        &mut self,
-        port_num: usize,
-        host_port_name: String,
-        host_port_id: usize,
-    ) -> Result<(), Error> {
+    #[cfg(feature = "serial_bridge")]
+    pub fn attach_serial_bridge(&mut self, configuration: SerialPortBridgeConfiguration) -> Result<(), Error> {
         if let Some(spc) = self.cpu.bus_mut().serial_mut() {
-            if let Err(e) = spc.bridge_port(port_num, host_port_name, host_port_id) {
-                log::error!("Failed to bridge serial port: {}", e);
-                return Err(anyhow!(format!("Failed to bridge serial port: {}", e)));
-            }
+            spc.attach_bridge(configuration)?;
         }
         else {
             log::error!("No serial port controller present!");
             return Err(anyhow!("No serial port controller present!"));
         }
         Ok(())
+    }
+
+    #[cfg(feature = "serial_bridge")]
+    pub fn disconnect_serial_bridge(&mut self, port_num: usize) -> Result<(), Error> {
+        self.serial_controller_mut()?.disconnect_bridge(port_num)
+    }
+
+    #[cfg(feature = "serial_bridge")]
+    pub fn reconnect_serial_bridge(&mut self, port_num: usize) -> Result<(), Error> {
+        self.serial_controller_mut()?.reconnect_bridge(port_num)
+    }
+
+    #[cfg(feature = "serial_bridge")]
+    pub fn detach_serial_bridge(&mut self, port_num: usize) -> Result<(), Error> {
+        self.serial_controller_mut()?.detach_bridge(port_num)
+    }
+
+    #[cfg(feature = "serial_bridge")]
+    fn serial_controller_mut(&mut self) -> Result<&mut crate::devices::serial::SerialPortController, Error> {
+        self.cpu
+            .bus_mut()
+            .serial_mut()
+            .as_mut()
+            .ok_or_else(|| anyhow!("No serial port controller present!"))
     }
 
     pub fn set_breakpoints(&mut self, bp_list: Vec<BreakPointType>) {

@@ -77,7 +77,7 @@ use web_config::{parse_query_params, CmdLineArgs};
 use crate::mount::MountableDeviceType;
 use cfg_if::cfg_if;
 use marty_common::types::joystick::ControllerLayout;
-use marty_core::devices::serial::SerialBridgePortConfiguration;
+use marty_core::devices::serial_bridge::SerialPortBridgeConfiguration;
 use serde_derive::Deserialize;
 
 const fn _default_true() -> bool {
@@ -439,17 +439,10 @@ pub struct EmulatorInput {
 }
 
 #[derive(Clone, Debug, Deserialize)]
-pub struct SerialBridgeConnection {
-    pub guest_port: usize,
-    pub host_port_name: String,
-}
-
-#[derive(Clone, Debug, Deserialize)]
+#[serde(deny_unknown_fields)]
 pub struct SerialBridge {
     #[serde(default)]
-    pub connection: Vec<SerialBridgeConnection>,
-    #[serde(default)]
-    pub port: Vec<SerialBridgePortConfiguration>,
+    pub connection: Vec<SerialPortBridgeConfiguration>,
 }
 
 #[derive(Debug, Deserialize)]
@@ -706,6 +699,19 @@ mod tests {
     #[derive(Deserialize)]
     struct MachineConfig {
         machine: Machine,
+    }
+
+    #[test]
+    fn legacy_serial_bridge_port_tables_are_rejected() {
+        let legacy = toml::from_str::<SerialBridge>(
+            r#"
+                [[port]]
+                host_port_name = "default"
+                baud_rate = 9600
+            "#,
+        );
+
+        assert!(legacy.is_err());
     }
 
     #[test]

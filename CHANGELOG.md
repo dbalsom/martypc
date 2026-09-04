@@ -1,6 +1,14 @@
 
 ## [0.5.0](https://github.com/dbalsom/martypc/releases/tag/0.4.2) (2026-XX-XX)
 
+## Breaking Changes
+
+Double-clicking a display viewport no longer enters mouse capture.
+This is due to gaining initial support for absolute mouse positioning - meaning we have to be able to accept normal double-click events.
+
+Middle-clicking now serves as a toggle for mouse capture in addition to the configured mouse capture hotkey. This can be disabled under `[emulator.input]` using the `middle_click_capture_shortcut` key.
+
+
 ## New Features
 
 ### Multi-head Support
@@ -8,6 +16,10 @@
 MartyPC once again supports multiple display windows and multiple render targets per video adapter. Each configured window can select its own video card, aperture, scaler mode, scaler preset, size, and window behavior.
 
 A single video adapter can also feed multiple render targets, allowing the same output to be visualized with different monitor and shader configurations. Display targets can be reassigned between windows at runtime, with unassigned targets displayed in the main viewport.
+
+### Improved Serial Port Bridging
+
+Serial port bridge configuration has been simplified somewhat and bridge targets can now be TCP streams as well as host serial ports.
 
 ### Sampled Machine Sounds
 
@@ -43,7 +55,17 @@ There is a new `monitor_emulation` flag in video card overlay configurations tha
 
 This release adds a new Fantasy EMS device courtsey of sqpat, author of RealDOOM and expert in all things EMS.  I am very grateful for his contribution.
 
+### Cassette Emulation
+
+The IBM 5150 and PCjr machines now have a read-only cassette interface, along with a new cassette deck visualization with an animated pixel art cassette tape. A cassette source has been added to the Media menu as well as a `cassette` resource under `/media/cassettes` for quick-access. The only supported cassette image type is `WAV`. No particular format is required, `WAV` files will be resampled. If you have issues with a particular WAV you may wish to reformat it as 44 kHz, mono, 32-bit float.   
+
+## Experimental Features
+
+### 
+
 ## Frontend Bug Fixes / Improvements
+ - Added configuration and UI support for Serial->TCP passthrough
+ - Implemented reverse transformation matrices to support absolute mouse cursor positioning
  - Disabled eframe's persistence feature to prevent it from making files in user directories even in portable mode.
  - Revamped and refactored multi-head support for dual video cards, supporting up to 16 monitors
  - New logo type and fancy new plasma effect in the About dialog
@@ -53,6 +75,7 @@ This release adds a new Fantasy EMS device courtsey of sqpat, author of RealDOOM
  - Fixed the GUI visibility hotkey
  - Added mouse-release hotkey hint to the title bar and toast notification when the mouse is captured.
  - Added `--scaler-preset` command-line argument to override configured scaler preset.
+ - Added an inaccurate but fun machine 'powering off' shader effect.
  - Added the ability to take post-shader screenshots 
  - Improved VHD creator with partitioning, formatting, and file population support.
  - Fixed a bug where alternate ROM dumps were not handled correctly (mostly encountered with EGA ROMs)
@@ -67,6 +90,12 @@ This release adds a new Fantasy EMS device courtsey of sqpat, author of RealDOOM
  - Improved oscilloscope level logic in SN76489 viewer window
 
 ## Core Bug Fixes / Improvements
+ - 8088 & V20: Fixed bug with HLT instruction with pending interrupts (thanks SArpnt)
+ - V20: Fixed bug with 8080 emulation mode handling (fixes DOS 6.22 `mem`)
+ - Added service interrupt API v1.0
+ - Mouse: Improved serial mouse latency, responsiveness, and reporting rate
+ - Serial: Refactored passthrough support and added serial->TCP passthrough
+ - Serial: Improved baud rate calculations, accounting for stop and parity bits
  - WASM: Fixed ROM patches not being re-applied on reboot
  - Refactored video card overlay support with optional slot parameter
  - Refactored floppy drive overlay support with optional slot parameter

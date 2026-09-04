@@ -552,14 +552,17 @@ pub fn run() {
         std::process::exit(1);
     }
 
-    // Enumerate host serial ports
-    let serial_ports = serialport::available_ports().unwrap_or_else(|e| {
-        log::warn!("Didn't find any serial ports: {:?}", e);
-        Vec::new()
-    });
+    #[cfg(feature = "use_serialport")]
+    {
+        // Enumerate host serial ports.
+        let serial_ports = serialport::available_ports().unwrap_or_else(|error| {
+            log::warn!("Didn't find any serial ports: {:?}", error);
+            Vec::new()
+        });
 
-    for port in &serial_ports {
-        log::debug!("Found serial port: {:?}", port);
+        for port in &serial_ports {
+            log::debug!("Found serial port: {:?}", port);
+        }
     }
 
     log::debug!("Test mode: {:?}", config.tests.test_mode);

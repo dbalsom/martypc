@@ -62,6 +62,7 @@ pub mod pic;
 pub mod pit;
 pub mod ppi;
 pub mod serial;
+pub mod serial_bridge;
 pub mod sn76489;
 pub mod sound_source;
 pub mod tga;

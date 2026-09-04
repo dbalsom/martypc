@@ -117,6 +117,8 @@ use marty_frontend_common::{
     HotkeyEvent,
     RelativeDirectory,
 };
+#[cfg(feature = "use_serial_bridge")]
+use marty_core::devices::serial_bridge::SerialPortBridgeConfiguration;
 
 #[cfg(feature = "markdown")]
 use crate::windows::info_viewer::InfoViewer;
@@ -322,6 +324,8 @@ pub struct GuiState {
 
     // Serial ports
     pub(crate) serial_ports: Vec<SerialPortDescriptor>,
+    #[cfg(feature = "use_serial_bridge")]
+    pub(crate) serial_bridge_connections: Vec<SerialPortBridgeConfiguration>,
     #[cfg(feature = "use_serialport")]
     pub(crate) host_serial_ports: Vec<SerialPortInfo>,
     pub(crate) serial_port_name: String,
@@ -492,6 +496,8 @@ impl GuiState {
             selected_joystick_mapping: [None, None],
 
             serial_ports: Vec::new(),
+            #[cfg(feature = "use_serial_bridge")]
+            serial_bridge_connections: Vec::new(),
             #[cfg(feature = "use_serialport")]
             host_serial_ports: Vec::new(),
             serial_port_name: String::new(),
@@ -995,6 +1001,14 @@ impl GuiState {
 
     pub fn set_serial_ports(&mut self, ports: Vec<SerialPortDescriptor>) {
         self.serial_ports = ports;
+    }
+
+    #[cfg(feature = "use_serial_bridge")]
+    pub fn set_serial_bridge_connections(
+        &mut self,
+        connections: Vec<SerialPortBridgeConfiguration>,
+    ) {
+        self.serial_bridge_connections = connections;
     }
 
     #[cfg(feature = "use_serialport")]

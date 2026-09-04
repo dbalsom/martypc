@@ -60,5 +60,6 @@ use_display = ["dep:marty_display_common", "marty_videocard_renderer", "marty_di
 scaler_ui = []
 scaler_params = []
 use_rfd = ["dep:rfd"]
-use_serialport = ["serialport"]
+use_serial_bridge = ["marty_core/serial_bridge"]
+use_serialport = ["use_serial_bridge", "dep:serialport"]
 markdown = ["dep:egui_commonmark"]

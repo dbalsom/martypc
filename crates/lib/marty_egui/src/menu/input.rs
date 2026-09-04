@@ -26,53 +26,150 @@
 */
 use crate::{state::GuiState, GuiBoolean, GuiEnum, GuiEvent, GuiFloat, GuiVariable, GuiVariableContext};
 use marty_common::types::joystick::ControllerLayout;
+#[cfg(feature = "use_serial_bridge")]
+use marty_core::devices::serial_bridge::{SerialPortBridgeState, SerialPortBridgeTransport};
 use marty_frontend_common::types::gamepad::JoystickMapping;
 
 impl GuiState {
     pub fn show_input_menu(&mut self, ui: &mut egui::Ui) {
+        self.show_serial_menu(ui);
+        self.show_mouse_menu(ui);
+        self.show_lightpen_menu(ui);
+        self.show_keyboard_menu(ui);
+        self.show_game_port_menu(ui);
+    }
+
+    fn show_serial_menu(&mut self, ui: &mut egui::Ui) {
         ui.menu_button("Serial Ports", |ui| {
             for port in self.serial_ports.clone() {
                 ui.menu_button(&port.name, |ui| {
-                    #[cfg(feature = "use_serialport")]
-                    {
-                        // Create a vector of ports that are currently bridged. We will use this to disable
-                        // those ports from selection in the menu.
-                        let bridged_ports = self
-                            .serial_ports
-                            .iter()
-                            .filter_map(|port| port.brige_port_id)
-                            .collect::<Vec<_>>();
-
-                        let mut selected = false;
-
-                        for (host_port_id, host_port) in self.host_serial_ports.iter().enumerate() {
-                            if let Some(enum_mut) = self.get_option_enum(
-                                GuiEnum::SerialPortBridge(Default::default()),
-                                Some(GuiVariableContext::SerialPort(port.id)),
-                            ) {
-                                selected = *enum_mut == GuiEnum::SerialPortBridge(host_port_id);
+                    #[cfg(feature = "use_serial_bridge")]
+                    if let Some(bridge) = port.bridge.as_ref() {
+                        let transport_label = match bridge.transport {
+                            SerialPortBridgeTransport::Serial => "Host serial",
+                            SerialPortBridgeTransport::TcpClient => "TCP Client",
+                        };
+                        let bridge_label = match bridge.state {
+                            SerialPortBridgeState::WaitingForOutput => {
+                                format!(
+                                    "{}: (Waiting for output to connect to \"{}\")",
+                                    transport_label, bridge.target
+                                )
                             }
+                            SerialPortBridgeState::WaitingForRequest => {
+                                format!(
+                                    "{}: (Waiting for request to connect to \"{}\")",
+                                    transport_label, bridge.target
+                                )
+                            }
+                            SerialPortBridgeState::Connecting => {
+                                format!("{}: (Connecting to \"{}\")", transport_label, bridge.target)
+                            }
+                            SerialPortBridgeState::Connected => {
+                                format!("{}: (Connected to \"{}\")", transport_label, bridge.target)
+                            }
+                            SerialPortBridgeState::ReconnectPending => {
+                                format!("{}: (Waiting to reconnect to \"{}\")", transport_label, bridge.target)
+                            }
+                            SerialPortBridgeState::Suspended => {
+                                format!("{}: (Disconnected from \"{}\")", transport_label, bridge.target)
+                            }
+                        };
 
-                            let enabled = !bridged_ports.contains(&host_port_id);
+                        ui.horizontal(|ui| {
+                            ui.label(bridge_label)
+                                .on_hover_text(bridge.last_error.as_deref().unwrap_or("No bridge error"));
+                        });
 
-                            let port_string = format!("Host port {}", host_port.port_name);
-                            if ui
-                                .add_enabled(enabled, egui::RadioButton::new(selected, port_string))
-                                .clicked()
-                            {
-                                self.event_queue.send(GuiEvent::BridgeSerialPort(
-                                    port.id,
-                                    host_port.port_name.clone(),
-                                    host_port_id,
-                                ));
+                        if bridge.state == SerialPortBridgeState::Connected {
+                            ui.horizontal(|ui| {
+                                if ui.button("🚫 Disconnect").clicked() {
+                                    self.event_queue.send(GuiEvent::DisconnectSerialBridge(port.id));
+                                    ui.close();
+                                }
+                            });
+                        }
+
+                        if bridge.state != SerialPortBridgeState::Connected {
+                            ui.horizontal(|ui| {
+                                if ui.button("⟲ Reconnect now").clicked() {
+                                    self.event_queue.send(GuiEvent::ReconnectSerialBridge(port.id));
+                                    ui.close();
+                                }
+                            });
+                        }
+
+                        ui.horizontal(|ui| {
+                            if ui.button("🔌 Detach Bridge").clicked() {
+                                self.event_queue.send(GuiEvent::DetachSerialBridge(port.id));
                                 ui.close();
                             }
+                        });
+                    }
+
+                    #[cfg(feature = "use_serial_bridge")]
+                    if port.bridge.is_none() {
+                        for connection in &self.serial_bridge_connections {
+                            let transport = connection.target.transport();
+                            let port_name = connection.target.label();
+                            let enabled = !self
+                                .serial_ports
+                                .iter()
+                                .filter_map(|port| port.bridge.as_ref())
+                                .any(|bridge| bridge.transport == transport && bridge.target == port_name);
+                            let label = match transport {
+                                SerialPortBridgeTransport::Serial => format!("Host serial: \"{port_name}\""),
+                                SerialPortBridgeTransport::TcpClient => {
+                                    format!("TCP Client: \"{port_name}\"")
+                                }
+                            };
+
+                            ui.horizontal(|ui| {
+                                if ui.add_enabled(enabled, egui::Button::new(label)).clicked() {
+                                    self.event_queue
+                                        .send(GuiEvent::BridgeSerialConnection(port.id, connection.clone()));
+                                    ui.close();
+                                }
+                            });
+                        }
+                    }
+
+                    #[cfg(feature = "use_serialport")]
+                    if port.bridge.is_none() {
+                        let bridged_host_ports = self
+                            .serial_ports
+                            .iter()
+                            .filter_map(|port| port.bridge.as_ref())
+                            .filter(|bridge| bridge.transport == SerialPortBridgeTransport::Serial)
+                            .map(|bridge| bridge.target.as_str())
+                            .collect::<Vec<_>>();
+
+                        for host_port in &self.host_serial_ports {
+                            let has_configured_connection = self.serial_bridge_connections.iter().any(|connection| {
+                                connection.target.transport() == SerialPortBridgeTransport::Serial
+                                    && connection.target.label() == host_port.port_name
+                            });
+                            if has_configured_connection {
+                                continue;
+                            }
+
+                            let enabled = !bridged_host_ports.contains(&host_port.port_name.as_str());
+                            let label = format!("Host serial: \"{}\"", host_port.port_name);
+                            ui.horizontal(|ui| {
+                                if ui.add_enabled(enabled, egui::Button::new(label)).clicked() {
+                                    self.event_queue
+                                        .send(GuiEvent::BridgeSerialPort(port.id, host_port.port_name.clone()));
+                                    ui.close();
+                                }
+                            });
                         }
                     }
                 });
             }
         });
+    }
 
+    fn show_mouse_menu(&mut self, ui: &mut egui::Ui) {
         ui.menu_button("Mouse", |ui| {
             let mut enabled = self.get_option(GuiBoolean::MouseEnabled).unwrap_or(true);
             if ui.checkbox(&mut enabled, "Enabled").changed() {
@@ -107,7 +204,9 @@ impl GuiState {
                 });
             });
         });
+    }
 
+    fn show_lightpen_menu(&mut self, ui: &mut egui::Ui) {
         if self.lightpen_available {
             ui.menu_button("Light Pen", |ui| {
                 let mut enabled = self.get_option(GuiBoolean::LightPenEnabled).unwrap_or(false);
@@ -120,7 +219,9 @@ impl GuiState {
                 }
             });
         }
+    }
 
+    fn show_keyboard_menu(&mut self, ui: &mut egui::Ui) {
         ui.menu_button("Keyboard", |ui| {
             let keyboard_available = self.osd_keyboard_available();
             let mut osd_keyboard_enabled = self.get_option(GuiBoolean::OsdKeyboard).unwrap_or(false);
@@ -145,7 +246,9 @@ impl GuiState {
                 ui.close();
             }
         });
+    }
 
+    fn show_game_port_menu(&mut self, ui: &mut egui::Ui) {
         // Only show the game port menu if we have a game port, naturally
         if self.gameport {
             let mut enum_event = None;

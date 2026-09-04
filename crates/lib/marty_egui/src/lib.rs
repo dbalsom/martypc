@@ -74,6 +74,8 @@ use marty_core::{
     devices::pic::PicStringState,
     machine::MachineState,
 };
+#[cfg(feature = "use_serial_bridge")]
+use marty_core::devices::serial_bridge::SerialPortBridgeConfiguration;
 
 use marty_common::types::{keys::MartyKey, ui::MouseCaptureMode};
 use marty_core::cpu_common::Register16;
@@ -202,7 +204,6 @@ pub enum GuiEnum {
     DisplayScalerPreset(String),
     DisplayComposite(bool),
     WindowBezel(bool),
-    SerialPortBridge(usize),
     AudioMuted(bool),
     AudioVolume(f32),
     MouseCaptureMode(MouseCaptureMode),
@@ -253,7 +254,12 @@ pub enum GuiEvent {
     CreateNewFloppy(usize, StandardFormat, bool),
     QueryCompatibleFloppyFormats(usize),
     SetFloppyWriteProtect(usize, bool),
-    BridgeSerialPort(usize, String, usize),
+    BridgeSerialPort(usize, String),
+    #[cfg(feature = "use_serial_bridge")]
+    BridgeSerialConnection(usize, SerialPortBridgeConfiguration),
+    DisconnectSerialBridge(usize),
+    ReconnectSerialBridge(usize),
+    DetachSerialBridge(usize),
     DumpVRAM,
     DumpSegment(Register16),
     DumpAllMem,

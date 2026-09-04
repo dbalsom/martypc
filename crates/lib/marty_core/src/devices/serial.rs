@@ -38,19 +38,14 @@
 
 use std::collections::{BTreeMap, VecDeque};
 
+#[cfg(feature = "serial_bridge")]
+use crate::devices::serial_bridge::{SerialPortBridge, SerialPortBridgeConfiguration, SerialPortBridgeUpdate};
 use crate::{
     bus::{BusInterface, DeviceRunTimeUnit, IoDevice},
     cpu_common::LogicAnalyzer,
-    devices::pic,
+    devices::{pic, serial_bridge::SerialPortBridgeInfo},
 };
 use marty_common::syntax_token::SyntaxToken;
-#[cfg(feature = "serial")]
-use marty_common::MartyHashMap;
-use serde_derive::Deserialize;
-#[cfg(feature = "serial")]
-use std::io::Read;
-#[cfg(feature = "serial")]
-use web_time::Duration;
 /*  1.8Mhz Oscillator.
     Divided by 16, then again by programmable Divisor to select baud rate.
     The 8250 has a maximum baud of 9600.
@@ -133,47 +128,6 @@ const MODEM_STATUS_CTS: u8 = 0b0001_0000;
 const MODEM_STATUS_DSR: u8 = 0b0010_0000;
 const MODEM_STATUS_RI: u8 = 0b0100_0000;
 const MODEM_STATUS_RLSD: u8 = 0b1000_0000;
-
-#[derive(Copy, Clone, Default, Debug, strum_macros::EnumString, Deserialize)]
-pub enum ParityType {
-    Even,
-    Odd,
-    #[default]
-    None,
-}
-
-#[derive(Copy, Clone, Default, Debug, strum_macros::EnumString, Deserialize)]
-pub enum FlowControlType {
-    #[default]
-    None,
-    Hardware,
-    Software,
-}
-
-#[derive(Clone, Debug, Deserialize)]
-pub struct SerialBridgePortConfiguration {
-    pub host_port_name: String,
-    pub host_port_id: Option<usize>,
-    pub baud_rate: u32,
-    pub stop_bits: u32,
-    pub data_bits: u32,
-    pub parity: ParityType,
-    pub flow_control: FlowControlType,
-}
-
-impl Default for SerialBridgePortConfiguration {
-    fn default() -> Self {
-        Self {
-            host_port_name: String::new(),
-            host_port_id: None,
-            baud_rate: 9600,
-            stop_bits: 1,
-            data_bits: 8,
-            parity: ParityType::default(),
-            flow_control: FlowControlType::default(),
-        }
-    }
-}
 
 impl IoDevice for SerialPortController {
     fn read_u8(&mut self, port: u16, _delta: DeviceRunTimeUnit) -> u8 {
@@ -287,7 +241,7 @@ pub type SerialPortDisplayState = BTreeMap<&'static str, SyntaxToken>;
 pub struct SerialPortDescriptor {
     pub id: usize,
     pub name: String,
-    pub brige_port_id: Option<usize>,
+    pub bridge: Option<SerialPortBridgeInfo>,
 }
 
 pub struct SerialPort {
@@ -304,8 +258,6 @@ pub struct SerialPort {
     interrupt_enable_reg: u8,
     intr_action: IntrAction,
     modem_control_reg: u8,
-    last_dtr: bool,
-    last_rts: bool,
     out2_suppresses_int: bool,
     loopback: bool,
     modem_status_reg: u8,
@@ -319,19 +271,11 @@ pub struct SerialPort {
     rx_queue: VecDeque<u8>,
     rx_timer: f64,
     tx_count: usize,
-    tx_queue: VecDeque<u8>,
     tx_timer: f64,
     us_per_byte: f64,
 
-    // Serial port bridge
-    // Allow a None id when serial feature is not enabled
-    #[cfg(feature = "serial")]
-    bridge_cfg: Option<SerialBridgePortConfiguration>,
-    bridge_port_id: Option<usize>,
-    #[cfg(feature = "serial")]
-    bridge_port: Option<Box<dyn serialport::SerialPort>>,
-    #[cfg(feature = "serial")]
-    bridge_buf: Vec<u8>,
+    #[cfg(feature = "serial_bridge")]
+    bridge: Option<SerialPortBridge>,
 }
 
 impl Default for SerialPort {
@@ -350,8 +294,6 @@ impl Default for SerialPort {
             interrupt_enable_reg: 0,
             intr_action: IntrAction::None,
             modem_control_reg: 0,
-            last_dtr: false,
-            last_rts: false,
             out2_suppresses_int: true,
             loopback: false,
             modem_status_reg: 0,
@@ -365,17 +307,11 @@ impl Default for SerialPort {
             rx_queue: VecDeque::new(),
             rx_timer: 0.0,
             tx_count: 0,
-            tx_queue: VecDeque::new(),
             tx_timer: 0.0,
             us_per_byte: 1041.66, //833.333, // 9600 baud
 
-            #[cfg(feature = "serial")]
-            bridge_cfg: None,
-            bridge_port_id: None,
-            #[cfg(feature = "serial")]
-            bridge_port: None,
-            #[cfg(feature = "serial")]
-            bridge_buf: vec![0; 1000],
+            #[cfg(feature = "serial_bridge")]
+            bridge:                                   None,
         }
     }
 }
@@ -391,23 +327,22 @@ impl SerialPort {
     }
 
     pub fn reset(&mut self) {
+        #[cfg(feature = "serial_bridge")]
+        let mut bridge = self.bridge.take();
+
         *self = Self {
             name: self.name.clone(),
             irq: self.irq,
             out2_suppresses_int: self.out2_suppresses_int,
             ..Default::default()
-        }
-    }
+        };
 
-    #[cfg(feature = "serial")]
-    pub(crate) fn set_bridge_port_cfg(&mut self, bridge_cfg: &SerialBridgePortConfiguration) {
-        self.bridge_cfg = Some(bridge_cfg.clone());
-    }
-
-    #[cfg(feature = "serial")]
-    pub(crate) fn set_bridge_port_default_cfg(&mut self, bridge_cfg: &SerialBridgePortConfiguration) {
-        if self.bridge_cfg.is_none() {
-            self.bridge_cfg = Some(bridge_cfg.clone());
+        #[cfg(feature = "serial_bridge")]
+        {
+            if let Some(bridge) = bridge.as_mut() {
+                bridge.on_guest_reset();
+            }
+            self.bridge = bridge;
         }
     }
 
@@ -781,15 +716,29 @@ impl SerialPort {
         self.modem_status_reg = byte;
     }
 
-    fn set_modem_status_connected(&mut self) {
-        if self.modem_status_reg & MODEM_STATUS_CTS == 0 {
-            self.modem_status_reg |= MODEM_STATUS_CTS;
-            self.modem_status_reg |= MODEM_STATUS_DCTS;
+    fn set_bridge_connection_status(&mut self, connected: bool) {
+        let old_status = self.modem_status_reg;
+        let connected_bits = MODEM_STATUS_CTS | MODEM_STATUS_DSR | MODEM_STATUS_RLSD;
+
+        if connected {
+            self.modem_status_reg |= connected_bits;
+        }
+        else {
+            self.modem_status_reg &= !connected_bits;
         }
 
-        if self.modem_status_reg & MODEM_STATUS_DSR == 0 {
-            self.modem_status_reg |= MODEM_STATUS_DSR;
+        if (old_status ^ self.modem_status_reg) & MODEM_STATUS_CTS != 0 {
+            self.modem_status_reg |= MODEM_STATUS_DCTS;
+        }
+        if (old_status ^ self.modem_status_reg) & MODEM_STATUS_DSR != 0 {
             self.modem_status_reg |= MODEM_STATUS_DDSR;
+        }
+        if (old_status ^ self.modem_status_reg) & MODEM_STATUS_RLSD != 0 {
+            self.modem_status_reg |= MODEM_STATUS_DRLSD;
+        }
+
+        if old_status != self.modem_status_reg {
+            self.raise_interrupt_type(INTERRUPT_MODEM_STATUS);
         }
     }
 
@@ -856,75 +805,6 @@ impl SerialPort {
         // Any remaining interrupts active? Deassert IRQ if no.
         if self.interrupts_active == 0 {
             self.intr_action = IntrAction::Lower;
-        }
-    }
-
-    #[cfg(feature = "serial")]
-    fn bridge_port(&mut self, port_name: String, port_id: usize) -> anyhow::Result<bool> {
-        let bridge_cfg = self.bridge_cfg.clone().unwrap_or_default();
-        log::debug!("bridge_port(): config: {:#?}", bridge_cfg);
-
-        let stop_bits = match bridge_cfg.stop_bits {
-            1 => serialport::StopBits::One,
-            2 => serialport::StopBits::Two,
-            _ => {
-                log::warn!("Invalid stop bits: {}. Defaulting to 1", bridge_cfg.stop_bits);
-                serialport::StopBits::One
-            }
-        };
-
-        let data_bits = match bridge_cfg.data_bits {
-            5 => serialport::DataBits::Five,
-            6 => serialport::DataBits::Six,
-            7 => serialport::DataBits::Seven,
-            8 => serialport::DataBits::Eight,
-            _ => {
-                log::warn!("Invalid data bits: {}. Defaulting to 8", bridge_cfg.data_bits);
-                serialport::DataBits::Eight
-            }
-        };
-
-        let parity = match bridge_cfg.parity {
-            ParityType::Even => serialport::Parity::Even,
-            ParityType::Odd => serialport::Parity::Odd,
-            ParityType::None => serialport::Parity::None,
-        };
-
-        let flow_control = match bridge_cfg.flow_control {
-            FlowControlType::Hardware => serialport::FlowControl::Hardware,
-            FlowControlType::Software => serialport::FlowControl::Software,
-            FlowControlType::None => serialport::FlowControl::None,
-        };
-
-        let dtr_on_open = false;
-
-        let port_result = serialport::new(port_name.clone(), bridge_cfg.baud_rate)
-            .timeout(Duration::from_millis(1))
-            .dtr_on_open(dtr_on_open)
-            .stop_bits(stop_bits)
-            .data_bits(data_bits)
-            .parity(parity)
-            .flow_control(flow_control)
-            .open();
-
-        match port_result {
-            Ok(mut bridge_port) => {
-                log::debug!("Successfully opened host port {}", port_name);
-
-                if !dtr_on_open {
-                    // Explicitly turn off DTR (com0com will keep it set)
-                    _ = bridge_port.write_data_terminal_ready(false);
-                }
-
-                self.bridge_port = Some(bridge_port);
-                self.bridge_port_id = Some(port_id);
-                self.set_modem_status_connected();
-                Ok(true)
-            }
-            Err(e) => {
-                log::error!("Error opening host port: {}", e);
-                anyhow::bail!("Error opening host port: {}", e)
-            }
         }
     }
 
@@ -1008,8 +888,6 @@ impl SerialPort {
 
 pub struct SerialPortController {
     port: [SerialPort; 2],
-    #[cfg(feature = "serial")]
-    bridge_configs: MartyHashMap<String, SerialBridgePortConfiguration>,
 }
 
 impl SerialPortController {
@@ -1019,16 +897,6 @@ impl SerialPortController {
                 SerialPort::new("COM1".to_string(), SERIAL1_IRQ, out2_suppresses_int),
                 SerialPort::new("COM2".to_string(), SERIAL2_IRQ, out2_suppresses_int),
             ],
-            #[cfg(feature = "serial")]
-            bridge_configs: MartyHashMap::default(),
-        }
-    }
-
-    #[cfg(feature = "serial")]
-    pub fn set_bridge_port_cfg(&mut self, port_info: &[SerialBridgePortConfiguration]) {
-        for port_cfg in port_info {
-            self.bridge_configs
-                .insert(port_cfg.host_port_name.clone(), port_cfg.clone());
         }
     }
 
@@ -1036,10 +904,15 @@ impl SerialPortController {
         let mut ports = Vec::new();
 
         for (i, port) in self.port.iter().enumerate() {
+            #[cfg(feature = "serial_bridge")]
+            let bridge = port.bridge.as_ref().map(SerialPortBridge::info);
+            #[cfg(not(feature = "serial_bridge"))]
+            let bridge = None;
+
             ports.push(SerialPortDescriptor {
                 id: i,
                 name: port.name.clone(),
-                brige_port_id: port.bridge_port_id,
+                bridge,
             });
         }
 
@@ -1100,23 +973,76 @@ impl SerialPortController {
         true
     }
 
-    /// Bridge the specified serial port
-    #[cfg(feature = "serial")]
-    pub fn bridge_port(&mut self, port: usize, host_port_name: String, host_port_id: usize) -> anyhow::Result<bool> {
-        // Look up the host port configuration
-        let default_cfg = SerialBridgePortConfiguration::default();
-        let mut bridge_cfg = self.bridge_configs.get(&host_port_name);
-        // Resolve to configured default configuration if not found
-        if bridge_cfg.is_none() {
-            bridge_cfg = self.bridge_configs.get("default");
-        }
-        // If still not found, use internal default
-        if bridge_cfg.is_none() {
-            bridge_cfg = Some(&default_cfg);
+    #[cfg(feature = "serial_bridge")]
+    pub fn attach_bridge(&mut self, configuration: SerialPortBridgeConfiguration) -> anyhow::Result<()> {
+        let port = configuration.guest_port;
+        if port >= self.port.len() {
+            anyhow::bail!("Invalid guest serial port index {port}");
         }
 
-        self.port[port].set_bridge_port_cfg(bridge_cfg.unwrap());
-        self.port[port].bridge_port(host_port_name, host_port_id)
+        if let crate::devices::serial_bridge::SerialPortBridgeTarget::Serial { port_name, .. } = &configuration.target {
+            let already_attached = self.port.iter().enumerate().any(|(index, serial_port)| {
+                index != port
+                    && serial_port.bridge.as_ref().is_some_and(|bridge| {
+                        matches!(
+                            bridge.target(),
+                            crate::devices::serial_bridge::SerialPortBridgeTarget::Serial {
+                                port_name: attached_name,
+                                ..
+                            } if attached_name == port_name
+                        )
+                    })
+            });
+            if already_attached {
+                anyhow::bail!("Host serial port '{port_name}' is already attached to another guest port");
+            }
+        }
+
+        let bridge = SerialPortBridge::new(configuration).map_err(anyhow::Error::msg)?;
+        self.port[port].set_bridge_connection_status(false);
+        self.port[port].bridge = Some(bridge);
+        Ok(())
+    }
+
+    #[cfg(feature = "serial_bridge")]
+    pub fn disconnect_bridge(&mut self, port: usize) -> anyhow::Result<()> {
+        let serial_port = self
+            .port
+            .get_mut(port)
+            .ok_or_else(|| anyhow::anyhow!("Invalid guest serial port index {port}"))?;
+        let bridge = serial_port
+            .bridge
+            .as_mut()
+            .ok_or_else(|| anyhow::anyhow!("Guest serial port {port} has no configured bridge"))?;
+        bridge.disconnect();
+        Ok(())
+    }
+
+    #[cfg(feature = "serial_bridge")]
+    pub fn reconnect_bridge(&mut self, port: usize) -> anyhow::Result<()> {
+        let serial_port = self
+            .port
+            .get_mut(port)
+            .ok_or_else(|| anyhow::anyhow!("Invalid guest serial port index {port}"))?;
+        let bridge = serial_port
+            .bridge
+            .as_mut()
+            .ok_or_else(|| anyhow::anyhow!("Guest serial port {port} has no configured bridge"))?;
+        bridge.reconnect();
+        Ok(())
+    }
+
+    #[cfg(feature = "serial_bridge")]
+    pub fn detach_bridge(&mut self, port: usize) -> anyhow::Result<()> {
+        let serial_port = self
+            .port
+            .get_mut(port)
+            .ok_or_else(|| anyhow::anyhow!("Invalid guest serial port index {port}"))?;
+        if serial_port.bridge.take().is_none() {
+            anyhow::bail!("Guest serial port {port} has no configured bridge");
+        }
+        serial_port.set_bridge_connection_status(false);
+        Ok(())
     }
 
     /// Run the serial ports for the specified number of microseconds
@@ -1154,10 +1080,9 @@ impl SerialPortController {
                 // Is there a byte waiting to be sent in the tx holding register?
                 if !port.tx_holding_empty {
                     // If we have bridged this serial port, send the byte to the tx queue
-                    #[cfg(feature = "serial")]
-                    if let Some(_) = &port.bridge_port {
-                        //log::trace!("{}: Sending byte: {:02X}", port.name, port.tx_holding_reg);
-                        port.tx_queue.push_back(port.tx_holding_reg);
+                    #[cfg(feature = "serial_bridge")]
+                    if let Some(bridge) = &mut port.bridge {
+                        bridge.enqueue(port.tx_holding_reg);
                     }
 
                     port.tx_count += 1;
@@ -1186,77 +1111,25 @@ impl SerialPortController {
     /// The update function is called per-frame, instead of within the emulation loop.
     /// This allows bridging realtime events with virtual device.
     pub fn update(&mut self) {
-        #[cfg(feature = "serial")]
+        #[cfg(feature = "serial_bridge")]
         for port in &mut self.port {
-            if let Some(bridge_port) = &mut port.bridge_port {
-                // Set state of DTR and RTS
-                let new_dtr = port.modem_control_reg & MODEM_CONTROL_DTR != 0;
-                let new_rts = port.modem_control_reg & MODEM_CONTROL_RTS != 0;
+            let dtr = port.modem_control_reg & MODEM_CONTROL_DTR != 0;
+            let rts = port.modem_control_reg & MODEM_CONTROL_RTS != 0;
+            let update = port
+                .bridge
+                .as_mut()
+                .map(|bridge| bridge.update(dtr, rts))
+                .unwrap_or_else(SerialPortBridgeUpdate::default);
 
-                if new_dtr != port.last_dtr {
-                    log::trace!("{}: DTR changed to {}", port.name, new_dtr);
-                    _ = bridge_port.write_data_terminal_ready(new_dtr);
-                    port.last_dtr = new_dtr;
+            if let Some(connected) = update.connection_changed {
+                port.set_bridge_connection_status(connected);
+            }
+
+            if !update.received.is_empty() {
+                if port.rx_queue.is_empty() {
+                    port.rx_timer = 0.0;
                 }
-
-                if new_rts != port.last_rts {
-                    log::trace!("{}: RTS changed to {}", port.name, new_rts);
-                    _ = bridge_port.write_request_to_send(new_rts);
-                    port.last_rts = new_rts;
-                }
-
-                // Explicitly assert DTR and RTS
-                //_ = bridge_port.write_data_terminal_ready(true);
-                //_ = bridge_port.write_request_to_send(true);
-
-                // Write any pending bytes
-                if !port.tx_queue.is_empty() {
-                    //log::warn!("Have {} bytes to write to serial port", port.tx_queue.len());
-                    port.tx_queue.make_contiguous();
-                    let (tx1, _) = port.tx_queue.as_slices();
-
-                    match bridge_port.write(tx1) {
-                        Ok(_) => {
-                            log::trace!("Wrote bytes: {:?}", tx1);
-                        }
-                        Err(ref e) if e.kind() == std::io::ErrorKind::TimedOut => {
-                            log::error!("Timeout writing bytes: {:?}", tx1);
-                        }
-                        Err(e) => log::error!("Error writing byte: {:?}", e),
-                    }
-
-                    port.tx_queue.clear();
-                }
-
-                // Read any pending bytes
-                match bridge_port.bytes_to_read() {
-                    Ok(ct) => {
-                        if ct > 0 {
-                            match bridge_port.read(port.bridge_buf.as_mut_slice()) {
-                                Ok(ct) => {
-                                    if ct > 0 {
-                                        log::trace!("Read {} bytes from serial port", ct);
-                                        if port.rx_queue.is_empty() {
-                                            port.rx_timer = 0.0;
-                                        }
-                                    }
-                                    for i in 0..ct {
-                                        // TODO: Must be a more efficient way to copy the vec to vecdeque?
-                                        let byte = port.bridge_buf[i];
-                                        port.rx_queue.push_back(byte);
-                                        log::trace!("Wrote byte : {:02X} to buf", byte);
-                                    }
-                                }
-                                Err(e) => {
-                                    log::error!("Error reading serial device: {}", e);
-                                }
-                            }
-                        }
-                    }
-                    Err(e) => {
-                        log::error!("Error querying serial device receive buffer: {}", e);
-                    }
-                }
+                port.rx_queue.extend(update.received);
             }
         }
     }
@@ -1266,6 +1139,15 @@ impl SerialPortController {
 mod tests {
     use super::{SerialPort, SerialPortController};
     use crate::devices::pic::Pic;
+    #[cfg(feature = "serial_bridge")]
+    use crate::devices::serial_bridge::{SerialPortBridgeConfiguration, SerialPortBridgeTarget};
+    #[cfg(feature = "serial_bridge")]
+    use std::{
+        io::Read,
+        net::TcpListener,
+        thread,
+        time::{Duration, Instant},
+    };
 
     fn assert_approx_eq(actual: f64, expected: f64) {
         assert!((actual - expected).abs() < 0.001, "expected {expected}, got {actual}");
@@ -1307,7 +1189,7 @@ mod tests {
     }
 
     #[test]
-    fn receive_packet_queueing_is_atomic_and_starts_a_new_character_timer() {
+    fn receive_packet_queueing_starts_new_character_timer() {
         let mut serial = SerialPortController::new(true);
         serial.port[0].rx_timer = 500.0;
 
@@ -1325,7 +1207,7 @@ mod tests {
     }
 
     #[test]
-    fn three_byte_1200_baud_7n1_packet_takes_twenty_two_point_five_milliseconds() {
+    fn three_byte_1200_baud_7n1_packet_timing() {
         let mut serial = SerialPortController::new(true);
         let mut pic = Pic::new();
         serial.port[0].divisor = 96;
@@ -1337,5 +1219,51 @@ mod tests {
 
         serial.run(&mut pic, 2.0);
         assert!(serial.port[0].rx_queue.is_empty());
+    }
+
+    #[cfg(feature = "serial_bridge")]
+    #[test]
+    fn uart_transmit_reaches_tcp_bridge() {
+        let listener = TcpListener::bind("127.0.0.1:0").unwrap();
+        let address = listener.local_addr().unwrap();
+        let server = thread::spawn(move || {
+            let (mut stream, _) = listener.accept().unwrap();
+            stream.set_read_timeout(Some(Duration::from_secs(3))).unwrap();
+
+            let mut received = [0];
+            stream.read_exact(&mut received).unwrap();
+            received[0]
+        });
+
+        let mut configuration = SerialPortBridgeConfiguration::tcp_client(0, address.to_string());
+        configuration.target = SerialPortBridgeTarget::TcpClient {
+            port_name: "TCP test port".to_string(),
+            address: address.to_string(),
+            connect_timeout_ms: 250,
+        };
+        let mut serial = SerialPortController::new(true);
+        serial.attach_bridge(configuration).unwrap();
+        let mut pic = Pic::new();
+        let deadline = Instant::now() + Duration::from_secs(3);
+
+        while Instant::now() < deadline
+            && !serial.port[0]
+                .bridge
+                .as_ref()
+                .is_some_and(|bridge| bridge.is_connected())
+        {
+            serial.update();
+            thread::sleep(Duration::from_millis(2));
+        }
+        assert!(serial.port[0].bridge.as_ref().unwrap().is_connected());
+
+        serial.port[0].tx_buffer_write(b'X');
+        serial.run(&mut pic, serial.port[0].us_per_byte + 1.0);
+        while Instant::now() < deadline && !server.is_finished() {
+            serial.update();
+            thread::sleep(Duration::from_millis(2));
+        }
+
+        assert_eq!(server.join().unwrap(), b'X');
     }
 }

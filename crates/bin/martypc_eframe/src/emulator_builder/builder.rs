@@ -79,11 +79,6 @@ use marty_frontend_common::{
 
 use url::Url;
 
-#[cfg(feature = "use_serialport")]
-use marty_egui::{GuiEnum, GuiVariableContext};
-#[cfg(feature = "use_serialport")]
-use marty_frontend_common::marty_common::MartyHashMap;
-
 #[derive(thiserror::Error, Debug)]
 pub enum EmuBuilderError {
     #[error("Configuration file '{0}' could not be found")]
@@ -864,75 +859,26 @@ impl EmulatorBuilder {
         {
             // Set the list of host serial ports.
             gui.set_host_serial_ports(serial_ports.clone());
+        }
 
-            let mut port_map: MartyHashMap<String, usize> = MartyHashMap::default();
-            for (pi, port) in serial_ports.iter().enumerate() {
-                // Add the port to the map
-                port_map.insert(port.port_name.clone(), pi);
-            }
-
-            // Set the defined serial port bridge configurations from config.
-            if let Some(mut serial_bridge) = config.emulator.serial_bridge.clone() {
-                for port in serial_bridge.port.iter_mut() {
-                    // Resolve port name to index.
-                    if let Some(index) = serial_ports.iter().position(|p| p.port_name == *port.host_port_name) {
-                        // Set the host port id to the resolved index.
-                        port.host_port_id = Some(index);
-                    }
-                    else if port.host_port_name != "default" {
-                        // Print a warning if the port name was not found - user may have typo'd or the configuration has changed
-                        log::warn!(
-                            "Serial port name '{}' not found in host serial ports. Bridge configuration not set.",
-                            port.host_port_name
-                        );
-                    }
-                }
-
-                // Filter ports without a resolved host_port_id
-                serial_bridge
-                    .port
-                    .retain(|p| p.host_port_id.is_some() || p.host_port_name == "default".to_string());
-
-                // Set the serial bridge port configuration.
-                if let Some(serial_controller) = machine.bus_mut().serial_mut() {
-                    log::debug!("Setting {} serial port bridge configurations", serial_bridge.port.len());
-                    serial_controller.set_bridge_port_cfg(&serial_bridge.port);
-                }
-
-                // Attempt to make bridge ports specified in connections.
-                for connection in serial_bridge.connection.iter() {
-                    // Look up name in map
-                    if let Some(host_port_id) = port_map.get(&connection.host_port_name) {
-                        // Set the connection
-                        if let Some(serial_controller) = machine.bus_mut().serial_mut() {
-                            match serial_controller.bridge_port(
-                                connection.guest_port,
-                                connection.host_port_name.clone(),
-                                *host_port_id,
-                            ) {
-                                Ok(_) => {
-                                    log::debug!(
-                                        "Serial port bridge created: {} -> {}",
-                                        connection.guest_port,
-                                        connection.host_port_name
-                                    );
-
-                                    gui.set_option_enum(
-                                        GuiEnum::SerialPortBridge(*host_port_id),
-                                        Some(GuiVariableContext::SerialPort(connection.guest_port)),
-                                    );
-                                }
-                                Err(e) => {
-                                    log::error!("Failed to create serial port bridge: {}", e);
-                                }
-                            }
+        #[cfg(feature = "use_serial_bridge")]
+        {
+            if let Some(serial_bridge) = config.emulator.serial_bridge.clone() {
+                gui.set_serial_bridge_connections(serial_bridge.connection.clone());
+                for connection in serial_bridge.connection {
+                    let guest_port = connection.guest_port;
+                    let target = connection.target.label().to_string();
+                    match machine.attach_serial_bridge(connection) {
+                        Ok(()) => {
+                            log::info!("Serial bridge configured: guest port {} -> {}", guest_port, target);
                         }
-                    }
-                    else {
-                        log::warn!(
-                            "Serial port name '{}' not found in host serial ports. Bridge connection not created.",
-                            connection.host_port_name
-                        );
+                        Err(error) => {
+                            log::error!(
+                                "Failed to configure serial bridge for guest port {}: {}",
+                                guest_port,
+                                error
+                            );
+                        }
                     }
                 }
             }

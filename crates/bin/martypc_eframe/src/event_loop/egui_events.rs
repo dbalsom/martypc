@@ -46,6 +46,8 @@ use marty_frontend_common::{
     thread_events::{FileSelectionContext, FrontendThreadEvent},
 };
 
+#[cfg(feature = "use_serialport")]
+use marty_core::devices::serial_bridge::SerialPortBridgeConfiguration;
 use marty_core::{
     breakpoints::BreakPointType,
     cpu_common,
@@ -225,29 +227,6 @@ pub fn handle_egui_event(
                     GuiEnum::DisplayAspectCorrect(state) => {
                         if let Err(_e) = dm.set_aspect_correction(*dth, *state) {
                             log::error!("Failed to set aspect correction state for display target!");
-                        }
-                    }
-                    _ => {}
-                },
-                #[cfg(feature = "use_serialport")]
-                GuiVariableContext::SerialPort(serial_id) => match op {
-                    GuiEnum::SerialPortBridge(host_id) => {
-                        match emu
-                            .machine
-                            .bridge_serial_port(*serial_id, "DUMMY".to_string(), host_id.clone())
-                        {
-                            Ok(_) => {
-                                emu.gui
-                                    .toasts()
-                                    .info(format!("Serial port bridged to: {}", host_id))
-                                    .duration(Some(NORMAL_NOTIFICATION_TIME));
-                            }
-                            Err(e) => {
-                                emu.gui
-                                    .toasts()
-                                    .error(format!("Failed to bridge serial port: {}", e))
-                                    .duration(Some(NORMAL_NOTIFICATION_TIME));
-                            }
                         }
                     }
                     _ => {}
@@ -958,12 +937,10 @@ pub fn handle_egui_event(
             }
         }
         #[cfg(feature = "use_serialport")]
-        GuiEvent::BridgeSerialPort(guest_port_id, host_port_name, host_port_id) => {
-            log::info!("Bridging serial port: {}, id: {}", host_port_name, host_port_id);
-            if let Err(err) = emu
-                .machine
-                .bridge_serial_port(*guest_port_id, host_port_name.clone(), *host_port_id)
-            {
+        GuiEvent::BridgeSerialPort(guest_port_id, host_port_name) => {
+            log::info!("Configuring serial bridge to host port: {}", host_port_name);
+            let configuration = SerialPortBridgeConfiguration::serial(*guest_port_id, host_port_name.clone());
+            if let Err(err) = emu.machine.attach_serial_bridge(configuration) {
                 emu.gui
                     .toasts()
                     .error(err.to_string())
@@ -974,17 +951,52 @@ pub fn handle_egui_event(
                     .toasts()
                     .info(format!("Serial port successfully bridged to {}", host_port_name))
                     .duration(Some(NORMAL_NOTIFICATION_TIME));
-
-                // Update the serial port enum to show the bridged port
-                emu.gui.set_option_enum(
-                    GuiEnum::SerialPortBridge(*host_port_id),
-                    Some(GuiVariableContext::SerialPort(*guest_port_id)),
-                );
-                log::debug!(
-                    "updating SerialPortBridge, host_port: {} context (guest_port): {}",
-                    host_port_id,
-                    guest_port_id
-                );
+            }
+        }
+        #[cfg(feature = "use_serial_bridge")]
+        GuiEvent::BridgeSerialConnection(guest_port_id, configuration) => {
+            let mut configuration = configuration.clone();
+            configuration.guest_port = *guest_port_id;
+            let port_name = configuration.target.label().to_string();
+            log::info!("Configuring serial bridge to configured port: {}", port_name);
+            if let Err(error) = emu.machine.attach_serial_bridge(configuration) {
+                emu.gui
+                    .toasts()
+                    .error(error.to_string())
+                    .duration(Some(NORMAL_NOTIFICATION_TIME));
+            }
+            else {
+                emu.gui
+                    .toasts()
+                    .info(format!("Serial port successfully bridged to {}", port_name))
+                    .duration(Some(NORMAL_NOTIFICATION_TIME));
+            }
+        }
+        #[cfg(feature = "use_serial_bridge")]
+        GuiEvent::DisconnectSerialBridge(guest_port_id) => {
+            if let Err(error) = emu.machine.disconnect_serial_bridge(*guest_port_id) {
+                emu.gui
+                    .toasts()
+                    .error(error.to_string())
+                    .duration(Some(NORMAL_NOTIFICATION_TIME));
+            }
+        }
+        #[cfg(feature = "use_serial_bridge")]
+        GuiEvent::ReconnectSerialBridge(guest_port_id) => {
+            if let Err(error) = emu.machine.reconnect_serial_bridge(*guest_port_id) {
+                emu.gui
+                    .toasts()
+                    .error(error.to_string())
+                    .duration(Some(NORMAL_NOTIFICATION_TIME));
+            }
+        }
+        #[cfg(feature = "use_serial_bridge")]
+        GuiEvent::DetachSerialBridge(guest_port_id) => {
+            if let Err(error) = emu.machine.detach_serial_bridge(*guest_port_id) {
+                emu.gui
+                    .toasts()
+                    .error(error.to_string())
+                    .duration(Some(NORMAL_NOTIFICATION_TIME));
             }
         }
         GuiEvent::DumpVRAM => {

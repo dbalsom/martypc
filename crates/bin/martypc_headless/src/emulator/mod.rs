@@ -87,6 +87,22 @@ impl Emulator {
     pub fn apply_config(&mut self) -> Result<(), Error> {
         log::debug!("Applying configuration to emulator state...");
 
+        #[cfg(feature = "use_serial_bridge")]
+        if let Some(serial_bridge) = self.config.emulator.serial_bridge.clone() {
+            for connection in serial_bridge.connection {
+                let guest_port = connection.guest_port;
+                let target = connection.target.label().to_string();
+                match self.machine.attach_serial_bridge(connection) {
+                    Ok(()) => log::info!("Serial bridge configured: guest port {} -> {}", guest_port, target),
+                    Err(error) => log::error!(
+                        "Failed to configure serial bridge for guest port {}: {}",
+                        guest_port,
+                        error
+                    ),
+                }
+            }
+        }
+
         // Set the initial power-on state.
         if self.config.emulator.auto_poweron {
             self.machine.change_state(MachineState::On);
