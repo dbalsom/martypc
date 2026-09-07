@@ -601,6 +601,10 @@ impl VideoCard for TGACard {
         Vec::new()
     }
 
+    fn has_lightpen(&self) -> bool {
+        true
+    }
+
     fn set_light_pen_pos(&mut self, x: u32, y: u32) {
         self.lightpen_pos = (x, y);
         self.lightpen_tick = ((y / 2) * self.extents.field_w + x) / 8 / self.clock_divisor as u32;

@@ -86,24 +86,7 @@ si_not_installed:
     jmp     success
 
 print_api_version:
-    mov     dx, api_version_prefix
-    mov     ah, 09h
-    int     21h                      ; print 'API version: '
-
-    mov     ax, [cs:marty_api_version]
-    mov     al, ah
-    call    print_decimal_byte       ; print API major version
-
-    mov     dl, '.'
-    mov     ah, 02h
-    int     21h                      ; print period
-
-    mov     al, [cs:marty_api_version]
-    call    print_decimal_byte       ; print API minor version
-
-    mov     dx, newline
-    mov     ah, 09h
-    int     21h
+    call    marty_print_api_version
 
 success:
     mov     ax, 4C00h
@@ -121,11 +104,9 @@ not_detected:
 
 section .data
 
-api_version_prefix        db 'API version: ', '$'
 not_detected_message      db 'MartyPC not detected', 0Dh, 0Ah, '$'
 si_message                db 'Service interrupt vector: ', '$'
 si_enabled_message        db 'Service interrupt enabled', 0Dh, 0Ah, '$'
 si_disabled_message       db 'Service interrupt disabled', 0Dh, 0Ah, '$'
 si_not_installed_message  db 'Service interrupt not installed.', 0Dh, 0Ah, '$'
 hex_suffix                db 'h', 0Dh, 0Ah, '$'
-newline                   db 0Dh, 0Ah, '$'

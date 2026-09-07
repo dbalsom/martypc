@@ -31,17 +31,17 @@
 //! instances.
 
 use crate::{
-    PlatformRenderCallback,
     counter::Counter,
     emulator::{
-        EmuFlags,
-        Emulator,
         joystick_state::JoystickState,
         keyboard_state::KeyboardData,
         mouse_state::MouseState,
+        EmuFlags,
+        Emulator,
     },
     input,
     input::HotkeyManager,
+    PlatformRenderCallback,
 };
 use std::{
     cell::RefCell,
@@ -66,6 +66,7 @@ use marty_egui::state::GuiState;
 use marty_frontend_common::{
     asset_manager::AssetManager,
     cartridge_manager::CartridgeManager,
+    cassette_manager::CassetteManager,
     floppy_manager::FloppyManager,
     keyboard_manager::KeyboardManager,
     machine_manager::MachineManager,
@@ -570,13 +571,19 @@ impl EmulatorBuilder {
             .create_manifest_async(rom_sets_resolved.clone(), &mut resource_manager)
             .await?;
 
+        writeln!(stdout, "Created ROM manifest using the following files:")?;
+        for rom in &rom_manifest.roms {
+            writeln!(stdout, "  {}", rom.path.display())?;
+        }
+
         log::debug!("Created manifest!");
         for (i, rom) in rom_manifest.roms.iter().enumerate() {
             log::debug!(
-                "  ROM #{}: md5: {} name: {} length: {} repeat: {}",
+                "  ROM #{}: md5: {} name: {} path: {} length: {} repeat: {}",
                 i,
                 rom.md5,
                 rom.name,
+                rom.path.display(),
                 rom.data.len(),
                 rom.repeat
             );
@@ -623,6 +630,12 @@ impl EmulatorBuilder {
         let mut cart_manager = CartridgeManager::new();
         // Scan the 'cartridge' resource
         cart_manager.scan_resource(&mut resource_manager)?;
+
+        // Instantiate the cassette manager
+        log::debug!("Creating CassetteManager...");
+        let mut cassette_manager = CassetteManager::new();
+        // Scan the 'cassette' resource
+        cassette_manager.scan_resource(&mut resource_manager)?;
 
         // Enumerate the host's serial ports if the feature is enabled
         #[cfg(feature = "use_serialport")]
@@ -833,6 +846,7 @@ impl EmulatorBuilder {
         gui.set_emulation_speed_limits(config.emulator.min_emulation_speed, config.emulator.max_emulation_speed);
         gui.set_osd_keyboard(osd_keyboard);
         gui.set_osd_keyboard_enabled(config.emulator.input.osd_keyboard);
+        gui.set_cassette_interface(machine.config().cassette);
 
         // Set list of virtual serial ports
         gui.set_serial_ports(machine.bus().enumerate_serial_ports());
@@ -962,6 +976,7 @@ impl EmulatorBuilder {
             joy_data,
             stat_counter,
             gui,
+            cassette_manager,
             floppy_manager,
             vhd_manager,
             cart_manager,

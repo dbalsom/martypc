@@ -59,12 +59,16 @@ impl FileSelectionContext {
 }
 
 /// [FileOpenContext] provides a way to identify for what purpose a file was loaded.
+/// If `CassetteImage` is used, then the file was selected as cassette media.
 /// If `FloppyDiskImage` is used, then the file was loaded as a floppy disk image.
 /// If `CartridgeImage` is used, then the file was loaded as a PCjr cartridge image.
 /// If `VhdDiskImage` is used, then the selected path is opened directly as a writable VHD.
 #[derive(Clone, Debug)]
 pub enum FileOpenContext {
     ServiceHostFile {
+        fsc: FileSelectionContext,
+    },
+    CassetteImage {
         fsc: FileSelectionContext,
     },
     FloppyDiskImage {
@@ -92,6 +96,9 @@ impl FileOpenContext {
     pub fn set_fsc(&mut self, fsc: FileSelectionContext) {
         match self {
             FileOpenContext::ServiceHostFile { fsc: fsc_ref } => {
+                *fsc_ref = fsc;
+            }
+            FileOpenContext::CassetteImage { fsc: fsc_ref } => {
                 *fsc_ref = fsc;
             }
             FileOpenContext::FloppyDiskImage { fsc: fsc_ref, .. } => {

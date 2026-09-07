@@ -258,6 +258,7 @@ pub enum Segment {
 #[derive(Default, Debug, Clone)]
 pub struct CpuStringState {
     pub cpu_type: CpuType,
+    pub halted: bool,
     pub ah: String,
     pub al: String,
     pub ax: String,
@@ -301,6 +302,7 @@ pub struct CpuStringState {
 
 #[derive(Default, Debug, Clone)]
 pub struct CpuDebugState {
+    pub halted: bool,
     pub ax: u16,
     pub bx: u16,
     pub cx: u16,
@@ -528,6 +530,18 @@ pub enum ServiceEvent {
     QuitEmulator(u8),
     /// Set the frontend emulation speed from a fixed-point tenths-of-a-percent value.
     SetEmulationSpeed(u16),
+    /// Return the current virtual mouse state to the guest and acknowledge its IRQ.
+    GetVirtualMouseState,
+    /// Return the configured virtual mouse IRQ to the guest.
+    GetVirtualMouseIrq,
+    /// Return the primary video card's cropped display-aperture dimensions.
+    GetDisplayApertureSize,
+    /// Record the logical coordinate range configured by a virtual-mouse consumer.
+    SetVirtualMouseConsumerRange { min_x: u16, max_x: u16, min_y: u16, max_y: u16 },
+    /// Record whether a guest virtual-mouse driver is currently loaded.
+    SetVirtualMouseConsumerStatus { loaded: bool },
+    /// Ask the frontend to show or hide its cursor over an emulated display.
+    SetHostCursorVisibility { visible: bool },
     /// A guest-to-host file transfer was committed and is ready to be saved by the frontend.
     GuestFileTransferComplete { filename: String, data: Vec<u8>, non_interactive: bool },
     /// A host-to-guest transfer needs the frontend to select or resolve a host file.

@@ -25,9 +25,8 @@
     --------------------------------------------------------------------------
 */
 use crate::{state::GuiState, GuiBoolean, GuiEnum, GuiEvent, GuiFloat, GuiVariable, GuiVariableContext};
-use marty_common::types::{joystick::ControllerLayout, ui::MouseCaptureMode};
+use marty_common::types::joystick::ControllerLayout;
 use marty_frontend_common::types::gamepad::JoystickMapping;
-use strum::IntoEnumIterator;
 
 impl GuiState {
     pub fn show_input_menu(&mut self, ui: &mut egui::Ui) {
@@ -66,7 +65,7 @@ impl GuiState {
                                     host_port.port_name.clone(),
                                     host_port_id,
                                 ));
-                                ui.close_menu();
+                                ui.close();
                             }
                         }
                     }
@@ -75,26 +74,16 @@ impl GuiState {
         });
 
         ui.menu_button("Mouse", |ui| {
-            ui.menu_button("Capture Mode", |ui| {
-                for mode in MouseCaptureMode::iter() {
-                    let mode_mut = self
-                        .get_option_enum_mut(GuiEnum::MouseCaptureMode(MouseCaptureMode::default()), None)
-                        .unwrap();
-                    if let GuiEnum::MouseCaptureMode(mode_inner) = mode_mut {
-                        let mut checked = *mode_inner == mode;
-                        if ui.checkbox(&mut checked, &mode.to_string()).changed() {
-                            if checked {
-                                *mode_inner = mode;
-                                let capture_enum = GuiEnum::MouseCaptureMode(mode.clone());
-                                self.event_queue.send(GuiEvent::VariableChanged(
-                                    GuiVariableContext::Global,
-                                    GuiVariable::Enum(capture_enum),
-                                ));
-                            }
-                        }
-                    }
-                }
-            });
+            let mut enabled = self.get_option(GuiBoolean::MouseEnabled).unwrap_or(true);
+            if ui.checkbox(&mut enabled, "Enabled").changed() {
+                self.set_option(GuiBoolean::MouseEnabled, enabled);
+                self.event_queue.send(GuiEvent::VariableChanged(
+                    GuiVariableContext::Global,
+                    GuiVariable::Bool(GuiBoolean::MouseEnabled, enabled),
+                ));
+            }
+
+            ui.separator();
             ui.menu_button("Speed", |ui| {
                 ui.vertical(|ui| {
                     ui.horizontal(|ui| {
@@ -118,6 +107,19 @@ impl GuiState {
                 });
             });
         });
+
+        if self.lightpen_available {
+            ui.menu_button("Light Pen", |ui| {
+                let mut enabled = self.get_option(GuiBoolean::LightPenEnabled).unwrap_or(false);
+                if ui.checkbox(&mut enabled, "Enabled").changed() {
+                    self.set_option(GuiBoolean::LightPenEnabled, enabled);
+                    self.event_queue.send(GuiEvent::VariableChanged(
+                        GuiVariableContext::Global,
+                        GuiVariable::Bool(GuiBoolean::LightPenEnabled, enabled),
+                    ));
+                }
+            });
+        }
 
         ui.menu_button("Keyboard", |ui| {
             let keyboard_available = self.osd_keyboard_available();

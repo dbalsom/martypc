@@ -41,7 +41,7 @@ pub mod util;
 pub use crate::{
     device_events::{FloppyDriveEvent, PresentableDeviceEvent},
     path::find_unique_filename,
-    types::{cartridge::CartImage, video_dimensions::VideoDimensions},
+    types::{cartridge::CartImage, cassette::CassetteTapeType, video_dimensions::VideoDimensions},
 };
 
 // Use FxBuildHasher for faster hashing primitives.

@@ -192,6 +192,9 @@ impl PerformanceViewerControl {
                 ui.label("Window Manager FPS: ");
                 ui.label(egui::RichText::new(format!("{}", self.perf.wm_fps)));
                 ui.end_row();
+                ui.label("Skipped Frames/s: ");
+                ui.label(egui::RichText::new(format!("{}", self.perf.skipped_frames)));
+                ui.end_row();
                 ui.label("Emulated FPS: ");
                 ui.label(egui::RichText::new(format!("{}", self.perf.emu_frames)));
                 ui.end_row();

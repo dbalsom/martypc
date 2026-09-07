@@ -483,9 +483,22 @@ pub fn run() {
             std::process::exit(1);
         });
 
+    println!("Created ROM manifest using the following files:");
+    for rom in &rom_manifest.roms {
+        println!("  {}", rom.path.display());
+    }
+
     log::debug!("Created manifest!");
     for (i, rom) in rom_manifest.roms.iter().enumerate() {
-        log::debug!("  rom {}: md5: {} length: {}", i, rom.md5, rom.data.len());
+        log::debug!(
+            "  ROM #{}: md5: {} name: {} path: {} length: {} repeat: {}",
+            i,
+            rom.md5,
+            rom.name,
+            rom.path.display(),
+            rom.data.len(),
+            rom.repeat
+        );
     }
 
     // Instantiate the floppy manager

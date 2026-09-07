@@ -24,7 +24,8 @@ type = "Ibm5150v64K"    # The Machine Type specifies the base hardware of this c
 rom_set = "auto"        # A specfic ROM set can be referenced by 'alias', or it can be left 'auto' to let MartyPC pick
                         # the best (usually newest) ROM set detected to be compatible for this system.
 
-speaker = true          # Enable the PC speaker.          
+speaker = true          # Enable the PC speaker.
+cassette = false        # Enable the cassette interface. Defaults to false when omitted.
 
 [machine.memory]
 conventional.size = 0xA0000     # List the amount of conventional memory. This is masked to the nearest multiple of

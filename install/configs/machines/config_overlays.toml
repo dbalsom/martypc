@@ -353,6 +353,13 @@ name = "microsoft_serial_mouse_com1"
     # Port 0 - COM1
     # Port 1 - COM2
     port = 0
+
+[[overlay]]
+name = "virtmouse"
+    [overlay.virtual_mouse]
+    # Experimental virtual mouse device that reports absolute coordinates.
+    # Requires mmouse.com driver.
+    irq = 5
     
 [[overlay]]
 name = "game_port"

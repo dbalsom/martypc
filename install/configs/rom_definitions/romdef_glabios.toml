@@ -90,7 +90,7 @@ rom = [
 [[romset]]
 alias = "glabios_pc_0.4.0"
 desc = "GLaBIOS for IBM 5150 (MartyPC)"
-priority = 5
+priority = 4
 provides = ["bios", "ibm5150v64k", "ibm5150v256k", "expansion"]
 oem_for = ["glabios_pc"]
 rom = [
@@ -101,7 +101,7 @@ rom = [
 alias = "glabios_xt_0.4.0"
 priority = 5
 provides = ["bios", "ibm5160", "expansion"]
-desc = "GLaBIOS for IBM 5160 (MartyPC)"
+desc = "GLaBIOS 0.4.0 for IBM 5160 (MartyPC)"
 oem_for = ["glabios_xt"]
 rom = [
     { filename = "GLABIOS_0.4.0_8XC.ROM", addr = 0xFE000, size = 8192, chip = "glabios" }
@@ -109,8 +109,8 @@ rom = [
 
 [[romset]]
 alias = "glabios_pc_0.4.0"
-desc = "GLaBIOS for IBM 5150"
-priority = 4
+desc = "GLaBIOS 0.4.0 for IBM 5150"
+priority = 6
 provides = ["bios", "glabios_xt", "ibm5150v64k", "ibm5150v256k", "expansion"]
 oem_for = ["glabios_pc"]
 rom = [
@@ -129,8 +129,8 @@ rom = [
 
 [[romset]]
 alias = "glabios_pc"
-desc = "GLaBIOS 0.2.6 for IBM 5150 (MartyPC)"
-priority = 4
+desc = "GLaBIOS 0.4.0 for IBM 5150 (MartyPC)"
+priority = 5
 provides = ["bios", "ibm5150v64k", "ibm5150v256k", "expansion"]
 oem_for = ["glabios_pc"]
 rom = [

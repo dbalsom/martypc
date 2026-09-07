@@ -23,12 +23,12 @@
     DEALINGS IN THE SOFTWARE.
 
     ---------------------------------------------------------------------------
-
-    frontend_common::display_scaler::lib.rs
-
-    Definition of the DisplayScaler trait
-
 */
+
+//! # Display Scaler
+//!
+//! Common display scaler functionality and main DisplayScaler trait definition.
+
 use marty_frontend_common::color::MartyColor;
 pub use marty_frontend_common::types::window::ScalerMode;
 use marty_videocard_renderer::RendererConfigParams;
@@ -163,6 +163,33 @@ pub struct ScalerGeometry {
     pub surface_h: u32,
 }
 
+/// Map the scaler UV at a physical surface position to the source UV sampled by the CRT shader.
+///
+/// This intentionally mirrors `apply_crt_curvature()` in the WGPU and Glow scaler shaders.
+pub fn apply_crt_curvature(uv: (f32, f32), h_curvature: f32, v_curvature: f32) -> Option<(f32, f32)> {
+    let mapped_x = uv.0 * 2.0 - 1.0;
+    let mapped_y = uv.1 * 2.0 - 1.0;
+    let radius_squared = mapped_x * mapped_x + mapped_y * mapped_y;
+    let curvature = (h_curvature + v_curvature) * 0.1;
+    let distortion = 1.0 - radius_squared * curvature;
+
+    if !distortion.is_finite() || distortion.abs() <= f32::EPSILON {
+        return None;
+    }
+
+    let texture_x = (mapped_x / distortion) * 0.5 + 0.5;
+    let texture_y = (mapped_y / distortion) * 0.5 + 0.5;
+    const EDGE_EPSILON: f32 = 0.000_01;
+
+    (texture_x.is_finite()
+        && texture_y.is_finite()
+        && texture_x >= -EDGE_EPSILON
+        && texture_x <= 1.0 + EDGE_EPSILON
+        && texture_y >= -EDGE_EPSILON
+        && texture_y <= 1.0 + EDGE_EPSILON)
+        .then_some((texture_x.clamp(0.0, 1.0), texture_y.clamp(0.0, 1.0)))
+}
+
 #[derive(Copy, Clone, Debug)]
 pub struct ScalerParams {
     pub filter: ScalerFilter,
@@ -269,9 +296,52 @@ pub trait DisplayScaler<D, Q, T>: ThreadSafe {
     fn set_mode(&mut self, device: &D, queue: &Q, new_mode: ScalerMode);
 
     fn geometry(&self) -> ScalerGeometry;
+    fn surface_to_texture(&self, surface_x: f32, surface_y: f32) -> Option<(f32, f32)>;
     fn set_margins(&mut self, l: u32, r: u32, t: u32, b: u32);
     fn set_bilinear(&mut self, bilinear: bool);
     fn set_fill_color(&mut self, fill: MartyColor);
     fn set_option(&mut self, device: &D, queue: &Q, opt: ScalerOption, update: bool) -> bool;
     fn set_options(&mut self, device: &D, queue: &Q, opts: Vec<ScalerOption>);
+}
+
+#[cfg(test)]
+mod tests {
+    use super::apply_crt_curvature;
+
+    fn assert_point_close(actual: (f32, f32), expected: (f32, f32)) {
+        assert!(
+            (actual.0 - expected.0).abs() < 0.000_01,
+            "x: {actual:?} != {expected:?}"
+        );
+        assert!(
+            (actual.1 - expected.1).abs() < 0.000_01,
+            "y: {actual:?} != {expected:?}"
+        );
+    }
+
+    #[test]
+    fn zero_crt_curvature_is_identity() {
+        for point in [(0.0, 0.0), (0.25, 0.75), (0.5, 0.5), (1.0, 1.0)] {
+            assert_point_close(apply_crt_curvature(point, 0.0, 0.0).unwrap(), point);
+        }
+    }
+
+    #[test]
+    fn crt_curvature_leaves_center_fixed_and_matches_shader_equation() {
+        assert_point_close(apply_crt_curvature((0.5, 0.5), 0.2, 0.2).unwrap(), (0.5, 0.5));
+        assert_point_close(apply_crt_curvature((0.75, 0.5), 0.2, 0.2).unwrap(), (0.752_525_27, 0.5));
+    }
+
+    #[test]
+    fn crt_curvature_is_symmetric() {
+        let left = apply_crt_curvature((0.25, 0.35), 0.15, 0.15).unwrap();
+        let right = apply_crt_curvature((0.75, 0.65), 0.15, 0.15).unwrap();
+        assert_point_close((left.0 + right.0, left.1 + right.1), (1.0, 1.0));
+    }
+
+    #[test]
+    fn crt_curvature_rejects_shader_coordinates_outside_texture() {
+        assert!(apply_crt_curvature((0.0, 0.0), 1.0, 1.0).is_none());
+        assert!(apply_crt_curvature((1.0, 1.0), 1.0, 1.0).is_none());
+    }
 }

@@ -64,7 +64,14 @@ use crate::{
         StepResult,
         TraceMode,
     },
-    device_traits::videocard::{VideoCard, VideoCardId, VideoCardInterface, VideoCardState, VideoOption},
+    device_traits::videocard::{
+        DisplayApertureType,
+        VideoCard,
+        VideoCardId,
+        VideoCardInterface,
+        VideoCardState,
+        VideoOption,
+    },
     devices::{
         cartridge_slots::CartridgeSlot,
         dma::DMAControllerStringState,
@@ -73,7 +80,7 @@ use crate::{
         floppy_drive::FloppyImageState,
         hdc::{jr_ide::JrIdeController, xebec::HardDiskController, xtide::XtIdeController},
         keyboard_common::KeyboardModifiers,
-        mouse::Mouse,
+        mouse::{Mouse, VirtualMouseConsumerRange, VirtualMouseInputMode},
         pic::PicStringState,
         pit::PitDisplayState,
         ppi::{PpiDisplayState, PpiStringState},
@@ -83,7 +90,7 @@ use crate::{
     machine_config::{get_machine_descriptor, MachineConfiguration, MachineDescriptor},
     machine_preferences::MachinePreferences,
     machine_types::{MachineType, OnHaltBehavior},
-    service_interrupt::{ServiceFunction, ServiceInterruptManager},
+    service_interrupt::{ServiceFunction, ServiceInterruptManager, MOUSE_STATE_FLAG_CAPTURED},
     tracelogger::TraceLogger,
 };
 
@@ -493,6 +500,12 @@ impl Machine {
         let service_interrupt_vector = core_config.get_service_interrupt();
         let service_interrupt_enabled = !core_config.get_service_interrupt_gate();
 
+        if machine_config.virtual_mouse.is_some() && service_interrupt_vector.is_none() {
+            return Err(anyhow!(
+                "Virtual mouse configuration requires a MartyPC service interrupt vector"
+            ));
+        }
+
         // Create PIT output log file if specified
         //let pit_output_file_option = None;
         /*
@@ -861,26 +874,21 @@ impl Machine {
     /// Mark a pending host-to-guest transfer request as aborted.
     pub fn abort_service_host_file_request(&mut self) {
         if let Err(error) = self.service_interrupt_manager.abort_host_file_request(&mut self.cpu) {
-            log::error!(
-                "Failed to abort host file transfer request: {:04X}h",
-                u16::from(error)
-            );
+            log::error!("Failed to abort host file transfer request: {:04X}h", u16::from(error));
         }
     }
 
     /// Mark a pending non-interactive host-to-guest transfer as not found.
     pub fn service_host_file_not_found(&mut self) {
         if let Err(error) = self.service_interrupt_manager.host_file_not_found(&mut self.cpu) {
-            log::error!(
-                "Failed to report missing host transfer file: {:04X}h",
-                u16::from(error)
-            );
+            log::error!("Failed to report missing host transfer file: {:04X}h", u16::from(error));
         }
     }
 
     /// Configure the fixed-point speed values reported by service function `AH=10h`.
     pub fn configure_service_speed_control(&mut self, min: u16, current: u16, max: u16) {
-        self.service_interrupt_manager.configure_speed_control(min, current, max);
+        self.service_interrupt_manager
+            .configure_speed_control(min, current, max);
     }
 
     /// Synchronize the current frontend speed reported by service function `AH=10h`.
@@ -1623,6 +1631,81 @@ impl Machine {
                 log::debug!("SetEmulationSpeed ServiceEvent received: {} tenths of a percent", speed);
                 self.events
                     .push(MachineEvent::Service(ServiceEvent::SetEmulationSpeed(speed)));
+            }
+            ServiceEvent::GetVirtualMouseState => {
+                let state = self
+                    .cpu
+                    .bus_mut()
+                    .mouse_mut()
+                    .as_mut()
+                    .and_then(Mouse::take_virtual_state)
+                    .map(|state| {
+                        let flags = if state.input_mode == VirtualMouseInputMode::Relative {
+                            MOUSE_STATE_FLAG_CAPTURED
+                        }
+                        else {
+                            0
+                        };
+                        (
+                            state.x,
+                            state.y,
+                            state.buttons,
+                            state.change_counter,
+                            state.relative_x,
+                            state.relative_y,
+                            flags,
+                        )
+                    });
+                self.service_interrupt_manager
+                    .complete_mouse_state(&mut self.cpu, state);
+            }
+            ServiceEvent::GetVirtualMouseIrq => {
+                let irq = self.cpu.bus_mut().mouse_mut().as_ref().and_then(Mouse::virtual_irq);
+                self.service_interrupt_manager.complete_mouse_irq(&mut self.cpu, irq);
+            }
+            ServiceEvent::GetDisplayApertureSize => {
+                let size = self.cpu.bus_mut().primary_video_mut().and_then(|card| {
+                    let aperture = card
+                        .display_extents()
+                        .apertures
+                        .get(DisplayApertureType::Cropped as usize)?;
+                    let width = u16::try_from(aperture.w).ok()?;
+                    let height = u16::try_from(aperture.h).ok()?;
+                    (width != 0 && height != 0).then_some((width, height))
+                });
+                self.service_interrupt_manager
+                    .complete_display_aperture_size(&mut self.cpu, size);
+            }
+            ServiceEvent::SetVirtualMouseConsumerRange {
+                min_x,
+                max_x,
+                min_y,
+                max_y,
+            } => {
+                let supported = self.cpu.bus_mut().mouse_mut().as_mut().is_some_and(|mouse| {
+                    mouse.set_virtual_consumer_range(VirtualMouseConsumerRange {
+                        min_x,
+                        max_x,
+                        min_y,
+                        max_y,
+                    })
+                });
+                self.service_interrupt_manager
+                    .complete_mouse_consumer_range(&mut self.cpu, supported);
+            }
+            ServiceEvent::SetVirtualMouseConsumerStatus { loaded } => {
+                let supported = self
+                    .cpu
+                    .bus_mut()
+                    .mouse_mut()
+                    .as_mut()
+                    .is_some_and(|mouse| mouse.set_virtual_consumer_status(loaded));
+                self.service_interrupt_manager
+                    .complete_mouse_consumer_status(&mut self.cpu, supported);
+            }
+            ServiceEvent::SetHostCursorVisibility { visible } => {
+                self.events
+                    .push(MachineEvent::Service(ServiceEvent::SetHostCursorVisibility { visible }));
             }
             ServiceEvent::GuestFileTransferComplete {
                 filename,

@@ -32,6 +32,8 @@
 
 use crate::themes::{GuiTheme, ThemeBase};
 use egui::{
+    epaint::Shadow,
+    style::{Interaction, ScrollStyle, Selection, Spacing, TextCursorStyle, WidgetVisuals, Widgets},
     Color32,
     CornerRadius,
     Margin,
@@ -39,8 +41,6 @@ use egui::{
     Style,
     Vec2,
     Visuals,
-    epaint::Shadow,
-    style::{Interaction, ScrollStyle, Selection, Spacing, TextCursorStyle, WidgetVisuals, Widgets},
 };
 
 pub struct NewPurpleTheme {

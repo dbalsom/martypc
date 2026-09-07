@@ -44,6 +44,11 @@ pub fn open_file(
         FileOpenContext::ServiceHostFile { .. } => {
             return Err(anyhow!("ServiceHostFile not supported by URL file open"));
         }
+        FileOpenContext::CassetteImage { ref fsc } => match fsc {
+            FileSelectionContext::Path(path) => path,
+            FileSelectionContext::Index(_) => return Err(anyhow!("Index context not supported on wasm")),
+            FileSelectionContext::Uninitialized => return Err(anyhow!("Uninitialized context!")),
+        },
         FileOpenContext::FloppyDiskImage { drive_select, ref fsc } => match fsc {
             FileSelectionContext::Path(path) => path,
             FileSelectionContext::Index(index) => return Err(anyhow!("Index context not supported on wasm")),

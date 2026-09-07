@@ -176,7 +176,7 @@ impl CpuControl {
                         GuiVariableContext::Global,
                         GuiVariable::Bool(GuiBoolean::CpuEnableWaitStates, *new_opt),
                     ));
-                    ui.close_menu();
+                    ui.close();
                 }
                 if ui
                     .checkbox(
@@ -191,7 +191,7 @@ impl CpuControl {
                         GuiVariableContext::Global,
                         GuiVariable::Bool(GuiBoolean::CpuInstructionHistory, *new_opt),
                     ));
-                    ui.close_menu();
+                    ui.close();
                 }
                 if ui
                     .checkbox(
@@ -206,7 +206,7 @@ impl CpuControl {
                         GuiVariableContext::Global,
                         GuiVariable::Bool(GuiBoolean::CpuTraceLoggingEnabled, *new_opt),
                     ));
-                    ui.close_menu();
+                    ui.close();
                 }
             });
         });
@@ -219,7 +219,7 @@ impl CpuControl {
             .striped(false)
             .min_col_width(60.0)
             .show(ui, |ui| {
-                ui.label("Run state: ");
+                ui.label("Execution State: ");
                 ui.label(&state_str);
                 ui.end_row();
 

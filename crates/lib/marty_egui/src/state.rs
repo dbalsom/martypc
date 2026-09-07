@@ -50,6 +50,7 @@ use crate::{
     windows::{
         about::AboutDialog,
         call_stack_viewer::CallStackViewer,
+        cassette_deck::CassetteDeck,
         cpu_control::{BreakpointSet, CpuControl},
         cpu_state_viewer::CpuViewerControl,
         cycle_trace_viewer::CycleTraceViewerControl,
@@ -75,6 +76,7 @@ use crate::{
         sn_viewer::SnViewerControl,
         text_mode_viewer::TextModeViewer,
         vhd_creator::VhdCreator,
+        virtual_mouse_viewer::VirtualMouseViewerControl,
     },
     DialogProvider,
     GuiBoolean,
@@ -299,11 +301,14 @@ pub struct GuiState {
     #[cfg(feature = "use_display")]
     pub(crate) scaler_modes: Vec<ScalerMode>,
     pub(crate) scaler_presets: Vec<String>,
+    pub(crate) lightpen_available: bool,
 
     // Media Images
     pub(crate) floppy_drives: Vec<GuiFloppyDriveInfo>,
     pub(crate) hdds: Vec<GuiHddInfo>,
     pub(crate) carts: Vec<GuiCartInfo>,
+    pub(crate) cassette_interface: bool,
+    pub(crate) cassette_path: Option<PathBuf>,
     pub(crate) autofloppy_paths: Vec<GuiAutofloppyPath>,
 
     // VHD Images
@@ -342,6 +347,7 @@ pub struct GuiState {
     pub serial_viewer: SerialViewerControl,
     pub pic_viewer:    PicViewerControl,
     pub ppi_viewer:    PpiViewerControl,
+    pub virtual_mouse_viewer: VirtualMouseViewerControl,
 
     pub videocard_state: VideoCardState,
     pub video_cards: Vec<VideoCardId>,
@@ -365,6 +371,7 @@ pub struct GuiState {
     pub text_mode_viewer: TextModeViewer,
     pub fdc_viewer: FdcViewerControl,
     pub floppy_viewer: FloppyViewerControl,
+    pub cassette_deck: CassetteDeck,
     pub call_stack_viewer: CallStackViewer,
     #[cfg(feature = "markdown")]
     pub info_viewer: InfoViewer,
@@ -373,6 +380,7 @@ pub struct GuiState {
     pub floppy_tree_menu: FileTreeMenu,
     pub hdd_tree_menu:    FileTreeMenu,
     pub cart_tree_menu:   FileTreeMenu,
+    pub cassette_tree_menu: FileTreeMenu,
 
     //pub(crate) global_zoom: f32,
     pub modal: ModalState,
@@ -410,13 +418,16 @@ impl GuiState {
             (GuiBoolean::TurboButton, false),
             (GuiBoolean::ShowBackBuffer, false),
             (GuiBoolean::ShowRasterPosition, true),
+            (GuiBoolean::ShowAbsoluteMousePosition, false),
+            (GuiBoolean::MouseEnabled, true),
+            (GuiBoolean::LightPenEnabled, false),
             (GuiBoolean::OsdKeyboard, false),
             //(GuiBoolean::EnableSnow, true),
         ]
         .into();
 
         let option_floats: HashMap<GuiFloat, f32> =
-            [(GuiFloat::EmulationSpeed, 1.0f32), (GuiFloat::MouseSpeed, 0.5f32)].into();
+            [(GuiFloat::EmulationSpeed, 1.0f32), (GuiFloat::MouseSpeed, 1.0f32)].into();
 
         let mut option_enums = HashMap::new();
 
@@ -465,10 +476,13 @@ impl GuiState {
             #[cfg(feature = "use_display")]
             scaler_modes: Vec::new(),
             scaler_presets: Vec::new(),
+            lightpen_available: false,
 
             floppy_drives: Vec::new(),
             hdds: Vec::new(),
             carts: Vec::new(),
+            cassette_interface: false,
+            cassette_path: None,
             vhd_names: Vec::new(),
             autofloppy_paths: Vec::new(),
 
@@ -502,6 +516,7 @@ impl GuiState {
             serial_viewer: SerialViewerControl::new(),
             pic_viewer: PicViewerControl::new(),
             ppi_viewer: PpiViewerControl::new(),
+            virtual_mouse_viewer: VirtualMouseViewerControl::new(),
 
             videocard_state: Default::default(),
             video_cards: Vec::new(),
@@ -524,6 +539,7 @@ impl GuiState {
             text_mode_viewer: TextModeViewer::new(),
             fdc_viewer: FdcViewerControl::new(),
             floppy_viewer: FloppyViewerControl::new(),
+            cassette_deck: CassetteDeck::new(),
             call_stack_viewer: CallStackViewer::new(),
             #[cfg(feature = "markdown")]
             info_viewer: InfoViewer::new(),
@@ -532,6 +548,7 @@ impl GuiState {
             floppy_tree_menu: FileTreeMenu::new().with_file_icon("💾"),
             hdd_tree_menu: FileTreeMenu::new().with_file_icon("🖴"),
             cart_tree_menu: FileTreeMenu::new(),
+            cassette_tree_menu: FileTreeMenu::new().with_file_icon("🖭"),
             //global_zoom: 1.0,
             modal: ModalState::new(),
             drag_drop_target: None,
@@ -853,6 +870,34 @@ impl GuiState {
         }
     }
 
+    pub fn set_cassette_interface(&mut self, available: bool) {
+        self.cassette_interface = available;
+        if !available {
+            self.set_window_open(GuiWindow::CassetteDeck, false);
+        }
+    }
+
+    pub fn set_cassette_tree(&mut self, tree: PathTreeNode) {
+        self.cassette_tree_menu.set_root(tree);
+    }
+
+    pub fn set_cassette_selection(&mut self, idx: Option<usize>, path: Option<PathBuf>) {
+        self.cassette_tree_menu.set_selected(0, idx);
+        let cassette_name = path
+            .as_ref()
+            .and_then(|path| path.file_stem().or_else(|| path.file_name()))
+            .map(|name| name.to_string_lossy().into_owned());
+        self.cassette_deck.set_cassette_name(cassette_name);
+        self.cassette_path = path;
+    }
+
+    pub fn cassette_filename(&self) -> Option<String> {
+        self.cassette_path
+            .as_ref()?
+            .file_name()
+            .map(|name| name.to_string_lossy().into_owned())
+    }
+
     pub fn set_cart_selection(&mut self, slot: usize, idx: Option<usize>, name: Option<PathBuf>) {
         self.carts[slot].selected_idx = idx;
         self.carts[slot].selected_path = name;
@@ -940,6 +985,12 @@ impl GuiState {
     #[inline]
     pub fn set_gameport(&mut self, state: bool, _layout: ControllerLayout) {
         self.gameport = state;
+    }
+
+    /// Specify whether any installed video adapter supports a light pen.
+    #[inline]
+    pub fn set_lightpen_available(&mut self, state: bool) {
+        self.lightpen_available = state;
     }
 
     pub fn set_serial_ports(&mut self, ports: Vec<SerialPortDescriptor>) {

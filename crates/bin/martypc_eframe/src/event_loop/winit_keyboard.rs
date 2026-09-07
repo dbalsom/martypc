@@ -29,19 +29,10 @@
     Handle keyboard events.
 
 */
-use crate::{emulator::Emulator, input::TranslateKey};
-use egui::{CursorGrab, ViewportCommand};
+use crate::{emulator::Emulator, event_loop::hotkeys::process_hotkeys, input::TranslateKey};
 
-use display_manager_eframe::{DisplayManager, EFrameDisplayManager};
-use marty_core::machine::ExecutionOperation;
-use marty_display_common::display_manager::DtHandle;
-use marty_frontend_common::{
-    constants::{LONG_NOTIFICATION_TIME, NORMAL_NOTIFICATION_TIME},
-    types::joykeys::JoyKeyInput,
-    HotkeyEvent,
-};
-
-use crate::app::GRAB_MODE;
+use display_manager_eframe::EFrameDisplayManager;
+use marty_frontend_common::types::joykeys::JoyKeyInput;
 
 use winit::{
     event::{ElementState, KeyEvent, Modifiers, WindowEvent},
@@ -101,7 +92,7 @@ pub fn handle_winit_key_event(
                 emu,
                 dm,
                 context,
-                *keycode,
+                keycode.to_internal(),
                 matches!(state, ElementState::Pressed),
                 gui_focus,
             );
@@ -167,128 +158,6 @@ pub fn handle_winit_key_event(
     }
 
     false
-}
-
-#[allow(unreachable_patterns)]
-pub fn process_hotkeys(
-    emu: &mut Emulator,
-    dm: &mut EFrameDisplayManager,
-    ctx: egui::Context,
-    keycode: KeyCode,
-    pressed: bool,
-    gui_focus: bool,
-) {
-    let mut event_opt = None;
-    if pressed {
-        event_opt = emu
-            .hkm
-            .keydown(keycode.to_internal(), gui_focus, emu.mouse_data.is_captured);
-    }
-    else {
-        emu.hkm.keyup(keycode.to_internal())
-    }
-
-    for hotkey in event_opt.unwrap_or_default().iter() {
-        match hotkey {
-            HotkeyEvent::ToggleGui => {
-                log::debug!("ToggleGui hotkey triggered. Toggling GUI visibility.");
-                emu.flags.render_gui = !emu.flags.render_gui;
-            }
-            HotkeyEvent::CaptureMouse => {
-                log::debug!("CaptureMouse hotkey triggered. Toggling mouse capture.");
-                let Some((viewport_id, display)) = dm.grabbed_display().or_else(|| {
-                    dm.display_for_viewport(egui::ViewportId::ROOT)
-                        .map(|display| (egui::ViewportId::ROOT, display))
-                })
-                else {
-                    log::warn!("No display is assigned to the main viewport; mouse capture ignored.");
-                    continue;
-                };
-                let Some(dtc) = dm.display_target(display)
-                else {
-                    continue;
-                };
-                match dtc.try_write() {
-                    Ok(mut dtc_lock) => {
-                        if !dtc_lock.grabbed() {
-                            // Mouse cursor is not grabbed, grab it.
-                            dtc_lock.set_grabbed(true, emu.mouse_data.capture_mode);
-                            emu.mouse_data.is_captured = true;
-                            ctx.send_viewport_cmd_to(viewport_id, ViewportCommand::CursorGrab(GRAB_MODE));
-                            ctx.send_viewport_cmd_to(viewport_id, ViewportCommand::CursorVisible(false));
-                        }
-                        else {
-                            // Mouse cursor is grabbed, un-grab it.
-                            dtc_lock.set_grabbed(false, emu.mouse_data.capture_mode);
-                            emu.mouse_data.is_captured = false;
-                            ctx.send_viewport_cmd_to(viewport_id, ViewportCommand::CursorGrab(CursorGrab::None));
-                            ctx.send_viewport_cmd_to(viewport_id, ViewportCommand::CursorVisible(true));
-                        }
-                    }
-                    Err(_e) => {
-                        log::error!("Couldn't get lock on display target.");
-                    }
-                };
-            }
-            HotkeyEvent::CtrlAltDel => {
-                log::debug!("CtrlAltDel hotkey triggered. Sending Ctrl-Alt-Del to machine.");
-                emu.machine.emit_ctrl_alt_del();
-            }
-            HotkeyEvent::Reboot => {
-                log::debug!("Reboot hotkey triggered. Restarting machine.");
-                emu.machine.reboot();
-            }
-            HotkeyEvent::ToggleFullscreen => {
-                log::debug!("ToggleFullscreen hotkey triggered.");
-                let mut fullscreen_state = false;
-                ctx.input(|i| {
-                    fullscreen_state = i.viewport().fullscreen.unwrap_or(false);
-                });
-                ctx.send_viewport_cmd(ViewportCommand::Fullscreen(!fullscreen_state));
-            }
-            HotkeyEvent::Screenshot => {
-                log::debug!("Screenshot hotkey triggered. Capturing screenshot.");
-
-                let screenshot_path = emu.rm.resource_path("screenshot").unwrap();
-
-                // Take as screenshot of the primary display target.
-                if let Err(err) = dm.save_screenshot(DtHandle::default(), screenshot_path) {
-                    log::error!("Failed to save screenshot: {}", err);
-                    emu.gui
-                        .toasts()
-                        .error(format!("{}", err))
-                        .duration(Some(LONG_NOTIFICATION_TIME));
-                }
-            }
-            HotkeyEvent::DebugStep => {
-                emu.exec_control.borrow_mut().set_op(ExecutionOperation::Step);
-            }
-            HotkeyEvent::DebugStepOver => {
-                emu.exec_control.borrow_mut().set_op(ExecutionOperation::StepOver);
-            }
-            HotkeyEvent::JoyToggle => {
-                log::debug!("JoyToggle hotkey triggered. Toggling joystick keyboard emulation.");
-                let state = emu.gi.toggle_joykeys(0);
-                emu.gui
-                    .toasts()
-                    .error(format!(
-                        "Keyboard to Joystick emulation {}",
-                        match state {
-                            true => "enabled",
-                            false => "disabled",
-                        }
-                    ))
-                    .duration(Some(NORMAL_NOTIFICATION_TIME));
-            }
-            HotkeyEvent::Quit => {
-                log::debug!("Quit hotkey pressed. Exiting immediately...");
-                ctx.send_viewport_cmd(ViewportCommand::Close);
-            }
-            _ => {
-                log::debug!("Unhandled Hotkey triggered: {:?}", hotkey);
-            }
-        }
-    }
 }
 
 /// Process keys for joystick emulation, if enabled. Returns true if the key was processed.

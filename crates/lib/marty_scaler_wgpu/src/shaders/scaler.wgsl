@@ -111,7 +111,7 @@ fn brightness(color: vec4<f32>) -> f32 {
 }
 
 fn apply_crt_curvature(uv: vec2<f32>) -> vec2<f32> {
-
+    // Software mirror: marty_display_common::display_scaler::apply_crt_curvature
     var curvature_x = scaler_opts.crt_params.h_curvature * 0.1;
     var curvature_y = scaler_opts.crt_params.v_curvature * 0.1;
 

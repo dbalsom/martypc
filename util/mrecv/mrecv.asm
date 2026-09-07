@@ -27,6 +27,9 @@
 ;
 ;   Receive a host file into the DOS guest through MartyPC services.
 ;
+;   Version 1.0.1
+;     - Use the DOS-style, case-insensitive /N switch
+;
 ;   Version 1.0.0
 ;     - Initial version
 
@@ -564,8 +567,8 @@ read_command_line:
     cmp     al, 09h
     je      .skip_whitespace
 
-    ; Recognize an optional leading -n switch as a complete token.
-    cmp     al, '-'
+    ; Recognize an optional leading /N switch as a complete token.
+    cmp     al, '/'
     jne     .begin_filename
     jcxz    .begin_filename
     mov     ah, [si]
@@ -584,7 +587,7 @@ read_command_line:
     jne     .begin_filename
 
 .enable_non_interactive:
-    inc     si                       ; Consume the n in -n
+    inc     si                       ; Consume the N in /N
     dec     cx
     mov     byte [non_interactive], 1
     jmp     .skip_whitespace
@@ -748,7 +751,7 @@ section .data
 
 not_detected_msg            db 'MartyPC not detected', 0Dh, 0Ah, '$'
 service_enable_failed_msg   db 'Unable to enable MartyPC services', 0Dh, 0Ah, '$'
-usage_msg                   db 'Usage: mrecv [-n] <destination>', 0Dh, 0Ah, '$'
+usage_msg                   db 'Usage: MRECV [/N] <destination>', 0Dh, 0Ah, '$'
 overwrite_prefix            db 'File ', '$'
 overwrite_suffix            db ' already exists. Overwrite (y/n)? ', '$'
 transferring_prefix         db 'Transferring "', '$'

@@ -49,6 +49,7 @@
 use serde_derive::Deserialize;
 
 pub mod asset_manager;
+pub mod cassette_manager;
 pub mod cartridge_manager;
 pub mod color;
 pub mod constants;

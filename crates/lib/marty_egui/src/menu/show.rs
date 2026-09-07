@@ -27,16 +27,19 @@
 
 //! Implement the main emulator menu.
 
-use crate::{GuiEvent, GuiWindow, state::GuiState};
-use marty_frontend_common::MartyGuiTheme;
+use crate::{state::GuiState, GuiEnum, GuiEvent, GuiVariable, GuiVariableContext, GuiWindow};
 
 #[cfg(target_arch = "wasm32")]
-use crate::{GuiBoolean, GuiVariable, GuiVariableContext};
+use crate::GuiBoolean;
+
+use marty_common::types::ui::MouseCaptureMode;
+use marty_frontend_common::MartyGuiTheme;
 
 #[cfg(feature = "use_display")]
 use marty_core::device_traits::videocard::VideoCardId;
 
 use egui::RichText;
+use strum::IntoEnumIterator;
 
 #[cfg(feature = "use_display")]
 fn display_target_count_for_card(
@@ -49,17 +52,34 @@ fn display_target_count_for_card(
 impl GuiState {
     pub fn show_menu(&mut self, ui: &mut egui::Ui) {
         let modal_mode = self.active_modal_mode(ui.ctx());
-        egui::menu::bar(ui, |ui| {
+        egui::MenuBar::new().ui(ui, |ui| {
             ui.menu_button("Emulator", |ui| {
                 ui.set_min_width(120.0);
 
                 if !modal_mode.is_active() {
                     if ui.button("⏱ Performance...").clicked() {
                         *self.window_flag(GuiWindow::PerfViewer) = true;
-                        ui.close_menu();
+                        ui.close();
                     }
 
-                    ui.menu_button("Theme", |ui| {
+                    ui.menu_button("🖱 Mouse Capture Mode", |ui| {
+                        for mode in MouseCaptureMode::iter() {
+                            let mode_mut = self
+                                .get_option_enum_mut(GuiEnum::MouseCaptureMode(MouseCaptureMode::default()), None)
+                                .unwrap();
+                            if let GuiEnum::MouseCaptureMode(mode_inner) = mode_mut {
+                                if ui.radio(*mode_inner == mode, mode.to_string()).clicked() {
+                                    *mode_inner = mode;
+                                    self.event_queue.send(GuiEvent::VariableChanged(
+                                        GuiVariableContext::Global,
+                                        GuiVariable::Enum(GuiEnum::MouseCaptureMode(mode)),
+                                    ));
+                                }
+                            }
+                        }
+                    });
+
+                    ui.menu_button("🎨 Theme", |ui| {
                         ui.set_min_width(140.0);
                         for theme in MartyGuiTheme::ALL {
                             if ui.radio(theme == self.current_theme(), theme.label()).clicked() {
@@ -92,14 +112,19 @@ impl GuiState {
                         }
                     }
 
-                    #[cfg(not(target_arch = "wasm32"))]
                     ui.separator();
+                }
+
+                #[cfg(target_arch = "wasm32")]
+                if ui.button("↩ Return to Launcher").clicked() {
+                    self.event_queue.send(GuiEvent::Exit);
+                    ui.close();
                 }
 
                 #[cfg(not(target_arch = "wasm32"))]
                 if ui.button("⎆ Quit").clicked() {
                     self.event_queue.send(GuiEvent::Exit);
-                    ui.close_menu();
+                    ui.close();
                 }
             });
 

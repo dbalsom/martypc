@@ -1,5 +1,6 @@
 pub mod egui_events;
 pub mod egui_update;
+pub mod hotkeys;
 pub mod render_frame;
 pub mod thread_events;
 #[cfg(not(feature = "use_winit"))]

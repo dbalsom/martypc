@@ -506,6 +506,7 @@ pub struct NecVx0 {
     //ip:    u16,
     flags: u16,
     emulation_mode: bool,
+    mode_flag_write_enabled: bool,
 
     address_bus: u32,
     address_latch: u32,
@@ -1354,6 +1355,7 @@ impl NecVx0 {
     pub fn get_string_state(&self) -> CpuStringState {
         CpuStringState {
             cpu_type: self.cpu_type,
+            halted: self.halted,
             ah: format!("{:02x}", self.a.h()),
             al: format!("{:02x}", self.a.l()),
             ax: format!("{:04x}", self.a.x()),

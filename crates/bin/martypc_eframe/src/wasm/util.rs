@@ -34,6 +34,16 @@ extern "C" {
     fn getBaseURL() -> String;
 }
 
+#[wasm_bindgen]
+extern "C" {
+    #[wasm_bindgen(js_namespace = window, js_name = martyReturnToLauncher)]
+    fn marty_return_to_launcher();
+}
+
+pub(crate) fn return_to_launcher() {
+    marty_return_to_launcher();
+}
+
 pub fn get_base_url() -> Url {
     let base_url_string = getBaseURL();
 

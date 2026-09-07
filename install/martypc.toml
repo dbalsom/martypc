@@ -368,7 +368,8 @@ menu_adjust = true
 # aperture is changed.
 resizable = true
 
-# Allow double-clicking a display in this window to capture the mouse.
+# Allow the configured mouse capture shortcuts to capture the mouse in this
+# window.
 can_grab = true
 
 # If this field is present, the window will display the specified card in its
@@ -607,6 +608,10 @@ aspect_ratio = { h = 4, v = 3 }
 # Some platforms reverse the left and right mouse button id #'s. 
 # We try to detect this, but it can be overridden here.
 reverse_mouse_buttons = false
+
+# Allow middle-clicking a display to capture the mouse, and middle-clicking
+# again while captured to release it.
+middle_click_capture_shortcut = true
 
 # Show the on-screen keyboard panel below the emulated display. The keyboard
 # asset layout is selected using the configured two-letter keyboard layout.

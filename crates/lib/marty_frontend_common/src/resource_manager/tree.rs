@@ -32,10 +32,7 @@
 
 use crate::resource_manager::{ResourceItem, ResourceItemType};
 use anyhow::{anyhow, Error};
-use std::{
-    collections::BTreeMap,
-    path::{Path, PathBuf},
-};
+use std::{collections::BTreeMap, path::PathBuf};
 
 pub type FileTreeNode = TreeNode;
 
@@ -141,26 +138,20 @@ impl TreeNode {
                 if path.is_empty() {
                     // We are at end of path.
                     if self.name.eq_ignore_ascii_case(&component) {
-                        return Ok(self);
+                        Ok(self)
                     }
                     else {
-                        return Err(anyhow!("Path not found"));
+                        Err(anyhow!("Path not found"))
                     }
                 }
                 else {
-                    //let mut found_path = false;
-
                     // Navigate down.
                     for child in self.children() {
                         if child.name.eq_ignore_ascii_case(&component) {
-                            //found_path = true;
                             return child.navigate(path);
                         }
-                        else {
-                            continue;
-                        }
                     }
-                    return Err(anyhow!("Path not found"));
+                    Err(anyhow!("Path not found"))
                 }
             }
             _ => Err(anyhow!("Cannot navigate into a file")),
@@ -179,7 +170,6 @@ pub fn build_tree(root_str: String, items: &[ResourceItem], skip: usize) -> Resu
     }
     for (idx, item) in items.iter().enumerate() {
         insert_item(&mut root, idx, item, skip);
-        //insert_path(&mut root, idx, &item.location, skip);
     }
     Ok(root)
 }
@@ -190,31 +180,9 @@ pub fn merge_items(root: &mut TreeNode, items: &[ResourceItem], skip: usize) -> 
     }
     for (idx, item) in items.iter().enumerate() {
         insert_item(root, idx, item, skip);
-        //insert_path(root, idx, &item.location, skip);
     }
     Ok(())
 }
-
-// fn insert_path(root: &mut TreeNode, idx: usize, path: &Path, skip: usize) {
-//     let mut current_node = root;
-//     for component in path.components().skip(skip) {
-//         // skip the root of the path
-//         let component_str = component.as_os_str().to_str().unwrap().to_string();
-//         match &mut current_node.node_type {
-//             NodeType::Directory(children) => {
-//                 current_node = children.entry(component_str.clone()).or_insert_with(|| {
-//                     if component_str == path.file_name().unwrap().to_str().unwrap() {
-//                         TreeNode::new_file(idx, component_str, path.to_path_buf())
-//                     }
-//                     else {
-//                         TreeNode::new_directory(idx, component_str)
-//                     }
-//                 });
-//             }
-//             NodeType::File(_) => break,
-//         }
-//     }
-// }
 
 fn insert_item(root: &mut TreeNode, idx: usize, item: &ResourceItem, skip: usize) {
     let mut current_node = root;
@@ -255,46 +223,6 @@ fn insert_item(root: &mut TreeNode, idx: usize, item: &ResourceItem, skip: usize
                     item.location
                 );
                 return; // Stop processing this path
-            }
-        }
-    }
-}
-
-fn insert_path(root: &mut TreeNode, idx: usize, path: &Path, skip: usize) {
-    let mut current_node = root;
-    let mut components = path.components().skip(skip).peekable(); // Allows looking ahead
-
-    while let Some(component) = components.next() {
-        let component_str = component.as_os_str().to_str().unwrap().to_string();
-
-        match &mut current_node.node_type {
-            NodeType::Directory(children) => {
-                // If this is the last component, determine if it should be a file or directory
-                let is_last = components.peek().is_none();
-
-                current_node = children.entry(component_str.clone()).or_insert_with(|| {
-                    if is_last {
-                        // It's the last component, should be a file
-                        TreeNode::new_file(idx, component_str, path.to_path_buf())
-                    }
-                    else {
-                        // It's a directory
-                        TreeNode::new_directory(idx, component_str)
-                    }
-                });
-
-                // Conflict: If a file already exists, but we need a directory
-                if is_last && matches!(current_node.node_type, NodeType::Directory(_)) {
-                    log::warn!("Conflict: Expected a file but found a directory at {:?}", path);
-                }
-            }
-            NodeType::File(existing_path) => {
-                log::warn!(
-                    "Conflict: Cannot insert {:?} because {:?} is already a file",
-                    path,
-                    existing_path
-                );
-                return; // Stop merging this path
             }
         }
     }

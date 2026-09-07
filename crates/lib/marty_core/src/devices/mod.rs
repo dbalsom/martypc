@@ -35,6 +35,8 @@ pub mod a0;
 pub mod adlib;
 mod ata;
 pub mod cartridge_slots;
+pub mod cassette_comparator;
+pub mod cassette_deck;
 pub mod cga;
 pub mod conventional_memory;
 pub mod dipswitch;

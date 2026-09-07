@@ -43,12 +43,26 @@ impl NecVx0 {
         self.ret(true);
         self.pop_flags();
         self.cycles(1);
-        // The Vx0 has a crucial difference from the 8088 in that when IRET pops flags, we will
-        // re-enter emulation mode if the mode bit popped was cleared (emulation mode).
-        if self.flags & CPU_FLAG_MODE == 0 {
-            // Re-enter emulation mode.
-            self.enter_emulation_mode();
+    }
+
+    /// Enter 8080 emulation mode through BRKEM after its native interrupt frame has been built.
+    pub fn brkem_routine(&mut self, interrupt: u8) {
+        self.sw_interrupt(interrupt);
+        self.mode_flag_write_enabled = true;
+        self.enter_emulation_mode();
+    }
+
+    /// Return from 8080 emulation mode through RETEM.
+    pub fn retem_routine(&mut self) {
+        self.ret(true);
+        self.pop_flags();
+
+        // RETEM always returns to native mode and inhibits subsequent writes to MD,
+        // regardless of the value in the saved flags image.
+        if self.in_emulation_mode() {
+            self.exit_emulation_mode();
         }
+        self.mode_flag_write_enabled = false;
     }
 
     /// Perform the 8080's CALLN.
@@ -304,6 +318,12 @@ impl NecVx0 {
         self.biu_fetch_suspend(); // 1a3 SUSP
         self.cycles_i(2, &[0x1a3, 0x1a4]);
         self.push_flags(ReadWriteFlag::Normal);
+
+        // Interrupts taken while executing 8080 code are serviced in native mode. Push
+        // first so the emulation-mode value of MD can be restored by IRET.
+        if self.in_emulation_mode() {
+            self.exit_emulation_mode();
+        }
         self.clear_flag(Flag::Interrupt);
         self.clear_flag(Flag::Trap);
         self.cycle_i(0x1a6);
@@ -378,5 +398,119 @@ impl NecVx0 {
         (self.get_flag(Flag::Trap) || self.trap_disable_delay != 0)
             && !self.trap_suppressed
             && self.trap_enable_delay == 0
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::{
+        cpu_common::{CpuArch, CpuType, TraceMode},
+        tracelogger::TraceLogger,
+    };
+
+    fn test_cpu() -> NecVx0 {
+        NecVx0::new(CpuType::NecV20(CpuArch::I86), TraceMode::None, TraceLogger::None)
+    }
+
+    fn write_vector(cpu: &mut NecVx0, vector: u8, cs: u16, ip: u16) {
+        let address = vector as usize * INTERRUPT_VEC_LEN;
+        cpu.bus.write_u16(address, ip, 0).unwrap();
+        cpu.bus.write_u16(address + 2, cs, 0).unwrap();
+    }
+
+    fn read_stack_word(cpu: &mut NecVx0, offset: u16) -> u16 {
+        let address = NecVx0::calc_linear_address(cpu.ss, offset) as usize;
+        cpu.bus.read_u16(address, 0).unwrap().0
+    }
+
+    #[test]
+    fn native_iret_cannot_restore_mode_when_writes_are_disabled() {
+        let mut cpu = test_cpu();
+        cpu.ss = 0;
+        cpu.sp = 0x1000;
+        cpu.bus.write_u16(0x1000, 0x1234, 0).unwrap();
+        cpu.bus.write_u16(0x1002, 0x5678, 0).unwrap();
+        cpu.bus.write_u16(0x1004, CPU_FLAGS_RESERVED_ON, 0).unwrap();
+        cpu.i.opcode = 0xCF;
+
+        cpu.iret_routine();
+
+        assert_eq!(cpu.cs, 0x5678);
+        assert_eq!(cpu.pc, 0x1234);
+        assert!(cpu.get_flag(Flag::Mode));
+        assert!(!cpu.in_emulation_mode());
+        assert!(!cpu.mode_flag_write_enabled);
+    }
+
+    #[test]
+    fn interrupt_from_emulation_mode_returns_to_emulation_mode() {
+        const BRKEM_VECTOR: u8 = 0x20;
+        const IRQ_VECTOR: u8 = 0x21;
+
+        let mut cpu = test_cpu();
+        cpu.ss = 0;
+        cpu.sp = 0x2000;
+        cpu.cs = 0x1000;
+        cpu.pc = 0x0100;
+        cpu.queue.flush();
+        write_vector(&mut cpu, BRKEM_VECTOR, 0x2000, 0x0200);
+        write_vector(&mut cpu, IRQ_VECTOR, 0x3000, 0x0300);
+
+        cpu.brkem_routine(BRKEM_VECTOR);
+        let emulation_sp = cpu.sp;
+        assert!(cpu.mode_flag_write_enabled);
+        assert!(cpu.in_emulation_mode());
+
+        cpu.intr_routine(IRQ_VECTOR, InterruptType::Hardware, false);
+
+        assert!(!cpu.in_emulation_mode());
+        assert!(cpu.get_flag(Flag::Mode));
+        assert!(cpu.mode_flag_write_enabled);
+        assert_eq!(
+            read_stack_word(&mut cpu, emulation_sp.wrapping_sub(2)) & CPU_FLAG_MODE,
+            0
+        );
+
+        cpu.i.opcode = 0xCF;
+        cpu.iret_routine();
+
+        assert_eq!(cpu.sp, emulation_sp);
+        assert!(cpu.in_emulation_mode());
+        assert!(!cpu.get_flag(Flag::Mode));
+        assert!(cpu.mode_flag_write_enabled);
+        assert_eq!(cpu.cpu_type, CpuType::NecV20(CpuArch::I8080));
+    }
+
+    #[test]
+    fn retem_returns_native_and_disables_mode_flag_writes() {
+        const BRKEM_VECTOR: u8 = 0x20;
+
+        let mut cpu = test_cpu();
+        cpu.ss = 0;
+        cpu.sp = 0x2000;
+        cpu.cs = 0x1000;
+        cpu.pc = 0x0100;
+        cpu.queue.flush();
+        write_vector(&mut cpu, BRKEM_VECTOR, 0x2000, 0x0200);
+
+        cpu.brkem_routine(BRKEM_VECTOR);
+        assert!(cpu.mode_flag_write_enabled);
+        assert!(cpu.in_emulation_mode());
+
+        // RETEM must force native mode even if the saved MD bit has been altered.
+        let flags_offset = cpu.sp.wrapping_add(4);
+        let flags_address = NecVx0::calc_linear_address(cpu.ss, flags_offset) as usize;
+        cpu.bus.write_u16(flags_address, CPU_FLAGS_RESERVED_ON, 0).unwrap();
+        cpu.i.opcode = 0xFD;
+        cpu.retem_routine();
+
+        assert_eq!(cpu.sp, 0x2000);
+        assert_eq!(cpu.cs, 0x1000);
+        assert_eq!(cpu.pc, 0x0100);
+        assert!(!cpu.mode_flag_write_enabled);
+        assert!(!cpu.in_emulation_mode());
+        assert!(cpu.get_flag(Flag::Mode));
+        assert_eq!(cpu.cpu_type, CpuType::NecV20(CpuArch::I86));
     }
 }

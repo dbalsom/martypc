@@ -71,8 +71,11 @@ impl CpuViewerControl {
                 ui.label("CPU Type: ");
                 ui.label(self.cpu_state.cpu_type.to_string());
                 ui.end_row();
-                ui.label("Run state: ");
+                ui.label("Execution State: ");
                 ui.label(&state_str);
+                ui.end_row();
+                ui.label("Halted: ");
+                ui.label(self.cpu_state.halted.to_string());
                 ui.end_row();
             });
 

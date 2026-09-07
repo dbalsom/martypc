@@ -1565,7 +1565,7 @@ impl NecVx0 {
                 self.biu_fetch_halt();          // halt prefetcher
                 self.biu_bus_wait_finish();     // wait until end of m-cycle
 
-                if self.intr {
+                if self.intr && self.interrupts_enabled() {
                     // If an intr is pending now, execute it without actually halting.
                     log::trace!("Halt overriden at [{:05X}]", NecVx0::calc_linear_address(self.cs, self.ip()));
                     cycles!(self, 2);

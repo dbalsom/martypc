@@ -32,7 +32,7 @@
 
 use std::str::FromStr;
 
-use crate::emulator::Emulator;
+use crate::{emulator::Emulator, event_loop::hotkeys::process_hotkeys};
 use display_manager_eframe::EFrameDisplayManager;
 use eframe::WebKeyboardEvent;
 use marty_common::types::keys::MartyKey;
@@ -77,11 +77,20 @@ pub fn should_prevent_default(event: &WebKeyboardEvent) -> bool {
 
 pub fn handle_web_key_event(
     emu: &mut Emulator,
-    _dm: &mut EFrameDisplayManager,
+    dm: &mut EFrameDisplayManager,
+    ctx: egui::Context,
     event: WebKeyboardEvent,
     gui_focus: bool,
 ) {
     if let Ok(marty_key) = MartyKey::from_str(&event.key) {
+        emu.kb_data.ctrl_pressed = event.modifiers.ctrl;
+        emu.kb_data.modifiers.control = event.modifiers.ctrl;
+        emu.kb_data.modifiers.alt = event.modifiers.alt;
+        emu.kb_data.modifiers.shift = event.modifiers.shift;
+        emu.kb_data.modifiers.meta = event.modifiers.mac_cmd;
+
+        process_hotkeys(emu, dm, ctx, marty_key, event.pressed, gui_focus);
+
         if !gui_focus {
             if event.pressed {
                 emu.machine.key_press(marty_key, emu.kb_data.modifiers);

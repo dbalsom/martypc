@@ -512,8 +512,6 @@ pub struct CGACard {
     status_reads: u64,
 
     crtc: Crtc6845,
-
-    crtc_ticks_since_vsync: u32,
     in_crtc_hblank: bool,
     in_crtc_vblank: bool,
     in_card_vblank: bool,
@@ -671,7 +669,6 @@ impl Default for CGACard {
             status_reads: 0,
 
             crtc: Crtc6845::new(TraceLogger::None),
-            crtc_ticks_since_vsync: 0,
 
             in_crtc_hblank: false,
             in_crtc_vblank: false,
@@ -888,6 +885,11 @@ impl CGACard {
     #[inline]
     fn calc_phase_offset(&mut self) -> u32 {
         ((!self.cycles + 1) & 0x0F) as u32
+    }
+
+    #[inline]
+    fn current_raster_tick(&self) -> u32 {
+        self.rba as u32 / 8 / self.clock_divisor as u32
     }
 
     #[inline]
@@ -1409,7 +1411,7 @@ impl CGACard {
             if self.in_display_area {
                 // Draw current character row
                 if !self.mode_graphics {
-                    if self.debug_draw && (self.lightpen_tick == self.crtc_ticks_since_vsync) {
+                    if self.debug_draw && (self.lightpen_tick == self.current_raster_tick()) {
                         self.draw_solid_hchar(CGA_LIGHTPEN_DEBUG_COLOR);
                     }
                     else {
@@ -1816,10 +1818,8 @@ impl CGACard {
         self.vtac_c5 = self.crtc.vtac();
         self.in_vta = self.crtc.in_vta();
 
-        self.crtc_ticks_since_vsync = self.crtc_ticks_since_vsync.wrapping_add(1);
-
         if let Some(trigger_tick) = self.lightpen_trigger_tick {
-            if self.crtc_ticks_since_vsync == trigger_tick {
+            if self.current_raster_tick() == trigger_tick {
                 // Trigger lightpen
                 self.latch_lightpen();
                 self.lightpen_trigger_tick = None;
@@ -1902,7 +1902,6 @@ impl CGACard {
 
     // Track some per-frame statistics
     pub fn do_vsync(&mut self) {
-        self.crtc_ticks_since_vsync = 0;
         self.cycles_per_vsync = self.cur_screen_cycles;
         self.cur_screen_cycles = 0;
         self.last_vsync_cycles = self.cycles;

@@ -79,7 +79,7 @@ use marty_common::types::{keys::MartyKey, ui::MouseCaptureMode};
 use marty_core::cpu_common::Register16;
 #[cfg(feature = "use_display")]
 use marty_display_common::display_manager::{DisplayTargetType, DtHandle, VpHandle};
-use marty_frontend_common::types::gamepad::{GamepadId, JoystickMapping};
+use marty_frontend_common::types::gamepad::JoystickMapping;
 #[cfg(feature = "use_display")]
 use marty_videocard_renderer::CompositeParams;
 use serde::{Deserialize, Serialize};
@@ -132,7 +132,9 @@ pub enum GuiWindow {
     TextModeViewer,
     FdcViewer,
     FloppyViewer,
+    CassetteDeck,
     SnViewer,
+    VirtualMouseViewer,
 }
 
 #[derive(Copy, Clone, Debug)]
@@ -157,6 +159,9 @@ pub enum GuiBoolean {
     TurboButton,
     ShowBackBuffer,
     ShowRasterPosition,
+    ShowAbsoluteMousePosition,
+    MouseEnabled,
+    LightPenEnabled,
     OsdKeyboard,
 }
 
@@ -204,27 +209,6 @@ pub enum GuiEnum {
     GamepadMapping((Option<JoystickMapping>, Option<JoystickMapping>)),
 }
 
-fn create_default_variant(ge: GuiEnum) -> GuiEnum {
-    match ge {
-        #[cfg(feature = "use_display")]
-        GuiEnum::DisplayType(_) => GuiEnum::DisplayType(Default::default()),
-        #[cfg(feature = "use_display")]
-        GuiEnum::DisplayViewport(_) => GuiEnum::DisplayViewport(Default::default()),
-        GuiEnum::DisplayAspectCorrect(_) => GuiEnum::DisplayAspectCorrect(Default::default()),
-        GuiEnum::DisplayAperture(_) => GuiEnum::DisplayAperture(Default::default()),
-        #[cfg(feature = "use_display")]
-        GuiEnum::DisplayScalerMode(_) => GuiEnum::DisplayAperture(Default::default()),
-        GuiEnum::DisplayScalerPreset(_) => GuiEnum::DisplayScalerPreset(String::new()),
-        GuiEnum::DisplayComposite(_) => GuiEnum::DisplayComposite(Default::default()),
-        GuiEnum::WindowBezel(_) => GuiEnum::WindowBezel(Default::default()),
-        GuiEnum::SerialPortBridge(_) => GuiEnum::SerialPortBridge(Default::default()),
-        GuiEnum::AudioMuted(_) => GuiEnum::AudioMuted(false),
-        GuiEnum::AudioVolume(_) => GuiEnum::AudioVolume(0.5),
-        GuiEnum::MouseCaptureMode(_) => GuiEnum::MouseCaptureMode(Default::default()),
-        GuiEnum::GamepadMapping((_, _)) => GuiEnum::GamepadMapping((None, None)),
-    }
-}
-
 type GuiEnumMap = HashMap<(GuiVariableContext, Discriminant<GuiEnum>), GuiEnum>;
 
 #[derive(Clone, Debug)]
@@ -237,8 +221,23 @@ pub struct VhdCreateRequest {
     pub mount_drive: Option<usize>,
 }
 
+#[derive(Copy, Clone, Debug, Eq, PartialEq)]
+pub enum CassetteDeckEvent {
+    Record,
+    Play,
+    Rewind,
+    FastForward,
+    Stop,
+    Pause,
+    CassetteSeek(usize),
+    SetMonitorState(bool),
+}
+
 #[allow(dead_code)]
 pub enum GuiEvent {
+    LoadQuickCassette(usize),
+    EjectCassette,
+    CassetteDeck(CassetteDeckEvent),
     LoadVHD(usize, usize),
     DetachVHD(usize),
     CreateVHD(VhdCreateRequest),
@@ -554,6 +553,16 @@ lazy_static! {
             },
         ),
         (
+            GuiWindow::VirtualMouseViewer,
+            WorkspaceWindowDef {
+                id: GuiWindow::VirtualMouseViewer,
+                title: "Virtual Mouse",
+                menu: "Virtual Mouse",
+                width: 420.0,
+                resizable: false,
+            },
+        ),
+        (
             GuiWindow::PicViewer,
             WorkspaceWindowDef {
                 id: GuiWindow::PicViewer,
@@ -640,6 +649,16 @@ lazy_static! {
                 title: "Floppy Viewer",
                 menu: "Floppy Viewer",
                 width: 700.0,
+                resizable: false,
+            },
+        ),
+        (
+            GuiWindow::CassetteDeck,
+            WorkspaceWindowDef {
+                id: GuiWindow::CassetteDeck,
+                title: "Cassette Deck",
+                menu: "Cassette Deck",
+                width: 540.0,
                 resizable: false,
             },
         ),

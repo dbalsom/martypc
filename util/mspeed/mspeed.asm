@@ -28,6 +28,9 @@
 ;   Set MartyPC's emulation speed. The argument is an unsigned 16-bit value in
 ;   tenths of a percent: 1000 is 100.0% (a 1.0x speed multiplier).
 ;
+;   Version 1.0.1
+;     - Use the DOS-style, case-insensitive /S switch
+;
 ;   Version 1.0.0
 ;     - Initial version
 
@@ -183,7 +186,7 @@ service_rejected:
     mov     ax, 4C03h
     int     21h
 
-; Parse an optional leading -s flag and one unsigned decimal argument from the
+; Parse an optional leading /S flag and one unsigned decimal argument from the
 ; DOS command tail.
 ;
 ; Output:
@@ -211,11 +214,13 @@ parse_command_line:
     jmp     .invalid
 
 .first_digit:
-    cmp     dl, '-'
+    cmp     dl, '/'
     jne     .require_digit
     cmp     cx, 2
     jb      .invalid
     mov     dl, [si + 1]
+    cmp     dl, 'S'
+    je      .silent_option
     cmp     dl, 's'
     je      .silent_option
     jmp     .invalid
@@ -299,7 +304,7 @@ current_prefix          db 'Current emulation speed:   ', '$'
 requested_prefix        db 'Requested emulation speed: ', '$'
 final_prefix            db 'Applied emulation speed:   ', '$'
 percent_suffix          db '%', 0Dh, 0Ah, '$'
-usage_message           db 'Usage: MSPEED [-s] value', 0Dh, 0Ah
+usage_message           db 'Usage: MSPEED [/S] value', 0Dh, 0Ah
                         db '  value is tenths of a percent (1000 = 100.0%)', 0Dh, 0Ah, '$'
 unavailable_message     db 'MartyPC service interrupt is unavailable.', 0Dh, 0Ah, '$'
 rejected_message        db 'MartyPC rejected the speed request.', 0Dh, 0Ah, '$'

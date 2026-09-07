@@ -24,10 +24,13 @@
 
     --------------------------------------------------------------------------
 */
-use std::{ffi::OsString, path::PathBuf};
+use std::{cell::Cell, ffi::OsString, path::PathBuf};
 
 use crate::{
-    emulator::{mouse_state::MouseState, Emulator},
+    emulator::{
+        mouse_state::{MouseState, VirtualPointerInput},
+        Emulator,
+    },
     emulator_builder::EmulatorBuilder,
     event_loop::thread_events::handle_thread_event,
     timestep_update::process_update,
@@ -42,10 +45,11 @@ use display_manager_eframe::{
 };
 #[cfg(feature = "use_wgpu")]
 use display_manager_eframe::{BufferDimensions, TextureDimensions};
+use marty_common::VideoDimensions;
+use marty_core::devices::mouse::Mouse;
 use marty_display_common::display_manager::{DisplayManager, DmGuiOptions};
 use marty_egui_eframe::{context::GuiRenderContext, EGUI_MENU_BAR_HEIGHT};
 use marty_frontend_common::{deployment::DeploymentState, timestep_manager::TimestepManager};
-use marty_web_helpers::FetchResult;
 
 #[cfg(feature = "use_winit")]
 use crate::event_loop::winit_events::handle_window_event;
@@ -56,7 +60,7 @@ use eframe::egui_wgpu;
 #[cfg(not(feature = "use_winit"))]
 use crate::event_loop::web_keyboard::handle_web_key_event;
 
-use crossbeam_channel::{Receiver, Sender};
+use crossbeam_channel::Receiver;
 
 use crate::emulator_builder::builder::EmuBuilderError;
 #[cfg(target_arch = "wasm32")]
@@ -64,7 +68,7 @@ use crate::wasm::*;
 use egui::{Context, CursorGrab, RawInput, Sense, ViewportCommand, ViewportId};
 
 use marty_display_common::display_manager::DisplayTargetType;
-use marty_egui::state::FloppyDriveSelection;
+use marty_egui::{state::FloppyDriveSelection, GuiBoolean};
 #[cfg(not(target_arch = "wasm32"))]
 use marty_frontend_common::HotkeyEvent;
 use marty_frontend_common::{color::MartyColor, constants::NORMAL_NOTIFICATION_TIME};
@@ -80,18 +84,29 @@ pub const GRAB_MODE: CursorGrab = CursorGrab::Locked;
 #[cfg(not(any(target_arch = "wasm32", target_os = "macos")))]
 pub const GRAB_MODE: CursorGrab = CursorGrab::Confined;
 
+fn apply_initial_viewport_size(viewport: &mut egui::ViewportBuilder, size: Option<VideoDimensions>, fullscreen: bool) {
+    viewport.fullscreen = Some(fullscreen);
+
+    if fullscreen {
+        viewport.inner_size = None;
+    }
+    else if let Some(size) = size.filter(VideoDimensions::has_some_size) {
+        viewport.inner_size = Some(egui::vec2(size.w as f32, size.h as f32));
+        // A configured initial size must not be clamped by the front-end's
+        // fallback minimum size.
+        viewport.min_inner_size = None;
+    }
+}
+
 pub struct MartyApp {
     size_delay: u32,
     ppp: Option<f32>,
     focused: bool,
     hide_menu: bool,
     last_main_panel_size: Option<[u32; 2]>,
-    mouse_capture_title_hint: String,
+    last_window_title: String,
     deployment_state: DeploymentState,
     gui: GuiRenderContext,
-    emu_loading: bool,
-    emu_receiver: Receiver<FetchResult>,
-    emu_sender: Sender<FetchResult>,
     #[cfg(feature = "use_winit")]
     winit_receiver: Option<Receiver<(winit::window::WindowId, winit::event::WindowEvent)>>,
     #[cfg(not(feature = "use_winit"))]
@@ -103,8 +118,6 @@ pub struct MartyApp {
 
 impl Default for MartyApp {
     fn default() -> Self {
-        let (sender, receiver) = crossbeam_channel::bounded(1);
-
         Self {
             hide_menu: false,
             // Stupid hack for web
@@ -112,13 +125,10 @@ impl Default for MartyApp {
             ppp: None,
             focused: false,
             last_main_panel_size: None,
-            mouse_capture_title_hint: String::new(),
+            last_window_title: String::new(),
             deployment_state: DeploymentState::default(),
             // Example stuff:
             gui: GuiRenderContext::default(),
-            emu_loading: false,
-            emu_receiver: receiver,
-            emu_sender: sender,
             #[cfg(feature = "use_winit")]
             winit_receiver: None,
             #[cfg(not(feature = "use_winit"))]
@@ -279,13 +289,11 @@ impl MartyApp {
         timestep_manager.set_throttle_factor(emu.config.emulator.initial_emulator_speed as f64);
         timestep_manager.set_cpu_mhz(emu.machine.get_cpu_mhz());
 
-        // Set eframe's NativeOptions for fullscreen if specified by config
+        // Apply the main window's initial viewport configuration before eframe
+        // creates the native window.
         #[cfg(not(target_arch = "wasm32"))]
-        if let Some(window) = emu.config.emulator.window.get_mut(0) {
-            if window.fullscreen {
-                native_options.viewport.inner_size = None;
-                native_options.viewport.fullscreen = Some(true);
-            }
+        if let Some(window) = emu.config.emulator.window.first() {
+            apply_initial_viewport_size(&mut native_options.viewport, window.size, window.fullscreen);
         }
 
         MartyApp {
@@ -450,10 +458,12 @@ impl MartyApp {
 
         // Get the card list from the machine, including cards with no display targets.
         let mut vid_list = emu.machine.bus().enumerate_videocards();
+        let mut lightpen_available = false;
 
         // Resize each video card to match the starting display extents.
         for vid in vid_list.iter() {
             if let Some(card) = emu.machine.bus().video(vid) {
+                lightpen_available |= card.has_lightpen();
                 let extents = card.display_extents();
 
                 //assert_eq!(extents.double_scan, true);
@@ -477,6 +487,7 @@ impl MartyApp {
         let vpi = display_manager.viewport_info();
         let dti = display_manager.display_info(&emu.machine);
         emu.gui.set_card_list(card_strs);
+        emu.gui.set_lightpen_available(lightpen_available);
         emu.gui.init_viewport_info(vpi);
         emu.gui.init_display_info(dti);
 
@@ -635,25 +646,13 @@ impl MartyApp {
                 }
             }
 
-            // Receive hooked web_sys::KeyboardEvent events.
-            #[cfg(not(feature = "use_winit"))]
-            if let Some(receiver) = &self.web_receiver {
-                for event in receiver.try_iter() {
-                    log::trace!("Received web_sys event: {:?}", event);
+            let middle_click_capture_shortcut = emu.config.emulator.input.middle_click_capture_shortcut;
 
-                    handle_web_key_event(
-                        emu,
-                        self.dm.as_mut().unwrap(),
-                        event,
-                        ctx.memory(|mem| mem.focused()).is_some(),
-                    );
-                }
-            }
-
-            let dm = self.dm.as_mut().unwrap();
-
+            // Reconcile browser pointer lock before processing new web input. A hotkey may request
+            // a pointer-lock change that eframe cannot apply until after this update returns.
             #[cfg(target_arch = "wasm32")]
             {
+                let dm = self.dm.as_mut().unwrap();
                 let browser_captured = crate::wasm::util::canvas_has_pointer_lock();
                 if browser_captured != emu.mouse_data.is_captured {
                     emu.mouse_data.is_captured = browser_captured;
@@ -668,8 +667,11 @@ impl MartyApp {
                         }
                     }
 
-                    let message = if browser_captured {
+                    let message = if browser_captured && middle_click_capture_shortcut {
                         "Mouse captured! Middle-click to release."
+                    }
+                    else if browser_captured {
+                        "Mouse captured!"
                     }
                     else {
                         "Mouse released!"
@@ -677,6 +679,24 @@ impl MartyApp {
                     emu.gui.toasts().info(message).duration(Some(NORMAL_NOTIFICATION_TIME));
                 }
             }
+
+            // Receive hooked web_sys::KeyboardEvent events.
+            #[cfg(not(feature = "use_winit"))]
+            if let Some(receiver) = &self.web_receiver {
+                for event in receiver.try_iter() {
+                    log::trace!("Received web_sys event: {:?}", event);
+
+                    handle_web_key_event(
+                        emu,
+                        self.dm.as_mut().unwrap(),
+                        ctx.clone(),
+                        event,
+                        ctx.memory(|mem| mem.focused()).is_some(),
+                    );
+                }
+            }
+
+            let dm = self.dm.as_mut().unwrap();
 
             #[cfg(not(target_arch = "wasm32"))]
             let mouse_capture_hint = emu
@@ -686,44 +706,17 @@ impl MartyApp {
                 .unwrap_or_default();
 
             #[cfg(not(target_arch = "wasm32"))]
-            {
-                let active_hint = if emu.mouse_data.is_captured {
-                    mouse_capture_hint.as_str()
-                }
-                else {
-                    ""
-                };
-
-                if self.mouse_capture_title_hint != active_hint {
-                    self.mouse_capture_title_hint.clear();
-                    self.mouse_capture_title_hint.push_str(active_hint);
-
-                    let title = if active_hint.is_empty() {
-                        format!("{} {}", self.deployment_state, crate::version_string())
-                    }
-                    else {
-                        // Do not @ me about this em-dash
-                        format!("{} {} — {active_hint}", self.deployment_state, crate::version_string())
-                    };
-                    ctx.send_viewport_cmd(ViewportCommand::Title(title));
-                }
+            let active_mouse_capture_hint = if emu.mouse_data.is_captured {
+                mouse_capture_hint.as_str()
             }
+            else {
+                ""
+            };
+            #[cfg(target_arch = "wasm32")]
+            let active_mouse_capture_hint = "";
 
-            // Process timestep.
-            process_update(emu, dm, &mut self.tm);
-            handle_thread_event(emu, ctx);
-
-            let root_widget_displays = dm.displays_for_viewport(ViewportId::ROOT, Some(DisplayTargetType::GuiWidget));
-            let root_background_displays =
-                dm.displays_for_viewport(ViewportId::ROOT, Some(DisplayTargetType::WindowBackground));
-            let fill_color = dm
-                .viewport_fill_color(ViewportId::ROOT)
-                .map(|color| MartyColor::from_u24(color).to_color32());
-            let root_background_organization = dm.viewport_background_organization(ViewportId::ROOT);
-            let root_can_grab = dm.viewport_can_grab(ViewportId::ROOT);
-
-            // We can't access context in the closure below, so we need to set a flag to un-grab the mouse
-            // afterward.
+            // Collect primary-display pointer input before running the machine so it can enter the current timestep.
+            // We can't access context in the GUI closure below, so retain a flag to un-grab the mouse afterward.
             let mut ungrab = false;
             ctx.input(|i| {
                 let Some(dtc) = dm
@@ -735,7 +728,9 @@ impl MartyApp {
                 match dtc.try_read() {
                     Ok(dtc_ref) => {
                         if dtc_ref.grabbed() {
-                            if process_captured_pointer_input(i, &mut emu.mouse_data) {
+                            if process_captured_pointer_input(i, &mut emu.mouse_data)
+                                && middle_click_capture_shortcut
+                            {
                                 log::warn!("Got middle click while grabbed!");
                                 ungrab = true;
                             }
@@ -746,6 +741,28 @@ impl MartyApp {
                     }
                 };
             });
+
+            // Process timestep.
+            process_update(emu, dm, &mut self.tm);
+            handle_thread_event(emu, ctx);
+
+            let virtual_mouse = emu
+                .machine
+                .mouse_mut()
+                .as_ref()
+                .is_some_and(|mouse| matches!(mouse, Mouse::Virtual(_)));
+            let mouse_enabled = emu.gui.get_option(GuiBoolean::MouseEnabled).unwrap_or(true);
+            let light_pen_enabled = emu.gui.get_option(GuiBoolean::LightPenEnabled).unwrap_or(false);
+            let absolute_pointer_enabled = light_pen_enabled || (mouse_enabled && virtual_mouse);
+
+            let root_widget_displays = dm.displays_for_viewport(ViewportId::ROOT, Some(DisplayTargetType::GuiWidget));
+            let root_background_displays =
+                dm.displays_for_viewport(ViewportId::ROOT, Some(DisplayTargetType::WindowBackground));
+            let fill_color = dm
+                .viewport_fill_color(ViewportId::ROOT)
+                .map(|color| MartyColor::from_u24(color).to_color32());
+            let root_background_organization = dm.viewport_background_organization(ViewportId::ROOT);
+            let root_can_grab = dm.viewport_can_grab(ViewportId::ROOT);
 
             #[cfg(not(target_arch = "wasm32"))]
             let mouse_capture_message = if mouse_capture_hint.is_empty() {
@@ -759,6 +776,7 @@ impl MartyApp {
             // the active video output may itself be an egui surface. render_gui controls only the
             // menu and non-display windows.
             let render_gui = emu.flags.render_gui;
+            let pending_virtual_input = Cell::new(None);
             let gui_output = self.gui.show(
                 ui,
                 &mut emu.gui,
@@ -781,6 +799,19 @@ impl MartyApp {
                             egui::Window::new(display_name).resizable(false).show(ctx, |ui| {
                                 let ui_size = egui::Vec2::new(scaler_geom.target_w as f32, scaler_geom.target_h as f32);
                                 let (rect, response) = ui.allocate_exact_size(ui_size, Sense::click());
+
+                                if absolute_pointer_enabled && !emu.mouse_data.is_captured {
+                                    if let Some(position) = display_pointer_position(ui, &response)
+                                        .and_then(|position| dtc_ref.viewport_to_display(rect, position))
+                                    {
+                                        if virtual_mouse && !emu.mouse_data.guest_cursor_visible {
+                                            ui.ctx().set_cursor_icon(egui::CursorIcon::None);
+                                        }
+                                        ui.input(|input| {
+                                            pending_virtual_input.set(Some(VirtualPointerInput::new(input, position)));
+                                        });
+                                    }
+                                }
 
                                 #[cfg(feature = "use_wgpu")]
                                 {
@@ -826,21 +857,23 @@ impl MartyApp {
                                     // });
                                 }
 
-                                if root_can_grab && response.double_clicked() {
-                                    log::warn!("Double-clicked main display!");
-                                    if !dtc_ref.grabbed() {
-                                        ctx.send_viewport_cmd(ViewportCommand::CursorGrab(GRAB_MODE));
-                                        ctx.send_viewport_cmd(ViewportCommand::CursorVisible(false));
+                                if root_can_grab
+                                    && middle_click_capture_shortcut
+                                    && !emu.mouse_data.is_captured
+                                    && response.middle_clicked()
+                                {
+                                    log::warn!("Middle-clicked main display!");
+                                    ctx.send_viewport_cmd(ViewportCommand::CursorGrab(GRAB_MODE));
+                                    ctx.send_viewport_cmd(ViewportCommand::CursorVisible(false));
 
-                                        #[cfg(not(target_arch = "wasm32"))]
-                                        {
-                                            *_capture_state = Some(true);
-                                            dtc_ref.set_grabbed(true, emu.mouse_data.capture_mode);
+                                    #[cfg(not(target_arch = "wasm32"))]
+                                    {
+                                        *_capture_state = Some(true);
+                                        dtc_ref.set_grabbed(true, emu.mouse_data.capture_mode);
 
-                                            gui.toasts()
-                                                .info(mouse_capture_message.clone())
-                                                .duration(Some(NORMAL_NOTIFICATION_TIME));
-                                        }
+                                        gui.toasts()
+                                            .info(mouse_capture_message.clone())
+                                            .duration(Some(NORMAL_NOTIFICATION_TIME));
                                     }
                                 }
                                 else if ungrab && dtc_ref.grabbed() {
@@ -885,6 +918,19 @@ impl MartyApp {
                         let dtc_ref = dtc_lock.as_mut().unwrap();
                         let response = ui.allocate_rect(rect, Sense::click());
 
+                        if absolute_pointer_enabled && !emu.mouse_data.is_captured {
+                            if let Some(position) = display_pointer_position(ui, &response)
+                                .and_then(|position| dtc_ref.viewport_to_display(rect, position))
+                            {
+                                if virtual_mouse && !emu.mouse_data.guest_cursor_visible {
+                                    ui.ctx().set_cursor_icon(egui::CursorIcon::None);
+                                }
+                                ui.input(|input| {
+                                    pending_virtual_input.set(Some(VirtualPointerInput::new(input, position)));
+                                });
+                            }
+                        }
+
                         #[cfg(feature = "use_wgpu")]
                         {
                             let callback = dm.display_callback(root_display).unwrap();
@@ -897,8 +943,12 @@ impl MartyApp {
                             ui.painter().add(callback);
                         }
 
-                        if root_can_grab && response.double_clicked() && !dtc_ref.grabbed() {
-                            log::warn!("Double-clicked display {:?}!", root_display);
+                        if root_can_grab
+                            && middle_click_capture_shortcut
+                            && !emu.mouse_data.is_captured
+                            && response.middle_clicked()
+                        {
+                            log::warn!("Middle-clicked display {:?}!", root_display);
                             ctx.send_viewport_cmd(ViewportCommand::CursorGrab(GRAB_MODE));
                             ctx.send_viewport_cmd(ViewportCommand::CursorVisible(false));
 
@@ -931,6 +981,10 @@ impl MartyApp {
                 },
             );
 
+            if let Some(input) = pending_virtual_input.into_inner() {
+                input.apply(&mut emu.mouse_data);
+            }
+
             let main_panel_size = resize_dimensions(gui_output.main_panel_rect);
             if self.size_delay > 0 || self.last_main_panel_size != Some(main_panel_size) {
                 log::debug!(
@@ -953,12 +1007,23 @@ impl MartyApp {
             // Secondary configured display targets are native windows on desktop and embedded
             // egui viewports on platforms that do not support multiple native viewports.
             dm.show_secondary_viewports(ctx, |_viewport_id, _can_grab, _display, _ui, _response, _target| {
+                if absolute_pointer_enabled && !emu.mouse_data.is_captured {
+                    if let Some(position) = display_pointer_position(_ui, _response)
+                        .and_then(|position| _target.viewport_to_display(_response.rect, position))
+                    {
+                        if virtual_mouse && !emu.mouse_data.guest_cursor_visible {
+                            _ui.ctx().set_cursor_icon(egui::CursorIcon::None);
+                        }
+                        _ui.input(|input| process_virtual_pointer_input(input, position, &mut emu.mouse_data));
+                    }
+                }
+
                 #[cfg(not(target_arch = "wasm32"))]
                 {
                     if _target.grabbed() {
                         _ui.ctx().set_cursor_icon(egui::CursorIcon::None);
                         let ungrab = _ui.input(|input| process_captured_pointer_input(input, &mut emu.mouse_data));
-                        if ungrab {
+                        if ungrab && middle_click_capture_shortcut {
                             log::warn!("Got middle click while display {:?} is grabbed!", _display);
                             _ui.ctx()
                                 .send_viewport_cmd(ViewportCommand::CursorGrab(CursorGrab::None));
@@ -972,8 +1037,12 @@ impl MartyApp {
                                 .duration(Some(NORMAL_NOTIFICATION_TIME));
                         }
                     }
-                    else if _can_grab && !emu.mouse_data.is_captured && _response.double_clicked() {
-                        log::warn!("Double-clicked display {:?} in viewport {:?}!", _display, _viewport_id);
+                    else if _can_grab
+                        && middle_click_capture_shortcut
+                        && !emu.mouse_data.is_captured
+                        && _response.middle_clicked()
+                    {
+                        log::warn!("Middle-clicked display {:?} in viewport {:?}!", _display, _viewport_id);
                         _ui.ctx().send_viewport_cmd(ViewportCommand::CursorGrab(GRAB_MODE));
                         _ui.ctx().send_viewport_cmd(ViewportCommand::CursorVisible(false));
                         _target.set_grabbed(true, emu.mouse_data.capture_mode);
@@ -986,6 +1055,24 @@ impl MartyApp {
                     }
                 }
             });
+
+            let absolute_mouse_position = emu
+                .gui
+                .get_option(GuiBoolean::ShowAbsoluteMousePosition)
+                .unwrap_or(false)
+                .then_some(emu.mouse_data.absolute_position)
+                .flatten()
+                .map(absolute_mouse_title_position);
+
+            let title = window_title(
+                &format!("{} {}", self.deployment_state, crate::version_string()),
+                active_mouse_capture_hint,
+                absolute_mouse_position,
+            );
+            if self.last_window_title != title {
+                self.last_window_title = title.clone();
+                ctx.send_viewport_cmd(ViewportCommand::Title(title));
+            }
 
             // Hack to avoid egui from re-enabling mouse cursor when captured
             #[cfg(not(target_arch = "wasm32"))]
@@ -1058,7 +1145,42 @@ fn process_captured_pointer_input(input: &egui::InputState, mouse: &mut MouseSta
         mouse.have_update = true;
     }
 
-    input.pointer.button_pressed(egui::PointerButton::Middle)
+    // Match the release edge used by `Response::middle_clicked()` when entering capture so one
+    // physical click cannot release capture on press and immediately re-enter it on release.
+    input.pointer.button_released(egui::PointerButton::Middle)
+}
+
+fn process_virtual_pointer_input(input: &egui::InputState, position: (f32, f32), mouse: &mut MouseState) {
+    VirtualPointerInput::new(input, position).apply(mouse);
+}
+
+/// Return the pointer while it is over or interacting with a display surface.
+/// `Response::hover_pos()` becomes `None` once a held button turns into a drag,
+/// even though the pointer is still inside the response rectangle.
+fn display_pointer_position(ui: &egui::Ui, response: &egui::Response) -> Option<egui::Pos2> {
+    if response.contains_pointer() || response.is_pointer_button_down_on() {
+        ui.input(|input| input.pointer.interact_pos())
+    }
+    else {
+        None
+    }
+}
+
+fn absolute_mouse_title_position(position: (f32, f32)) -> (u16, u16) {
+    let to_absolute = |coordinate: f32| (coordinate.clamp(0.0, 1.0) as f64 * u16::MAX as f64).round() as u16;
+    (to_absolute(position.0), to_absolute(position.1))
+}
+
+fn window_title(base: &str, mouse_capture_hint: &str, absolute_mouse_position: Option<(u16, u16)>) -> String {
+    let mut title = base.to_string();
+    if !mouse_capture_hint.is_empty() {
+        // Do not @ me about this em-dash
+        title.push_str(&format!(" — {mouse_capture_hint}"));
+    }
+    if let Some((x, y)) = absolute_mouse_position {
+        title.push_str(&format!(" — Mouse: ({x}, {y})"));
+    }
+    title
 }
 
 fn resize_dimensions(rect: egui::Rect) -> [u32; 2] {
@@ -1068,7 +1190,8 @@ fn resize_dimensions(rect: egui::Rect) -> [u32; 2] {
 
 #[cfg(test)]
 mod tests {
-    use super::resize_dimensions;
+    use super::{absolute_mouse_title_position, apply_initial_viewport_size, resize_dimensions, window_title};
+    use marty_common::VideoDimensions;
 
     #[test]
     fn resize_dimensions_rounds_and_clamps_panel_size() {
@@ -1077,5 +1200,28 @@ mod tests {
 
         let empty = egui::Rect::from_min_size(egui::Pos2::ZERO, egui::Vec2::ZERO);
         assert_eq!(resize_dimensions(empty), [1, 1]);
+    }
+
+    #[test]
+    fn configured_initial_size_replaces_frontend_fallback() {
+        let mut viewport = egui::ViewportBuilder::default()
+            .with_inner_size([800.0, 600.0])
+            .with_min_inner_size([800.0, 600.0]);
+
+        apply_initial_viewport_size(&mut viewport, Some(VideoDimensions { w: 1920, h: 1080 }), false);
+
+        assert_eq!(viewport.inner_size, Some(egui::vec2(1920.0, 1080.0)));
+        assert_eq!(viewport.min_inner_size, None);
+        assert_eq!(viewport.fullscreen, Some(false));
+    }
+
+    #[test]
+    fn fullscreen_omits_an_initial_inner_size() {
+        let mut viewport = egui::ViewportBuilder::default().with_inner_size([800.0, 600.0]);
+
+        apply_initial_viewport_size(&mut viewport, Some(VideoDimensions { w: 1920, h: 1080 }), true);
+
+        assert_eq!(viewport.inner_size, None);
+        assert_eq!(viewport.fullscreen, Some(true));
     }
 }

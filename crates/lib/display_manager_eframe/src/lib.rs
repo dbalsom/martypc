@@ -355,6 +355,7 @@ pub struct DisplayTargetContext {
     pub(crate) gui_ctx: Option<GuiRenderContext>, // The egui render context, if any
     pub(crate) card_id: Option<VideoCardId>,      // The video card device id, if any
     pub(crate) renderer: Option<VideoRenderer>,   // The renderer
+    pub(crate) display_extents: Option<DisplayExtents>, // Last extents reported by the video card
     pub(crate) aspect_ratio: AspectRatio,         // Aspect ratio configured for this display
     pub(crate) surface: Option<DisplayTargetSurfaceHandle>, // The display target surface created by the backend
     prev_scaler_mode: Option<ScalerMode>,         // The previous scaler mode
@@ -460,6 +461,32 @@ fn scaler_screenshot_rect(
     let y = ((surface_h as f64 - clipped_h) / 2.0).floor().max(0.0) as u32;
 
     Some(ShaderScreenshotRect { x, y, w, h })
+}
+
+fn normalize_cropped_aperture_position(
+    texture_position: (f32, f32),
+    rendered_aperture_offset: (u32, u32),
+    rendered_aperture_size: (u32, u32),
+    cropped_aperture_offset: (u32, u32),
+    cropped_aperture_size: (u32, u32),
+) -> Option<(f32, f32)> {
+    if rendered_aperture_size.0 == 0
+        || rendered_aperture_size.1 == 0
+        || cropped_aperture_size.0 == 0
+        || cropped_aperture_size.1 == 0
+    {
+        return None;
+    }
+
+    let texture_x = texture_position.0.clamp(0.0, 1.0);
+    let texture_y = texture_position.1.clamp(0.0, 1.0);
+    let raster_x = rendered_aperture_offset.0 as f32 + texture_x * rendered_aperture_size.0 as f32;
+    let raster_y = rendered_aperture_offset.1 as f32 + texture_y * rendered_aperture_size.1 as f32;
+
+    Some((
+        ((raster_x - cropped_aperture_offset.0 as f32) / cropped_aperture_size.0 as f32).clamp(0.0, 1.0),
+        ((raster_y - cropped_aperture_offset.1 as f32) / cropped_aperture_size.1 as f32).clamp(0.0, 1.0),
+    ))
 }
 
 #[cfg(feature = "use_wgpu")]
@@ -1111,6 +1138,42 @@ impl DisplayTargetContext {
         }
     }
 
+    /// Map a pointer position in egui viewport coordinates to normalized coordinates in the
+    /// source texture currently shown by this target. The paint rectangle and pointer position
+    /// are both expressed in egui points; converting by their ratio keeps the mapping independent
+    /// of the viewport's pixels-per-point value.
+    pub fn viewport_to_texture(&self, paint_rect: egui::Rect, pointer_pos: egui::Pos2) -> Option<(f32, f32)> {
+        if !paint_rect.contains(pointer_pos) || paint_rect.width() <= 0.0 || paint_rect.height() <= 0.0 {
+            return None;
+        }
+
+        let scaler = self.scaler.as_ref()?;
+        let geometry = scaler.geometry();
+        let surface_x = (pointer_pos.x - paint_rect.min.x) * geometry.surface_w as f32 / paint_rect.width();
+        let surface_y = (pointer_pos.y - paint_rect.min.y) * geometry.surface_h as f32 / paint_rect.height();
+        scaler.surface_to_texture(surface_x, surface_y)
+    }
+
+    /// Map a pointer position to coordinates normalized within the Cropped display aperture.
+    /// Cropped always represents the visible display area, independently of the aperture selected
+    /// for rendering. Its top-left corner is `(0, 0)` and its bottom-right corner is `(1, 1)`.
+    pub fn viewport_to_display(&self, paint_rect: egui::Rect, pointer_pos: egui::Pos2) -> Option<(f32, f32)> {
+        let texture_position = self.viewport_to_texture(paint_rect, pointer_pos)?;
+        let renderer = self.renderer.as_ref()?;
+        let extents = self.display_extents.as_ref()?;
+        let rendered_aperture = extents.apertures.get(renderer.params().aperture as usize)?;
+        let cropped_aperture = extents.apertures.get(DisplayApertureType::Cropped as usize)?;
+        let line_scale: u32 = if extents.double_scan { 2 } else { 1 };
+
+        normalize_cropped_aperture_position(
+            texture_position,
+            (rendered_aperture.x, rendered_aperture.y.saturating_mul(line_scale)),
+            (rendered_aperture.w, rendered_aperture.h.saturating_mul(line_scale)),
+            (cropped_aperture.x, cropped_aperture.y.saturating_mul(line_scale)),
+            (cropped_aperture.w, cropped_aperture.h.saturating_mul(line_scale)),
+        )
+    }
+
     /// Set the aspect mode of the target. If the aspect mode is changed, we may need to resize
     /// the backend and scaler.
     pub fn set_aspect_mode(&mut self, _mode: AspectCorrectionMode) {}
@@ -1134,7 +1197,8 @@ impl DisplayTargetContext {
 
         if let MouseCaptureMode::LightPen = capture_mode {
             if let Some(renderer) = &mut self.renderer {
-                renderer.set_cursor_state(grabbed)
+                renderer.set_cursor_state(grabbed);
+                renderer.set_cursor_visibility(grabbed);
             }
         }
     }
@@ -1892,6 +1956,7 @@ impl<'p> DisplayManager<EFrameBackend, GuiRenderContext, ViewportId, ViewportId,
                     gui_ctx: None,
                     card_id,
                     renderer,
+                    display_extents: None,
                     aspect_ratio: scaler_preset.renderer.aspect_ratio.unwrap_or_default(),
                     //backend: Some(pb), // The graphics backend instance
                     surface: Some(surface),
@@ -2247,6 +2312,7 @@ impl<'p> DisplayManager<EFrameBackend, GuiRenderContext, ViewportId, ViewportId,
                     .unwrap_or((0, DEFAULT_RESOLUTION_W, DEFAULT_RESOLUTION_H));
 
                 let dtc = &mut resolve_dtc_mut!(self.targets[*idx]);
+                dtc.display_extents = Some(extents.clone());
 
                 let mut aspect_dimensions: Option<BufferDimensions> = None;
                 let mut buf_dimensions: Option<BufferDimensions> = None;
@@ -2933,5 +2999,36 @@ mod tests {
                 h: 400,
             })
         );
+    }
+
+    #[test]
+    fn cropped_aperture_edges_define_normalized_coordinate_extents() {
+        let top_left =
+            normalize_cropped_aperture_position((0.12, 32.0 / 524.0), (0, 0), (800, 524), (96, 32), (640, 480))
+                .unwrap();
+        let bottom_right =
+            normalize_cropped_aperture_position((0.92, 512.0 / 524.0), (0, 0), (800, 524), (96, 32), (640, 480))
+                .unwrap();
+
+        assert_eq!(top_left, (0.0, 0.0));
+        assert_eq!(bottom_right, (1.0, 1.0));
+    }
+
+    #[test]
+    fn cropped_coordinates_are_stable_across_rendered_apertures() {
+        let from_cropped =
+            normalize_cropped_aperture_position((0.5, 0.5), (96, 32), (640, 480), (96, 32), (640, 480)).unwrap();
+        let from_full =
+            normalize_cropped_aperture_position((0.52, 272.0 / 524.0), (0, 0), (800, 524), (96, 32), (640, 480))
+                .unwrap();
+
+        assert_eq!(from_cropped, (0.5, 0.5));
+        assert_eq!(from_full, (0.5, 0.5));
+    }
+
+    #[test]
+    fn aperture_position_rejects_zero_sized_apertures() {
+        assert!(normalize_cropped_aperture_position((0.5, 0.5), (96, 32), (0, 480), (96, 32), (640, 480)).is_none());
+        assert!(normalize_cropped_aperture_position((0.5, 0.5), (96, 32), (640, 480), (96, 32), (640, 0)).is_none());
     }
 }

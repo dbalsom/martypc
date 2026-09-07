@@ -32,9 +32,13 @@
 use std::time::Duration;
 use std::{mem::discriminant, path::PathBuf};
 
-use crate::{emulator::Emulator, floppy::load_floppy::handle_load_floppy};
+#[cfg(target_arch = "wasm32")]
+use crate::wasm::file_open::open_file;
+use crate::{emulator::Emulator, floppy::load_floppy::handle_load_floppy, sound::SoundInterfaceBackend};
 use display_manager_eframe::EFrameDisplayManager;
 
+#[cfg(target_arch = "wasm32")]
+use marty_frontend_common::thread_events::FileOpenContext;
 #[cfg(not(target_arch = "wasm32"))]
 use marty_frontend_common::thread_events::FileSaveContext;
 use marty_frontend_common::{
@@ -47,6 +51,7 @@ use marty_core::{
     cpu_common,
     cpu_common::{Cpu, CpuOption, Register16},
     device_traits::videocard::ClockingMode,
+    devices::{cassette_deck::CASSETTE_MONITOR_SOURCE_NAME, mouse::MouseInput},
     machine::{MachineOption, MachineState},
     vhd::VirtualHardDisk,
 };
@@ -54,6 +59,7 @@ use marty_core::{
 use marty_egui::FileDialogFilter;
 use marty_egui::{
     state::FloppyDriveSelection,
+    CassetteDeckEvent,
     DeviceSelection,
     GuiBoolean,
     GuiEnum,
@@ -82,9 +88,15 @@ pub fn handle_egui_event(
     #[allow(unreachable_patterns)]
     match gui_event {
         GuiEvent::Exit => {
-            // User chose exit option from menu. Shut down.
-            // TODO: Add a timeout from last VHD write for safety?
-            let _ = emu.sender.send(FrontendThreadEvent::QuitRequested);
+            #[cfg(target_arch = "wasm32")]
+            crate::wasm::util::return_to_launcher();
+
+            #[cfg(not(target_arch = "wasm32"))]
+            {
+                // User chose exit option from menu. Shut down.
+                // TODO: Add a timeout from last VHD write for safety?
+                let _ = emu.sender.send(FrontendThreadEvent::QuitRequested);
+            }
         }
         GuiEvent::SetNMI(state) => {
             // User wants to crash the computer. Sure, why not.
@@ -106,6 +118,11 @@ pub fn handle_egui_event(
                 }
                 (GuiBoolean::TurboButton, state) => {
                     emu.machine.set_turbo_mode(state);
+                }
+                (GuiBoolean::MouseEnabled, false) => {
+                    if let Some(mouse) = emu.machine.mouse_mut() {
+                        mouse.submit_input(MouseInput::default());
+                    }
                 }
                 _ => {}
             },
@@ -264,6 +281,99 @@ pub fn handle_egui_event(
                 }
             },
         },
+        GuiEvent::LoadQuickCassette(wav_idx) => {
+            #[cfg(target_arch = "wasm32")]
+            if matches!(emu.cassette_manager.cassette_is_in_overlay(*wav_idx), Some(false)) {
+                let Some(path) = emu.cassette_manager.get_cassette_path(*wav_idx)
+                else {
+                    log::error!("Failed to resolve cassette WAV index {wav_idx} to a path");
+                    emu.gui
+                        .toasts()
+                        .error(format!("Cassette WAV index {wav_idx} was not found"))
+                        .duration(Some(LONG_NOTIFICATION_TIME));
+                    return;
+                };
+
+                let context = FileOpenContext::CassetteImage {
+                    fsc: FileSelectionContext::Path(path),
+                };
+                if let Err(err) = open_file(context, emu.sender.clone()) {
+                    log::error!("Failed to fetch cassette WAV: {err}");
+                    emu.gui
+                        .toasts()
+                        .error(format!("Failed to fetch cassette WAV: {err}"))
+                        .duration(Some(LONG_NOTIFICATION_TIME));
+                }
+                return;
+            }
+
+            match emu.cassette_manager.load_resource(*wav_idx, &mut emu.rm) {
+                Ok(media) => {
+                    let name = media.name.to_string_lossy().into_owned();
+                    let path = media.path.clone();
+                    if let Some(cassette_deck) = emu.machine.bus_mut().cassette_deck_mut().as_mut() {
+                        cassette_deck.insert_image(&media.samples, media.tape_type);
+                        emu.gui.set_cassette_selection(Some(*wav_idx), Some(path));
+                        emu.gui
+                            .toasts()
+                            .info(format!("Cassette inserted: {name}"))
+                            .duration(Some(NORMAL_NOTIFICATION_TIME));
+                    }
+                    else {
+                        log::error!("Cannot load cassette: no cassette interface installed");
+                    }
+                }
+                Err(err) => {
+                    log::error!("Failed to load cassette WAV: {err}");
+                    emu.gui
+                        .toasts()
+                        .error(format!("Failed to load cassette WAV: {err}"))
+                        .duration(Some(LONG_NOTIFICATION_TIME));
+                }
+            }
+        }
+        GuiEvent::EjectCassette => {
+            if let Some(cassette_deck) = emu.machine.bus_mut().cassette_deck_mut().as_mut() {
+                cassette_deck.eject_image();
+            }
+            emu.gui.set_cassette_selection(None, None);
+            emu.gui
+                .toasts()
+                .info("Cassette WAV ejected")
+                .duration(Some(NORMAL_NOTIFICATION_TIME));
+        }
+        GuiEvent::CassetteDeck(event) => {
+            log::debug!("Received CassetteDeckEvent: {:?}", event);
+
+            let Some(cassette_deck) = emu.machine.bus_mut().cassette_deck_mut().as_mut()
+            else {
+                log::warn!("Ignoring transport command: no cassette interface installed");
+                return;
+            };
+
+            match event {
+                CassetteDeckEvent::Record => cassette_deck.record(),
+                CassetteDeckEvent::Play => cassette_deck.play(),
+                CassetteDeckEvent::Rewind => cassette_deck.rewind(),
+                CassetteDeckEvent::FastForward => cassette_deck.fast_forward(),
+                CassetteDeckEvent::Stop => cassette_deck.stop(),
+                CassetteDeckEvent::Pause => cassette_deck.pause(),
+                CassetteDeckEvent::CassetteSeek(sample_position) => {
+                    cassette_deck.seek(*sample_position);
+                }
+                CassetteDeckEvent::SetMonitorState(enabled) => {
+                    // Monitor toggles cassette sound source mute
+                    if let Some(sound_interface) = emu.si.as_mut() {
+                        if let Some((source_index, _)) = sound_interface.source_by_name(CASSETTE_MONITOR_SOURCE_NAME) {
+                            sound_interface.set_volume(source_index, None, Some(!enabled));
+                        }
+                        else {
+                            log::warn!("Cassette monitor sound source was not found");
+                        }
+                    }
+                }
+            }
+        }
         GuiEvent::LoadVHD(drive_idx, image_idx) => {
             handle_load_vhd(emu, *drive_idx, FileSelectionContext::Index(*image_idx));
         }
@@ -436,6 +546,11 @@ pub fn handle_egui_event(
             if let Err(e) = emu.cart_manager.scan_resource(&mut emu.rm) {
                 log::error!("Error scanning cartridge directory: {}", e);
             }
+            if emu.machine.config().cassette {
+                if let Err(e) = emu.cassette_manager.scan_resource(&mut emu.rm) {
+                    log::warn!("Error scanning cassette directory: {}", e);
+                }
+            }
             // Update Floppy Disk Image tree
             match emu.floppy_manager.make_tree(&mut emu.rm) {
                 Ok(floppy_tree) => {
@@ -458,6 +573,12 @@ pub fn handle_egui_event(
             // Update Cartridge Image tree
             if let Ok(cart_tree) = emu.cart_manager.make_tree(&mut emu.rm) {
                 emu.gui.set_cart_tree(cart_tree);
+            }
+            // Update Cassette WAV tree.
+            if emu.machine.config().cassette {
+                if let Ok(cassette_tree) = emu.cassette_manager.make_tree(&emu.rm) {
+                    emu.gui.set_cassette_tree(cassette_tree);
+                }
             }
         }
         GuiEvent::InsertCartridge(slot_select, item_idx) => {

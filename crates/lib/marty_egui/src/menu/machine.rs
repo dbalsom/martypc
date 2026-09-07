@@ -154,7 +154,7 @@ impl GuiState {
                     for &(label, keycodes) in SEND_KEY_SEQUENCES {
                         if ui.button(label).clicked() {
                             self.event_queue.send(GuiEvent::SendKeySequence(keycodes.to_vec()));
-                            ui.close_menu();
+                            ui.close();
                         }
                     }
                 });
@@ -170,7 +170,7 @@ impl GuiState {
             ui.add_enabled_ui(!is_on, |ui| {
                 if ui.button("⚡ Power on").clicked() {
                     self.event_queue.send(GuiEvent::MachineStateChange(MachineState::On));
-                    ui.close_menu();
+                    ui.close();
                 }
             });
 
@@ -184,34 +184,34 @@ impl GuiState {
                     GuiVariableContext::Global,
                     GuiVariable::Bool(GuiBoolean::TurboButton, new_opt),
                 ));
-                ui.close_menu();
+                ui.close();
             }
 
             ui.add_enabled_ui(is_on && can_pause, |ui| {
                 if ui.button("⏸ Pause").clicked() {
                     self.exec_control.borrow_mut().set_op(ExecutionOperation::Pause);
-                    ui.close_menu();
+                    ui.close();
                 }
             });
 
             ui.add_enabled_ui(is_on && can_resume, |ui| {
                 if ui.button("▶ Resume").clicked() {
                     self.exec_control.borrow_mut().set_op(ExecutionOperation::Run);
-                    ui.close_menu();
+                    ui.close();
                 }
             });
 
             ui.add_enabled_ui(is_on, |ui| {
                 if ui.button("⟲ Reboot").clicked() {
                     self.event_queue.send(GuiEvent::Reboot);
-                    ui.close_menu();
+                    ui.close();
                 }
             });
 
             ui.add_enabled_ui(is_on, |ui| {
                 if ui.button("🔌 Power off").clicked() {
                     self.event_queue.send(GuiEvent::MachineStateChange(MachineState::Off));
-                    ui.close_menu();
+                    ui.close();
                 }
             });
         });

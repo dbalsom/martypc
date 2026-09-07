@@ -138,7 +138,7 @@ mod tests {
     }
 
     #[test]
-    fn window_can_disable_double_click_mouse_capture() {
+    fn window_can_disable_mouse_capture_shortcuts() {
         let window: WindowDefinition = toml::from_str("name = 'Main'\ncan_grab = false").unwrap();
         assert!(!window.can_grab);
     }

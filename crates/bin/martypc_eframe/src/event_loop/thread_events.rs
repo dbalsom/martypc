@@ -48,7 +48,33 @@ use marty_frontend_common::{
         FrontendThreadEvent,
     },
 };
-use std::{path::PathBuf, sync::Arc};
+use std::{
+    path::{Path, PathBuf},
+    sync::Arc,
+};
+
+fn file_opened_message(context: &FileOpenContext, path: Option<&Path>, contents_len: usize) -> String {
+    let selected_path = path.or_else(|| {
+        let fsc = match context {
+            FileOpenContext::ServiceHostFile { fsc }
+            | FileOpenContext::CassetteImage { fsc }
+            | FileOpenContext::FloppyDiskImage { fsc, .. }
+            | FileOpenContext::CartridgeImage { fsc, .. } => Some(fsc),
+            #[cfg(not(target_arch = "wasm32"))]
+            FileOpenContext::VhdDiskImage { .. } => None,
+        }?;
+
+        match fsc {
+            FileSelectionContext::Path(path) => Some(path.as_path()),
+            _ => None,
+        }
+    });
+
+    match selected_path {
+        Some(path) => format!("File opened: {} ({contents_len}) bytes", path.display()),
+        None => format!("File opened ({contents_len} bytes)"),
+    }
+}
 
 pub fn handle_thread_event(emu: &mut Emulator, ctx: &egui::Context) {
     while let Ok(event) = emu.receiver.try_recv() {
@@ -128,15 +154,47 @@ pub fn handle_thread_event(emu: &mut Emulator, ctx: &egui::Context) {
 
                 emu.gui
                     .toasts()
-                    .info(format!(
-                        "File opened: {:?} ({}) bytes",
-                        path.clone().unwrap_or(PathBuf::from("None")),
-                        contents.len()
-                    ))
+                    .info(file_opened_message(&context, path.as_deref(), contents.len()))
                     .duration(Some(NORMAL_NOTIFICATION_TIME));
 
                 match context {
                     FileOpenContext::ServiceHostFile { .. } => unreachable!(),
+                    FileOpenContext::CassetteImage { fsc } => {
+                        let cassette_path = match fsc {
+                            FileSelectionContext::Path(path) => path,
+                            _ => match path {
+                                Some(path) => path,
+                                None => {
+                                    log::error!("Cassette WAV dialog returned without a path");
+                                    continue;
+                                }
+                            },
+                        };
+                        match emu.cassette_manager.load_data(cassette_path.clone(), contents) {
+                            Ok(media) => {
+                                let name = media.name.to_string_lossy().into_owned();
+                                if let Some(cassette_deck) = emu.machine.bus_mut().cassette_deck_mut().as_mut() {
+                                    cassette_deck.insert_image(&media.samples, media.tape_type);
+                                    log::debug!("Cassette inserted: {name}");
+                                    emu.gui.set_cassette_selection(None, Some(cassette_path));
+                                    emu.gui
+                                        .toasts()
+                                        .info(format!("Cassette inserted: {name}"))
+                                        .duration(Some(NORMAL_NOTIFICATION_TIME));
+                                }
+                                else {
+                                    log::error!("Cannot load cassette: no cassette interface installed");
+                                }
+                            }
+                            Err(err) => {
+                                log::error!("Failed to decode cassette WAV: {err}");
+                                emu.gui
+                                    .toasts()
+                                    .error(format!("Failed to decode cassette WAV: {err}"))
+                                    .duration(Some(LONG_NOTIFICATION_TIME));
+                            }
+                        }
+                    }
                     FileOpenContext::FloppyDiskImage { drive_select, fsc } => {
                         let mut floppy_path = None;
 

@@ -54,6 +54,8 @@ use crate::{
     devices::{
         a0::A0Register,
         cartridge_slots::CartridgeSlot,
+        cassette_comparator::CassetteComparator,
+        cassette_deck::CassetteDeck,
         cga::CGACard,
         dma::*,
         fantasy_ems::FantasyEmsCard,
@@ -98,7 +100,10 @@ use crate::{
 #[cfg(feature = "sound")]
 use crate::{
     device_traits::sounddevice::SoundDevice,
-    devices::pit::SPEAKER_SAMPLE_RATE,
+    devices::{
+        cassette_deck::{CASSETTE_MONITOR_SOURCE_NAME, CASSETTE_SAMPLE_RATE},
+        pit::SPEAKER_SAMPLE_RATE,
+    },
     machine_config::SoundChipType,
     machine_types::SoundType,
     sound::{SoundOutputConfig, SoundSourceDescriptor},
@@ -503,6 +508,8 @@ pub struct BusInterface {
     ems: Option<LotechEmsCard>,
     fantasy_ems: Option<FantasyEmsCard>,
     cart_slot: Option<CartridgeSlot>,
+    cassette_comparator: Option<CassetteComparator>,
+    cassette_deck: Option<CassetteDeck>,
     game_port: Option<GamePort>,
     #[cfg(any(feature = "opl", feature = "legacy-opl"))]
     adlib: Option<AdLibCard>,
@@ -592,6 +599,8 @@ impl Default for BusInterface {
             ems: None,
             fantasy_ems: None,
             cart_slot: None,
+            cassette_comparator: None,
+            cassette_deck: None,
             game_port: None,
             #[cfg(any(feature = "opl", feature = "legacy-opl"))]
             adlib: None,
@@ -1148,6 +1157,26 @@ impl BusInterface {
             }
         }
 
+        // Create a cassette deck and comparator
+        if machine_config.cassette {
+            // Cassette deck creates a sound source for cassette audio monitor
+            // if you have a desire to hear the cassette screech at you
+            #[cfg(feature = "sound")]
+            let cassette_sample_sender = {
+                let (sender, receiver) = unbounded();
+                installed_devices.sound_sources.push(
+                    SoundSourceDescriptor::new(CASSETTE_MONITOR_SOURCE_NAME, CASSETTE_SAMPLE_RATE, 1, receiver)
+                        .with_initial_mute(true),
+                );
+                Some(sender)
+            };
+            #[cfg(not(feature = "sound"))]
+            let cassette_sample_sender = None;
+
+            self.cassette_comparator = Some(CassetteComparator::default());
+            self.cassette_deck = Some(CassetteDeck::new(cassette_sample_sender));
+        }
+
         // Create a HardDiskController if specified
         if let Some(hdc_config) = &machine_config.hdc {
             match hdc_config.hdc_type {
@@ -1256,17 +1285,33 @@ impl BusInterface {
             }
         }
 
+        if machine_config.serial_mouse.is_some() && machine_config.virtual_mouse.is_some() {
+            return Err(anyhow::anyhow!(
+                "Machine configuration cannot install both a serial mouse and a virtual mouse"
+            ));
+        }
+
         // Create a Serial mouse if specified
         if let Some(serial_mouse_config) = &machine_config.serial_mouse {
             // Only create mouse if we have as serial card to plug it into!
             if self.serial.is_some() {
                 match serial_mouse_config.mouse_type {
                     SerialMouseType::Microsoft => {
-                        let mouse = Mouse::new(serial_mouse_config.port as usize, None, None);
+                        let mouse = Mouse::new_serial(serial_mouse_config.port as usize, None);
                         self.mouse = Some(mouse);
                     }
                 }
             }
+        }
+
+        // Create the MartyPC virtual absolute-coordinate mouse if specified.
+        if let Some(virtual_mouse_config) = &machine_config.virtual_mouse {
+            if virtual_mouse_config.irq > 7 {
+                return Err(anyhow::anyhow!("Virtual mouse IRQ must be on the primary PIC (0-7)"));
+            }
+
+            let mouse = Mouse::new_virtual(virtual_mouse_config.irq, None);
+            self.mouse = Some(mouse);
         }
 
         // Create an EMS board if specified
@@ -1624,6 +1669,28 @@ impl BusInterface {
             self.fdc = Some(fdc);
         }
 
+        // Run the cassette deck through the comparator.
+        //
+        // On the IBM PC the cassette deck audio is run through a
+        // Schmitt-trigger comparator to produce a square wave.
+        match (&mut self.cassette_deck, &mut self.cassette_comparator) {
+            (Some(cassette_deck), Some(cassette_comparator)) => {
+                if !cassette_deck.has_image() {
+                    cassette_comparator.reset();
+                }
+                cassette_deck.run_with_sample_output(us, |position, sample| {
+                    cassette_comparator.process_sample(position, sample);
+                });
+            }
+            (Some(cassette_deck), None) => cassette_deck.run(us),
+            _ => {}
+        }
+
+        // Give the PPI the resulting bit from the comparator
+        if let (Some(ppi), Some(cassette_comparator)) = (&mut self.ppi, &self.cassette_comparator) {
+            ppi.set_cassette_input_bit(cassette_comparator.output_level());
+        }
+
         // Run the HDC, passing it DMA controller while DMA is still unattached.
         if let Some(mut hdc) = self.hdc.take() {
             hdc.run(&mut dma1, self, us);
@@ -1647,13 +1714,24 @@ impl BusInterface {
         // Replace the DMA controller.
         self.dma1 = Some(dma1);
 
-        // Run the serial port and mouse.
+        // Let the configured pointing device present new input before advancing the UART.
+        // This allows the first serial character to begin during the current device timestep
+        if let Some(mouse) = &mut self.mouse {
+            match mouse {
+                Mouse::Serial(mouse) => {
+                    if let Some(serial) = &mut self.serial {
+                        mouse.run(serial, us);
+                    }
+                }
+                Mouse::Virtual(mouse) => {
+                    mouse.run(self.pic1.as_mut().unwrap());
+                }
+            }
+        }
+
+        // Run the serial ports after the mouse has had an opportunity to queue a packet.
         if let Some(serial) = &mut self.serial {
             serial.run(self.pic1.as_mut().unwrap(), us);
-
-            if let Some(mouse) = &mut self.mouse {
-                mouse.run(serial, us);
-            }
         }
 
         // Run the parallel port
@@ -1806,6 +1884,11 @@ impl BusInterface {
             serial.reset();
         }
 
+        // Guest-resident virtual mouse state does not survive a machine reset.
+        if let Some(mouse) = self.mouse.as_mut() {
+            mouse.reset_virtual_consumer();
+        }
+
         // Reset fdc
         if let Some(fdc) = self.fdc.as_mut() {
             fdc.reset();
@@ -1908,6 +1991,23 @@ impl BusInterface {
 
     pub fn cart_slot_mut(&mut self) -> &mut Option<CartridgeSlot> {
         &mut self.cart_slot
+    }
+
+    pub fn cassette_deck(&self) -> &Option<CassetteDeck> {
+        &self.cassette_deck
+    }
+
+    pub fn cassette_deck_mut(&mut self) -> &mut Option<CassetteDeck> {
+        &mut self.cassette_deck
+    }
+
+    /// Set the cassette relay state
+    ///  * `true` => closed (cassette motor enabled for play/record)
+    ///  * `false` => open (cassette motor disabled)
+    pub(crate) fn set_cassette_relay_state(&mut self, state: bool) {
+        if let Some(cassette_deck) = self.cassette_deck.as_mut() {
+            cassette_deck.set_relay_state(state);
+        }
     }
 
     pub fn game_port(&self) -> &Option<GamePort> {

@@ -59,6 +59,7 @@ crates/bin/martypc_eframe/assets/configs
 /install/media/floppies/*
 /install/media/hdds/*
 /install/media/cartridges/*
+/install/media/cassettes/*
 
 # Allow OSD keyboard assets
 !/install/assets/keyboards
@@ -121,7 +122,11 @@ crates/bin/martypc_eframe/assets/configs
 /asm
 /install/program/*
 
+# Asset sources
+/assets/*.psd
+
 #misc
+
 /tree.txt
 /test-gen
 /exo_demo

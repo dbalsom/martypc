@@ -51,6 +51,7 @@ use marty_core::{
         SerialMouseConfig,
         SoundDeviceConfig,
         VideoCardConfig,
+        VirtualMouseConfig,
     },
     machine_types::{HardDiskControllerType, MachineType},
 };
@@ -84,6 +85,8 @@ pub struct MachineConfigFileEntry {
     ems: Option<EmsMemoryConfig>,
     #[serde(default)]
     speaker: bool,
+    #[serde(default)]
+    cassette: bool,
     ppi_turbo: Option<bool>, // This bool is an option so that it is tri-state - missing means no turbo feature, true means ppi high = turbo, false means ppi low = turbo.
     fdc: Option<FloppyControllerConfig>,
     hdc: Option<HardDriveControllerConfig>,
@@ -93,6 +96,7 @@ pub struct MachineConfigFileEntry {
     sound: Option<Vec<SoundDeviceConfig>>,
     keyboard: Option<KeyboardConfig>,
     serial_mouse: Option<SerialMouseConfig>,
+    virtual_mouse: Option<VirtualMouseConfig>,
     game_port: Option<GamePortConfig>,
     media: Option<MediaConfig>,
     conventional_expansion: Option<Vec<ConventionalExpansionConfig>>,
@@ -119,6 +123,7 @@ pub struct MachineConfigFileOverlayEntry {
     sound: Option<Vec<SoundDeviceConfig>>,
     keyboard: Option<KeyboardConfig>,
     serial_mouse: Option<SerialMouseConfig>,
+    virtual_mouse: Option<VirtualMouseConfig>,
     game_port: Option<GamePortConfig>,
     conventional_expansion: Option<Vec<ConventionalExpansionConfig>>,
     // TODO: Support media in overlay?
@@ -410,6 +415,7 @@ impl MachineConfigFileOverlayEntry {
             || self.sound.is_some()
             || self.keyboard.is_some()
             || self.serial_mouse.is_some()
+            || self.virtual_mouse.is_some()
             || self.game_port.is_some()
             || self.conventional_expansion.is_some()
             || self.media.is_some()
@@ -496,6 +502,7 @@ pub struct ParallelControllerConfig {
 }
  */
 
+#[derive(Default)]
 pub struct MachineManager {
     active_config: Option<MachineConfigFileEntry>,
     config_names: MartyHashSet<String>,
@@ -507,26 +514,9 @@ pub struct MachineManager {
     rom_sets_required: Vec<usize>,
 }
 
-impl Default for MachineManager {
-    fn default() -> Self {
-        Self {
-            active_config: None,
-            config_names: MartyHashSet::default(),
-            overlay_names: MartyHashSet::default(),
-            configs: BTreeMap::new(),
-            overlays: BTreeMap::new(),
-            features_requested: MartyHashSet::default(),
-            features_provided: MartyHashSet::default(),
-            rom_sets_required: Vec::new(),
-        }
-    }
-}
-
 impl MachineManager {
     pub fn new() -> Self {
-        let slf = Self::default();
-
-        slf
+        Self::default()
     }
 
     pub async fn load_configs(&mut self, rm: &mut ResourceManager) -> Result<(), Error> {
@@ -656,7 +646,7 @@ impl MachineManager {
         }
 
         self.active_config = Some(config);
-        Ok(&self.active_config.as_ref().unwrap())
+        Ok(self.active_config.as_ref().unwrap())
     }
 
     /*
@@ -829,6 +819,12 @@ impl MachineConfigFileEntry {
         if let Some(serial_mouse) = overlay.serial_mouse {
             log::debug!("Applying serial mouse overlay: {:?}", serial_mouse);
             self.serial_mouse = Some(serial_mouse);
+            self.virtual_mouse = None;
+        }
+        if let Some(virtual_mouse) = overlay.virtual_mouse {
+            log::debug!("Applying virtual mouse overlay: {:?}", virtual_mouse);
+            self.virtual_mouse = Some(virtual_mouse);
+            self.serial_mouse = None;
         }
         if let Some(game_port) = overlay.game_port {
             log::debug!("Applying game port overlay: {:?}", game_port);
@@ -977,6 +973,7 @@ impl MachineConfigFileEntry {
     pub fn to_machine_config(&self) -> MachineConfiguration {
         MachineConfiguration {
             speaker: self.speaker,
+            cassette: self.cassette,
             ppi_turbo: self.ppi_turbo,
             machine_type: self.machine_type,
             cpu: self.cpu.clone(),
@@ -990,6 +987,7 @@ impl MachineConfigFileEntry {
             parallel: self.parallel.clone().unwrap_or_default(),
             keyboard: self.keyboard.clone(),
             serial_mouse: self.serial_mouse.clone(),
+            virtual_mouse: self.virtual_mouse.clone(),
             game_port: self.game_port.clone(),
             controller_layout: self.game_port.as_ref().map(|gp| gp.controller_layout.clone()).flatten(),
             conventional_expansion: self.conventional_expansion.clone().unwrap_or_default(),
@@ -1021,6 +1019,7 @@ conventional.wait_states = 0
 name = "pcjr"
 type = "IbmPCJr"
 rom_set = "auto"
+cassette = true
 overlays = []
 
 [machine.memory]
@@ -1118,6 +1117,19 @@ default = 0
 [overlay.value]
 type = "MDA"
 subtype = "Hercules"
+
+[[overlay]]
+name = "serial_mouse"
+
+[overlay.serial_mouse]
+type = "Microsoft"
+port = 1
+
+[[overlay]]
+name = "virtmouse"
+
+[overlay.virtual_mouse]
+irq = 5
 "#;
 
     fn test_manager() -> MachineManager {
@@ -1316,6 +1328,35 @@ selector = "drive"
             .to_string();
 
         assert!(error.contains("supports drive indices 0 through 0"));
+    }
+
+    #[test]
+    fn cassette_defaults_to_disabled_and_propagates_when_enabled() {
+        let manager = test_manager();
+
+        let xt = manager.configs.get("xt").unwrap();
+        assert!(!xt.cassette);
+        assert!(!xt.to_machine_config().cassette);
+
+        let pcjr = manager.configs.get("pcjr").unwrap();
+        assert!(pcjr.cassette);
+        assert!(pcjr.to_machine_config().cassette);
+    }
+
+    #[test]
+    fn mouse_overlays_replace_the_other_mouse_transport() {
+        let mut manager = test_manager();
+        let virtual_config = manager
+            .get_config_with_overlays("bare", &vec!["serial_mouse".to_string(), "virtmouse".to_string()])
+            .unwrap();
+        assert!(virtual_config.serial_mouse.is_none());
+        assert!(virtual_config.virtual_mouse.is_some());
+
+        let serial_config = manager
+            .get_config_with_overlays("bare", &vec!["virtmouse".to_string(), "serial_mouse".to_string()])
+            .unwrap();
+        assert!(serial_config.serial_mouse.is_some());
+        assert!(serial_config.virtual_mouse.is_none());
     }
 
     #[cfg(all(feature = "ega", feature = "vga"))]

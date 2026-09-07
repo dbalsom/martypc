@@ -47,6 +47,10 @@ impl GuiState {
                 self.draw_floppy_menu(ui, i);
             }
 
+            if self.cassette_interface {
+                self.draw_cassette_menu(ui);
+            }
+
             for i in 0..self.hdds.len() {
                 self.draw_hdd_menu(ui, i);
             }
@@ -59,7 +63,7 @@ impl GuiState {
             {
                 if ui.button("🖹 Create new VHD...").clicked() {
                     *self.window_flag(GuiWindow::VHDCreator) = true;
-                    ui.close_menu();
+                    ui.close();
                 };
             }
         });
@@ -99,7 +103,7 @@ impl GuiState {
                     filter_vec.push(FileDialogFilter::new("All Files", vec!["*"]));
 
                     self.open_file_dialog(fc, "Select Floppy Disk Image", filter_vec, true);
-                    ui.close_menu();
+                    ui.close();
                 };
 
                 #[cfg(not(target_arch = "wasm32"))]
@@ -109,7 +113,7 @@ impl GuiState {
                             if ui.button(format!("📁 {}", path.name.to_string_lossy())).clicked() {
                                 self.event_queue
                                     .send(GuiEvent::LoadAutoFloppy(drive_idx, path.full_path.clone()));
-                                ui.close_menu();
+                                ui.close();
                             }
                         }
                     });
@@ -122,7 +126,7 @@ impl GuiState {
                             if ui.button(format!("💾{} {}", format, fo.0)).clicked() {
                                 self.event_queue
                                     .send(GuiEvent::CreateNewFloppy(drive_idx, format, fo.1));
-                                ui.close_menu();
+                                ui.close();
                             }
                         }
                     }
@@ -208,7 +212,7 @@ impl GuiState {
                                 filter_vec.push(FileDialogFilter::new(fmt.to_string(), exts));
 
                                 self.save_file_dialog(fc, "Save Floppy Disk Image", filter_vec, None);
-                                ui.close_menu();
+                                ui.close();
                             }
                         }
                     }
@@ -260,7 +264,7 @@ impl GuiState {
                     ];
 
                     self.open_file_dialog(context, "Select VHD Image", filters, false);
-                    ui.close_menu();
+                    ui.close();
                 }
 
                 let (have_vhd, detatch_string) = match &self.hdds[drive_idx].filename() {
@@ -298,6 +302,44 @@ impl GuiState {
                         self.event_queue.send(GuiEvent::RemoveCartridge(cart_idx));
                     }
                 });
+            });
+        });
+    }
+
+    pub fn draw_cassette_menu(&mut self, ui: &mut egui::Ui) {
+        ui.menu_button("🖭 Cassette Deck", |ui| {
+            if ui.button("Open Deck Control...").clicked() {
+                self.set_window_open(GuiWindow::CassetteDeck, true);
+                ui.close();
+            }
+            ui.separator();
+
+            ui.menu_button("🗁 Quick Access WAV", |ui| {
+                self.cassette_tree_menu.draw(ui, 0, true, &mut |wav_idx| {
+                    self.event_queue.send(GuiEvent::LoadQuickCassette(wav_idx));
+                });
+            });
+
+            if ui.button("🗁 Browse for WAV...").clicked() {
+                let context = FileOpenContext::CassetteImage {
+                    fsc: FileSelectionContext::Uninitialized,
+                };
+                let filters = vec![FileDialogFilter::new("WAV Audio", vec!["wav"])];
+
+                self.open_file_dialog(context, "Select Cassette WAV", filters, true);
+                ui.close();
+            }
+
+            ui.horizontal(|ui| {
+                if let Some(filename) = self.cassette_filename() {
+                    if ui.button(format!("⏏ Eject WAV {filename}")).clicked() {
+                        self.event_queue.send(GuiEvent::EjectCassette);
+                        ui.close();
+                    }
+                }
+                else {
+                    ui.add_enabled(false, egui::Button::new("Eject WAV: <No WAV>"));
+                }
             });
         });
     }

@@ -190,6 +190,10 @@ pub const PORTB_SW2_SELECT: u8 = 0b0000_0100;
 pub const PORTB_CASSETTE_MOTOR_OFF: u8 = 0b0000_1000;
 pub const PORTB_SW1_SELECT: u8 = 0b0000_1000;
 
+// The PCjr cassette relay requires both PB3 and PB4 to be low.
+pub const PORTB_PCJR_CASSETTE_RELAY_OFF: u8 = 0b0001_0000;
+pub const PORTB_PCJR_CASSETTE_RELAY_MASK: u8 = PORTB_CASSETTE_MOTOR_OFF | PORTB_PCJR_CASSETTE_RELAY_OFF;
+
 pub const PORTB_PARITY_MB_EN: u8 = 0b0001_0000;
 pub const PORTB_PARITY_EX_EN: u8 = 0b0010_0000;
 pub const PORTB_PULL_KB_LOW: u8 = 0b0100_0000;
@@ -370,6 +374,7 @@ pub struct Ppi {
     dip_sw2: u8,
     timer_in: bool,
     speaker_in: bool,
+    cassette_in: bool,
     jr_kb_in: bool,
     nmi_latch_in: bool,
     kb_serializer: KbSerializer,
@@ -406,6 +411,7 @@ impl Default for Ppi {
             dip_sw2: 0,
             timer_in: false,
             speaker_in: false,
+            cassette_in: false,
             jr_kb_in: false,
             nmi_latch_in: false,
             kb_serializer: KbSerializer::default(),
@@ -618,7 +624,7 @@ impl IoDevice for Ppi {
         &mut self,
         port: u16,
         byte: u8,
-        _bus: Option<&mut BusInterface>,
+        bus: Option<&mut BusInterface>,
         _delta: DeviceRunTimeUnit,
         _analyzer: Option<&mut LogicAnalyzer>,
     ) {
@@ -628,6 +634,11 @@ impl IoDevice for Ppi {
             }
             PPI_PORT_B => {
                 self.handle_portb_write(byte);
+                if let Some(relay_state) = self.cassette_relay_state() {
+                    if let Some(bus) = bus {
+                        bus.set_cassette_relay_state(relay_state);
+                    }
+                }
             }
             PPI_PORT_C => {
                 // Read-only port
@@ -666,6 +677,16 @@ impl Ppi {
         }
         else {
             false
+        }
+    }
+
+    pub fn cassette_relay_state(&self) -> Option<bool> {
+        match self.machine_type {
+            MachineType::Ibm5150v64K | MachineType::Ibm5150v256K => {
+                Some(self.port_b_byte & PORTB_CASSETTE_MOTOR_OFF == 0)
+            }
+            MachineType::IbmPCJr => Some(self.port_b_byte & PORTB_PCJR_CASSETTE_RELAY_MASK == 0),
+            _ => None,
         }
     }
 
@@ -839,13 +860,12 @@ impl Ppi {
     }
 
     pub fn calc_port_c_value(&self) -> u8 {
-        let cassette_bit = if self.port_b_byte & PORTB_CASSETTE_MOTOR_OFF != 0 {
-            // Cassette motor is off, so we are in loopback mode.
-            (self.timer_in as u8) << 4
+        let cassette_bit = if self.cassette_relay_state() == Some(true) {
+            (self.cassette_in as u8) << 4
         }
         else {
-            // TODO: Implement cassette data input
-            0
+            // The cassette output is looped back when the relay is open.
+            (self.timer_in as u8) << 4
         };
 
         let speaker_bit = (self.speaker_in as u8) << 4;
@@ -853,8 +873,6 @@ impl Ppi {
 
         match (&self.machine_type, &self.port_c_mode) {
             (MachineType::Ibm5150v64K | MachineType::Ibm5150v256K, PortCMode::Switch2OneToFour) => {
-                // We aren't implementing the cassette on 5150, and we'll never have parity errors
-
                 (self.dip_sw2 & 0x0F) | cassette_bit | timer_bit
             }
             (MachineType::Ibm5150v64K | MachineType::Ibm5150v256K, PortCMode::Switch2Five) => {
@@ -1070,6 +1088,10 @@ impl Ppi {
 
     pub fn set_speaker_bit(&mut self, state: bool) {
         self.speaker_in = state;
+    }
+
+    pub fn set_cassette_input_bit(&mut self, state: bool) {
+        self.cassette_in = state;
     }
 
     pub fn set_nmi_latch_bit(&mut self, state: bool) {

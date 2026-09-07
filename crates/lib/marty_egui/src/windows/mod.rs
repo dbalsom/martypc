@@ -35,6 +35,7 @@ pub mod disassembly_viewer;
 // Bring in submodules
 pub mod about;
 pub mod call_stack_viewer;
+pub mod cassette_deck;
 pub mod cpu_state_viewer;
 pub mod cycle_trace_viewer;
 pub mod data_visualizer;
@@ -63,3 +64,4 @@ pub mod sn_viewer;
 pub mod text_mode_viewer;
 pub mod vhd_creator;
 pub mod videocard_viewer;
+pub mod virtual_mouse_viewer;
