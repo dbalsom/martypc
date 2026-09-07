@@ -33,7 +33,7 @@ enum_dispatch = "0.3.13"
 indexmap = "2.14"
 crossbeam-channel = "0.5.15"
 chrono = "0.4"
-zip = { version = "2.3", default-features = false }
+zip = { version = "8.6", default-features = false }
 strum = {  version = "0.27", features = ["derive"] }
 strum_macros = "0.27"
 url = "2.5"
