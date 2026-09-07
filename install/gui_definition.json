@@ -2,7 +2,7 @@
   "gui": [
     {
       "window_name": "MartyPC Launcher 0.2.0",
-      "command": "martypc %prefer_oem% --mount=\"fd:0:%floppy0%\" --mount=\"fd:1:%floppy1%\" --mount=\"hd:0:%hdd0%\" --mount=\"hd:1:%hdd1%\" --configfile %config_file% --machine-config-name=%machine_config_name% --machine-config-overlays=%v20%%ems%%hdc_overlay%%sound_overlay%%video_overlay%%floppy0_overlay%%floppy1_overlay% %extra_cmds%",
+      "command": "martypc %prefer_oem% --mount=\"fd:0:%floppy0%\" --mount=\"fd:1:%floppy1%\" --mount=\"hd:0:%hdd0%\" --mount=\"hd:1:%hdd1%\" --configfile %config_file% --machine-config-name=%machine_config_name% --machine-config-overlays=%v20%%ems%%hdc_overlay%%sound_overlay%%video_overlay%%secondary_video_overlay%%floppy0_overlay%%floppy1_overlay% %extra_cmds%",
       "components": [
         {
           "type": "static_text",
@@ -129,8 +129,9 @@
         {
           "type": "combo",
           "default": 0,
-          "label": "Video Card Overlay",
+          "label": "Primary Video",
           "id": "video_overlay",
+          "continue_row": true,
           "items": [
             {
               "label": "None (Use for PCjr and Tandy)",
@@ -155,6 +156,26 @@
             {
               "label": "VGA",
               "value": "ibm_vga,"
+            }
+          ]
+        },
+        {
+          "type": "combo",
+          "default": 0,
+          "label": "Secondary Video",
+          "id": "secondary_video_overlay",
+          "items": [
+            {
+              "label": "None",
+              "value": ""
+            },
+            {
+              "label": "MDA",
+              "value": "ibm_mda:1,"
+            },
+            {
+              "label": "Hercules",
+              "value": "hercules:1,"
             }
           ]
         },
