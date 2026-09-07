@@ -63,6 +63,8 @@ crates/bin/martypc_eframe/assets/configs
 
 # Allow OSD keyboard assets
 !/install/assets/keyboards
+# Allow Hardware sounds
+!/install/assets/sounds
 
 /install/mount/floppy/*
 !/install/mount/floppy/readme.md
