@@ -741,7 +741,7 @@ cycles = 572400000 # 2 minutes
 #  - NewPurple    : dark theme variant (recommended)
 #  - Purple       : dark theme variant
 #  - Cobalt       : dark theme variant
-theme = "NewPurple"
+theme = "Purple"
 
 # Theme for the top menu can be defined independently
 menu_theme = "DefaultLight"
