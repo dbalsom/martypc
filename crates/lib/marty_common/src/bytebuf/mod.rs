@@ -119,7 +119,7 @@ impl ByteBuf {
         self.cursor
     }
     pub fn seek(&mut self, disp: usize) -> Result<(), ByteBufError> {
-        if disp > self.vec.len() - 1 {
+        if disp >= self.vec.len() {
             return Err(ByteBufError::SeekOutOfBoundsError);
         }
         self.cursor = disp;
@@ -133,7 +133,7 @@ impl ByteBuf {
         return Ok(());
     }
     pub fn seek_fwd(&mut self, disp: usize) -> Result<(), ByteBufError> {
-        if self.cursor + disp > self.vec.len() - 1 {
+        if self.cursor + disp >= self.vec.len() {
             return Err(ByteBufError::SeekOutOfBoundsError);
         }
         self.cursor = self.cursor + disp;
@@ -141,7 +141,7 @@ impl ByteBuf {
     }
     /// Copy 'len' bytes from buffer into destination
     pub fn read_bytes(&mut self, dest: &mut [u8], len: usize) -> Result<(), ByteBufError> {
-        if self.cursor <= self.vec.len() - len {
+        if self.cursor + len <= self.vec.len() {
             for i in 0..len {
                 dest[i] = self.vec[self.cursor];
                 self.cursor += 1;
@@ -153,11 +153,12 @@ impl ByteBuf {
 
     /// Copy bytes into the buffer from the source slice
     pub fn write_bytes(&mut self, src: &[u8], len: usize) -> Result<(), ByteBufError> {
-        if self.cursor <= self.vec.len() - len {
+        if self.cursor + len <= self.vec.len() {
             for i in 0..len {
                 self.vec[self.cursor] = src[i];
                 self.cursor += 1;
             }
+            return Ok(());
         }
         Err(ByteBufError::ReadOutOfBoundsError)
     }
@@ -194,7 +195,7 @@ impl ByteBuf {
 
     /// Read a u16 in little endian order.
     pub fn read_u16_le(&mut self) -> Result<u16, ByteBufError> {
-        if self.cursor <= self.vec.len() - 2 {
+        if self.cursor + 2 <= self.vec.len() {
             let w: u16 = self.vec[self.cursor] as u16 | (self.vec[self.cursor + 1] as u16) << 8;
             self.cursor += 2;
             return Ok(w);
@@ -204,7 +205,7 @@ impl ByteBuf {
 
     /// Read an i16 in little endian order
     pub fn read_i16_le(&mut self) -> Result<i16, ByteBufError> {
-        if self.cursor <= self.vec.len() - 2 {
+        if self.cursor + 2 <= self.vec.len() {
             let w: i16 = (self.vec[self.cursor] as u16 | (self.vec[self.cursor + 1] as u16) << 8) as i16;
             self.cursor += 2;
             return Ok(w);
@@ -214,7 +215,7 @@ impl ByteBuf {
 
     /// Write a u16 in little endian order.
     pub fn write_u16_le(&mut self, w: u16) -> Result<(), ByteBufError> {
-        if self.cursor <= self.vec.len() - 2 {
+        if self.cursor + 2 <= self.vec.len() {
             self.vec[self.cursor] = (w & 0x00FF) as u8;
             self.vec[self.cursor + 1] = (w >> 8) as u8;
             self.cursor += 2;
@@ -225,7 +226,7 @@ impl ByteBuf {
 
     /// Read a u16 in big endian order.
     pub fn read_u16_be(&mut self) -> Result<u16, ByteBufError> {
-        if self.cursor <= self.vec.len() - 2 {
+        if self.cursor + 2 <= self.vec.len() {
             let w: u16 = (self.vec[self.cursor] as u16) << 8 | self.vec[self.cursor + 1] as u16;
             self.cursor += 2;
             return Ok(w);
@@ -235,7 +236,7 @@ impl ByteBuf {
 
     // Read an i16 in big endian order
     pub fn read_i16_be(&mut self) -> Result<i16, ByteBufError> {
-        if self.cursor <= self.vec.len() - 2 {
+        if self.cursor + 2 <= self.vec.len() {
             let w: i16 = ((self.vec[self.cursor] as u16) << 8 | self.vec[self.cursor + 1] as u16) as i16;
             self.cursor += 2;
             return Ok(w);
@@ -245,7 +246,7 @@ impl ByteBuf {
 
     /// Write a u16 in big endian order.
     pub fn write_u16_be(&mut self, w: u16) -> Result<(), ByteBufError> {
-        if self.cursor <= self.vec.len() - 2 {
+        if self.cursor + 2 <= self.vec.len() {
             self.vec[self.cursor] = (w >> 8) as u8;
             self.vec[self.cursor + 1] = (w & 0x00FF) as u8;
             self.cursor += 2;
@@ -256,7 +257,7 @@ impl ByteBuf {
 
     /// Read a u32 in little endian order.
     pub fn read_u32_le(&mut self) -> Result<u32, ByteBufError> {
-        if self.cursor <= self.vec.len() - 4 {
+        if self.cursor + 4 <= self.vec.len() {
             let dw: u32 = (self.vec[self.cursor] as u32)
                 | (self.vec[self.cursor + 1] as u32) << 8
                 | (self.vec[self.cursor + 2] as u32) << 16
@@ -269,7 +270,7 @@ impl ByteBuf {
 
     /// Read a i32 in little endian order.
     pub fn read_i32_le(&mut self) -> Result<i32, ByteBufError> {
-        if self.cursor <= self.vec.len() - 4 {
+        if self.cursor + 4 <= self.vec.len() {
             let dw: u32 = (self.vec[self.cursor] as u32)
                 | (self.vec[self.cursor + 1] as u32) << 8
                 | (self.vec[self.cursor + 2] as u32) << 16
@@ -282,7 +283,7 @@ impl ByteBuf {
 
     /// Read a u32 in big endian order.
     pub fn read_u32_be(&mut self) -> Result<u32, ByteBufError> {
-        if self.cursor <= self.vec.len() - 4 {
+        if self.cursor + 4 <= self.vec.len() {
             let dw: u32 = (self.vec[self.cursor] as u32) << 24
                 | (self.vec[self.cursor + 1] as u32) << 16
                 | (self.vec[self.cursor + 2] as u32) << 8
@@ -295,7 +296,7 @@ impl ByteBuf {
 
     /// Write a u32 in little endian order.
     pub fn write_u32_le(&mut self, dw: u32) -> Result<(), ByteBufError> {
-        if self.cursor <= self.vec.len() - 4 {
+        if self.cursor + 4 <= self.vec.len() {
             self.vec[self.cursor + 0] = (dw & 0xFF) as u8;
             self.vec[self.cursor + 1] = (dw >> 8 & 0xFF) as u8;
             self.vec[self.cursor + 2] = (dw >> 16 & 0xFF) as u8;
@@ -308,7 +309,7 @@ impl ByteBuf {
 
     /// Write a u32 in big endian order.
     pub fn write_u32_be(&mut self, dw: u32) -> Result<(), ByteBufError> {
-        if self.cursor <= self.vec.len() - 4 {
+        if self.cursor + 4 <= self.vec.len() {
             self.vec[self.cursor + 0] = (dw >> 24 & 0xFF) as u8;
             self.vec[self.cursor + 1] = (dw >> 16 & 0xFF) as u8;
             self.vec[self.cursor + 2] = (dw >> 8 & 0xFF) as u8;
@@ -321,7 +322,7 @@ impl ByteBuf {
 
     /// Read a u64 in big endian order.
     pub fn read_u64_be(&mut self) -> Result<u64, ByteBufError> {
-        if self.cursor <= self.vec.len() - 8 {
+        if self.cursor + 8 <= self.vec.len() {
             let ddw: u64 = (self.vec[self.cursor] as u64) << 56
                 | (self.vec[self.cursor + 1] as u64) << 48
                 | (self.vec[self.cursor + 2] as u64) << 40
@@ -338,7 +339,7 @@ impl ByteBuf {
 
     /// Write a u64 in big endian order.
     pub fn write_u64_be(&mut self, ddw: u64) -> Result<(), ByteBufError> {
-        if self.cursor <= self.vec.len() - 4 {
+        if self.cursor + 4 <= self.vec.len() {
             self.vec[self.cursor + 0] = (ddw >> 56 & 0xFF) as u8;
             self.vec[self.cursor + 1] = (ddw >> 48 & 0xFF) as u8;
             self.vec[self.cursor + 2] = (ddw >> 40 & 0xFF) as u8;
@@ -375,7 +376,7 @@ impl<'a> ByteBufWriter<'a> {
         self.cursor
     }
     pub fn seek(&mut self, disp: usize) -> Result<(), ByteBufError> {
-        if disp > self.buf.len() - 1 {
+        if disp >= self.buf.len() {
             return Err(ByteBufError::SeekOutOfBoundsError);
         }
         self.cursor = disp;
@@ -389,7 +390,7 @@ impl<'a> ByteBufWriter<'a> {
         return Ok(());
     }
     pub fn seek_fwd(&mut self, disp: usize) -> Result<(), ByteBufError> {
-        if self.cursor + disp > self.buf.len() - 1 {
+        if self.cursor + disp >= self.buf.len() {
             return Err(ByteBufError::SeekOutOfBoundsError);
         }
         self.cursor = self.cursor + disp;
@@ -398,7 +399,7 @@ impl<'a> ByteBufWriter<'a> {
 
     /// Copy bytes into the buffer from the source slice
     pub fn write_bytes(&mut self, src: &[u8], len: usize) -> Result<(), ByteBufError> {
-        if self.cursor <= self.buf.len() - len && len <= src.len() {
+        if self.cursor + len <= self.buf.len() && len <= src.len() {
             for i in 0..len {
                 self.buf[self.cursor] = src[i];
                 self.cursor += 1;
@@ -420,7 +421,7 @@ impl<'a> ByteBufWriter<'a> {
 
     /// Write a u16 in little endian order.
     pub fn write_u16_le(&mut self, w: u16) -> Result<(), ByteBufError> {
-        if self.cursor <= self.buf.len() - 2 {
+        if self.cursor + 2 <= self.buf.len() {
             self.buf[self.cursor] = (w & 0x00FF) as u8;
             self.buf[self.cursor + 1] = (w >> 8) as u8;
             self.cursor += 2;
@@ -431,7 +432,7 @@ impl<'a> ByteBufWriter<'a> {
 
     /// Write a u16 in big endian order.
     pub fn write_u16_be(&mut self, w: u16) -> Result<(), ByteBufError> {
-        if self.cursor <= self.buf.len() - 2 {
+        if self.cursor + 2 <= self.buf.len() {
             self.buf[self.cursor] = (w >> 8) as u8;
             self.buf[self.cursor + 1] = (w & 0x00FF) as u8;
             self.cursor += 2;
@@ -442,7 +443,7 @@ impl<'a> ByteBufWriter<'a> {
 
     /// Write a u32 in little endian order.
     pub fn write_u32_le(&mut self, dw: u32) -> Result<(), ByteBufError> {
-        if self.cursor <= self.buf.len() - 4 {
+        if self.cursor + 4 <= self.buf.len() {
             self.buf[self.cursor + 0] = (dw & 0xFF) as u8;
             self.buf[self.cursor + 1] = (dw >> 8 & 0xFF) as u8;
             self.buf[self.cursor + 2] = (dw >> 16 & 0xFF) as u8;
@@ -455,7 +456,7 @@ impl<'a> ByteBufWriter<'a> {
 
     /// Write a u32 in big endian order.
     pub fn write_u32_be(&mut self, dw: u32) -> Result<(), ByteBufError> {
-        if self.cursor <= self.buf.len() - 4 {
+        if self.cursor + 4 <= self.buf.len() {
             self.buf[self.cursor + 0] = (dw >> 24 & 0xFF) as u8;
             self.buf[self.cursor + 1] = (dw >> 16 & 0xFF) as u8;
             self.buf[self.cursor + 2] = (dw >> 8 & 0xFF) as u8;
@@ -468,7 +469,7 @@ impl<'a> ByteBufWriter<'a> {
 
     /// Write a u64 in big endian order.
     pub fn write_u64_be(&mut self, ddw: u64) -> Result<(), ByteBufError> {
-        if self.cursor <= self.buf.len() - 4 {
+        if self.cursor + 4 <= self.buf.len() {
             self.buf[self.cursor + 0] = (ddw >> 56 & 0xFF) as u8;
             self.buf[self.cursor + 1] = (ddw >> 48 & 0xFF) as u8;
             self.buf[self.cursor + 2] = (ddw >> 40 & 0xFF) as u8;
@@ -564,4 +565,31 @@ mod tests {
         assert_eq!(a3, b3);
         assert_eq!(a4, b4);
     }
+
+    #[test]
+    fn test_short_buffer_is_rejected_without_panic() {
+        // Regression: the bounds guards were written as `cursor <= len() - n`,
+        // which underflows for a buffer shorter than `n`. The huge wrapped value
+        // made the guard pass and the read then ran off the end of the buffer.
+        let array: [u8; 2] = [0; 2];
+        let mut buf = ByteBuf::from_slice(&array);
+
+        let mut dst = [0u8; 8];
+        assert!(buf.read_bytes(&mut dst, 8).is_err());
+        assert!(buf.read_u32_le().is_err());
+        assert!(buf.read_u64_be().is_err());
+        assert!(buf.write_u32_le(0x01020304).is_err());
+    }
+
+    #[test]
+    fn test_write_bytes_reports_success() {
+        // Regression: write_bytes copied the data but fell through to the error
+        // return, so a successful write was reported as ReadOutOfBoundsError.
+        let array: [u8; 8] = [0; 8];
+        let mut buf = ByteBuf::from_slice(&array);
+
+        assert!(buf.write_bytes(&[1, 2, 3, 4], 4).is_ok());
+        assert!(buf.write_bytes(&[5, 6, 7, 8, 9], 5).is_err());
+    }
+
 }
