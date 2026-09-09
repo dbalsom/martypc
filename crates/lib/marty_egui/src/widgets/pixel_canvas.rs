@@ -390,8 +390,6 @@ impl PixelCanvas {
     }
 
     fn unpack_pixels(&mut self, font: Option<&FontInfo>) {
-        let dims = self.view_dimensions.0 * self.view_dimensions.1;
-        let max_index = std::cmp::min(dims as usize, self.data_buf.len());
         match self.bpp {
             PixelCanvasDepth::Text => {
                 if let Some(font) = font {
@@ -402,15 +400,17 @@ impl PixelCanvas {
                     let rows = self.view_dimensions.1 / glyph_h; // height / 8
                     let span = self.view_dimensions.0;
 
-                    let max_index = std::cmp::min(((rows * cols) * 2) as usize, self.data_buf.len());
+                    // Clamp to the LAST VALID index. `data_buf.len()` is one past the end,
+                    // so clamping to it turned a short buffer into an out-of-bounds panic.
+                    let last_index = self.data_buf.len().saturating_sub(1);
 
                     for row in 0..rows {
                         for col in 0..cols {
-                            let glyph_idx = std::cmp::min(((row * cols + col) * 2) as usize, max_index);
-                            let attr_idx = std::cmp::min(((row * cols + col) * 2 + 1) as usize, max_index);
+                            let glyph_idx = std::cmp::min(((row * cols + col) * 2) as usize, last_index);
+                            let attr_idx = std::cmp::min(((row * cols + col) * 2 + 1) as usize, last_index);
 
-                            let char = self.data_buf[glyph_idx];
-                            let attr = self.data_buf[attr_idx];
+                            let char = self.data_buf.get(glyph_idx).copied().unwrap_or(0);
+                            let attr = self.data_buf.get(attr_idx).copied().unwrap_or(0);
 
                             let (fg_color, bg_color) = CGAColor::decode_attr(attr);
                             for y in 0..glyph_h {
@@ -434,7 +434,7 @@ impl PixelCanvas {
             }
             PixelCanvasDepth::OneBpp => {
                 for i in 0..self.view_dimensions.0 * self.view_dimensions.1 {
-                    let byte = self.data_buf[(i / 8) as usize];
+                    let byte = self.data_buf.get((i / 8) as usize).copied().unwrap_or(0);
                     let shift = i % 8;
                     let bit = 1 << (7 - shift);
                     self.backing_buf[i as usize] = if byte & bit != 0 {
@@ -447,7 +447,7 @@ impl PixelCanvas {
             }
             PixelCanvasDepth::TwoBpp => {
                 for i in 0..self.view_dimensions.0 * self.view_dimensions.1 {
-                    let byte = self.data_buf[(i / 4) as usize];
+                    let byte = self.data_buf.get((i / 4) as usize).copied().unwrap_or(0);
                     let shift = (i % 4) * 2;
                     let color = (byte >> (6 - shift)) & 0x03;
                     self.backing_buf[i as usize] = PALETTE_2BPP[color as usize];
@@ -455,7 +455,7 @@ impl PixelCanvas {
             }
             PixelCanvasDepth::FourBpp => {
                 for i in 0..self.view_dimensions.0 * self.view_dimensions.1 {
-                    let byte = self.data_buf[(i / 2) as usize];
+                    let byte = self.data_buf.get((i / 2) as usize).copied().unwrap_or(0);
                     let shift = (i % 2) * 4;
                     let color = (byte >> (4 - shift)) & 0x0F;
                     self.backing_buf[i as usize] = PALETTE_4BPP[color as usize];
@@ -470,26 +470,26 @@ impl PixelCanvas {
                 };
 
                 for i in 0..self.view_dimensions.0 * self.view_dimensions.1 {
-                    let byte = self.data_buf[i as usize];
+                    let byte = self.data_buf.get(i as usize).copied().unwrap_or(0);
                     self.backing_buf[i as usize] = pal[byte as usize];
                 }
             }
             PixelCanvasDepth::Rgb => {
                 for i in 0..self.view_dimensions.0 * self.view_dimensions.1 {
                     let idx = (i * 3) as usize;
-                    let r = self.data_buf[idx];
-                    let g = self.data_buf[idx + 1];
-                    let b = self.data_buf[idx + 2];
+                    let r = self.data_buf.get(idx).copied().unwrap_or(0);
+                    let g = self.data_buf.get(idx + 1).copied().unwrap_or(0);
+                    let b = self.data_buf.get(idx + 2).copied().unwrap_or(0);
                     self.backing_buf[i as usize] = Color32::from_rgb(r, g, b);
                 }
             }
             PixelCanvasDepth::Rgba => {
                 for i in 0..self.view_dimensions.0 * self.view_dimensions.1 {
                     let idx = (i * 4) as usize;
-                    let r = self.data_buf[idx];
-                    let g = self.data_buf[idx + 1];
-                    let b = self.data_buf[idx + 2];
-                    let a = self.data_buf[idx + 3];
+                    let r = self.data_buf.get(idx).copied().unwrap_or(0);
+                    let g = self.data_buf.get(idx + 1).copied().unwrap_or(0);
+                    let b = self.data_buf.get(idx + 2).copied().unwrap_or(0);
+                    let a = self.data_buf.get(idx + 3).copied().unwrap_or(0);
                     self.backing_buf[i as usize] = Color32::from_rgba_premultiplied(r, g, b, a);
                 }
             }
