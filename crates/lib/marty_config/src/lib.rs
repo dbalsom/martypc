@@ -401,6 +401,10 @@ pub struct Machine {
     pub raw_rom: bool,
     #[serde(default)]
     pub turbo: bool,
+    /// Enable CGA snow emulation. The receiving code has always read
+    /// `config.machine.cga_snow`, but the field was missing here, so the option
+    /// could not be set from martypc.toml at all.
+    pub cga_snow: Option<bool>,
     #[serde(default)]
     pub fdc: MachineFdc,
     pub cpu: Cpu,

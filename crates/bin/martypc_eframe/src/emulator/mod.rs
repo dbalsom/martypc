@@ -56,6 +56,7 @@ use crate::{
 };
 use marty_core::{
     cpu_common::{Cpu, CpuOption},
+    device_traits::videocard::VideoOption,
     machine::{ExecutionControl, Machine, MachineEvent, MachineState},
     vhd::{VhdIO, VirtualHardDisk},
 };
@@ -205,9 +206,12 @@ impl Emulator {
             self.config.machine.cpu.off_rails_detection.unwrap_or(false),
         ));
 
-        // TODO: Re-enable these
+        // Apply the CGA snow setting from the configuration file.
+        self.machine
+            .set_video_option(VideoOption::EnableSnow(self.config.machine.cga_snow.unwrap_or(false)));
+
+        // TODO: Re-enable this
         //gui.set_option(GuiBoolean::EnableSnow, config.machine.cga_snow.unwrap_or(false));
-        //machine.set_video_option(VideoOption::EnableSnow(config.machine.cga_snow.unwrap_or(false)));
         //gui.set_option(GuiBoolean::CorrectAspect, config.emulator.scaler_aspect_correction);
 
         //if config.emulator.scaler_aspect_correction {
