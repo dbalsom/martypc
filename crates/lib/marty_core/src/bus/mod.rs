@@ -2231,6 +2231,25 @@ impl BusInterface {
     }
 }
 
+// Bus-specific helper functions for external module tests
+#[cfg(test)]
+pub(crate) mod test_support {
+    use super::*;
+
+    // Shrink backing memory so guest accesses past this limit return a bus error.
+    pub(crate) fn truncate_memory(bus: &mut BusInterface, size: usize) {
+        bus.memory.truncate(size);
+    }
+
+    // Install an EMS card so we can test EMS stuff
+    pub(crate) fn install_ems(bus: &mut BusInterface, ems: LotechEmsCard) {
+        for mapping in ems.get_mapping() {
+            bus.register_map(MmioDeviceType::Ems, mapping);
+        }
+        bus.ems = Some(ems);
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;

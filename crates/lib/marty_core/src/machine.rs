@@ -90,7 +90,7 @@ use crate::{
     machine_config::{get_machine_descriptor, MachineConfiguration, MachineDescriptor},
     machine_preferences::MachinePreferences,
     machine_types::{MachineType, OnHaltBehavior},
-    service_interrupt::{ServiceFunction, ServiceInterruptManager, MOUSE_STATE_FLAG_CAPTURED},
+    service_interrupt::{ServiceError, ServiceFunction, ServiceInterruptManager, MOUSE_STATE_FLAG_CAPTURED},
     tracelogger::TraceLogger,
 };
 
@@ -242,36 +242,27 @@ impl ExecutionControl {
     /// Sets the last execution operation.
     pub fn set_op(&mut self, op: ExecutionOperation) {
         match op {
-            ExecutionOperation::Pause => {
+            ExecutionOperation::Pause if self.state.can_pause() => {
                 // Can only pause if Running
-                if self.state.can_pause() {
-                    self.state = ExecutionState::Paused;
-                    self.op.set(op);
-                }
+                self.state = ExecutionState::Paused;
+                self.op.set(op);
             }
-            ExecutionOperation::Step => {
+            ExecutionOperation::Step if self.state.can_step() => {
                 // Can only Step if paused / breakpointhit
-                if self.state.can_step() {
-                    self.op.set(op);
-                }
+                self.op.set(op);
             }
-            ExecutionOperation::StepOver => {
+            ExecutionOperation::StepOver if self.state.can_step() => {
                 // Can only Step Over if paused / breakpointhit
-                if self.state.can_step() {
-                    self.op.set(op);
-                }
+                self.op.set(op);
             }
-            ExecutionOperation::RunToNext => {
+            ExecutionOperation::RunToNext if self.state.can_step() => {
                 // Can only RunToNext if paused / breakpointhit
-                if self.state.can_step() {
-                    self.op.set(op);
-                }
+                self.op.set(op);
             }
-            ExecutionOperation::Run => {
+
+            ExecutionOperation::Run if self.state.can_run() => {
                 // Can only Run if paused / breakpointhit
-                if self.state.can_run() {
-                    self.op.set(op);
-                }
+                self.op.set(op);
             }
             ExecutionOperation::Reset => {
                 // Can reset anytime.
@@ -1609,6 +1600,7 @@ impl Machine {
                 }
             }
 
+            // If we returned an emulator service API event, handle it.
             if let Some(event) = self.cpu.get_service_event() {
                 self.handle_service_event(event);
             }
@@ -1841,6 +1833,25 @@ impl Machine {
         };
 
         timer_ticks * timer_multiplier
+    }
+
+    /// Set or replace a service KV store value case-insensitively.
+    /// See [`ServiceInterruptManager::set_key_value`] for validation rules.
+    pub fn set_service_key_value(&mut self, key: &str, value: &str) -> Result<(), ServiceError> {
+        self.service_interrupt_manager.set_key_value(key, value)
+    }
+
+    /// Query a service KV store value case-insensitively.
+    /// Missing keys return `None`.
+    /// Bad keys return `ServiceError::InvalidParameter`.
+    pub fn get_service_key_value(&self, key: &str) -> Result<Option<&str>, ServiceError> {
+        self.service_interrupt_manager.get_key_value(key)
+    }
+
+    /// Delete a service KV store value case-insensitively, returning whether it existed.
+    /// Bad keys return `ServiceError::InvalidParameter`.
+    pub fn delete_service_key_value(&mut self, key: &str) -> Result<bool, ServiceError> {
+        self.service_interrupt_manager.delete_key_value(key)
     }
 
     /// Called to update machine once per frame. This can be used to update the state of devices that don't require

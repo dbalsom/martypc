@@ -33,7 +33,7 @@
 use crate::{
     cpu_common::{Segment, ServiceEvent},
     cpu_vx0::*,
-    service_interrupt::{is_martypc_probe, is_service_control, ServiceFunction},
+    service_interrupt::{has_martypc_probe_magic, has_service_control_magic, ServiceFunction},
 };
 
 impl NecVx0 {
@@ -107,7 +107,7 @@ impl NecVx0 {
 
     /// Perform a software interrupt
     pub fn sw_interrupt(&mut self, interrupt: u8) {
-        if is_martypc_probe(interrupt, self) {
+        if has_martypc_probe_magic(interrupt, self) {
             self.service_events.push_back(ServiceEvent::ServiceInterruptProbe);
             return;
         }
@@ -116,8 +116,8 @@ impl NecVx0 {
         if self.service_interrupt_vector == Some(interrupt) {
             let function = self.a.h();
 
-            if function == ServiceFunction::ServiceControl.into() {
-                if is_service_control(self) {
+            if function == u8::from(ServiceFunction::ServiceControl) {
+                if has_service_control_magic(self) {
                     self.service_events.push_back(ServiceEvent::ServiceInterrupt(function));
                     return;
                 }
