@@ -266,7 +266,7 @@ impl CartridgeManager {
 }
 
 pub fn scan_cart(bytes: &[u8]) -> Option<CartImageType> {
-    let mut buf = ByteBuf::from_slice(bytes);
+    let mut buf = ByteBuf::from(bytes);
 
     let mut sig = [0u8; JRIPCART_SIG_LEN];
     match buf.read_bytes(&mut sig, JRIPCART_SIG_LEN) {
@@ -285,7 +285,7 @@ pub fn scan_cart(bytes: &[u8]) -> Option<CartImageType> {
 }
 
 pub fn read_jripcart_image(bytes: &[u8]) -> Result<CartImage, Error> {
-    let mut buf = ByteBuf::from_slice(bytes);
+    let mut buf = ByteBuf::from(bytes);
 
     // +  0  signature DB "PCjr Cartridge image file",0Dh,0Ah ;file signature
     if buf.len() <= JRIPCART_HEADER_LEN {

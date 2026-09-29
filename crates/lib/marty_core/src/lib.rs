@@ -34,7 +34,6 @@ extern crate core;
 
 pub mod breakpoints;
 pub mod bus;
-pub mod bytebuf;
 pub mod bytequeue;
 pub mod channel;
 pub mod coreconfig;

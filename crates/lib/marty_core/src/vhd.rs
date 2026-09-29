@@ -45,7 +45,7 @@ pub const SECTOR_SIZE: usize = 512;
 use anyhow::{bail, Result};
 use uuid::Uuid;
 
-use crate::bytebuf::{ByteBuf, ByteBufWriter};
+use marty_common::bytebuf::{ByteBuf, ByteBufWriter};
 
 /// A trait alias for objects that support reading, writing, and seeking.
 pub trait VhdIO: Read + Write + Seek {}
@@ -213,7 +213,7 @@ impl VHDFileFooter {
     /// We could do this a lot faster with some unsafe magic, but I'm doing it the 'safe' way.
     fn parse_vhd_footer(buf: &[u8]) -> Result<VHDFileFooter, anyhow::Error> {
         let mut footer = VHDFileFooter::default();
-        let mut bytebuf = ByteBuf::from_slice(buf);
+        let mut bytebuf = ByteBuf::from(buf);
 
         bytebuf.read_bytes(&mut footer.cookie, 8)?;
         if footer.cookie != "conectix".as_bytes() {
