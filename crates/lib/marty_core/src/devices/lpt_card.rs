@@ -47,8 +47,6 @@ pub const LPT_DEFAULT_IRQ: u8 = 7;
 pub struct ParallelController {
     lpt_port_base: u16,
     lpt: ParallelPort,
-    intr: bool,
-    lower_interrupt: bool,
 }
 
 impl Default for ParallelController {
@@ -56,8 +54,6 @@ impl Default for ParallelController {
         ParallelController {
             lpt_port_base: LPT_DEFAULT_IO_BASE,
             lpt: ParallelPort::default(),
-            intr: false,
-            lower_interrupt: false,
         }
     }
 }
@@ -75,15 +71,9 @@ impl ParallelController {
     }
 
     pub fn run(&mut self, pic: &mut Pic, usec: f64) {
-        let intr = self.lpt.run(usec);
-
-        if intr && !self.intr && self.lpt.intr_enabled() {
-            self.intr = true;
+        if self.lpt.run(usec) && self.lpt.intr_enabled() {
             log::debug!("LPT: Raising IRQ {}", LPT_DEFAULT_IRQ);
-            pic.request_interrupt(LPT_DEFAULT_IRQ);
-        }
-        else if !intr && self.intr {
-            pic.clear_interrupt(LPT_DEFAULT_IRQ);
+            pic.pulse_interrupt(LPT_DEFAULT_IRQ);
         }
     }
 }
@@ -122,5 +112,39 @@ impl IoDevice for ParallelController {
             ("LPT Status".to_string(), self.lpt_port_base + 1),
             ("LPT Control".to_string(), self.lpt_port_base + 2),
         ]
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::devices::lpt_port::{POLL_TIME, ParallelStatus};
+
+    #[test]
+    fn successive_ack_edges_raise_successive_interrupts() {
+        let mut controller = ParallelController::new(Some(0x378));
+        let device_channel = controller.device_channel();
+        let mut pic = Pic::new();
+
+        pic.handle_data_register_write(0x7F);
+        controller.lpt.control_register_write(0x10);
+
+        let mut status = ParallelStatus::default();
+        status.set_ack(true);
+        device_channel.send(ParallelMessage::Status(status)).unwrap();
+        controller.run(&mut pic, POLL_TIME);
+        assert!(pic.query_interrupt_line());
+        assert_eq!(pic.get_interrupt_vector(), Some(LPT_DEFAULT_IRQ));
+        pic.eoi(Some(LPT_DEFAULT_IRQ));
+
+        status.set_ack(false);
+        device_channel.send(ParallelMessage::Status(status)).unwrap();
+        controller.run(&mut pic, POLL_TIME);
+
+        status.set_ack(true);
+        device_channel.send(ParallelMessage::Status(status)).unwrap();
+        controller.run(&mut pic, POLL_TIME);
+        assert!(pic.query_interrupt_line());
+        assert_eq!(pic.get_interrupt_vector(), Some(LPT_DEFAULT_IRQ));
     }
 }
