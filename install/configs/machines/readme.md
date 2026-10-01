@@ -72,6 +72,19 @@ type = "MDA"                    # Type of video card. Valid values are:
                                 #  MDA, CGA, EGA
 clock_mode = "Default"          #  Clock mode for video card. Leave this "Default" in most cases.
 
+# Device attached to a parallel port (optional, repeatable)
+[[machine.parallel_device]]
+type = "printer"
+port = 0                        # LPT1. Ports are numbered by the conventional BIOS order:
+                                # 0x3BC, 0x378, then 0x278 when present.
+output = "esc_p2"              # raw, text, esc_p2, postscript, postscript_pdf,
+                                # pcl5e, pcl5e_pdf, pcl5c, pcl5c_pdf, hp_rtl,
+                                # hp_rtl_pdf, pcl6, or pcl6_pdf
+paper_size = "letter"          # letter or a4 (ESC/P 2 output)
+quality = "draft"              # draft or letter (ESC/P 2 output)
+dpi = 180                       # 72 through 360 (ESC/P 2 output)
+job_timeout_ms = 2000           # Complete a print job after this much guest inactivity.
+
 # Keyboard (Optional)
 [machine.keyboard]
 type = "ModelF"                 # Type of keyboard installed. Currently only "ModelF" implemented. 
@@ -87,6 +100,15 @@ port = 0                        # Serial port mouse is connected to.
 ```
 
 See the various TOML files provided for more examples.
+
+Printer files are written to the `printer` resource, which defaults to `output/printer`. The `text` output mode
+decodes IBM code page 437 to UTF-8. ESC/P 2 produces one PNG per printed page. The PostScript and PCL modes retain
+the guest byte stream with `.ps`, `.pcl`, or `.pxl` extensions. Modes ending in `_pdf` retain that source file and
+also invoke `gs` (PostScript) or `gpcl6` (PCL/HP-RTL) to create a PDF; install the corresponding interpreter and make
+it available on `PATH`. Browser builds download the source format and do not run external PDF converters.
+
+A virtual printer cannot share an LPT port with a parallel sound device. It can attach to a standard parallel card
+or the printer port integrated into an MDA card.
 
 ### Machine Configuration Overlays
 

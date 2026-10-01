@@ -30,9 +30,9 @@
 */
 
 #[cfg(not(target_arch = "wasm32"))]
-use crate::native::file_save::save_non_interactive_file;
+use crate::native::file_save::{save_non_interactive_file, save_printer_artifact};
 #[cfg(target_arch = "wasm32")]
-use crate::wasm::file_save::save_non_interactive_file;
+use crate::wasm::file_save::{save_non_interactive_file, save_printer_artifact};
 use crate::{
     event_loop::egui_update::update_egui,
     file_transfer::{load_non_interactive_file, NonInteractiveFileLoadError},
@@ -47,6 +47,7 @@ use marty_core::{
     devices::{
         game_port::GamePort,
         mouse::{Mouse, MouseInput, VirtualMouseInputMode},
+        virtual_printer::PrinterEvent,
     },
     machine::MachineEvent,
 };
@@ -419,6 +420,30 @@ pub fn process_update(emu: &mut Emulator, dm: &mut EFrameDisplayManager, tm: &mu
 
                         if let Err(err) = result {
                             log::error!("Failed to execute presentable sound action {:?}: {}", action, err);
+                        }
+                    }
+                }
+            }
+
+            let printer_events: Vec<_> = emuc.machine.printer_event_receiver().try_iter().collect();
+            for event in printer_events {
+                match event {
+                    PrinterEvent::JobComplete(artifacts) => {
+                        for artifact in artifacts {
+                            match save_printer_artifact(&emuc.rm, &artifact) {
+                                Ok(paths) => {
+                                    for path in paths {
+                                        log::info!("Printer output saved to '{}'", path);
+                                    }
+                                }
+                                Err(error) => {
+                                    log::error!("Failed to save printer output: {}", error);
+                                    emuc.gui
+                                        .toasts()
+                                        .error(format!("Failed to save printer output: {error}"))
+                                        .duration(Some(LONG_NOTIFICATION_TIME));
+                                }
+                            }
                         }
                     }
                 }

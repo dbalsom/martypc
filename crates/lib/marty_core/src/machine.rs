@@ -85,6 +85,7 @@ use crate::{
         pit::PitDisplayState,
         ppi::{PpiDisplayState, PpiStringState},
         serial::SerialPortDisplayState,
+        virtual_printer::PrinterEvent,
     },
     keys::MartyKey,
     machine_config::{get_machine_descriptor, MachineConfiguration, MachineDescriptor},
@@ -460,6 +461,7 @@ pub struct Machine {
     sound_sources: Vec<SoundSourceDescriptor>,
     presentable_event_sender: Sender<PresentableDeviceEvent>,
     presentable_event_receiver: Receiver<PresentableDeviceEvent>,
+    printer_event_receiver: Receiver<PrinterEvent>,
     debug_snd_file: Option<File>,
     kb_buf: VecDeque<KeybufferEntry>,
     error: bool,
@@ -610,11 +612,13 @@ impl Machine {
         let sound_sources;
         let presentable_event_sender;
         let presentable_event_receiver;
+        let printer_event_receiver;
 
         match install_result {
             Ok(result) => {
                 presentable_event_sender = result.presentable_event_sender();
                 presentable_event_receiver = result.presentable_event_receiver;
+                printer_event_receiver = result.printer_event_receiver;
                 cfg_if::cfg_if! {
                     if #[cfg(feature = "sound")] {
                         log::debug!("Installed devices, including {} sound sources.", result.sound_sources.len());
@@ -702,6 +706,7 @@ impl Machine {
             sound_sources,
             presentable_event_sender,
             presentable_event_receiver,
+            printer_event_receiver,
             debug_snd_file: None,
             kb_buf: VecDeque::new(),
             error: false,
@@ -736,6 +741,10 @@ impl Machine {
 
     pub fn presentable_event_receiver(&self) -> &Receiver<PresentableDeviceEvent> {
         &self.presentable_event_receiver
+    }
+
+    pub fn printer_event_receiver(&self) -> &Receiver<PrinterEvent> {
+        &self.printer_event_receiver
     }
 
     fn send_presentable_event(&self, event: PresentableDeviceEvent) {
@@ -1259,6 +1268,8 @@ impl Machine {
 
     pub fn reset(&mut self) {
         // TODO: Reload any program specified here?
+
+        self.cpu.bus_mut().finish_print_jobs();
 
         // Clear any error state.
         self.error = false;

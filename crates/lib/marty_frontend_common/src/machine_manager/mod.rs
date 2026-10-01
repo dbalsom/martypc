@@ -47,6 +47,7 @@ use marty_core::{
         MediaConfig,
         MemoryConfig,
         ParallelControllerConfig,
+        ParallelDeviceConfig,
         SerialControllerConfig,
         SerialMouseConfig,
         SoundDeviceConfig,
@@ -92,6 +93,7 @@ pub struct MachineConfigFileEntry {
     hdc: Option<HardDriveControllerConfig>,
     serial: Option<Vec<SerialControllerConfig>>,
     parallel: Option<Vec<ParallelControllerConfig>>,
+    parallel_device: Option<Vec<ParallelDeviceConfig>>,
     video: Option<Vec<VideoCardConfig>>,
     sound: Option<Vec<SoundDeviceConfig>>,
     keyboard: Option<KeyboardConfig>,
@@ -119,6 +121,7 @@ pub struct MachineConfigFileOverlayEntry {
     hdc: Option<HardDriveControllerConfig>,
     serial: Option<Vec<SerialControllerConfig>>,
     parallel: Option<Vec<ParallelControllerConfig>>,
+    parallel_device: Option<Vec<ParallelDeviceConfig>>,
     video: Option<Vec<VideoCardConfig>>,
     sound: Option<Vec<SoundDeviceConfig>>,
     keyboard: Option<KeyboardConfig>,
@@ -804,6 +807,10 @@ impl MachineConfigFileEntry {
             log::debug!("Applying parallel overlay: {:?}", parallel);
             self.parallel = Some(parallel);
         }
+        if let Some(parallel_device) = overlay.parallel_device {
+            log::debug!("Applying parallel device overlay: {:?}", parallel_device);
+            self.parallel_device = Some(parallel_device);
+        }
         if let Some(video) = overlay.video {
             log::debug!("Applying video overlay: {:?}", video);
             self.video = Some(video);
@@ -985,6 +992,7 @@ impl MachineConfigFileEntry {
             video: self.video.clone().unwrap_or_default(),
             sound: self.sound.clone().unwrap_or_default(),
             parallel: self.parallel.clone().unwrap_or_default(),
+            parallel_device: self.parallel_device.clone().unwrap_or_default(),
             keyboard: self.keyboard.clone(),
             serial_mouse: self.serial_mouse.clone(),
             virtual_mouse: self.virtual_mouse.clone(),

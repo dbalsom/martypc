@@ -211,6 +211,7 @@ paths = [
     { resource = "dump", path = "$basedir$/output/dumps", create = true },
     { resource = "trace", path = "$basedir$/output/traces", create = true },
     { resource = "screenshot", path = "$basedir$/output/screenshots", create = true },
+    { resource = "printer", path = "$basedir$/output/printer", create = true },
 ]
 
 # Exclude any matching directories from recursion. Useful for temporarily

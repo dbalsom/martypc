@@ -382,10 +382,13 @@ macro_rules! trace_regs {
     };
 }
 
-use crate::devices::{
-    lpt_port::ParallelPort,
-    mc6845::{Crtc6845, CrtcStatus},
-    mda::io::LPT_DEFAULT_IO_BASE,
+use crate::{
+    channel::BidirectionalChannel,
+    devices::{
+        lpt_port::{ParallelMessage, ParallelPort},
+        mc6845::{Crtc6845, CrtcStatus},
+        mda::io::LPT_DEFAULT_IO_BASE,
+    },
 };
 
 #[derive(Copy, Clone, Debug, PartialEq, Eq, Specifier)]
@@ -693,6 +696,14 @@ impl Default for MDACard {
 }
 
 impl MDACard {
+    pub fn lpt_device_channel(&self) -> Option<BidirectionalChannel<ParallelMessage>> {
+        self.lpt.as_ref().map(ParallelPort::device_channel)
+    }
+
+    pub fn lpt_port_base(&self) -> Option<u16> {
+        self.lpt.as_ref().map(|_| self.lpt_port_base)
+    }
+
     pub fn new(
         subtype: VideoCardSubType,
         trace_logger: TraceLogger,

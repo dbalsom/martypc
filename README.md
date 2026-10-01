@@ -70,7 +70,7 @@ MartyPC emulates the following devices:
   * **8237 DMAC** - Mostly implemented, but DMA transfers are currently "faked". DRAM refresh DMA is simulated using a scheduling system.
   * **8250 UART** - Supports serial passthrough or mouse emulation.
   * **Game Port** - Supports two analog joysticks with two buttons each.
-  * **Parallel Port** - Enough of a basic parallel port is emulated to be detected, but is not really functional for any purpose yet.
+  * **Parallel Port** - Centronics handshaking and interrupts are supported. A virtual printer can capture raw, text, PostScript, PCL, and HP-RTL output or render ESC/P 2 output to PNG.
 
 * ### Video Devices:
     * **CGA** - A dynamic, cycle-or-character clocked implementation of the IBM CGA including the Motorola MC6845 CRTC controller allows MartyPC to run demanding PC demos like 8088MPH and Area5150. MartyPC takes a unique approach to PC video card emulation by simulating the entire display field - including overscan. Composite output and monitor simulation is supported, via reenigne's excellent composite conversion code (also used by DOSBox and 86Box) 

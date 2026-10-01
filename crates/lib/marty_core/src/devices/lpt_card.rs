@@ -70,6 +70,10 @@ impl ParallelController {
         self.lpt.device_channel()
     }
 
+    pub fn port_base(&self) -> u16 {
+        self.lpt_port_base
+    }
+
     pub fn run(&mut self, pic: &mut Pic, usec: f64) {
         if self.lpt.run(usec) && self.lpt.intr_enabled() {
             log::debug!("LPT: Raising IRQ {}", LPT_DEFAULT_IRQ);
@@ -118,7 +122,7 @@ impl IoDevice for ParallelController {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::devices::lpt_port::{POLL_TIME, ParallelStatus};
+    use crate::devices::lpt_port::{ParallelStatus, POLL_TIME};
 
     #[test]
     fn successive_ack_edges_raise_successive_interrupts() {

@@ -26,6 +26,7 @@
 */
 
 use anyhow::{anyhow, Result};
+use marty_core::devices::virtual_printer::PrinterArtifact;
 use marty_frontend_common::resource_manager::ResourceManager;
 use wasm_bindgen::prelude::*;
 
@@ -39,13 +40,27 @@ pub(crate) fn save_non_interactive_file(
     Err("Non-interactive guest-to-host file transfers are not supported on WASM".to_string())
 }
 
+pub(crate) fn save_printer_artifact(
+    _resource_manager: &ResourceManager,
+    artifact: &PrinterArtifact,
+) -> std::result::Result<Vec<String>, String> {
+    let page = artifact.page.map_or(String::new(), |page| format!("-page-{page:03}"));
+    let filename = format!("print-{:06}{page}.{}", artifact.job_id, artifact.extension);
+    save_file_dialog(&filename, &artifact.data).map_err(|error| error.to_string())?;
+    Ok(vec![filename])
+}
+
 /// Initiate a file save operation from the browser, saving the provided `bytes` with the given
 /// suggested filename as `path`.
 pub fn save_file_dialog(path: &str, bytes: &[u8]) -> Result<()> {
     let filename = path.rsplit('/').next().ok_or_else(|| anyhow!("Invalid path"))?;
 
     // Convert the bytes to a `Uint8Array` for compatibility with JavaScript
-    log::debug!("Saving file as: {}, byte dump: {:0X?}", path, &bytes[0..16]);
+    log::debug!(
+        "Saving file as: {}, byte dump: {:0X?}",
+        path,
+        &bytes[..bytes.len().min(16)]
+    );
 
     // I don't really understand this sequence of operations, but attempting to use the uint8_array
     // directly doesn't seem to work. Working code shamelessly taken from:

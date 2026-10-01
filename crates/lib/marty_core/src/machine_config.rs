@@ -35,7 +35,7 @@ use crate::{
     cpu_common::CpuType,
     device_traits::videocard::{VideoCardSubType, VideoType},
     device_types::keyboard::KeyboardType,
-    devices::{a0::A0Type, pit::PitType},
+    devices::{a0::A0Type, pit::PitType, virtual_printer::VirtualPrinterConfig},
     machine_types::{
         EmsType,
         FdcType,
@@ -233,6 +233,12 @@ pub struct ParallelPortConfig {
 }
 
 #[derive(Clone, Debug, Deserialize)]
+#[serde(tag = "type", rename_all = "snake_case")]
+pub enum ParallelDeviceConfig {
+    Printer(VirtualPrinterConfig),
+}
+
+#[derive(Clone, Debug, Deserialize)]
 pub struct FloppyControllerConfig {
     #[serde(rename = "type")]
     pub fdc_type: FdcType,
@@ -303,6 +309,7 @@ pub struct MachineConfiguration {
     pub sound: Vec<SoundDeviceConfig>,
     pub serial: Vec<SerialControllerConfig>,
     pub parallel: Vec<ParallelControllerConfig>,
+    pub parallel_device: Vec<ParallelDeviceConfig>,
     pub game_port: Option<GamePortConfig>,
     pub controller_layout: Option<ControllerLayout>,
     pub fdc: Option<FloppyControllerConfig>,

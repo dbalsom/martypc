@@ -38,6 +38,7 @@ crossbeam-channel.workspace = true
 web-time.workspace = true
 cfg-if.workspace = true
 binrw.workspace = true
+image.workspace = true
 nuked-opl3 = { version = "0.1.0", optional = true }
 
 [dependencies.arduinox86_client]

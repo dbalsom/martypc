@@ -67,3 +67,4 @@ pub mod sound_source;
 pub mod tga;
 #[cfg(feature = "vga")]
 pub mod vga;
+pub mod virtual_printer;

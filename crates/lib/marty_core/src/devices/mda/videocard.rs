@@ -32,7 +32,7 @@
 use super::*;
 use crate::{
     device_traits::videocard::*,
-    devices::{mc6845::CrtcRegister::*, pic::Pic},
+    devices::{lpt_card::LPT_DEFAULT_IRQ, mc6845::CrtcRegister::*, pic::Pic},
 };
 
 impl VideoCard for MDACard {
@@ -327,7 +327,7 @@ impl VideoCard for MDACard {
     //     (palette, intensity)
     // }
 
-    fn run(&mut self, time: DeviceRunTimeUnit, _pic: &mut Option<Box<Pic>>, _cpumem: Option<&[u8]>) {
+    fn run(&mut self, time: DeviceRunTimeUnit, pic: &mut Option<Box<Pic>>, _cpumem: Option<&[u8]>) {
         /*
         if self.scanline > 1000 {
             log::error!("run(): scanlines way too high: {}", self.scanline);
@@ -335,6 +335,11 @@ impl VideoCard for MDACard {
         */
 
         let ticks = if let DeviceRunTimeUnit::Microseconds(us) = time {
+            if let (Some(lpt), Some(pic)) = (&mut self.lpt, pic.as_mut()) {
+                if lpt.run(us) && lpt.intr_enabled() {
+                    pic.pulse_interrupt(LPT_DEFAULT_IRQ);
+                }
+            }
             us * MDA_CLOCK
         }
         else {

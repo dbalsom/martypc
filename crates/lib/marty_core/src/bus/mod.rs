@@ -73,9 +73,10 @@ use crate::{
         serial::*,
         sound_source::DSoundSource,
         tga::TGACard,
+        virtual_printer::{PrinterEvent, VirtualPrinter},
     },
     machine::KeybufferEntry,
-    machine_config::{normalize_conventional_memory, MachineConfiguration, MachineDescriptor},
+    machine_config::{normalize_conventional_memory, MachineConfiguration, MachineDescriptor, ParallelDeviceConfig},
     machine_types::{EmsType, FdcType, HardDiskControllerType, MachineType, SerialControllerType, SerialMouseType},
     tracelogger::TraceLogger,
 };
@@ -206,6 +207,8 @@ impl DeviceRunContext {
 pub struct InstalledDevicesResult {
     presentable_event_sender: Sender<PresentableDeviceEvent>,
     pub(crate) presentable_event_receiver: Receiver<PresentableDeviceEvent>,
+    printer_event_sender: Sender<PrinterEvent>,
+    pub(crate) printer_event_receiver: Receiver<PrinterEvent>,
     #[cfg(feature = "sound")]
     pub sound_sources: Vec<SoundSourceDescriptor>,
 }
@@ -213,10 +216,13 @@ pub struct InstalledDevicesResult {
 impl InstalledDevicesResult {
     pub fn new() -> Self {
         let (presentable_event_sender, presentable_event_receiver) = unbounded();
+        let (printer_event_sender, printer_event_receiver) = unbounded();
 
         Self {
             presentable_event_sender,
             presentable_event_receiver,
+            printer_event_sender,
+            printer_event_receiver,
             #[cfg(feature = "sound")]
             sound_sources: Vec::new(),
         }
@@ -224,6 +230,10 @@ impl InstalledDevicesResult {
 
     pub(crate) fn presentable_event_sender(&self) -> Sender<PresentableDeviceEvent> {
         self.presentable_event_sender.clone()
+    }
+
+    fn printer_event_sender(&self) -> Sender<PrinterEvent> {
+        self.printer_event_sender.clone()
     }
 }
 
@@ -500,6 +510,7 @@ pub struct BusInterface {
     pic2: Option<Pic>,
     serial: Option<SerialPortController>,
     parallel: Option<ParallelController>,
+    printers: Vec<VirtualPrinter>,
     fdc: Option<Box<FloppyController>>,
     hdc: Option<Box<HardDiskController>>,
     xtide: Option<Box<XtIdeController>>,
@@ -591,6 +602,7 @@ impl Default for BusInterface {
             pic2: None,
             serial: None,
             parallel: None,
+            printers: Vec::new(),
             fdc: None,
             hdc: None,
             xtide: None,
@@ -1483,6 +1495,62 @@ impl BusInterface {
             self.videocard_ids.push(video_id);
         }
 
+        let mut parallel_ports = Vec::new();
+        if let Some(parallel) = &self.parallel {
+            parallel_ports.push((parallel.port_base(), parallel.device_channel()));
+        }
+        for video in self.videocards.values() {
+            if let VideoCardDispatch::Mda(mda) = video {
+                if let (Some(base), Some(channel)) = (mda.lpt_port_base(), mda.lpt_device_channel()) {
+                    parallel_ports.push((base, channel));
+                }
+            }
+        }
+        parallel_ports.sort_by(|left, right| right.0.cmp(&left.0));
+
+        let mut attached_ports = Vec::new();
+        for device in &machine_config.parallel_device {
+            match device {
+                ParallelDeviceConfig::Printer(config) => {
+                    let Some((base, channel)) = parallel_ports.get(config.port)
+                    else {
+                        return Err(anyhow::anyhow!(
+                            "Virtual printer selects LPT{} but only {} parallel port(s) are installed",
+                            config.port + 1,
+                            parallel_ports.len()
+                        ));
+                    };
+                    if attached_ports.contains(&config.port) {
+                        return Err(anyhow::anyhow!(
+                            "More than one device is attached to LPT{}",
+                            config.port + 1
+                        ));
+                    }
+                    let parallel_sound_attached = machine_config
+                        .sound
+                        .iter()
+                        .any(|sound| sound.sound_type.is_parallel());
+                    let printer_uses_sound_port = self
+                        .parallel
+                        .as_ref()
+                        .is_some_and(|parallel| parallel.port_base() == *base);
+                    if parallel_sound_attached && printer_uses_sound_port {
+                        return Err(anyhow::anyhow!(
+                            "Virtual printer conflicts with a parallel sound device on LPT{}",
+                            config.port + 1
+                        ));
+                    }
+                    log::debug!("Attaching virtual printer to LPT{} at {:03X}", config.port + 1, base);
+                    self.printers.push(VirtualPrinter::new(
+                        config.clone(),
+                        channel.clone(),
+                        installed_devices.printer_event_sender(),
+                    ));
+                    attached_ports.push(config.port);
+                }
+            }
+        }
+
         self.machine_desc = Some(*machine_desc);
         Ok(installed_devices)
     }
@@ -1735,6 +1803,10 @@ impl BusInterface {
         }
 
         // Run the parallel port
+        for printer in &mut self.printers {
+            printer.run(us);
+        }
+
         if let Some(parallel) = &mut self.parallel {
             parallel.run(self.pic1.as_mut().unwrap(), us);
         }
@@ -1910,6 +1982,12 @@ impl BusInterface {
         // Reset fantasy ems registers, memory
         if let Some(fantasy_ems) = self.fantasy_ems.as_mut() {
             fantasy_ems.reset();
+        }
+    }
+
+    pub fn finish_print_jobs(&mut self) {
+        for printer in &mut self.printers {
+            printer.finish_job();
         }
     }
 
