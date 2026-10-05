@@ -95,9 +95,24 @@ disassembly_file = "disassembly.lst"
 # On IBM PC/XT, turbo increases CPU clock from 4.77Mhz to 7.16Mhz.
 turbo = false
 
-# Emulate phase offset of PIT vs CPU. Don't change this if you don't know why 
-# you would want to do that.
+# Choose a random PIT phase at emulator startup, ignoring pit_phase.
+# Range: 0 up to (but excluding) the PIT clock divisor, normally 12.
+randomize_pit_phase = true
+
+# Extra system ticks on startup for the PIT.
+# There are four relative phases of the CPU vs PIT, over a 12 cycle period.
+# Values of 12 and higher repeat the same four phases.
+# This value is ignored if `randomize_pit_phase` is true.
 pit_phase = 0
+
+# Choose a random CGA phase from 0 through 15 at emulator startup, ignoring cga_phase.
+randomize_cga_phase = true
+
+# Extra system ticks on startup for the CGA. Has no effect without a CGA card.
+# There are 16 relative phases of the CPU vs CGA, over a 16 cycle period.
+# Values of 16 and higher repeat the same 16 phases.
+# This value is ignored if `randomize_cga_phase` is true.
+cga_phase = 0
 
 # ----------------------------------------------------------------------------
 # Input options

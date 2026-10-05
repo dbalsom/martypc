@@ -404,7 +404,12 @@ pub struct Machine {
     #[serde(default)]
     pub fdc: MachineFdc,
     pub cpu: Cpu,
+    #[serde(default)]
+    pub randomize_pit_phase: bool,
     pub pit_phase: Option<u32>,
+    #[serde(default)]
+    pub randomize_cga_phase: bool,
+    pub cga_phase: Option<u32>,
     pub input: MachineInput,
     pub disassembly_recording: Option<bool>,
     pub disassembly_file: Option<PathBuf>,
@@ -702,6 +707,42 @@ mod tests {
     }
 
     #[test]
+    fn startup_clock_phases_are_optional_and_accept_full_periods() {
+        let legacy: MachineConfig = toml::from_str(
+            r#"
+                [machine]
+                config_name = "test"
+                pit_phase = 11
+                [machine.cpu]
+                [machine.input]
+            "#,
+        )
+        .unwrap();
+        assert!(!legacy.machine.randomize_pit_phase);
+        assert!(!legacy.machine.randomize_cga_phase);
+        assert_eq!(legacy.machine.pit_phase, Some(11));
+        assert_eq!(legacy.machine.cga_phase, None);
+
+        let configured: MachineConfig = toml::from_str(
+            r#"
+                [machine]
+                config_name = "test"
+                randomize_pit_phase = true
+                pit_phase = 11
+                randomize_cga_phase = true
+                cga_phase = 15
+                [machine.cpu]
+                [machine.input]
+            "#,
+        )
+        .unwrap();
+        assert!(configured.machine.randomize_pit_phase);
+        assert!(configured.machine.randomize_cga_phase);
+        assert_eq!(configured.machine.pit_phase, Some(11));
+        assert_eq!(configured.machine.cga_phase, Some(15));
+    }
+
+    #[test]
     fn legacy_serial_bridge_port_tables_are_rejected() {
         let legacy = toml::from_str::<SerialBridge>(
             r#"
@@ -877,8 +918,10 @@ mod tests {
 
     #[test]
     fn middle_click_capture_shortcut_can_be_disabled() {
-        let shortcut_disabled = include_str!("../../../../install/martypc.toml")
-            .replace("middle_click_capture_shortcut = true", "middle_click_capture_shortcut = false");
+        let shortcut_disabled = include_str!("../../../../install/martypc.toml").replace(
+            "middle_click_capture_shortcut = true",
+            "middle_click_capture_shortcut = false",
+        );
         let config: ConfigFileParams = toml::from_str(&shortcut_disabled).unwrap();
         assert!(!config.emulator.input.middle_click_capture_shortcut);
     }

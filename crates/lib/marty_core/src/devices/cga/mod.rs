@@ -255,7 +255,7 @@ const CGA_FONT_SPAN: usize = 256; // Font bitmap is 2048 bits wide (256 * 8 char
 
 const CGA_HCHAR_CLOCK: u8 = 8;
 const CGA_HCHAR_CLOCK_MASK: u64 = 0x07;
-const CGA_LCHAR_CLOCK: u8 = 16;
+pub(crate) const CGA_LCHAR_CLOCK: u8 = 16;
 const CGA_LCHAR_CLOCK_MASK: u64 = 0x0F;
 const CRTC_FONT_HEIGHT: u8 = 8;
 const CRTC_VSYNC_HEIGHT: u8 = 16;
@@ -783,6 +783,16 @@ impl CGACard {
         }
     }
 
+    /// Advance the startup phase within one 16-tick CGA clock period.
+    pub fn adjust_phase(&mut self, ticks: u32) {
+        let ticks = ticks % CGA_LCHAR_CLOCK as u32;
+        log::debug!("Advancing CGA startup phase by {} system ticks", ticks);
+        for _ in 0..ticks {
+            self.tick();
+        }
+        self.pixel_clocks_owed = self.calc_phase_offset();
+    }
+
     /// Reset CGA state (on reboot, for example)
     fn reset_private(&mut self) {
         let trace_logger = std::mem::replace(&mut self.trace_logger, TraceLogger::None);
@@ -872,19 +882,13 @@ impl CGACard {
     /// until we are back in phase with the character clock.
     #[inline]
     fn calc_cycles_owed(&mut self) -> u32 {
-        if !self.ticks_advanced.is_multiple_of(CGA_LCHAR_CLOCK as u32) {
-            // We have advanced the CGA card out of phase with the character clock. Count
-            // how many pixel clocks we need to tick by to be back in phase.
-            ((!self.cycles + 1) & 0x0F) as u32
-        }
-        else {
-            0
-        }
+        // Use the actual phase: startup may already have advanced the card before this IO access.
+        self.calc_phase_offset()
     }
 
     #[inline]
     fn calc_phase_offset(&mut self) -> u32 {
-        ((!self.cycles + 1) & 0x0F) as u32
+        (self.cycles.wrapping_neg() & CGA_LCHAR_CLOCK_MASK) as u32
     }
 
     #[inline]
@@ -1905,5 +1909,50 @@ impl CGACard {
         self.cycles_per_vsync = self.cur_screen_cycles;
         self.cur_screen_cycles = 0;
         self.last_vsync_cycles = self.cycles;
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::bus::{IoDevice, MemoryMappedDevice};
+
+    #[test]
+    fn startup_phase_preserves_clocks() {
+        for clock_mode in [ClockingMode::Cycle, ClockingMode::Character, ClockingMode::Dynamic] {
+            for phase in 0..16 {
+                let mut cga = CGACard::new(TraceLogger::None, clock_mode, false);
+                cga.adjust_phase(phase);
+                let mut elapsed = phase as u64;
+
+                // A startup phase must immediately affect video memory wait states.
+                assert_eq!(
+                    cga.get_read_wait(CGA_MEM_ADDRESS, 0),
+                    WAIT_TABLE[((phase + 1) % 16) as usize]
+                );
+
+                // Whole-period IO catch-up must retain any outstanding partial character.
+                cga.read_u8(io::CGA_STATUS_REGISTER, DeviceRunTimeUnit::SystemTicks(16));
+                for ticks in [19, 1, 3, 16, 48] {
+                    cga.run(DeviceRunTimeUnit::SystemTicks(ticks), &mut None, None);
+                    elapsed += ticks as u64;
+                    assert_eq!(cga.cycles + cga.clocks_accum as u64, elapsed);
+                    if !matches!(clock_mode, ClockingMode::Cycle) {
+                        assert_eq!((cga.cycles + cga.pixel_clocks_owed as u64) & cga.char_clock_mask, 0);
+                    }
+                }
+            }
+        }
+    }
+
+    #[test]
+    fn startup_phase_wraps_at_sixteen_ticks() {
+        for phase in [0, 16, 17, 31, 32, u32::MAX] {
+            let mut cga = CGACard::new(TraceLogger::None, ClockingMode::Dynamic, false);
+            cga.adjust_phase(phase);
+            assert_eq!(cga.cycles, (phase % 16) as u64);
+            cga.run(DeviceRunTimeUnit::SystemTicks(32), &mut None, None);
+            assert_eq!(cga.cycles + cga.clocks_accum as u64, (phase % 16 + 32) as u64);
+        }
     }
 }

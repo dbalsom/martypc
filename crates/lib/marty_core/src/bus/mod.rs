@@ -1519,6 +1519,15 @@ impl BusInterface {
         self.pit_ticks_advance += ticks;
     }
 
+    /// Advance installed CGA cards to the requested startup phase.
+    pub fn adjust_cga(&mut self, ticks: u32) {
+        for video in self.videocards.values_mut() {
+            if let VideoCardDispatch::Cga(cga) = video {
+                cga.adjust_phase(ticks);
+            }
+        }
+    }
+
     pub fn process_keyboard_input(&mut self) {
         if let Some(keyboard) = &mut self.keyboard {
             // Read a byte from the keyboard

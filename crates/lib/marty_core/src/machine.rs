@@ -74,6 +74,7 @@ use crate::{
     },
     devices::{
         cartridge_slots::CartridgeSlot,
+        cga::CGA_LCHAR_CLOCK,
         dma::DMAControllerStringState,
         fantasy_ems::FantasyEmsCard,
         fdc::{controller::FloppyController, FdcDebugState},
@@ -105,6 +106,7 @@ use fluxfox::DiskImage;
 use anyhow::{anyhow, Error};
 use crossbeam_channel::{Receiver, Sender};
 use log;
+use rand::Rng;
 use ringbuf::Consumer;
 
 pub const STEP_OVER_TIMEOUT: u32 = 320000;
@@ -1110,9 +1112,33 @@ impl Machine {
         serial_states
     }
 
-    /// Adjust the relative phase of CPU and PIT; this is done by subtracting the relevant number of
-    /// system ticks from the next run of the PIT.
-    pub fn pit_adjust(&mut self, ticks: u32) {
+    /// Apply startup phase offsets, replacing fixed values with random phases when requested.
+    pub fn initialize_clock_phases(
+        &mut self,
+        pit_phase: u32,
+        randomize_pit_phase: bool,
+        cga_phase: u32,
+        randomize_cga_phase: bool,
+    ) {
+        let pit_phase = if randomize_pit_phase {
+            rand::thread_rng().gen_range(0..self.machine_desc.timer_divisor)
+        }
+        else {
+            pit_phase
+        };
+        let cga_phase = if randomize_cga_phase {
+            rand::thread_rng().gen_range(0..CGA_LCHAR_CLOCK as u32)
+        }
+        else {
+            cga_phase
+        };
+
+        self.adjust_pit(pit_phase);
+        self.cpu.bus_mut().adjust_cga(cga_phase);
+    }
+
+    /// Adjust the relative phase of CPU and PIT by adding system ticks to the next run of the PIT.
+    pub fn adjust_pit(&mut self, ticks: u32) {
         self.cpu.bus_mut().adjust_pit(ticks);
     }
 
@@ -1833,25 +1859,6 @@ impl Machine {
         };
 
         timer_ticks * timer_multiplier
-    }
-
-    /// Set or replace a service KV store value case-insensitively.
-    /// See [`ServiceInterruptManager::set_key_value`] for validation rules.
-    pub fn set_service_key_value(&mut self, key: &str, value: &str) -> Result<(), ServiceError> {
-        self.service_interrupt_manager.set_key_value(key, value)
-    }
-
-    /// Query a service KV store value case-insensitively.
-    /// Missing keys return `None`.
-    /// Bad keys return `ServiceError::InvalidParameter`.
-    pub fn get_service_key_value(&self, key: &str) -> Result<Option<&str>, ServiceError> {
-        self.service_interrupt_manager.get_key_value(key)
-    }
-
-    /// Delete a service KV store value case-insensitively, returning whether it existed.
-    /// Bad keys return `ServiceError::InvalidParameter`.
-    pub fn delete_service_key_value(&mut self, key: &str) -> Result<bool, ServiceError> {
-        self.service_interrupt_manager.delete_key_value(key)
     }
 
     /// Called to update machine once per frame. This can be used to update the state of devices that don't require
