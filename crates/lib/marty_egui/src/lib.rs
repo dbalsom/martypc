@@ -31,9 +31,6 @@
 
 extern crate core;
 
-use egui::{Color32, Context, Visuals};
-use fluxfox::{DiskImageFileFormat, StandardFormat};
-use lazy_static::lazy_static;
 use std::{
     collections::{BTreeMap, HashMap, VecDeque},
     hash::Hash,
@@ -41,6 +38,10 @@ use std::{
     path::PathBuf,
     time::Duration,
 };
+
+use egui::{Color32, Context, Visuals};
+use fluxfox::{DiskImageFileFormat, StandardFormat};
+use lazy_static::lazy_static;
 
 #[cfg(feature = "use_display")]
 use marty_display_common::{
@@ -68,14 +69,14 @@ mod widgets;
 mod windows;
 mod workspace;
 
+#[cfg(feature = "use_serial_bridge")]
+use marty_core::devices::serial_bridge::SerialPortBridgeConfiguration;
 use marty_core::{
     device_traits::videocard::DisplayApertureType,
     device_types::hdc::HardDiskFormat,
     devices::pic::PicStringState,
     machine::MachineState,
 };
-#[cfg(feature = "use_serial_bridge")]
-use marty_core::devices::serial_bridge::SerialPortBridgeConfiguration;
 
 use marty_common::types::{keys::MartyKey, ui::MouseCaptureMode};
 use marty_core::cpu_common::Register16;
@@ -111,7 +112,9 @@ pub enum GuiWindow {
     PerfViewer,
     MemoryViewer,
     EMSVirtualMemoryViewer,
+    #[cfg(feature = "use_display")]
     CompositeAdjust,
+    #[cfg(feature = "use_display")]
     ScalerAdjust,
     CpuStateViewer,
     InstructionHistoryViewer,
@@ -177,18 +180,14 @@ pub enum GuiFloat {
 // This allows the same enum to be stored in different contexts, ie, a DisplayAperture can be
 // stored for each Display context.  The Global context can be used if no specific context is
 // required.
-#[derive(Copy, Clone, Debug, Hash, PartialEq, Eq)]
+#[derive(Copy, Clone, Debug, Default, Hash, PartialEq, Eq)]
 pub enum GuiVariableContext {
+    #[default]
     Global,
     #[cfg(feature = "use_display")]
     Display(DtHandle),
     SoundSource(usize),
     SerialPort(usize),
-}
-impl Default for GuiVariableContext {
-    fn default() -> Self {
-        GuiVariableContext::Global
-    }
 }
 
 #[derive(Clone, Debug, PartialEq)]
@@ -418,6 +417,7 @@ lazy_static! {
                 resizable: false,
             },
         ),
+        #[cfg(feature = "use_display")]
         (
             GuiWindow::CompositeAdjust,
             WorkspaceWindowDef {
@@ -428,6 +428,7 @@ lazy_static! {
                 resizable: false,
             },
         ),
+        #[cfg(feature = "use_display")]
         (
             GuiWindow::ScalerAdjust,
             WorkspaceWindowDef {

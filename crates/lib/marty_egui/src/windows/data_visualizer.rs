@@ -32,7 +32,7 @@
 */
 use crate::{
     glyphs::FontInfo,
-    widgets::pixel_canvas::{PixelCanvas, PixelCanvasDepth},
+    widgets::pixel_canvas::{CgaPalette, PixelCanvas, PixelCanvasDepth, VgaPalette},
     GuiEventQueue,
 };
 
@@ -42,19 +42,15 @@ use std::{fmt::Display, path::PathBuf};
 use strum::IntoEnumIterator;
 use strum_macros::EnumIter;
 
-pub const DEFAULT_WIDTH: u32 = 128;
-pub const DEFAULT_HEIGHT: u32 = 128;
 pub const MIN_WIDTH: u32 = 4;
 pub const MIN_HEIGHT: u32 = 4;
 pub const MAX_WIDTH: u32 = 2048;
 pub const MAX_HEIGHT: u32 = 1024;
 
 pub const ZOOM_LEVELS: usize = 4;
-pub const DEFAULT_ZOOM: usize = 0;
 pub const ZOOM_LUT: [f32; ZOOM_LEVELS] = [1.0, 2.0, 4.0, 8.0];
 pub const ZOOM_STR_LUT: [&str; ZOOM_LEVELS] = ["1x", "2x", "4x", "8x"];
 
-pub const DEFAULT_BPP: usize = 1;
 pub const BPP_LUT: [PixelCanvasDepth; 5] = [
     PixelCanvasDepth::Text,
     PixelCanvasDepth::OneBpp,
@@ -205,8 +201,6 @@ pub struct DataVisualizerControl {
     offset: usize,
     byte_offset: usize,
     row_offset: usize,
-    row_span: usize,
-    use_device_palette: bool,
     canvas: Option<PixelCanvas>,
     font: FontInfo,
     dump_path: Option<PathBuf>,
@@ -230,8 +224,6 @@ impl DataVisualizerControl {
             offset: 0,
             byte_offset: 0,
             row_offset: 0,
-            row_span: 0,
-            use_device_palette: true,
             canvas: None,
             font: FontInfo::default(),
             dump_path: None,
@@ -340,30 +332,6 @@ impl DataVisualizerControl {
 
             ui.label("Address:");
             ui.add(egui::TextEdit::singleline(&mut self.address_output.as_str()).desired_width(50.0));
-
-            egui::ComboBox::from_id_salt("viz_zoom_combo")
-                .selected_text(ZOOM_STR_LUT[self.zoom_idx])
-                .show_ui(ui, |ui| {
-                    for i in 0..ZOOM_LUT.len() {
-                        if ui.selectable_value(&mut self.zoom_idx, i, ZOOM_STR_LUT[i]).clicked() {
-                            if let Some(canvas) = &mut self.canvas {
-                                canvas.set_zoom(ZOOM_LUT[self.zoom_idx]);
-                            }
-                        }
-                    }
-                });
-
-            egui::ComboBox::from_id_salt("viz_bpp_combo")
-                .selected_text(BPP_STR_LUT[self.bpp as usize])
-                .show_ui(ui, |ui| {
-                    for i in 0..BPP_LUT.len() {
-                        if ui.selectable_value(&mut self.bpp, BPP_LUT[i], BPP_STR_LUT[i]).clicked() {
-                            if let Some(canvas) = &mut self.canvas {
-                                canvas.set_bpp(self.bpp);
-                            }
-                        }
-                    }
-                });
         });
 
         let mut recalculate_offsets = false;
@@ -372,7 +340,7 @@ impl DataVisualizerControl {
             ui.label("Preset:");
 
             egui::ComboBox::from_id_salt("viz_preset_combo")
-                .selected_text(&self.active_preset.to_string())
+                .selected_text(self.active_preset.to_string())
                 .show_ui(ui, |ui| {
                     for preset in VizPreset::iter() {
                         if ui
@@ -417,12 +385,6 @@ impl DataVisualizerControl {
                 .changed()
             {
                 resize = true;
-            }
-
-            if ui.checkbox(&mut self.use_device_palette, "Device Palette").changed() {
-                if let Some(canvas) = &mut self.canvas {
-                    canvas.use_device_palette(self.use_device_palette);
-                }
             }
 
             if let PixelCanvasDepth::Text = self.bpp {
@@ -477,6 +439,66 @@ impl DataVisualizerControl {
             //self.recalculate_address();
         }
 
+        ui.horizontal(|ui| {
+            ui.label("Zoom:");
+            egui::ComboBox::from_id_salt("viz_zoom_combo")
+                .width(55.0)
+                .selected_text(ZOOM_STR_LUT[self.zoom_idx])
+                .show_ui(ui, |ui| {
+                    for i in 0..ZOOM_LUT.len() {
+                        if ui.selectable_value(&mut self.zoom_idx, i, ZOOM_STR_LUT[i]).clicked() {
+                            if let Some(canvas) = &mut self.canvas {
+                                canvas.set_zoom(ZOOM_LUT[self.zoom_idx]);
+                            }
+                        }
+                    }
+                });
+
+            ui.label("Bit depth:");
+            egui::ComboBox::from_id_salt("viz_bpp_combo")
+                .width(65.0)
+                .selected_text(BPP_STR_LUT[self.bpp as usize])
+                .show_ui(ui, |ui| {
+                    for i in 0..BPP_LUT.len() {
+                        if ui.selectable_value(&mut self.bpp, BPP_LUT[i], BPP_STR_LUT[i]).clicked() {
+                            if let Some(canvas) = &mut self.canvas {
+                                canvas.set_bpp(self.bpp);
+                            }
+                        }
+                    }
+                });
+
+            if let Some(canvas) = &mut self.canvas {
+                match self.bpp {
+                    PixelCanvasDepth::TwoBpp => {
+                        ui.label("Palette:");
+                        let mut selected = canvas.cga_palette();
+                        egui::ComboBox::from_id_salt("viz_cga_palette_combo")
+                            .selected_text(selected.to_string())
+                            .show_ui(ui, |ui| {
+                                for palette in CgaPalette::iter() {
+                                    ui.selectable_value(&mut selected, palette, palette.to_string());
+                                }
+                            });
+                        canvas.set_cga_palette(selected);
+                    }
+                    PixelCanvasDepth::EightBpp => {
+                        ui.label("Palette:");
+                        let mut selected = canvas.vga_palette();
+                        egui::ComboBox::from_id_salt("viz_vga_palette_combo")
+                            .selected_text(selected.to_string())
+                            .show_ui(ui, |ui| {
+                                for palette in VgaPalette::iter() {
+                                    ui.selectable_value(&mut selected, palette, palette.to_string());
+                                }
+                            });
+                        canvas.set_vga_palette(selected);
+                    }
+                    _ => {}
+                }
+            }
+        });
+
         if let Some(canvas) = &mut self.canvas {
             ui.separator();
             ui.set_width(canvas.get_width());
@@ -486,7 +508,6 @@ impl DataVisualizerControl {
 
     fn recalculate_address(&mut self) {
         let row_size_bits;
-        let row_size_bytes;
         let mask = if let PixelCanvasDepth::Text = self.bpp {
             row_size_bits = ((self.w / self.font.w) as usize) * self.bpp.bits();
             // Force offset to even byte boundaries. This keeps us from displaying attributes
@@ -505,8 +526,8 @@ impl DataVisualizerControl {
         //     row_size_bytes,
         //     offset
         // );
-        row_size_bytes = row_size_bits / 8;
-        self.offset = self.row_offset * row_size_bytes + self.byte_offset & mask;
+        let row_size_bytes = row_size_bits / 8;
+        self.offset = (self.row_offset * row_size_bytes + self.byte_offset) & mask;
         self.address_output = format!("{:05X}", self.offset);
     }
 
@@ -520,13 +541,8 @@ impl DataVisualizerControl {
             self.w as usize * self.bpp.bits()
         };
         let row_size_bytes = row_size_bits / 8;
-        let (new_row_offset, new_byte_offset) = if row_size_bytes > 0 {
-            (self.offset / row_size_bytes, self.offset % row_size_bytes)
-        }
-        else {
-            (0, 0)
-        };
-
+        let new_row_offset = self.offset.checked_div(row_size_bytes).unwrap_or(0);
+        let new_byte_offset = self.offset.checked_rem(row_size_bytes).unwrap_or(0);
         self.byte_offset = new_byte_offset;
         self.row_offset = new_row_offset;
     }
