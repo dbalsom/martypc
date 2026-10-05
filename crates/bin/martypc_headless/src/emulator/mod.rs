@@ -111,9 +111,13 @@ impl Emulator {
             self.machine.change_state(MachineState::Off);
         }
 
-        // Do PIT phase offset option
-        self.machine
-            .pit_adjust(self.config.machine.pit_phase.unwrap_or(0) & 0x03);
+        // Apply device clock phases once at emulator startup.
+        self.machine.initialize_clock_phases(
+            self.config.machine.pit_phase.unwrap_or(0),
+            self.config.machine.randomize_pit_phase,
+            self.config.machine.cga_phase.unwrap_or(0),
+            self.config.machine.randomize_cga_phase,
+        );
 
         self.machine.set_cpu_option(CpuOption::OffRailsDetection(
             self.config.machine.cpu.off_rails_detection.unwrap_or(false),
@@ -239,39 +243,41 @@ impl Emulator {
             }
         }
 
-        let mut config_drive_idx: usize = 0;
-        for vhd_name in vhd_names.into_iter().filter_map(|x| x) {
+        for (drive_idx, vhd_name) in vhd_names.into_iter().flatten().enumerate() {
             let vhd_os_name: OsString = vhd_name.into();
-            match self.vhd_manager.load_vhd_file_by_name(config_drive_idx, &vhd_os_name) {
-                Ok((vhd_file, _vhd_idx)) => match VirtualHardDisk::parse(Box::new(vhd_file), false) {
-                    Ok(vhd) => {
-                        if let Some(hdc) = self.machine.hdc_mut() {
-                            match hdc.set_vhd(config_drive_idx, vhd) {
-                                Ok(_) => {
-                                    log::info!(
-                                        "VHD image {:?} successfully loaded into virtual drive: {}",
-                                        vhd_os_name,
-                                        config_drive_idx
-                                    );
-                                }
-                                Err(err) => {
-                                    log::error!("Error mounting VHD: {}", err);
-                                }
-                            }
-                        }
-                        else {
-                            log::error!("Couldn't load VHD: No Hard Disk Controller present!");
-                        }
-                    }
-                    Err(err) => {
-                        log::error!("Error loading VHD: {}", err);
-                    }
-                },
+
+            let vhd_file = match self.vhd_manager.load_vhd_file_by_name(drive_idx, &vhd_os_name) {
+                Ok((vhd_file, _)) => vhd_file,
                 Err(err) => {
                     log::error!("Failed to load VHD image {:?}: {}", vhd_os_name, err);
+                    continue;
                 }
+            };
+
+            let vhd = match VirtualHardDisk::parse(Box::new(vhd_file), false) {
+                Ok(vhd) => vhd,
+                Err(err) => {
+                    log::error!("Error loading VHD: {}", err);
+                    continue;
+                }
+            };
+
+            let Some(hdc) = self.machine.hdc_mut()
+            else {
+                log::error!("Couldn't load VHD: No Hard Disk Controller present!");
+                continue;
+            };
+
+            if let Err(err) = hdc.set_vhd(drive_idx, vhd) {
+                log::error!("Error mounting VHD: {}", err);
+                continue;
             }
-            config_drive_idx += 1;
+
+            log::info!(
+                "VHD image {:?} successfully loaded into virtual drive: {}",
+                vhd_os_name,
+                drive_idx
+            );
         }
         Ok(())
     }

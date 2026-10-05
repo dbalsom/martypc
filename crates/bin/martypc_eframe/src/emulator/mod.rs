@@ -63,8 +63,8 @@ use marty_display_common::display_scaler::SCALER_MODES;
 use marty_egui::{state::GuiState, GuiBoolean, GuiFloat, GuiWindow};
 use marty_frontend_common::{
     asset_manager::AssetManager,
-    cassette_manager::CassetteManager,
     cartridge_manager::CartridgeManager,
+    cassette_manager::CassetteManager,
     floppy_manager::FloppyManager,
     resource_manager::ResourceManager,
     rom_manager::RomManager,
@@ -92,9 +92,7 @@ pub struct MountInfo {
 const SERVICE_SPEED_SCALE: f32 = 1000.0;
 
 fn speed_to_service_value(speed: f32) -> u16 {
-    (speed * SERVICE_SPEED_SCALE)
-        .round()
-        .clamp(0.0, u16::MAX as f32) as u16
+    (speed * SERVICE_SPEED_SCALE).round().clamp(0.0, u16::MAX as f32) as u16
 }
 
 /// Define the main Emulator struct for this frontend.
@@ -194,9 +192,13 @@ impl Emulator {
             sound_interface.set_master_speed(initial_emulator_speed);
         }
 
-        // Do PIT phase offset option
-        self.machine
-            .pit_adjust(self.config.machine.pit_phase.unwrap_or(0) & 0x03);
+        // Apply device clock phases once at emulator startup.
+        self.machine.initialize_clock_phases(
+            self.config.machine.pit_phase.unwrap_or(0),
+            self.config.machine.randomize_pit_phase,
+            self.config.machine.cga_phase.unwrap_or(0),
+            self.config.machine.randomize_cga_phase,
+        );
 
         // Set options from config. We do this now so that we can set the same state for both GUI and machine
 
@@ -228,9 +230,10 @@ impl Emulator {
                                 }
                             };
 
-                            if let Err(_) = self
+                            if self
                                 .machine
                                 .load_program(&prog_vec, prog_seg, prog_ofs, vreset_seg, vreset_ofs)
+                                .is_err()
                             {
                                 eprintln!(
                                     "Error loading program into memory at {:04X}:{:04X}.",
@@ -389,7 +392,7 @@ impl Emulator {
         #[cfg(not(target_arch = "wasm32"))]
         {
             let mut mounted_floppies = Vec::new();
-            for (idx, image_name) in image_names.into_iter().filter_map(|x| x).enumerate() {
+            for (idx, image_name) in image_names.into_iter().flatten().enumerate() {
                 use std::path::PathBuf;
                 let floppy_path = PathBuf::from(image_name);
                 //handle_load_floppy(self, idx, FileSelectionContext::Path(floppy_path.clone()));
@@ -466,22 +469,20 @@ impl Emulator {
         {
             if drive_i >= machine_max {
                 // Add new drive
-                println!("Adding VHD image {:?} to drive index {}", vhd.filename, drive_i);
+                log::info!("Adding VHD image {:?} to drive index {}", vhd.filename, drive_i);
                 vhd_names.push(Some(vhd.filename.clone()));
             }
             else {
                 // Replace existing drive
-                println!("Replacing VHD image in machine configuration with {:?}", vhd.filename);
+                log::info!("Replacing VHD image in machine configuration with {:?}", vhd.filename);
                 vhd_names[drive_i] = Some(vhd.filename.clone());
             }
         }
 
-        let mut drive_idx: usize = 0;
-
-        for vhd_name in vhd_names.into_iter().filter_map(|x| x) {
+        for (drive_idx, vhd_name) in vhd_names.into_iter().flatten().enumerate() {
             let vhd_os_name: OsString = vhd_name.into();
 
-            println!("Loading VHD image: {:?}", vhd_os_name);
+            log::info!("Loading VHD image: {:?}", vhd_os_name);
 
             #[cfg(not(target_arch = "wasm32"))]
             {
@@ -500,7 +501,6 @@ impl Emulator {
                     log::error!("Failed to load VHD image {:?}: {}", vhd_os_name, err);
                 }
             }
-            drive_idx += 1;
         }
         Ok(mount_info_vec)
     }
@@ -518,7 +518,7 @@ impl Emulator {
             // Absolute path: try loading by path
             match self.vhd_manager.load_vhd_file_by_path(drive_idx, path) {
                 Ok(vhd_file) => {
-                    self.load_vhd(Box::new(vhd_file), drive_idx, &vhd_os_name, None)?;
+                    self.load_vhd(Box::new(vhd_file), drive_idx, vhd_os_name, None)?;
                     mount_info_vec.push(MountInfo {
                         index: drive_idx,
                         name:  vhd_os_name.to_string_lossy().to_string(),
@@ -533,11 +533,11 @@ impl Emulator {
         }
         else {
             // Relative path or just filename
-            if path.parent().is_some() && path.parent().unwrap().as_os_str().len() > 0 {
+            if path.parent().is_some() && !path.parent().unwrap().as_os_str().is_empty() {
                 // Relative path (has directory components)
                 match self.vhd_manager.load_vhd_file_by_path(drive_idx, path) {
                     Ok(vhd_file) => {
-                        self.load_vhd(Box::new(vhd_file), drive_idx, &vhd_os_name, None)?;
+                        self.load_vhd(Box::new(vhd_file), drive_idx, vhd_os_name, None)?;
                         mount_info_vec.push(MountInfo {
                             index: drive_idx,
                             name:  vhd_os_name.to_string_lossy().to_string(),
@@ -552,9 +552,9 @@ impl Emulator {
             }
             else {
                 // Just filename, try loading by name (from media/hdds)
-                match self.vhd_manager.load_vhd_file_by_name(drive_idx, &vhd_os_name) {
+                match self.vhd_manager.load_vhd_file_by_name(drive_idx, vhd_os_name) {
                     Ok((vhd_file, vhd_idx)) => {
-                        self.load_vhd(Box::new(vhd_file), drive_idx, &vhd_os_name, Some(vhd_idx))?;
+                        self.load_vhd(Box::new(vhd_file), drive_idx, vhd_os_name, Some(vhd_idx))?;
                         mount_info_vec.push(MountInfo {
                             index: drive_idx,
                             name:  vhd_os_name.to_string_lossy().to_string(),
