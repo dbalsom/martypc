@@ -412,6 +412,12 @@ impl VideoCard for CGACard {
         self.clocks_accum += hdots;
         self.ticks_advanced = 0;
 
+        if self.clocks_accum == 0 {
+            self.last_rw_tick = 0;
+            self.slot_idx = 0;
+            return;
+        }
+
         if let ClockingMode::Character | ClockingMode::Dynamic = self.clock_mode {
             if (self.cycles + self.pixel_clocks_owed as u64) & self.char_clock_mask != 0 {
                 log::error!(
