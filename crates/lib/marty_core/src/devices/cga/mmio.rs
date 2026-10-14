@@ -33,13 +33,18 @@
 use super::*;
 use crate::bus::{MemRangeDescriptor, MemoryMappedDevice};
 
+impl CGACard {
+    /// Compute the access phase without rendering clocks deferred by character clocking.
+    fn memory_wait_phase(&self, elapsed_ticks: u32) -> usize {
+        ((self.cycles + u64::from(self.clocks_accum) + u64::from(elapsed_ticks) + 1) & 0x0F) as usize
+    }
+}
+
 /// Unlike the EGA or VGA the CGA doesn't do any operations on video memory on read/write,
 /// but we handle the mirroring of VRAM this way, and for consistency with other devices
 impl MemoryMappedDevice for CGACard {
     fn get_read_wait(&mut self, _address: usize, cycles: u32) -> u32 {
-        // Look up wait states given the last ticked clock cycle + elapsed cycles
-        // passed in.
-        let phase = (self.cycles + cycles as u64 + 1) as usize & 0x0F_usize;
+        let phase = self.memory_wait_phase(cycles);
         let waits = WAIT_TABLE[phase];
 
         trace!(self, "READ_U8 (T2): PHASE: {:02X}, WAITS: {}", phase, waits);
@@ -98,9 +103,7 @@ impl MemoryMappedDevice for CGACard {
     }
 
     fn get_write_wait(&mut self, _address: usize, cycles: u32) -> u32 {
-        // Look up wait states given the last ticked clock cycle + elapsed cycles
-        // passed in.
-        let phase = (self.cycles + cycles as u64 + 1) as usize & 0x0F_usize;
+        let phase = self.memory_wait_phase(cycles);
         let waits = WAIT_TABLE[phase];
 
         trace!(self, "WRITE_U8 (T2): PHASE: {:02X}, WAITS: {}", phase, waits);

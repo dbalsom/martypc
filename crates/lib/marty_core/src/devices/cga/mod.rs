@@ -829,12 +829,13 @@ impl CGACard {
         if let DeviceRunTimeUnit::SystemTicks(ticks) = delta {
             //log::debug!("Ticking {} clocks on IO read.", ticks);
 
+            let catch_up_ticks = std::mem::take(&mut self.clocks_accum) + ticks;
             self.catching_up = true; // Setting this flag disables mode changes.
 
             let phase_offset = self.calc_phase_offset();
 
             // Can we squeeze a character update into the catch-up interval?
-            if (ticks > phase_offset) && ((ticks - phase_offset) >= self.char_clock) {
+            if (catch_up_ticks > phase_offset) && ((catch_up_ticks - phase_offset) >= self.char_clock) {
                 //log::warn!("can afford character tick in catch_up()");
 
                 // Catch up to LCLOCK
@@ -850,13 +851,13 @@ impl CGACard {
                 self.tick_char();
 
                 // Tick any remaining cycles
-                for _ in 0..(ticks - phase_offset - self.char_clock) {
+                for _ in 0..(catch_up_ticks - phase_offset - self.char_clock) {
                     self.tick();
                 }
             }
             else {
                 // Not enough ticks for a full character, just catch up
-                for _ in 0..ticks {
+                for _ in 0..catch_up_ticks {
                     self.tick();
                 }
             }
@@ -1137,17 +1138,16 @@ impl CGACard {
         // Addendum: The DE line is from the MC6845, and actually includes anything outside the
         // active display area. This gives a much wider window to hit for scanline wait loops.
 
-        let mut byte = if self.in_crtc_vblank {
-            0xF0 | STATUS_VERTICAL_RETRACE | STATUS_DISPLAY_ENABLE
+        let mut byte = 0xF0;
+
+        if self.in_crtc_vblank {
+            byte |= STATUS_VERTICAL_RETRACE
         }
-        else if !self.in_display_area {
-            0xF0 | STATUS_DISPLAY_ENABLE
+        if !self.in_display_area {
+            byte |= STATUS_DISPLAY_ENABLE
         }
-        else {
-            if self.border {
-                log::warn!("in border but returning 0");
-            }
-            0xF0
+        else if self.border {
+            log::warn!("in border but returning 0");
         };
 
         if self.in_crtc_vblank {
