@@ -25,7 +25,30 @@
     --------------------------------------------------------------------------
 */
 
-//! Host-provided key/value services.
+//! Service API key/value store service.
+//!
+//! Guest function `AH=13h` reads the NUL-terminated key at `DS:SI`.
+//! AL selects `KEY_VALUE_GET` or `KEY_VALUE_QUERY`:
+//! - GET takes an output buffer at `ES:DI` and its capacity in CX, including NUL.
+//! - QUERY ignores ES, DI, and CX and never accesses an output buffer.
+//!
+//! Keys start with a letter, contain only letters, digits, and underscores, and
+//! are case-insensitive.
+//!
+//! DF is ignored. Keys and output must not cross a segment boundary.
+//!
+//! Host-set entries survive machine reset.
+//!
+//! On success, CF is clear even for an empty value. GET copies at most `CX-1`
+//! bytes followed by NUL, permitting truncation. All registers are preserved.
+//!
+//! On failure, CF is set and AX contains a `ServiceError`:
+//! - `NotFound`: the key is missing. GET writes an empty string; QUERY writes nothing.
+//! - `InvalidParameter`: unknown AL, GET with `CX=0`, a malformed or unterminated
+//!   key, or a segment crossing. No output is written.
+//! - `InvalidData`: a bus access failed; completed writes are not rolled back.
+//!
+//! Only AX changes on failure. All flags except CF are preserved in either case.
 
 use crate::cpu_common::{Cpu, Register16, Register8};
 

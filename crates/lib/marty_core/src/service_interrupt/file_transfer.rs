@@ -41,7 +41,6 @@ pub const FILE_TRANSFER_FLAG_MASK: u8 = FILE_TRANSFER_DIRECTION_MASK | FILE_TRAN
 pub const FILE_TRANSFER_COMMIT: u8 = 0x00;
 pub const FILE_TRANSFER_ABORT: u8 = 0x01;
 pub const FILE_TRANSFER_STRUCTURE_SIZE: u16 = 10;
-
 #[derive(Copy, Clone, Debug, Eq, PartialEq)]
 #[repr(u16)]
 pub enum FileTransferStatus {

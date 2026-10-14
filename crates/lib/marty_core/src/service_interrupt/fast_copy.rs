@@ -25,7 +25,24 @@
     --------------------------------------------------------------------------
 */
 
-//! Guest memory fast-copy service.
+//! Service API fast-copy service.
+//!
+//! Guest function `AH=12h` copies `CX` bytes from `DS:SI` to `ES:DI`.
+//! DF selects the direction, with sequential `REP MOVSB` overlap behavior.
+//! Copies must not wrap a segment.
+//! `CX=0` will copy nothing and return success.
+//! Copies incur no per-byte emulated cycles.
+//!
+//! On success, CF is clear, `CX=0`, and SI/DI advance by the original count
+//! according to DF. The final SI/DI update may wrap; other registers are preserved.
+//!
+//! On failure, CF is set and AX contains a `ServiceError`:
+//! - `InvalidParameter`: the requested span crosses a segment boundary. No bytes
+//!   are copied and SI/DI/CX are unchanged.
+//! - `InvalidData`: a bus access failed. SI/DI/CX reflect completed bytes.
+//!
+//! Other registers and all flags except CF are preserved on failure.
+//! All flags except CF are also preserved on success.
 
 use crate::cpu_common::{Cpu, Register16};
 
@@ -34,9 +51,6 @@ use super::{clear_carry, read_guest_u8, set_service_error, write_guest_u8, Servi
 const DIRECTION_FLAG: u16 = 0x0400;
 
 impl ServiceInterruptManager {
-    /// This function replicates the behavior of MOVSB but performs an instantaneous copy.
-    /// Segment wrapping is not modelled, with the exception of the last byte of a segment after
-    /// which DI is permitted to be 0.
     pub(super) fn fast_copy<C: Cpu>(&self, cpu: &mut C) {
         let mut remaining = cpu.get_register16(Register16::CX);
         if remaining == 0 {

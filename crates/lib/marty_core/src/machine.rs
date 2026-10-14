@@ -892,6 +892,25 @@ impl Machine {
         self.service_interrupt_manager.set_speed_control_current(current);
     }
 
+    /// Set or replace a service KV store value case-insensitively.
+    /// See [`ServiceInterruptManager::set_key_value`] for validation rules.
+    pub fn set_service_key_value(&mut self, key: &str, value: &str) -> Result<(), ServiceError> {
+        self.service_interrupt_manager.set_key_value(key, value)
+    }
+
+    /// Query a service KV store value case-insensitively.
+    /// Missing keys return `None`.
+    /// Bad keys return `ServiceError::InvalidParameter`.
+    pub fn get_service_key_value(&self, key: &str) -> Result<Option<&str>, ServiceError> {
+        self.service_interrupt_manager.get_key_value(key)
+    }
+
+    /// Delete a service KV store value case-insensitively, returning whether it existed.
+    /// Bad keys return `ServiceError::InvalidParameter`.
+    pub fn delete_service_key_value(&mut self, key: &str) -> Result<bool, ServiceError> {
+        self.service_interrupt_manager.delete_key_value(key)
+    }
+
     pub fn get_cpu_factor(&mut self) -> ClockFactor {
         self.cpu_factor
     }
