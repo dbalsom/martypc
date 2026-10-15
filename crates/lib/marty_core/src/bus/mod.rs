@@ -512,7 +512,7 @@ pub struct BusInterface {
     cassette_deck: Option<CassetteDeck>,
     game_port: Option<GamePort>,
     #[cfg(any(feature = "opl", feature = "legacy-opl"))]
-    adlib: Option<AdLibCard>,
+    adlib: Option<Box<AdLibCard>>,
     sound_source: Option<DSoundSource>,
     sn76489: Option<Sn76489>,
 
@@ -1409,7 +1409,7 @@ impl BusInterface {
                         ));
                         let adlib = AdLibCard::new(card.io_base.unwrap_or(0x388), sound_config.sample_rate, s);
                         add_io_device!(self, adlib, IoDeviceType::Sound);
-                        self.adlib = Some(adlib);
+                        self.adlib = Some(Box::new(adlib));
                     }
                     _ => {}
                 }

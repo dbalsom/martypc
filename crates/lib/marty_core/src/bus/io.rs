@@ -356,7 +356,7 @@ impl BusInterface {
                     #[cfg(any(feature = "opl", feature = "legacy-opl"))]
                     if let Some(adlib) = &mut self.adlib {
                         IoDevice::write_u8(
-                            adlib,
+                            adlib.as_mut(),
                             port,
                             data,
                             None,
