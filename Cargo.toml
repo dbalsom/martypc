@@ -131,7 +131,7 @@ features = ["png"]
 #branch = "marty_update_deps4"
 
 [workspace.dependencies.rodio]
-version = "0.22.2"
+version = "0.23.0"
 default-features = false
 features = ["playback"]
 
